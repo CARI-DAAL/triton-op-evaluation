@@ -36,27 +36,49 @@ See `.env.example` for all environment variables.
 
 ## Run in Docker (Ascend NPU host)
 
-No Ascend base image is required — the container mounts the host's CANN toolkit,
-driver, and NPU devices at runtime, and only bakes Python + the service + the ML
-stack (`torch` / `torch_npu` / `triton-ascend` / `pandas`). Redis runs as a
-bundled container. Target host arch: **aarch64**.
+Reuses the proven **vllm-ascend** manual device-mount scheme (no ascend-docker-runtime).
+The base image `quay.io/ascend/vllm-ascend` carries **CANN 9.0.0 + torch_npu (arm64)** matching
+the host driver, so the container mounts only the host **driver + NPU devices** — not CANN.
+The base is py3.12, so the image builds a **py3.11 conda env** mirroring the working
+triton-ascend stack (torch 2.9.0 / torch_npu 2.9.0 / triton 3.5.0 / triton-ascend 3.2.1).
+Redis is the **host's** (via `--network host`), not bundled. One container runs the API +
+one worker per card.
+
+### With docker compose
 
 ```bash
-cp docker.env.example docker.env
-# Edit docker.env: set TORCH_SPEC / TORCH_NPU_SPEC / TRITON_ASCEND_SPEC to the exact
-# versions from your host env, plus CANN_PATH and TRITON_EVAL_CARDS.
-# Then edit docker-compose.yml `worker.devices` to list one /dev/davinciN per card.
-
-docker compose --env-file docker.env build     # build on the NPU host (aarch64)
-docker compose --env-file docker.env up -d      # redis + api + workers
-docker compose --env-file docker.env logs -f worker
-docker compose --env-file docker.env down
+cp docker.env.example docker.env      # set TRITON_EVAL_CARDS (must match the mounted chip) + redis
+docker compose --env-file docker.env build
+docker compose --env-file docker.env up -d
+docker compose --env-file docker.env logs -f
 ```
 
-The `worker` container sources `CANN_PATH/ascend-toolkit/set_env.sh` and runs one
-`run_worker.py --card N` per card in `TRITON_EVAL_CARDS`; the `api` container serves
-uvicorn on the published port. See `docker.env.example` for how to read the ML
-versions off your host.
+For multiple chips, list one `- /dev/davinciN` per card under `devices:` in the compose file.
+
+### Or plain docker run (single chip, e.g. npu:14)
+
+```bash
+docker build -t triton-evaluation .
+docker run -d --name triton-eval --network host --shm-size 32g \
+  --device /dev/davinci14 --device /dev/davinci_manager \
+  --device /dev/devmm_svm --device /dev/hisi_hdc \
+  -v /usr/local/dcmi:/usr/local/dcmi \
+  -v /usr/local/Ascend/driver/lib64:/usr/local/Ascend/driver/lib64 \
+  -v /usr/local/Ascend/driver/version.info:/usr/local/Ascend/driver/version.info \
+  -v /usr/local/Ascend/driver/tools/hccn_tool:/usr/local/Ascend/driver/tools/hccn_tool \
+  -v /usr/local/bin/npu-smi:/usr/local/bin/npu-smi \
+  -v /etc/ascend_install.info:/etc/ascend_install.info \
+  -v "$PWD/logs":/opt/triton-eval/logs \
+  -e TRITON_EVAL_CARDS=14 \
+  -e TRITON_EVAL_REDIS_URL=redis://127.0.0.1:6379/0 \
+  -e TRITON_EVAL_API_PORT=8000 \
+  triton-evaluation
+
+curl 127.0.0.1:8000/healthz          # -> {"redis":"ok"}
+```
+
+`TRITON_EVAL_CARDS` must match the mounted `/dev/davinciN`. Smoke-test one real Triton kernel
+after bring-up to confirm triton-ascend links `bishengir-compile` from the image's CANN.
 
 ## Endpoints
 

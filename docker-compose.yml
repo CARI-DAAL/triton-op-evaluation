@@ -1,65 +1,48 @@
-# triton-evaluation on an Ascend NPU host (no Ascend base image; CANN mounted from host).
+# triton-evaluation on an Ascend host — manual device-mount (no ascend-docker-runtime),
+# reusing the proven vllm-ascend scheme. CANN is baked in the base image; only the host
+# DRIVER + NPU devices are mounted. Redis is the HOST's (via --network host); not bundled.
 #
+#   cp docker.env.example docker.env      # edit CARDS + redis
 #   docker compose --env-file docker.env build
 #   docker compose --env-file docker.env up -d
 #
-# Fill docker.env from docker.env.example first (torch/torch_npu/triton-ascend
-# versions, CANN path, cards). Edit the `worker.devices` list to match your cards.
+# NOTE: this compose assumes a SINGLE chip (TRITON_EVAL_CARDS). For multiple cards,
+# add one `- /dev/davinciN` line per card under `devices:`.
 
 services:
-  redis:
-    image: redis:7-alpine
-    restart: unless-stopped
-    volumes:
-      - redis-data:/data
-
-  api:
+  triton-eval:
     build:
       context: .
       dockerfile: Dockerfile
       args:
-        TORCH_SPEC: ${TORCH_SPEC}
-        TORCH_NPU_SPEC: ${TORCH_NPU_SPEC}
-        TRITON_ASCEND_SPEC: ${TRITON_ASCEND_SPEC}
-        PANDAS_SPEC: ${PANDAS_SPEC:-pandas}
+        BASE_IMAGE: ${BASE_IMAGE:-quay.io/ascend/vllm-ascend:v0.22.1rc1-a3}
+        TORCH_SPEC: ${TORCH_SPEC:-torch==2.9.0}
+        TORCH_NPU_SPEC: ${TORCH_NPU_SPEC:-torch_npu==2.9.0}
+        TRITON_SPEC: ${TRITON_SPEC:-triton==3.5.0}
+        TRITON_ASCEND_SPEC: ${TRITON_ASCEND_SPEC:-triton-ascend==3.2.1}
         PIP_EXTRA_INDEX_URL: ${PIP_EXTRA_INDEX_URL:-}
     image: triton-evaluation:latest
-    command: ["api"]
+    command: ["all"]
     restart: unless-stopped
-    depends_on: [redis]
-    ports:
-      - "${TRITON_EVAL_API_PORT:-8000}:8000"
+    network_mode: host           # reach the host's Redis at 127.0.0.1
+    shm_size: "32gb"             # torch_npu needs a large /dev/shm
     environment:
-      TRITON_EVAL_REDIS_URL: redis://redis:6379/0
+      TRITON_EVAL_REDIS_URL: ${TRITON_EVAL_REDIS_URL:-redis://127.0.0.1:6379/0}
       TRITON_EVAL_API_HOST: 0.0.0.0
-      TRITON_EVAL_API_PORT: 8000
-
-  worker:
-    image: triton-evaluation:latest        # built by the `api` service above
-    command: ["workers"]
-    restart: unless-stopped
-    depends_on: [redis, api]
-    environment:
-      TRITON_EVAL_REDIS_URL: redis://redis:6379/0
+      TRITON_EVAL_API_PORT: ${TRITON_EVAL_API_PORT:-8000}
       TRITON_EVAL_CARDS: ${TRITON_EVAL_CARDS:-0}
-      CANN_SET_ENV_PATH: ${CANN_PATH:-/usr/local/Ascend}/ascend-toolkit/set_env.sh
-      ASCEND_DRIVER_PATH: ${CANN_PATH:-/usr/local/Ascend}/driver
-    # --- NPU access (mounted from the host; no ascend-docker-runtime assumed) ---
+      CANN_SET_ENV_PATH: /usr/local/Ascend/ascend-toolkit/set_env.sh   # baked in base image
+      ASCEND_DRIVER_PATH: /usr/local/Ascend/driver                     # mounted from host
     devices:
       - /dev/davinci_manager
       - /dev/devmm_svm
       - /dev/hisi_hdc
-      # One line per card in TRITON_EVAL_CARDS — adjust to your node:
-      - /dev/davinci0
-      # - /dev/davinci1
-      # - /dev/davinci2
-      # - /dev/davinci3
+      - /dev/davinci${TRITON_EVAL_CARDS:-0}      # the chip; MUST match TRITON_EVAL_CARDS
     volumes:
-      # CANN toolkit + driver (whole Ascend root, read-only)
-      - ${CANN_PATH:-/usr/local/Ascend}:${CANN_PATH:-/usr/local/Ascend}:ro
-      - /etc/ascend_install.info:/etc/ascend_install.info:ro
-      - /usr/local/dcmi:/usr/local/dcmi:ro
-      - /usr/local/bin/npu-smi:/usr/local/bin/npu-smi:ro
-
-volumes:
-  redis-data:
+      - /usr/local/dcmi:/usr/local/dcmi
+      - /usr/local/Ascend/driver/lib64:/usr/local/Ascend/driver/lib64
+      - /usr/local/Ascend/driver/version.info:/usr/local/Ascend/driver/version.info
+      - /usr/local/Ascend/driver/tools/hccn_tool:/usr/local/Ascend/driver/tools/hccn_tool
+      - /usr/local/bin/npu-smi:/usr/local/bin/npu-smi
+      - /etc/ascend_install.info:/etc/ascend_install.info
+      - ./logs:/opt/triton-eval/logs
