@@ -74,3 +74,44 @@ def test_verify_crash_no_json_is_failed(tmp_path, monkeypatch):
     res = _VerifyHarness("unused").run(_spec(), str(tmp_path), device_id=1)
     assert res.status == "FAILED"
     assert "boom" in res.error
+
+
+from triton_evaluation.evaluators.benchmark import BenchmarkEvaluator, verify_json_name
+from triton_evaluation.evaluators import build_registry
+
+
+class _BenchHarness(BenchmarkEvaluator):
+    def _script_path(self):
+        return str(FIXTURES / "fake_benchmark.py")
+
+
+def test_verify_json_name_mapping():
+    assert verify_json_name("triton_ascend_impl") == "verify_result.json"
+    assert verify_json_name("triton_optimized") == "verify_result_optimized.json"
+
+
+def test_benchmark_with_seed_passes_gate(tmp_path):
+    spec = _spec()
+    spec.verify_result_seed = {"total_cases": 2, "passed_cases": 2}
+    res = _BenchHarness("unused").run(spec, str(tmp_path), device_id=2)
+    assert res.status == "SUCCEEDED"
+    assert res.result["speedup_vs_torch"] == 2.0
+
+
+def test_benchmark_without_seed_is_rejected(tmp_path):
+    spec = _spec()  # no seed, no verify_not_required
+    res = _BenchHarness("unused").run(spec, str(tmp_path), device_id=2)
+    assert res.status == "REJECTED"
+
+
+def test_benchmark_verify_not_required_skips_gate(tmp_path):
+    spec = _spec()
+    spec.verify_not_required = True
+    res = _BenchHarness("unused").run(spec, str(tmp_path), device_id=2)
+    assert res.status == "SUCCEEDED"
+
+
+def test_registry_has_both(tmp_path):
+    reg = build_registry(str(tmp_path))
+    assert reg["verify"].name == "verify"
+    assert reg["benchmark"].name == "benchmark"
