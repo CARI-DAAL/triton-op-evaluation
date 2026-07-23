@@ -7,6 +7,24 @@ subprocess on a pinned NPU card. Evaluators are pluggable (verify, benchmark, la
 
 ## Run
 
+Two ways: **directly on the host** (uses your existing conda env + CANN) or **in Docker**
+(see below). Both need a running **Redis**.
+
+### On the host — one-time setup
+
+Use the conda env that already has `torch_npu` + `triton-ascend`, add the service's light
+deps, and make sure Redis is up:
+
+```bash
+conda activate <your-env>          # the env you run these kernels with
+pip install -e . && pip install pandas     # service deps (fastapi/uvicorn/redis/...) + engine's pandas
+redis-server --daemonize yes       # or point TRITON_EVAL_REDIS_URL at an existing Redis
+```
+
+`pip install -e .` does not touch torch / torch_npu / triton-ascend. The engine is bundled,
+so `TRITON_EVAL_ENGINE_DIR` is not needed. `scripts/start.sh` must run with this conda env
+active (or pass `PYTHON_BIN=/path/to/env/bin/python`).
+
 ### Quick start (script)
 
 ```bash
