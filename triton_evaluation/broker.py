@@ -41,6 +41,9 @@ class Broker:
     def ping(self) -> None:
         self.r.ping()
 
+    def close(self) -> None:
+        self.r.close()
+
     def create_task(self, job: Job) -> None:
         key = self._task_key(job.task_id)
         self.r.hset(key, mapping={

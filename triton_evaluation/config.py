@@ -1,5 +1,6 @@
 import os
-from dataclasses import dataclass
+
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # The evaluation engine (verify / benchmark / validate) is vendored inside the
 # package: this service is self-contained. `engine_dir` defaults to the bundled
@@ -7,8 +8,11 @@ from dataclasses import dataclass
 _DEFAULT_ENGINE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "engine")
 
 
-@dataclass(frozen=True)
-class Settings:
+class Settings(BaseSettings):
+    """Service configuration. Fields are read from ``TRITON_EVAL_<FIELD>`` env vars."""
+
+    model_config = SettingsConfigDict(env_prefix="TRITON_EVAL_", extra="ignore")
+
     redis_url: str = "redis://localhost:6379/0"
     engine_dir: str = _DEFAULT_ENGINE_DIR
     queue_key: str = "eval:queue"
@@ -19,10 +23,5 @@ class Settings:
 
     @classmethod
     def from_env(cls) -> "Settings":
-        return cls(
-            redis_url=os.environ.get("TRITON_EVAL_REDIS_URL", cls.redis_url),
-            engine_dir=os.environ.get("TRITON_EVAL_ENGINE_DIR", cls.engine_dir),
-            task_ttl_seconds=int(os.environ.get("TRITON_EVAL_TASK_TTL", cls.task_ttl_seconds)),
-            dequeue_block_seconds=int(os.environ.get("TRITON_EVAL_DEQUEUE_BLOCK", cls.dequeue_block_seconds)),
-            reaper_grace_seconds=int(os.environ.get("TRITON_EVAL_REAPER_GRACE", cls.reaper_grace_seconds)),
-        )
+        """Explicit constructor used by entrypoints; BaseSettings reads the env itself."""
+        return cls()

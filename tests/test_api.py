@@ -57,3 +57,26 @@ def test_healthz(settings):
     r = client.get("/healthz")
     assert r.status_code == 200
     assert r.json()["redis"] == "ok"
+
+
+class _RecordingBroker:
+    """Minimal broker double to observe lifespan startup/shutdown hooks."""
+
+    def __init__(self):
+        self.pinged = 0
+        self.closed = 0
+
+    def ping(self):
+        self.pinged += 1
+
+    def close(self):
+        self.closed += 1
+
+
+def test_lifespan_pings_on_startup_and_closes_on_shutdown():
+    b = _RecordingBroker()
+    app = create_app(b)
+    assert b.pinged == 0 and b.closed == 0
+    with TestClient(app):          # entering the context runs the lifespan startup
+        assert b.pinged == 1       # fail-fast Redis ping on startup
+    assert b.closed == 1           # pool released on shutdown
