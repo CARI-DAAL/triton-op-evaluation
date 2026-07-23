@@ -37,8 +37,8 @@ class Worker:
                         job.task_id,
                         TaskStatus.FAILED.value,
                         error=(
-                            f"benchmark gate: verify task {spec.verify_task_id} is not "
-                            f"SUCCEEDED (state={state}); submit benchmark only after verify completes"
+                            f"benchmark gate: verify task {spec.verify_task_id} not "
+                            f"SUCCEEDED (state={state}); run benchmark after verify done"
                         ),
                     )
                     return True
