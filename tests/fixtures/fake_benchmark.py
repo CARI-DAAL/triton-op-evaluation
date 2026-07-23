@@ -17,8 +17,8 @@ args = p.parse_args()
 def _verify_json_name(name):
     if name == "triton_ascend_impl":
         return "verify_result.json"
-    suffix = name[len("triton_"):] if name.startswith("triton_") else name
-    return "verify_result_%s.json" % suffix
+    suffix = name[len("triton_") :] if name.startswith("triton_") else name
+    return f"verify_result_{suffix}.json"
 
 
 if not args.verify_not_required:
@@ -35,6 +35,14 @@ if not args.verify_not_required:
 
 out = args.output or os.path.join(args.verify_dir, "perf_result.json")
 with open(out, "w") as f:
-    json.dump({"op_name": args.op_name, "speedup_vs_torch": 2.0,
-               "total_cases": 1, "passed_cases": 1, "failed_cases": 0}, f)
+    json.dump(
+        {
+            "op_name": args.op_name,
+            "speedup_vs_torch": 2.0,
+            "total_cases": 1,
+            "passed_cases": 1,
+            "failed_cases": 0,
+        },
+        f,
+    )
 sys.exit(0)

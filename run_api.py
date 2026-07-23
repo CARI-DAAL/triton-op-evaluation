@@ -1,8 +1,8 @@
 import uvicorn
 
-from triton_evaluation.config import Settings
-from triton_evaluation.broker import Broker
 from triton_evaluation.api import create_app
+from triton_evaluation.broker import Broker
+from triton_evaluation.config import Settings
 
 app = create_app(Broker.from_settings(Settings.from_env()))
 

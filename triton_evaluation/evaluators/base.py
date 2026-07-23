@@ -4,7 +4,7 @@ import signal
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional, Protocol
+from typing import Protocol
 
 from ..models import JobSpec
 
@@ -12,8 +12,8 @@ from ..models import JobSpec
 @dataclass
 class EvaluatorResult:
     status: str
-    result: Optional[dict] = None
-    error: Optional[str] = None
+    result: dict | None = None
+    error: str | None = None
 
 
 @dataclass
@@ -42,8 +42,12 @@ def run_script(cmd: list, cwd: str, device_id: int, timeout: int) -> ScriptOutco
     env = dict(os.environ)
     env["ASCEND_RT_VISIBLE_DEVICES"] = str(device_id)
     proc = subprocess.Popen(
-        cmd, cwd=cwd, env=env,
-        stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+        cmd,
+        cwd=cwd,
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
         start_new_session=True,
     )
     try:
@@ -55,9 +59,9 @@ def run_script(cmd: list, cwd: str, device_id: int, timeout: int) -> ScriptOutco
         return ScriptOutcome(-1, out or "", err or "", True)
 
 
-def read_json(path: str) -> Optional[dict]:
+def read_json(path: str) -> dict | None:
     try:
-        with open(path, "r", encoding="utf-8") as f:
+        with open(path, encoding="utf-8") as f:
             return json.load(f)
     except Exception:
         return None

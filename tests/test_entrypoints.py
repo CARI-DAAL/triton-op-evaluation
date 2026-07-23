@@ -1,5 +1,5 @@
-import os
 import importlib
+import os
 
 
 def test_build_worker_sets_visible_devices(monkeypatch, tmp_path):

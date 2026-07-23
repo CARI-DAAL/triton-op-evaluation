@@ -1,7 +1,6 @@
 import json
-from dataclasses import dataclass, asdict
+from dataclasses import asdict, dataclass
 from enum import Enum
-from typing import Optional
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -32,9 +31,9 @@ class JobSpec:
     # benchmark
     warmup: int = 5
     repeats: int = 50
-    verify_task_id: Optional[str] = None
+    verify_task_id: str | None = None
     verify_not_required: bool = False
-    verify_result_seed: Optional[dict] = None  # injected by worker for the L1 gate
+    verify_result_seed: dict | None = None  # injected by worker for the L1 gate
 
 
 @dataclass
@@ -69,7 +68,7 @@ class BenchmarkRequest(BaseModel):
     warmup: int = Field(default=5, ge=0, le=100)
     repeats: int = Field(default=50, ge=1, le=1000)
     timeout: int = Field(default=1800, ge=10, le=3600)
-    verify_task_id: Optional[str] = None
+    verify_task_id: str | None = None
     verify_not_required: bool = False
 
     @model_validator(mode="after")
@@ -87,9 +86,9 @@ class TaskResponse(BaseModel):
     task_id: str
     type: str
     status: str
-    result: Optional[dict] = None
-    error: Optional[str] = None
-    device_id: Optional[int] = None
+    result: dict | None = None
+    error: str | None = None
+    device_id: int | None = None
     created_at: float
-    started_at: Optional[float] = None
-    finished_at: Optional[float] = None
+    started_at: float | None = None
+    finished_at: float | None = None

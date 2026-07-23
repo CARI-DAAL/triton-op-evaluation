@@ -1,6 +1,5 @@
 import json
 import time
-from typing import Optional
 
 import redis
 
@@ -46,16 +45,19 @@ class Broker:
 
     def create_task(self, job: Job) -> None:
         key = self._task_key(job.task_id)
-        self.r.hset(key, mapping={
-            "task_id": job.task_id,
-            "type": job.type,
-            "status": TaskStatus.QUEUED.value,
-            "created_at": repr(time.time()),
-        })
+        self.r.hset(
+            key,
+            mapping={
+                "task_id": job.task_id,
+                "type": job.type,
+                "status": TaskStatus.QUEUED.value,
+                "created_at": repr(time.time()),
+            },
+        )
         self.r.expire(key, self.s.task_ttl_seconds)
         self.r.lpush(self.s.queue_key, job.to_json())
 
-    def dequeue(self) -> Optional[Job]:
+    def dequeue(self) -> Job | None:
         item = self.r.brpop(self.s.queue_key, timeout=self.s.dequeue_block_seconds)
         if item is None:
             return None
@@ -64,16 +66,20 @@ class Broker:
 
     def mark_running(self, task_id: str, device_id: int, deadline: float) -> None:
         key = self._task_key(task_id)
-        self.r.hset(key, mapping={
-            "status": TaskStatus.RUNNING.value,
-            "started_at": repr(time.time()),
-            "device_id": str(device_id),
-            "deadline": repr(deadline),
-        })
+        self.r.hset(
+            key,
+            mapping={
+                "status": TaskStatus.RUNNING.value,
+                "started_at": repr(time.time()),
+                "device_id": str(device_id),
+                "deadline": repr(deadline),
+            },
+        )
         self.r.expire(key, self.s.task_ttl_seconds)
 
-    def store_result(self, task_id: str, status: str,
-                     result: Optional[dict] = None, error: Optional[str] = None) -> None:
+    def store_result(
+        self, task_id: str, status: str, result: dict | None = None, error: str | None = None
+    ) -> None:
         key = self._task_key(task_id)
         mapping = {"status": status, "finished_at": repr(time.time())}
         if result is not None:
@@ -83,7 +89,7 @@ class Broker:
         self.r.hset(key, mapping=mapping)
         self.r.expire(key, self.s.task_ttl_seconds)
 
-    def get_task(self, task_id: str) -> Optional[dict]:
+    def get_task(self, task_id: str) -> dict | None:
         key = self._task_key(task_id)
         if not self.r.exists(key):
             return None

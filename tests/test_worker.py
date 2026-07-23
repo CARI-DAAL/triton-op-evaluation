@@ -1,8 +1,8 @@
 import time
 
+from triton_evaluation.evaluators.base import EvaluatorResult
 from triton_evaluation.models import Job, JobSpec, JobType, TaskStatus
 from triton_evaluation.worker import Worker, reap_stale_tasks
-from triton_evaluation.evaluators.base import EvaluatorResult
 
 
 class FakeEvaluator:
@@ -42,8 +42,9 @@ def test_benchmark_gate_resolution_injects_seed(broker, settings):
     # prior verify task with a stored result
     broker.create_task(Job("v1", JobType.VERIFY.value, _spec()))
     broker.dequeue()  # v1 already processed; keep only its stored result, not a queued job
-    broker.store_result("v1", TaskStatus.SUCCEEDED.value,
-                        result={"total_cases": 2, "passed_cases": 2})
+    broker.store_result(
+        "v1", TaskStatus.SUCCEEDED.value, result={"total_cases": 2, "passed_cases": 2}
+    )
     ev = FakeEvaluator()
     bspec = _spec()
     bspec.verify_task_id = "v1"
@@ -58,6 +59,7 @@ def test_evaluator_exception_marks_failed(broker, settings):
     class Boom:
         name = "verify"
         needs_bound_card = True
+
         def run(self, *a):
             raise RuntimeError("kaboom")
 

@@ -1,10 +1,11 @@
 import sys
 from pathlib import Path
 
-import pytest
-from triton_evaluation.models import JobSpec
-from triton_evaluation.evaluators.base import materialize, run_script, read_json, tail
+from triton_evaluation.evaluators import build_registry
+from triton_evaluation.evaluators.base import materialize, read_json, run_script, tail
+from triton_evaluation.evaluators.benchmark import BenchmarkEvaluator, verify_json_name
 from triton_evaluation.evaluators.verify import VerifyEvaluator
+from triton_evaluation.models import JobSpec
 
 
 def test_materialize_writes_named_files(tmp_path):
@@ -47,6 +48,7 @@ FIXTURES = Path(__file__).parent / "fixtures"
 
 class _VerifyHarness(VerifyEvaluator):
     """Point verify.py at the fake script instead of the real skill script."""
+
     def _script_path(self):
         return str(FIXTURES / "fake_verify.py")
 
@@ -74,10 +76,6 @@ def test_verify_crash_no_json_is_failed(tmp_path, monkeypatch):
     res = _VerifyHarness("unused").run(_spec(), str(tmp_path), device_id=1)
     assert res.status == "FAILED"
     assert "boom" in res.error
-
-
-from triton_evaluation.evaluators.benchmark import BenchmarkEvaluator, verify_json_name
-from triton_evaluation.evaluators import build_registry
 
 
 class _BenchHarness(BenchmarkEvaluator):

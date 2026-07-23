@@ -3,14 +3,18 @@ import sys
 from pathlib import Path
 
 from ..models import JobSpec, TaskStatus
-from .base import EvaluatorResult, materialize, run_script, read_json, tail
+from .base import EvaluatorResult, materialize, read_json, run_script, tail
 
 
 def verify_json_name(triton_impl_name: str) -> str:
-    """Mirror the engine's resolve_verify_json_name (the engine is run as a subprocess, not imported)."""
+    """Mirror the engine's resolve_verify_json_name; the engine runs as a subprocess."""
     if triton_impl_name == "triton_ascend_impl":
         return "verify_result.json"
-    suffix = triton_impl_name[len("triton_"):] if triton_impl_name.startswith("triton_") else triton_impl_name
+    suffix = (
+        triton_impl_name[len("triton_") :]
+        if triton_impl_name.startswith("triton_")
+        else triton_impl_name
+    )
     return f"verify_result_{suffix}.json"
 
 
@@ -34,13 +38,20 @@ class BenchmarkEvaluator:
 
         out_path = str(Path(verify_dir) / "perf_result.json")
         cmd = [
-            sys.executable, self._script_path(),
-            "--op_name", spec.op_name,
-            "--verify_dir", verify_dir,
-            "--triton_impl_name", spec.triton_impl_name,
-            "--warmup", str(spec.warmup),
-            "--repeats", str(spec.repeats),
-            "--output", out_path,
+            sys.executable,
+            self._script_path(),
+            "--op_name",
+            spec.op_name,
+            "--verify_dir",
+            verify_dir,
+            "--triton_impl_name",
+            spec.triton_impl_name,
+            "--warmup",
+            str(spec.warmup),
+            "--repeats",
+            str(spec.repeats),
+            "--output",
+            out_path,
         ]
         if spec.verify_not_required:
             cmd.append("--verify_not_required")

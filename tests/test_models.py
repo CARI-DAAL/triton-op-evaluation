@@ -1,7 +1,12 @@
 import pytest
 from pydantic import ValidationError
+
 from triton_evaluation.models import (
-    TaskStatus, JobType, JobSpec, Job, VerifyRequest, BenchmarkRequest,
+    BenchmarkRequest,
+    Job,
+    JobSpec,
+    JobType,
+    VerifyRequest,
 )
 
 

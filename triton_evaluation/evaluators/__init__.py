@@ -1,5 +1,5 @@
-from .verify import VerifyEvaluator
 from .benchmark import BenchmarkEvaluator
+from .verify import VerifyEvaluator
 
 
 def build_registry(engine_dir: str) -> dict:

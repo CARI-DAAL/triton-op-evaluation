@@ -1,8 +1,8 @@
-import pytest
 import fakeredis
+import pytest
 
-from triton_evaluation.config import Settings
 from triton_evaluation.broker import Broker
+from triton_evaluation.config import Settings
 
 
 @pytest.fixture

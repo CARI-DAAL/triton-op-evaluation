@@ -2,7 +2,7 @@ import sys
 from pathlib import Path
 
 from ..models import JobSpec, TaskStatus
-from .base import EvaluatorResult, materialize, run_script, read_json, tail
+from .base import EvaluatorResult, materialize, read_json, run_script, tail
 
 
 class VerifyEvaluator:
@@ -19,12 +19,18 @@ class VerifyEvaluator:
         materialize(spec, verify_dir)
         out_path = str(Path(verify_dir) / "verify_result.json")
         cmd = [
-            sys.executable, self._script_path(),
-            "--op_name", spec.op_name,
-            "--verify_dir", verify_dir,
-            "--triton_impl_name", spec.triton_impl_name,
-            "--timeout", str(spec.timeout),
-            "--output", out_path,
+            sys.executable,
+            self._script_path(),
+            "--op_name",
+            spec.op_name,
+            "--verify_dir",
+            verify_dir,
+            "--triton_impl_name",
+            spec.triton_impl_name,
+            "--timeout",
+            str(spec.timeout),
+            "--output",
+            out_path,
         ]
         if spec.non_compute:
             cmd.append("--non-compute")

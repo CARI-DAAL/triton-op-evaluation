@@ -1,6 +1,6 @@
 import time
 
-from triton_evaluation.models import Job, JobSpec, JobType, TaskStatus
+from triton_evaluation.models import Job, JobSpec, TaskStatus
 
 
 def _job(task_id="t1", type_="verify"):
@@ -34,7 +34,9 @@ def test_dequeue_empty_returns_none(broker):
 
 def test_store_result_parses_json(broker):
     broker.create_task(_job("t3"))
-    broker.store_result("t3", TaskStatus.SUCCEEDED.value, result={"passed_cases": 3, "total_cases": 3})
+    broker.store_result(
+        "t3", TaskStatus.SUCCEEDED.value, result={"passed_cases": 3, "total_cases": 3}
+    )
     rec = broker.get_task("t3")
     assert rec["status"] == "SUCCEEDED"
     assert rec["result"]["passed_cases"] == 3
