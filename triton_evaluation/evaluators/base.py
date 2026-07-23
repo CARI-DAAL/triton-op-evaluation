@@ -4,7 +4,7 @@ import signal
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Protocol
 
 from ..models import JobSpec
 
@@ -22,6 +22,13 @@ class ScriptOutcome:
     stdout: str
     stderr: str
     timed_out: bool
+
+
+class Evaluator(Protocol):
+    name: str
+    needs_bound_card: bool
+
+    def run(self, spec: JobSpec, verify_dir: str, device_id: int) -> "EvaluatorResult": ...
 
 
 def materialize(spec: JobSpec, verify_dir: str) -> None:
