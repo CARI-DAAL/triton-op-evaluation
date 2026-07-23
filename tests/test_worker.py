@@ -1,5 +1,8 @@
 import time
 
+import pytest
+import redis
+
 from triton_evaluation.evaluators.base import EvaluatorResult
 from triton_evaluation.models import Job, JobSpec, JobType, TaskStatus
 from triton_evaluation.worker import Worker, reap_stale_tasks
@@ -104,3 +107,29 @@ def test_reaper_does_not_reap_live_task(broker, settings):
     n = reap_stale_tasks(broker, settings)
     assert n == 0
     assert broker.get_task("t4")["status"] == "RUNNING"
+
+
+def test_serve_forever_survives_redis_connection_error(settings, monkeypatch):
+    import triton_evaluation.worker as wmod
+
+    sleeps = []
+    monkeypatch.setattr(wmod.time, "sleep", lambda s: sleeps.append(s))
+
+    class _Stop(BaseException):
+        pass
+
+    class FlakyBroker:
+        def __init__(self):
+            self.calls = 0
+
+        def dequeue(self):
+            self.calls += 1
+            if self.calls <= 2:
+                raise redis.exceptions.ConnectionError("redis down")
+            raise _Stop()  # break the otherwise-infinite loop for the test
+
+    w = Worker(FlakyBroker(), {}, device_id=0, settings=settings)
+    with pytest.raises(_Stop):
+        w.serve_forever()
+    # survived 2 connection errors with capped exponential backoff, then continued
+    assert sleeps == [2, 4]

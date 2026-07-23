@@ -1,10 +1,15 @@
+import logging
 import shutil
 import tempfile
 import time
 
+import redis
+
 from .broker import Broker
 from .config import Settings
 from .models import JobType, TaskStatus
+
+logger = logging.getLogger(__name__)
 
 
 class Worker:
@@ -54,10 +59,23 @@ class Worker:
         return True
 
     def serve_forever(self) -> None:
+        # A daemon's top loop must never exit on a recoverable error. dequeue()
+        # owns "no task"; this boundary owns transient infra faults, with bounded
+        # exponential backoff so a Redis outage does not become a busy loop.
+        errs = 0
         while True:
-            processed = self.run_once()
-            if not processed:
-                reap_stale_tasks(self.broker, self.settings)
+            try:
+                processed = self.run_once()
+                errs = 0
+                if not processed:
+                    reap_stale_tasks(self.broker, self.settings)
+            except redis.exceptions.ConnectionError:
+                errs += 1
+                logger.warning("redis connection error; backing off (attempt %d)", errs)
+                time.sleep(min(2**errs, 30))
+            except Exception:
+                logger.exception("worker loop error; continuing")
+                time.sleep(1)
 
 
 def reap_stale_tasks(broker: Broker, settings: Settings) -> int:

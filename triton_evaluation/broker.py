@@ -58,7 +58,13 @@ class Broker:
         self.r.lpush(self.s.queue_key, job.to_json())
 
     def dequeue(self) -> Job | None:
-        item = self.r.brpop(self.s.queue_key, timeout=self.s.dequeue_block_seconds)
+        try:
+            item = self.r.brpop(self.s.queue_key, timeout=self.s.dequeue_block_seconds)
+        except redis.exceptions.TimeoutError:
+            # A blocking-read timeout is just "no task" — same event as BRPOP-nil.
+            # Honouring the Job | None contract here decouples socket_timeout from
+            # dequeue_block_seconds and keeps an empty queue from crashing the worker.
+            return None
         if item is None:
             return None
         _, payload = item

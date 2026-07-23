@@ -1,5 +1,8 @@
 import time
 
+import redis
+
+from triton_evaluation.broker import Broker
 from triton_evaluation.models import Job, JobSpec, TaskStatus
 
 
@@ -48,3 +51,14 @@ def test_mark_running_sets_device(broker):
     rec = broker.get_task("t4")
     assert rec["status"] == "RUNNING"
     assert rec["device_id"] == 5
+
+
+def test_dequeue_returns_none_on_socket_timeout(settings):
+    # A blocking BRPOP that hits the client socket read timeout must be "no task",
+    # not a crash — dequeue honours its Job | None contract.
+    class _TimingOutClient:
+        def brpop(self, *args, **kwargs):
+            raise redis.exceptions.TimeoutError("read timed out")
+
+    broker = Broker(_TimingOutClient(), settings)
+    assert broker.dequeue() is None
