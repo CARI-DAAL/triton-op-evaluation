@@ -30,7 +30,7 @@ cd /opt/triton-eval
 run_api() {
   exec python3 -m uvicorn run_api:app \
     --host "${TRITON_EVAL_API_HOST:-0.0.0.0}" \
-    --port "${TRITON_EVAL_API_PORT:-8000}"
+    --port "${TRITON_EVAL_API_PORT:-10907}"
 }
 
 run_workers() {
@@ -60,7 +60,7 @@ case "${1:-all}" in
   all)
     python3 -m uvicorn run_api:app \
       --host "${TRITON_EVAL_API_HOST:-0.0.0.0}" \
-      --port "${TRITON_EVAL_API_PORT:-8000}" &
+      --port "${TRITON_EVAL_API_PORT:-10907}" &
     api_pid=$!
     run_workers "${api_pid}"
     ;;

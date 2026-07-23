@@ -27,7 +27,7 @@ supervise with systemd/docker and restart on crash.
 export TRITON_EVAL_REDIS_URL=redis://localhost:6379/0
 # engine is bundled; TRITON_EVAL_ENGINE_DIR is optional (override only)
 
-python3 run_api.py                 # API on 0.0.0.0:8000
+python3 run_api.py                 # API on 0.0.0.0:10907
 python3 run_worker.py --card 0 &   # one worker per physical NPU card
 python3 run_worker.py --card 1 &
 ```
@@ -71,10 +71,10 @@ docker run -d --name triton-eval --network host --shm-size 32g \
   -v "$PWD/logs":/opt/triton-eval/logs \
   -e TRITON_EVAL_CARDS=14 \
   -e TRITON_EVAL_REDIS_URL=redis://127.0.0.1:6379/0 \
-  -e TRITON_EVAL_API_PORT=8000 \
+  -e TRITON_EVAL_API_PORT=10907 \
   triton-evaluation
 
-curl 127.0.0.1:8000/healthz          # -> {"redis":"ok"}
+curl 127.0.0.1:10907/healthz          # -> {"redis":"ok"}
 ```
 
 `TRITON_EVAL_CARDS` must match the mounted `/dev/davinciN`. Smoke-test one real Triton kernel
