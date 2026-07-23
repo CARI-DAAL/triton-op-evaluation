@@ -7,7 +7,7 @@ from .base import EvaluatorResult, materialize, run_script, read_json, tail
 
 
 def verify_json_name(triton_impl_name: str) -> str:
-    """Mirror the skill's resolve_verify_json_name (we do not import the skill)."""
+    """Mirror the engine's resolve_verify_json_name (the engine is run as a subprocess, not imported)."""
     if triton_impl_name == "triton_ascend_impl":
         return "verify_result.json"
     suffix = triton_impl_name[len("triton_"):] if triton_impl_name.startswith("triton_") else triton_impl_name
@@ -18,11 +18,11 @@ class BenchmarkEvaluator:
     name = "benchmark"
     needs_bound_card = True
 
-    def __init__(self, scripts_dir: str):
-        self.scripts_dir = scripts_dir
+    def __init__(self, engine_dir: str):
+        self.engine_dir = engine_dir
 
     def _script_path(self) -> str:
-        return str(Path(self.scripts_dir) / "benchmark.py")
+        return str(Path(self.engine_dir) / "benchmark.py")
 
     def run(self, spec: JobSpec, verify_dir: str, device_id: int) -> EvaluatorResult:
         materialize(spec, verify_dir)

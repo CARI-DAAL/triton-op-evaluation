@@ -11,7 +11,7 @@ def build_worker(card: int) -> Worker:
     os.environ["ASCEND_RT_VISIBLE_DEVICES"] = str(card)
     settings = Settings.from_env()
     broker = Broker.from_settings(settings)
-    registry = build_registry(settings.skill_scripts_dir)
+    registry = build_registry(settings.engine_dir)
     return Worker(broker, registry, device_id=card, settings=settings)
 
 

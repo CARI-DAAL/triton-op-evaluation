@@ -1,13 +1,16 @@
 # triton-evaluation
 
-Standalone FastAPI + Redis evaluator service wrapping the `triton-op-verifier` skill.
+Self-contained FastAPI + Redis service for evaluating Triton-Ascend kernels. The
+evaluation **engine** (correctness `verify` + performance `benchmark`) is vendored
+inside the package at `triton_evaluation/engine/` and run per-job as an isolated
+subprocess on a pinned NPU card. Evaluators are pluggable (verify, benchmark, later profile).
 
 ## Run
 
 ### Quick start (script)
 
 ```bash
-cp .env.example .env        # then edit .env: set TRITON_EVAL_SKILL_SCRIPTS_DIR and TRITON_EVAL_CARDS
+cp .env.example .env        # then edit .env: set TRITON_EVAL_CARDS (and TRITON_EVAL_REDIS_URL)
 bash scripts/start.sh       # starts the API + one worker per card in TRITON_EVAL_CARDS
 ```
 
@@ -20,7 +23,7 @@ Ctrl-C stops everything. For production, supervise with systemd/docker and resta
 
 ```bash
 export TRITON_EVAL_REDIS_URL=redis://localhost:6379/0
-export TRITON_EVAL_SKILL_SCRIPTS_DIR=/abs/path/to/cannbot-skills/ops/triton-op-verifier/scripts
+# engine is bundled; TRITON_EVAL_ENGINE_DIR is optional (override only)
 
 python3 run_api.py                 # API on 0.0.0.0:8000
 python3 run_worker.py --card 0 &   # one worker per physical NPU card

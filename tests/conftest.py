@@ -7,7 +7,7 @@ from triton_evaluation.broker import Broker
 
 @pytest.fixture
 def settings(tmp_path):
-    return Settings(skill_scripts_dir=str(tmp_path), dequeue_block_seconds=1)
+    return Settings(engine_dir=str(tmp_path), dequeue_block_seconds=1)
 
 
 @pytest.fixture

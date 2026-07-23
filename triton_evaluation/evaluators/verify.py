@@ -9,11 +9,11 @@ class VerifyEvaluator:
     name = "verify"
     needs_bound_card = True
 
-    def __init__(self, scripts_dir: str):
-        self.scripts_dir = scripts_dir
+    def __init__(self, engine_dir: str):
+        self.engine_dir = engine_dir
 
     def _script_path(self) -> str:
-        return str(Path(self.scripts_dir) / "verify.py")
+        return str(Path(self.engine_dir) / "verify.py")
 
     def run(self, spec: JobSpec, verify_dir: str, device_id: int) -> EvaluatorResult:
         materialize(spec, verify_dir)

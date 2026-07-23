@@ -36,10 +36,10 @@ API_PORT="${TRITON_EVAL_API_PORT:-8000}"
 CARDS="${TRITON_EVAL_CARDS:-0}"
 LOG_DIR="${LOG_DIR:-${ROOT_DIR}/logs}"
 
-# Preflight: the skill scripts dir must exist (workers subprocess-call it)
-if [[ -z "${TRITON_EVAL_SKILL_SCRIPTS_DIR:-}" || ! -d "${TRITON_EVAL_SKILL_SCRIPTS_DIR}" ]]; then
-  echo "TRITON_EVAL_SKILL_SCRIPTS_DIR is unset or not a directory: '${TRITON_EVAL_SKILL_SCRIPTS_DIR:-}'" >&2
-  echo "Point it at cannbot-skills/ops/triton-op-verifier/scripts" >&2
+# Preflight: the engine is bundled by default; only validate an explicit override
+if [[ -n "${TRITON_EVAL_ENGINE_DIR:-}" && ! -d "${TRITON_EVAL_ENGINE_DIR}" ]]; then
+  echo "TRITON_EVAL_ENGINE_DIR is set but not a directory: '${TRITON_EVAL_ENGINE_DIR}'" >&2
+  echo "Unset it to use the bundled engine (triton_evaluation/engine)." >&2
   exit 2
 fi
 
