@@ -1,0 +1,65 @@
+# triton-evaluation on an Ascend NPU host (no Ascend base image; CANN mounted from host).
+#
+#   docker compose --env-file docker.env build
+#   docker compose --env-file docker.env up -d
+#
+# Fill docker.env from docker.env.example first (torch/torch_npu/triton-ascend
+# versions, CANN path, cards). Edit the `worker.devices` list to match your cards.
+
+services:
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    volumes:
+      - redis-data:/data
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        TORCH_SPEC: ${TORCH_SPEC}
+        TORCH_NPU_SPEC: ${TORCH_NPU_SPEC}
+        TRITON_ASCEND_SPEC: ${TRITON_ASCEND_SPEC}
+        PANDAS_SPEC: ${PANDAS_SPEC:-pandas}
+        PIP_EXTRA_INDEX_URL: ${PIP_EXTRA_INDEX_URL:-}
+    image: triton-evaluation:latest
+    command: ["api"]
+    restart: unless-stopped
+    depends_on: [redis]
+    ports:
+      - "${TRITON_EVAL_API_PORT:-8000}:8000"
+    environment:
+      TRITON_EVAL_REDIS_URL: redis://redis:6379/0
+      TRITON_EVAL_API_HOST: 0.0.0.0
+      TRITON_EVAL_API_PORT: 8000
+
+  worker:
+    image: triton-evaluation:latest        # built by the `api` service above
+    command: ["workers"]
+    restart: unless-stopped
+    depends_on: [redis, api]
+    environment:
+      TRITON_EVAL_REDIS_URL: redis://redis:6379/0
+      TRITON_EVAL_CARDS: ${TRITON_EVAL_CARDS:-0}
+      CANN_SET_ENV_PATH: ${CANN_PATH:-/usr/local/Ascend}/ascend-toolkit/set_env.sh
+      ASCEND_DRIVER_PATH: ${CANN_PATH:-/usr/local/Ascend}/driver
+    # --- NPU access (mounted from the host; no ascend-docker-runtime assumed) ---
+    devices:
+      - /dev/davinci_manager
+      - /dev/devmm_svm
+      - /dev/hisi_hdc
+      # One line per card in TRITON_EVAL_CARDS — adjust to your node:
+      - /dev/davinci0
+      # - /dev/davinci1
+      # - /dev/davinci2
+      # - /dev/davinci3
+    volumes:
+      # CANN toolkit + driver (whole Ascend root, read-only)
+      - ${CANN_PATH:-/usr/local/Ascend}:${CANN_PATH:-/usr/local/Ascend}:ro
+      - /etc/ascend_install.info:/etc/ascend_install.info:ro
+      - /usr/local/dcmi:/usr/local/dcmi:ro
+      - /usr/local/bin/npu-smi:/usr/local/bin/npu-smi:ro
+
+volumes:
+  redis-data:

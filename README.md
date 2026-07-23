@@ -34,6 +34,30 @@ python3 run_worker.py --card 1 &
 
 See `.env.example` for all environment variables.
 
+## Run in Docker (Ascend NPU host)
+
+No Ascend base image is required — the container mounts the host's CANN toolkit,
+driver, and NPU devices at runtime, and only bakes Python + the service + the ML
+stack (`torch` / `torch_npu` / `triton-ascend` / `pandas`). Redis runs as a
+bundled container. Target host arch: **aarch64**.
+
+```bash
+cp docker.env.example docker.env
+# Edit docker.env: set TORCH_SPEC / TORCH_NPU_SPEC / TRITON_ASCEND_SPEC to the exact
+# versions from your host env, plus CANN_PATH and TRITON_EVAL_CARDS.
+# Then edit docker-compose.yml `worker.devices` to list one /dev/davinciN per card.
+
+docker compose --env-file docker.env build     # build on the NPU host (aarch64)
+docker compose --env-file docker.env up -d      # redis + api + workers
+docker compose --env-file docker.env logs -f worker
+docker compose --env-file docker.env down
+```
+
+The `worker` container sources `CANN_PATH/ascend-toolkit/set_env.sh` and runs one
+`run_worker.py --card N` per card in `TRITON_EVAL_CARDS`; the `api` container serves
+uvicorn on the published port. See `docker.env.example` for how to read the ML
+versions off your host.
+
 ## Endpoints
 
 - `POST /verify` → `{task_id}`
