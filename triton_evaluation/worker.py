@@ -23,9 +23,26 @@ class Worker:
         try:
             evaluator = self.registry[job.type]
             spec = job.spec
-            if job.type == JobType.BENCHMARK.value and spec.verify_task_id:
+            if (
+                job.type == JobType.BENCHMARK.value
+                and spec.verify_task_id
+                and not spec.verify_not_required
+            ):
                 prior = self.broker.get_task(spec.verify_task_id)
-                spec.verify_result_seed = (prior or {}).get("result")
+                if prior is None or prior.get("status") != TaskStatus.SUCCEEDED.value:
+                    # The referenced verify hasn't finished (still queued/running) or errored.
+                    # That is a race, not a gate failure — report it distinctly, not as REJECTED.
+                    state = "not found" if prior is None else prior.get("status")
+                    self.broker.store_result(
+                        job.task_id,
+                        TaskStatus.FAILED.value,
+                        error=(
+                            f"benchmark gate: verify task {spec.verify_task_id} is not "
+                            f"SUCCEEDED (state={state}); submit benchmark only after verify completes"
+                        ),
+                    )
+                    return True
+                spec.verify_result_seed = prior.get("result")
             verify_dir = tempfile.mkdtemp(prefix=f"eval_{job.task_id}_")
             try:
                 res = evaluator.run(spec, verify_dir, self.device_id)
