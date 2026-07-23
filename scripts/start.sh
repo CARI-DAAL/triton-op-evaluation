@@ -35,6 +35,7 @@ API_HOST="${TRITON_EVAL_API_HOST:-0.0.0.0}"
 API_PORT="${TRITON_EVAL_API_PORT:-8000}"
 CARDS="${TRITON_EVAL_CARDS:-0}"
 LOG_DIR="${LOG_DIR:-${ROOT_DIR}/logs}"
+PID_FILE="${LOG_DIR}/triton-eval.pids"
 
 # Preflight: the engine is bundled by default; only validate an explicit override
 if [[ -n "${TRITON_EVAL_ENGINE_DIR:-}" && ! -d "${TRITON_EVAL_ENGINE_DIR}" ]]; then
@@ -50,6 +51,7 @@ pids=()
 cleanup() {
   echo "Shutting down..." >&2
   kill "${pids[@]}" 2>/dev/null || true
+  rm -f "${PID_FILE}"
   wait 2>/dev/null || true
 }
 trap cleanup INT TERM
@@ -73,5 +75,7 @@ for card in "${CARD_ARR[@]}"; do
   worker_count=$((worker_count + 1))
 done
 
-echo "Started API + ${worker_count} worker(s). Logs in ${LOG_DIR}/. Ctrl-C to stop." >&2
+printf '%s\n' "${pids[@]}" > "${PID_FILE}"
+echo "Started API + ${worker_count} worker(s). Logs in ${LOG_DIR}/. PID file: ${PID_FILE}." >&2
+echo "Stop with: bash scripts/stop.sh   (or Ctrl-C if this is in the foreground)" >&2
 wait

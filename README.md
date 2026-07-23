@@ -12,12 +12,14 @@ subprocess on a pinned NPU card. Evaluators are pluggable (verify, benchmark, la
 ```bash
 cp .env.example .env        # then edit .env: set TRITON_EVAL_CARDS (and TRITON_EVAL_REDIS_URL)
 bash scripts/start.sh       # starts the API + one worker per card in TRITON_EVAL_CARDS
+bash scripts/stop.sh        # stops them (reads the PID file start.sh wrote to LOG_DIR)
 ```
 
 `scripts/start.sh` sources `.env`, optionally sources `CANN_SET_ENV_PATH`, then launches
 `uvicorn run_api:app` and one `run_worker.py --card <n>` per card (each pins
 `ASCEND_RT_VISIBLE_DEVICES`). Logs go to `LOG_DIR/` (`api.log`, `worker_<card>.log`).
-Ctrl-C stops everything. For production, supervise with systemd/docker and restart on crash.
+Ctrl-C stops a foreground run; `scripts/stop.sh` stops a backgrounded one. For production,
+supervise with systemd/docker and restart on crash.
 
 ### Manual
 
