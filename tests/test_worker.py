@@ -41,6 +41,7 @@ def test_run_once_idle_returns_false(broker, settings):
 def test_benchmark_gate_resolution_injects_seed(broker, settings):
     # prior verify task with a stored result
     broker.create_task(Job("v1", JobType.VERIFY.value, _spec()))
+    broker.dequeue()  # v1 already processed; keep only its stored result, not a queued job
     broker.store_result("v1", TaskStatus.SUCCEEDED.value,
                         result={"total_cases": 2, "passed_cases": 2})
     ev = FakeEvaluator()

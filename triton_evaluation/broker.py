@@ -52,7 +52,7 @@ class Broker:
         self.r.lpush(self.s.queue_key, job.to_json())
 
     def dequeue(self) -> Optional[Job]:
-        item = self.r.blpop(self.s.queue_key, timeout=self.s.dequeue_block_seconds)
+        item = self.r.brpop(self.s.queue_key, timeout=self.s.dequeue_block_seconds)
         if item is None:
             return None
         _, payload = item
