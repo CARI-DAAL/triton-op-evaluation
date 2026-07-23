@@ -18,7 +18,8 @@ class Worker:
         job = self.broker.dequeue()
         if job is None:
             return False
-        self.broker.mark_running(job.task_id, self.device_id)
+        deadline = time.time() + job.spec.timeout + self.settings.reaper_grace_seconds
+        self.broker.mark_running(job.task_id, self.device_id, deadline)
         try:
             evaluator = self.registry[job.type]
             spec = job.spec
@@ -46,10 +47,8 @@ def reap_stale_tasks(broker: Broker, settings: Settings) -> int:
     now = time.time()
     reaped = 0
     for rec in broker.iter_running_tasks():
-        started = rec.get("started_at")
-        if started is None:
-            continue
-        if now - started > settings.reaper_grace_seconds:
+        deadline = rec.get("deadline")
+        if deadline is not None and now > deadline:
             broker.store_result(rec["task_id"], TaskStatus.FAILED.value, error="worker_lost")
             reaped += 1
     return reaped

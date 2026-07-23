@@ -22,6 +22,7 @@ def _parse_task(raw: dict) -> dict:
         "created_at": _f(raw.get("created_at")),
         "started_at": _f(raw.get("started_at")),
         "finished_at": _f(raw.get("finished_at")),
+        "deadline": _f(raw.get("deadline")),
     }
 
 
@@ -58,12 +59,13 @@ class Broker:
         _, payload = item
         return Job.from_json(payload)
 
-    def mark_running(self, task_id: str, device_id: int) -> None:
+    def mark_running(self, task_id: str, device_id: int, deadline: float) -> None:
         key = self._task_key(task_id)
         self.r.hset(key, mapping={
             "status": TaskStatus.RUNNING.value,
             "started_at": repr(time.time()),
             "device_id": str(device_id),
+            "deadline": repr(deadline),
         })
         self.r.expire(key, self.s.task_ttl_seconds)
 

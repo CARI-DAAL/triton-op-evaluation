@@ -1,3 +1,5 @@
+import time
+
 from triton_evaluation.models import Job, JobSpec, JobType, TaskStatus
 
 
@@ -40,7 +42,7 @@ def test_store_result_parses_json(broker):
 
 def test_mark_running_sets_device(broker):
     broker.create_task(_job("t4"))
-    broker.mark_running("t4", 5)
+    broker.mark_running("t4", 5, deadline=time.time() + 100)
     rec = broker.get_task("t4")
     assert rec["status"] == "RUNNING"
     assert rec["device_id"] == 5

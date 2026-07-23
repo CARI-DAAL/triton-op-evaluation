@@ -71,10 +71,17 @@ def test_evaluator_exception_marks_failed(broker, settings):
 
 def test_reaper_marks_stale_running(broker, settings):
     broker.create_task(Job("t3", JobType.VERIFY.value, _spec()))
-    broker.mark_running("t3", 0)
-    # backdate started_at beyond the grace window
-    broker.r.hset(broker._task_key("t3"),
-                  "started_at", repr(time.time() - settings.reaper_grace_seconds - 10))
+    broker.mark_running("t3", 0, deadline=time.time() + 10000)
+    # backdate the deadline into the past
+    broker.r.hset(broker._task_key("t3"), "deadline", repr(time.time() - 10))
     n = reap_stale_tasks(broker, settings)
     assert n == 1
     assert broker.get_task("t3")["status"] == "FAILED"
+
+
+def test_reaper_does_not_reap_live_task(broker, settings):
+    broker.create_task(Job("t4", JobType.VERIFY.value, _spec()))
+    broker.mark_running("t4", 0, deadline=time.time() + 10000)
+    n = reap_stale_tasks(broker, settings)
+    assert n == 0
+    assert broker.get_task("t4")["status"] == "RUNNING"
