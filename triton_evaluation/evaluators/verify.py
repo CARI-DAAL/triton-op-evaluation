@@ -1,3 +1,4 @@
+import json
 import sys
 from pathlib import Path
 
@@ -17,31 +18,36 @@ class VerifyEvaluator:
 
     def run(self, spec: JobSpec, verify_dir: str, device_id: int) -> EvaluatorResult:
         materialize(spec, verify_dir)
+
+        # Step 0: AST decoy pre-check (validate_triton_impl.py), matching the skill's
+        # mandatory Step 0. Regression → SUCCEEDED with a decoy result; verify.py not run.
+        impl_file = str(Path(verify_dir) / f"{spec.op_name}_{spec.triton_impl_name}.py")
+        val = run_script(
+            [sys.executable, str(Path(self.engine_dir) / "validate_triton_impl.py"), impl_file, "--json"],
+            verify_dir, device_id, timeout=60)
+        parsed = None
+        try:
+            parsed = json.loads(val.stdout) if val.stdout.strip() else None
+        except ValueError:
+            parsed = None
+        if parsed is not None and parsed.get("valid") is False:
+            return EvaluatorResult(TaskStatus.SUCCEEDED.value, result={"decoy": True, **parsed})
+
+        # Clean (or unparseable — let verify.py surface a real error): run verify.
         out_path = str(Path(verify_dir) / "verify_result.json")
         cmd = [
-            sys.executable,
-            self._script_path(),
-            "--op_name",
-            spec.op_name,
-            "--verify_dir",
-            verify_dir,
-            "--triton_impl_name",
-            spec.triton_impl_name,
-            "--timeout",
-            str(spec.timeout),
-            "--output",
-            out_path,
+            sys.executable, self._script_path(),
+            "--op_name", spec.op_name, "--verify_dir", verify_dir,
+            "--triton_impl_name", spec.triton_impl_name,
+            "--timeout", str(spec.timeout), "--output", out_path,
         ]
         if spec.non_compute:
             cmd.append("--non-compute")
-
         outcome = run_script(cmd, verify_dir, device_id, timeout=spec.timeout + 60)
         if outcome.timed_out:
             return EvaluatorResult(TaskStatus.TIMEOUT.value, error="verify timed out")
-
         result = read_json(out_path)
         if result is None:
-            # JSON absent → the evaluation itself did not complete
             return EvaluatorResult(TaskStatus.FAILED.value, error=tail(outcome.stderr))
-        # JSON present → job ran; correctness verdict is inside result (passed vs total)
+        result["validate"] = {"valid": True}
         return EvaluatorResult(TaskStatus.SUCCEEDED.value, result=result)

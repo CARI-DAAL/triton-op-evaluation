@@ -1,11 +1,13 @@
+import json
 import sys
 from pathlib import Path
 
 from triton_evaluation.evaluators import build_registry
-from triton_evaluation.evaluators.base import materialize, read_json, run_script, tail
+from triton_evaluation.evaluators import verify as verify_mod
+from triton_evaluation.evaluators.base import materialize, read_json, run_script, tail, ScriptOutcome
 from triton_evaluation.evaluators.benchmark import BenchmarkEvaluator, verify_json_name
 from triton_evaluation.evaluators.verify import VerifyEvaluator
-from triton_evaluation.models import JobSpec
+from triton_evaluation.models import JobSpec, TaskStatus
 
 
 def test_materialize_writes_named_files(tmp_path):
@@ -113,3 +115,36 @@ def test_registry_has_both(tmp_path):
     reg = build_registry(str(tmp_path))
     assert reg["verify"].name == "verify"
     assert reg["benchmark"].name == "benchmark"
+
+
+def test_verify_step0_decoy_short_circuits(monkeypatch, tmp_path):
+    ev = verify_mod.VerifyEvaluator(engine_dir="/engine")
+    # validate step: regression detected (exit 1, JSON on stdout); verify.py must NOT run.
+    calls = []
+    def fake_run(cmd, cwd, device_id, timeout):
+        calls.append(cmd)
+        if cmd[1].endswith("validate_triton_impl.py"):
+            return ScriptOutcome(1, json.dumps(
+                {"valid": False, "regression_type": 1, "checks": {}, "suggestion": "no @triton.jit"}), "", False)
+        raise AssertionError("verify.py must not run on a decoy")
+    monkeypatch.setattr(verify_mod, "run_script", fake_run)
+    res = ev.run(_spec(), str(tmp_path), device_id=0)
+    assert res.status == TaskStatus.SUCCEEDED.value
+    assert res.result["decoy"] is True
+    assert res.result["regression_type"] == 1
+    assert len(calls) == 1  # validate only
+
+
+def test_verify_step0_clean_runs_verify(monkeypatch, tmp_path):
+    ev = verify_mod.VerifyEvaluator(engine_dir="/engine")
+    def fake_run(cmd, cwd, device_id, timeout):
+        if cmd[1].endswith("validate_triton_impl.py"):
+            return ScriptOutcome(0, json.dumps({"valid": True}), "", False)
+        return ScriptOutcome(0, "", "", False)  # verify.py
+    monkeypatch.setattr(verify_mod, "run_script", fake_run)
+    monkeypatch.setattr(verify_mod, "read_json", lambda p: {"op_name": "softmax",
+        "total_cases": 3, "passed_cases": 3, "failed_cases": 0, "failures": []})
+    res = ev.run(_spec(), str(tmp_path), device_id=0)
+    assert res.status == TaskStatus.SUCCEEDED.value
+    assert res.result["passed_cases"] == 3
+    assert res.result["validate"] == {"valid": True}
