@@ -23,8 +23,16 @@ class VerifyEvaluator:
         # mandatory Step 0. Regression → SUCCEEDED with a decoy result; verify.py not run.
         impl_file = str(Path(verify_dir) / f"{spec.op_name}_{spec.triton_impl_name}.py")
         val = run_script(
-            [sys.executable, str(Path(self.engine_dir) / "validate_triton_impl.py"), impl_file, "--json"],
-            verify_dir, device_id, timeout=60)
+            [
+                sys.executable,
+                str(Path(self.engine_dir) / "validate_triton_impl.py"),
+                impl_file,
+                "--json",
+            ],
+            verify_dir,
+            device_id,
+            timeout=60,
+        )
         parsed = None
         try:
             parsed = json.loads(val.stdout) if val.stdout.strip() else None
