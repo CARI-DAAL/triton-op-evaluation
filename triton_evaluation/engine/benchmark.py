@@ -34,6 +34,7 @@ from dataclasses import dataclass, field
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from _log_utils import setup_logger as _setup_logger_shared  # noqa: E402	 
 from _common_utils import describe_input as _describe_input_shared  # noqa: E402
+from _common_utils import enforce_conv_fp32 as _enforce_conv_fp32  # noqa: E402
 
 logger = logging.getLogger("triton_op_verifier.benchmark")
 
@@ -1077,6 +1078,9 @@ def _build_config(args, verify_dir):
 def main():
     _setup_logger()
     args = _build_argparser().parse_args()
+
+    # 关闭 HF32 卷积并回读校验，确保性能/精度测试与 verify 一致
+    _enforce_conv_fp32()
 
     verify_dir = os.path.abspath(args.verify_dir)
     if not os.path.isdir(verify_dir):
