@@ -2,7 +2,7 @@ import json
 from dataclasses import asdict, dataclass
 from enum import Enum
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field
 
 
 class TaskStatus(str, Enum):
@@ -16,7 +16,6 @@ class TaskStatus(str, Enum):
 
 class JobType(str, Enum):
     VERIFY = "verify"
-    BENCHMARK = "benchmark"
 
 
 @dataclass
@@ -28,12 +27,10 @@ class JobSpec:
     # verify
     non_compute: bool = False
     timeout: int = 900
-    # benchmark
+    # measure speed in the same job once verify passes (runs benchmark.py in-place)
+    measure_speed: bool = False
     warmup: int = 5
     repeats: int = 50
-    verify_task_id: str | None = None
-    verify_not_required: bool = False
-    verify_result_seed: dict | None = None  # injected by worker for the L1 gate
 
 
 @dataclass
@@ -58,24 +55,10 @@ class VerifyRequest(BaseModel):
     non_compute: bool = False
     triton_impl_name: str = "triton_ascend_impl"
     timeout: int = Field(default=900, ge=10, le=3600)
-
-
-class BenchmarkRequest(BaseModel):
-    op_name: str
-    reference_code: str
-    kernel_code: str
-    triton_impl_name: str = "triton_ascend_impl"
+    # measure speed in the same job once verify passes
+    measure_speed: bool = False
     warmup: int = Field(default=5, ge=0, le=100)
     repeats: int = Field(default=50, ge=1, le=1000)
-    timeout: int = Field(default=1800, ge=10, le=3600)
-    verify_task_id: str | None = None
-    verify_not_required: bool = False
-
-    @model_validator(mode="after")
-    def _require_gate(self):
-        if not self.verify_task_id and not self.verify_not_required:
-            raise ValueError("benchmark requires verify_task_id or verify_not_required=true")
-        return self
 
 
 class SubmitResponse(BaseModel):

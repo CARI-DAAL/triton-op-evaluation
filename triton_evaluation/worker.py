@@ -7,7 +7,7 @@ import redis
 
 from .broker import Broker
 from .config import Settings
-from .models import JobType, TaskStatus
+from .models import TaskStatus
 
 logger = logging.getLogger(__name__)
 
@@ -27,30 +27,9 @@ class Worker:
         self.broker.mark_running(job.task_id, self.device_id, deadline)
         try:
             evaluator = self.registry[job.type]
-            spec = job.spec
-            if (
-                job.type == JobType.BENCHMARK.value
-                and spec.verify_task_id
-                and not spec.verify_not_required
-            ):
-                prior = self.broker.get_task(spec.verify_task_id)
-                if prior is None or prior.get("status") != TaskStatus.SUCCEEDED.value:
-                    # The referenced verify hasn't finished (still queued/running) or errored.
-                    # That is a race, not a gate failure — report it distinctly, not as REJECTED.
-                    state = "not found" if prior is None else prior.get("status")
-                    self.broker.store_result(
-                        job.task_id,
-                        TaskStatus.FAILED.value,
-                        error=(
-                            f"benchmark gate: verify task {spec.verify_task_id} not "
-                            f"SUCCEEDED (state={state}); run benchmark after verify done"
-                        ),
-                    )
-                    return True
-                spec.verify_result_seed = prior.get("result")
             verify_dir = tempfile.mkdtemp(prefix=f"eval_{job.task_id}_")
             try:
-                res = evaluator.run(spec, verify_dir, self.device_id)
+                res = evaluator.run(job.spec, verify_dir, self.device_id)
             finally:
                 shutil.rmtree(verify_dir, ignore_errors=True)
             self.broker.store_result(job.task_id, res.status, res.result, res.error)

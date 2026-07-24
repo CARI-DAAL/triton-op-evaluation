@@ -100,8 +100,9 @@ after bring-up to confirm triton-ascend links `bishengir-compile` from the image
 
 ## Endpoints
 
-- `POST /verify` → `{task_id}`
-- `POST /benchmark` (requires `verify_task_id` or `verify_not_required`) → `{task_id}`
+- `POST /verify` → `{task_id}`. Pass `measure_speed: true` (with optional `warmup` / `repeats`,
+  default 5 / 50) to benchmark in the same job once verify passes; the perf result is attached
+  under `result.benchmark`.
 - `GET /tasks/{task_id}` → status + skill result JSON
 - `GET /healthz`
 

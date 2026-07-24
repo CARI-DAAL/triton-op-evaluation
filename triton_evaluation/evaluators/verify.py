@@ -4,6 +4,7 @@ from pathlib import Path
 
 from ..models import JobSpec, TaskStatus
 from .base import EvaluatorResult, materialize, read_json, run_script, tail
+from .benchmark import BenchmarkEvaluator
 
 
 class VerifyEvaluator:
@@ -15,6 +16,9 @@ class VerifyEvaluator:
 
     def _script_path(self) -> str:
         return str(Path(self.engine_dir) / "verify.py")
+
+    def _benchmark_evaluator(self) -> BenchmarkEvaluator:
+        return BenchmarkEvaluator(self.engine_dir)
 
     def run(self, spec: JobSpec, verify_dir: str, device_id: int) -> EvaluatorResult:
         materialize(spec, verify_dir)
@@ -58,4 +62,16 @@ class VerifyEvaluator:
         if result is None:
             return EvaluatorResult(TaskStatus.FAILED.value, error=tail(outcome.stderr))
         result["validate"] = {"valid": True}
+
+        # Once verify passes, measure speed in the same job on the same bound card.
+        # benchmark.py's L1 gate reads verify_result.json already written here — no seeding.
+        # A benchmark that gets rejected or blows up must not fail the verify job: we
+        # simply omit the benchmark sub-object and keep the passing verify verdict.
+        if spec.measure_speed and result.get("total_cases", 0) > 0 and (
+            result.get("passed_cases") == result.get("total_cases")
+        ):
+            bench = self._benchmark_evaluator().run(spec, verify_dir, device_id)
+            if bench.status == TaskStatus.SUCCEEDED.value and bench.result is not None:
+                result["benchmark"] = bench.result
+
         return EvaluatorResult(TaskStatus.SUCCEEDED.value, result=result)

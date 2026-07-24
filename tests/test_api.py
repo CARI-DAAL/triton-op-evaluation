@@ -19,30 +19,36 @@ def test_post_verify_enqueues(settings):
     rec = broker.get_task(task_id)
     assert rec["status"] == "QUEUED"
     assert rec["type"] == "verify"
-    assert broker.dequeue().task_id == task_id
+    job = broker.dequeue()
+    assert job.task_id == task_id
+    assert job.spec.measure_speed is False
 
 
-def test_post_benchmark_without_gate_is_422(settings):
-    client, _ = _client(settings)
-    r = client.post("/benchmark", json={"op_name": "s", "reference_code": "R", "kernel_code": "K"})
-    assert r.status_code == 422
-
-
-def test_post_benchmark_with_verify_task_id_ok(settings):
+def test_post_verify_measure_speed_sets_spec(settings):
     client, broker = _client(settings)
     r = client.post(
-        "/benchmark",
+        "/verify",
         json={
             "op_name": "s",
             "reference_code": "R",
             "kernel_code": "K",
-            "verify_task_id": "v1",
+            "measure_speed": True,
+            "warmup": 2,
+            "repeats": 20,
         },
     )
     assert r.status_code == 200
     job = broker.dequeue()
-    assert job.type == "benchmark"
-    assert job.spec.verify_task_id == "v1"
+    assert job.type == "verify"
+    assert job.spec.measure_speed is True
+    assert job.spec.warmup == 2
+    assert job.spec.repeats == 20
+
+
+def test_benchmark_route_is_gone(settings):
+    client, _ = _client(settings)
+    r = client.post("/benchmark", json={"op_name": "s", "reference_code": "R", "kernel_code": "K"})
+    assert r.status_code == 404
 
 
 def test_get_task_unknown_is_404(settings):

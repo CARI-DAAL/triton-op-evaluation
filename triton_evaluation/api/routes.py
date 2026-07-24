@@ -4,7 +4,6 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from ..broker import Broker
 from ..models import (
-    BenchmarkRequest,
     Job,
     JobSpec,
     JobType,
@@ -27,26 +26,11 @@ def submit_verify(req: VerifyRequest, broker: Broker = Depends(get_broker)):
         triton_impl_name=req.triton_impl_name,
         non_compute=req.non_compute,
         timeout=req.timeout,
-    )
-    broker.create_task(Job(task_id, JobType.VERIFY.value, spec))
-    return SubmitResponse(task_id=task_id)
-
-
-@router.post("/benchmark", response_model=SubmitResponse)
-def submit_benchmark(req: BenchmarkRequest, broker: Broker = Depends(get_broker)):
-    task_id = uuid.uuid4().hex
-    spec = JobSpec(
-        op_name=req.op_name,
-        reference_code=req.reference_code,
-        kernel_code=req.kernel_code,
-        triton_impl_name=req.triton_impl_name,
+        measure_speed=req.measure_speed,
         warmup=req.warmup,
         repeats=req.repeats,
-        timeout=req.timeout,
-        verify_task_id=req.verify_task_id,
-        verify_not_required=req.verify_not_required,
     )
-    broker.create_task(Job(task_id, JobType.BENCHMARK.value, spec))
+    broker.create_task(Job(task_id, JobType.VERIFY.value, spec))
     return SubmitResponse(task_id=task_id)
 
 

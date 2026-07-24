@@ -11,10 +11,7 @@ from triton_evaluation.evaluators.base import (
     run_script,
     tail,
 )
-from triton_evaluation.evaluators.benchmark import (
-    BenchmarkEvaluator,
-    verify_json_name,
-)
+from triton_evaluation.evaluators.benchmark import BenchmarkEvaluator
 from triton_evaluation.evaluators.verify import VerifyEvaluator
 from triton_evaluation.models import JobSpec, TaskStatus
 
@@ -57,15 +54,39 @@ def test_tail_truncates():
 FIXTURES = Path(__file__).parent / "fixtures"
 
 
+class _BenchHarness(BenchmarkEvaluator):
+    """Point benchmark.py at the fake script instead of the real engine script."""
+
+    def _script_path(self):
+        return str(FIXTURES / "fake_benchmark.py")
+
+
+class _MissingBench(BenchmarkEvaluator):
+    """A benchmark whose script does not exist — simulates benchmark blowing up."""
+
+    def _script_path(self):
+        return str(FIXTURES / "does_not_exist.py")
+
+
 class _VerifyHarness(VerifyEvaluator):
-    """Point verify.py at the fake script instead of the real skill script."""
+    """Point verify.py + the chained benchmark at the fake scripts."""
 
     def _script_path(self):
         return str(FIXTURES / "fake_verify.py")
 
+    def _benchmark_evaluator(self):
+        return _BenchHarness("unused")
 
-def _spec():
-    return JobSpec(op_name="softmax", reference_code="R", kernel_code="K")
+
+class _VerifyFlakyBenchHarness(_VerifyHarness):
+    def _benchmark_evaluator(self):
+        return _MissingBench("unused")
+
+
+def _spec(measure_speed=False):
+    return JobSpec(
+        op_name="softmax", reference_code="R", kernel_code="K", measure_speed=measure_speed
+    )
 
 
 def test_verify_pass_is_succeeded(tmp_path, monkeypatch):
@@ -89,47 +110,53 @@ def test_verify_crash_no_json_is_failed(tmp_path, monkeypatch):
     assert "boom" in res.error
 
 
-class _BenchHarness(BenchmarkEvaluator):
-    def _script_path(self):
-        return str(FIXTURES / "fake_benchmark.py")
-
-
-def test_verify_json_name_mapping():
-    assert verify_json_name("triton_ascend_impl") == "verify_result.json"
-    assert verify_json_name("triton_optimized") == "verify_result_optimized.json"
-
-
-def test_benchmark_with_seed_passes_gate(tmp_path):
-    spec = _spec()
-    spec.verify_result_seed = {"total_cases": 2, "passed_cases": 2}
-    res = _BenchHarness("unused").run(spec, str(tmp_path), device_id=2)
+def test_measure_speed_false_attaches_no_benchmark(tmp_path, monkeypatch):
+    monkeypatch.setenv("FAKE_VERIFY_MODE", "pass")
+    res = _VerifyHarness("unused").run(_spec(measure_speed=False), str(tmp_path), device_id=1)
     assert res.status == "SUCCEEDED"
-    assert res.result["speedup_vs_torch"] == 2.0
+    assert res.result["passed_cases"] == 2
+    assert "benchmark" not in res.result
 
 
-def test_benchmark_without_seed_is_rejected(tmp_path):
-    spec = _spec()  # no seed, no verify_not_required
-    res = _BenchHarness("unused").run(spec, str(tmp_path), device_id=2)
-    assert res.status == "REJECTED"
-
-
-def test_benchmark_verify_not_required_skips_gate(tmp_path):
-    spec = _spec()
-    spec.verify_not_required = True
-    res = _BenchHarness("unused").run(spec, str(tmp_path), device_id=2)
+def test_measure_speed_pass_attaches_benchmark(tmp_path, monkeypatch):
+    monkeypatch.setenv("FAKE_VERIFY_MODE", "pass")
+    res = _VerifyHarness("unused").run(_spec(measure_speed=True), str(tmp_path), device_id=1)
     assert res.status == "SUCCEEDED"
+    assert res.result["passed_cases"] == 2
+    assert res.result["benchmark"]["speedup_vs_torch"] == 2.0
 
 
-def test_registry_has_both(tmp_path):
+def test_measure_speed_verify_fail_attaches_no_benchmark(tmp_path, monkeypatch):
+    monkeypatch.setenv("FAKE_VERIFY_MODE", "fail")
+    res = _VerifyHarness("unused").run(_spec(measure_speed=True), str(tmp_path), device_id=1)
+    assert res.status == "SUCCEEDED"
+    assert res.result["passed_cases"] == 1
+    assert "benchmark" not in res.result
+
+
+def test_measure_speed_benchmark_flake_keeps_verify_succeeded(tmp_path, monkeypatch):
+    # verify passed, but the benchmark subprocess blows up — job stays SUCCEEDED
+    # with the verify verdict and simply no benchmark sub-object.
+    monkeypatch.setenv("FAKE_VERIFY_MODE", "pass")
+    res = _VerifyFlakyBenchHarness("unused").run(
+        _spec(measure_speed=True), str(tmp_path), device_id=1
+    )
+    assert res.status == "SUCCEEDED"
+    assert res.result["passed_cases"] == 2
+    assert "benchmark" not in res.result
+
+
+def test_registry_has_only_verify(tmp_path):
     reg = build_registry(str(tmp_path))
     assert reg["verify"].name == "verify"
-    assert reg["benchmark"].name == "benchmark"
+    assert "benchmark" not in reg
 
 
 def test_verify_step0_decoy_short_circuits(monkeypatch, tmp_path):
     ev = verify_mod.VerifyEvaluator(engine_dir="/engine")
     # validate step: regression detected (exit 1, JSON on stdout); verify.py must NOT run.
     calls = []
+
     def fake_run(cmd, cwd, device_id, timeout):
         calls.append(cmd)
         if cmd[1].endswith("validate_triton_impl.py"):
@@ -145,20 +172,24 @@ def test_verify_step0_decoy_short_circuits(monkeypatch, tmp_path):
                 False,
             )
         raise AssertionError("verify.py must not run on a decoy")
+
     monkeypatch.setattr(verify_mod, "run_script", fake_run)
-    res = ev.run(_spec(), str(tmp_path), device_id=0)
+    res = ev.run(_spec(measure_speed=True), str(tmp_path), device_id=0)
     assert res.status == TaskStatus.SUCCEEDED.value
     assert res.result["decoy"] is True
     assert res.result["regression_type"] == 1
+    assert "benchmark" not in res.result
     assert len(calls) == 1  # validate only
 
 
 def test_verify_step0_clean_runs_verify(monkeypatch, tmp_path):
     ev = verify_mod.VerifyEvaluator(engine_dir="/engine")
+
     def fake_run(cmd, cwd, device_id, timeout):
         if cmd[1].endswith("validate_triton_impl.py"):
             return ScriptOutcome(0, json.dumps({"valid": True}), "", False)
         return ScriptOutcome(0, "", "", False)  # verify.py
+
     monkeypatch.setattr(verify_mod, "run_script", fake_run)
     monkeypatch.setattr(verify_mod, "read_json", lambda p: {"op_name": "softmax",
         "total_cases": 3, "passed_cases": 3, "failed_cases": 0, "failures": []})
