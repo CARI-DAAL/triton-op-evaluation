@@ -1,9 +1,9 @@
 # triton-evaluation
 
-Self-contained FastAPI + Redis service for evaluating Triton-Ascend kernels. The
-evaluation **engine** (correctness `verify` + performance `benchmark`) is vendored
-inside the package at `triton_evaluation/engine/` and run per-job as an isolated
-subprocess on a pinned NPU card. Evaluators are pluggable (verify, benchmark, later profile).
+Self-contained FastAPI + Redis service for evaluating Triton-Ascend kernels.
+The vendored evaluation engine provides correctness verification, optional
+in-job benchmarking, and standalone msprof diagnostics. Jobs run as isolated
+subprocesses on workers pinned one-per-NPU-card.
 
 ## Run
 
@@ -100,11 +100,95 @@ after bring-up to confirm triton-ascend links `bishengir-compile` from the image
 
 ## Endpoints
 
-- `POST /verify` → `{task_id}`. Pass `measure_speed: true` (with optional `warmup` / `repeats`,
-  default 5 / 50) to benchmark in the same job once verify passes; the perf result is attached
-  under `result.benchmark`.
-- `GET /tasks/{task_id}` → status + skill result JSON
-- `GET /healthz`
+- `POST /verify` → `{task_id}`. Pass `measure_speed: true` to run the internal
+  benchmark after every verify case passes; performance is returned under
+  `result.benchmark`.
+- `POST /profile` → `{task_id}`. `profile_mode` is `"op"` (default) or
+  `"deep"`. Omit `case_idx` to profile every input case, or pass a zero-based
+  index to profile one case. Profile does not require a verify task.
+- `GET /tasks/{task_id}` → task status and direct evaluator result JSON.
+- `GET /healthz` → Redis health.
+
+All verify/profile jobs share one Redis queue. Whichever configured card worker
+becomes free first may claim a profile job. Once claimed, all cases and metric
+passes in that job stay on that card. “Free” is worker state, not an
+`npu-smi` probe; cards configured for this service are expected to be
+dedicated.
+
+The following creates a complete two-case profile request, submits the default
+full-case op profile, polls its result once, and then submits a deep profile for
+case 1:
+
+```bash
+python3 - <<'PY' >/tmp/triton-profile-request.json
+import json
+
+reference_code = """import torch
+
+class Model(torch.nn.Module):
+    def forward(self, x, y):
+        return x + y
+
+def get_init_inputs():
+    return []
+
+def get_input_groups():
+    return [
+        [torch.randn(4096), torch.randn(4096)],
+        [torch.randn(8192), torch.randn(8192)],
+    ]
+"""
+
+kernel_code = """import torch
+import triton
+import triton.language as tl
+
+@triton.jit
+def add_kernel(x, y, out, n, BLOCK: tl.constexpr):
+    offsets = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
+    mask = offsets < n
+    value = tl.load(x + offsets, mask=mask) + tl.load(y + offsets, mask=mask)
+    tl.store(out + offsets, value, mask=mask)
+
+class ModelNew(torch.nn.Module):
+    def forward(self, x, y):
+        out = torch.empty_like(x)
+        n = x.numel()
+        add_kernel[(triton.cdiv(n, 1024),)](x, y, out, n, BLOCK=1024)
+        return out
+"""
+
+print(json.dumps({
+    "op_name": "add",
+    "reference_code": reference_code,
+    "kernel_code": kernel_code,
+    "profile_mode": "op",
+}))
+PY
+
+TASK_ID=$(
+  curl -sS -X POST http://127.0.0.1:10907/profile \
+    -H 'Content-Type: application/json' \
+    --data-binary @/tmp/triton-profile-request.json |
+  python3 -c 'import json,sys; print(json.load(sys.stdin)["task_id"])'
+)
+curl -sS "http://127.0.0.1:10907/tasks/${TASK_ID}"
+
+python3 - <<'PY'
+import json
+
+path = "/tmp/triton-profile-request.json"
+with open(path, encoding="utf-8") as handle:
+    payload = json.load(handle)
+payload.update({"profile_mode": "deep", "case_idx": 1, "timeout": 7200})
+with open(path, "w", encoding="utf-8") as handle:
+    json.dump(payload, handle)
+PY
+
+curl -X POST http://127.0.0.1:10907/profile \
+  -H 'Content-Type: application/json' \
+  --data-binary @/tmp/triton-profile-request.json
+```
 
 ## Test
 

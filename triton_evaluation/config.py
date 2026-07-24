@@ -2,9 +2,10 @@ import os
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-# The evaluation engine (verify / benchmark / validate) is vendored inside the
-# package: this service is self-contained. `engine_dir` defaults to the bundled
-# engine; the env override exists only to point at a different engine build.
+# The evaluation engine (verify / internal benchmark / profile / validate) is
+# vendored inside the package: this service is self-contained. `engine_dir`
+# defaults to the bundled engine; the env override exists only to point at a
+# different engine build.
 _DEFAULT_ENGINE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "engine")
 
 
