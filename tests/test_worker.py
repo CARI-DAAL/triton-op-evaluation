@@ -36,6 +36,27 @@ def test_run_once_dispatches_and_stores(broker, settings):
     assert ev.seen[0][2] == 4  # device_id passed through
 
 
+def test_profile_job_runs_on_whichever_worker_dequeues_it(broker, settings):
+    evaluator = FakeEvaluator()
+    spec = JobSpec(
+        op_name="softmax",
+        reference_code="R",
+        kernel_code="K",
+        profile_mode="deep",
+    )
+    broker.create_task(Job("profile-1", JobType.PROFILE.value, spec))
+    worker = Worker(
+        broker,
+        {"profile": evaluator},
+        device_id=7,
+        settings=settings,
+    )
+    assert worker.run_once() is True
+    record = broker.get_task("profile-1")
+    assert record["device_id"] == 7
+    assert evaluator.seen[0][2] == 7
+
+
 def test_run_once_idle_returns_false(broker, settings):
     w = Worker(broker, {}, device_id=0, settings=settings)
     assert w.run_once() is False

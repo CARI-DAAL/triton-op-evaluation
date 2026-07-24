@@ -3,6 +3,7 @@ import sys
 from pathlib import Path
 
 from triton_evaluation.evaluators import build_registry
+from triton_evaluation.evaluators import profile as profile_mod
 from triton_evaluation.evaluators import verify as verify_mod
 from triton_evaluation.evaluators.base import (
     ScriptOutcome,
@@ -12,6 +13,7 @@ from triton_evaluation.evaluators.base import (
     tail,
 )
 from triton_evaluation.evaluators.benchmark import BenchmarkEvaluator
+from triton_evaluation.evaluators.profile import ProfileEvaluator
 from triton_evaluation.evaluators.verify import VerifyEvaluator
 from triton_evaluation.models import JobSpec, TaskStatus
 
@@ -68,6 +70,11 @@ class _MissingBench(BenchmarkEvaluator):
         return str(FIXTURES / "does_not_exist.py")
 
 
+class _ProfileHarness(ProfileEvaluator):
+    def _script_path(self):
+        return str(FIXTURES / "fake_profile.py")
+
+
 class _VerifyHarness(VerifyEvaluator):
     """Point verify.py + the chained benchmark at the fake scripts."""
 
@@ -87,6 +94,132 @@ def _spec(measure_speed=False):
     return JobSpec(
         op_name="softmax", reference_code="R", kernel_code="K", measure_speed=measure_speed
     )
+
+
+def _profile_spec(**overrides):
+    values = {
+        "op_name": "softmax",
+        "reference_code": "R",
+        "kernel_code": "K",
+        "timeout": 10,
+        "profile_mode": "op",
+        "case_idx": None,
+        "profile_launch_count": None,
+    }
+    values.update(overrides)
+    return JobSpec(**values)
+
+
+def test_profile_evaluator_returns_direct_result(tmp_path, monkeypatch):
+    monkeypatch.setenv("MSPROF_BIN", sys.executable)
+    result = _ProfileHarness("unused").run(
+        _profile_spec(),
+        str(tmp_path),
+        device_id=5,
+    )
+    assert result.status == "SUCCEEDED"
+    assert result.result["profile_mode"] == "op"
+    assert result.result["selected_cases"] == 2
+    assert result.result["visible_device"] == "5"
+
+
+def test_profile_evaluator_passes_single_case_and_launch_count(tmp_path, monkeypatch):
+    monkeypatch.setenv("MSPROF_BIN", sys.executable)
+    result = _ProfileHarness("unused").run(
+        _profile_spec(case_idx=1, profile_launch_count=3),
+        str(tmp_path),
+        device_id=2,
+    )
+    assert result.status == "SUCCEEDED"
+    assert result.result["requested_case_idx"] == 1
+    assert result.result["selected_cases"] == 1
+
+
+def test_profile_evaluator_missing_msprof_is_failed(tmp_path, monkeypatch):
+    monkeypatch.setenv("MSPROF_BIN", str(tmp_path / "missing-msprof"))
+    result = _ProfileHarness("unused").run(
+        _profile_spec(),
+        str(tmp_path),
+        device_id=0,
+    )
+    assert result.status == "FAILED"
+    assert "MSPROF_BIN is not executable" in result.error
+
+
+def test_profile_evaluator_rejects_invalid_pass_timeout(tmp_path, monkeypatch):
+    monkeypatch.setenv("MSPROF_BIN", sys.executable)
+    monkeypatch.setenv("MSPROF_TIMEOUT_SEC", "zero")
+    result = _ProfileHarness("unused").run(
+        _profile_spec(),
+        str(tmp_path),
+        device_id=0,
+    )
+    assert result.status == "FAILED"
+    assert "MSPROF_TIMEOUT_SEC must be a positive integer" in result.error
+
+
+def test_profile_evaluator_nonzero_exit_keeps_valid_snapshot(tmp_path, monkeypatch):
+    monkeypatch.setenv("MSPROF_BIN", sys.executable)
+    monkeypatch.setenv("FAKE_PROFILE_EXIT", "2")
+    result = _ProfileHarness("unused").run(
+        _profile_spec(),
+        str(tmp_path),
+        device_id=0,
+    )
+    assert result.status == "FAILED"
+    assert result.result["summary_text"] == "fake profile"
+
+
+def test_profile_evaluator_rejects_invalid_result_json(tmp_path, monkeypatch):
+    monkeypatch.setenv("MSPROF_BIN", sys.executable)
+    monkeypatch.setenv("FAKE_PROFILE_BAD_JSON", "1")
+    result = _ProfileHarness("unused").run(
+        _profile_spec(),
+        str(tmp_path),
+        device_id=0,
+    )
+    assert result.status == "FAILED"
+    assert result.result is None
+
+
+def test_profile_timeout_keeps_last_snapshot(tmp_path, monkeypatch):
+    snapshot = {
+        "profile_mode": "deep",
+        "timed_out": False,
+        "per_case_results": [{"case_idx": 0, "status": "complete"}],
+    }
+    monkeypatch.setenv("MSPROF_BIN", sys.executable)
+    monkeypatch.setattr(
+        profile_mod,
+        "run_script",
+        lambda *args, **kwargs: ScriptOutcome(124, "", "deadline", False),
+    )
+    monkeypatch.setattr(profile_mod, "read_json", lambda path: dict(snapshot))
+    result = ProfileEvaluator("unused").run(
+        _profile_spec(profile_mode="deep"),
+        str(tmp_path),
+        device_id=0,
+    )
+    assert result.status == "TIMEOUT"
+    assert result.result["timed_out"] is True
+    assert result.result["per_case_results"][0]["case_idx"] == 0
+
+
+def test_profile_timeout_without_snapshot_is_still_timeout(tmp_path, monkeypatch):
+    monkeypatch.setenv("MSPROF_BIN", sys.executable)
+    monkeypatch.setattr(
+        profile_mod,
+        "run_script",
+        lambda *args, **kwargs: ScriptOutcome(-1, "", "", True),
+    )
+    monkeypatch.setattr(profile_mod, "read_json", lambda path: None)
+    result = ProfileEvaluator("unused").run(
+        _profile_spec(profile_mode="deep"),
+        str(tmp_path),
+        device_id=0,
+    )
+    assert result.status == "TIMEOUT"
+    assert result.result is None
 
 
 def test_verify_pass_is_succeeded(tmp_path, monkeypatch):
@@ -146,10 +279,10 @@ def test_measure_speed_benchmark_flake_keeps_verify_succeeded(tmp_path, monkeypa
     assert "benchmark" not in res.result
 
 
-def test_registry_has_only_verify(tmp_path):
-    reg = build_registry(str(tmp_path))
-    assert reg["verify"].name == "verify"
-    assert "benchmark" not in reg
+def test_registry_has_verify_and_profile_only(tmp_path):
+    registry = build_registry(str(tmp_path))
+    assert set(registry) == {"verify", "profile"}
+    assert registry["profile"].needs_bound_card is True
 
 
 def test_verify_step0_decoy_short_circuits(monkeypatch, tmp_path):
