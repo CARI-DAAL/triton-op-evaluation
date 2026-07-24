@@ -190,8 +190,13 @@ POST /profile
 - `/profile` 与 `/verify` 使用同一个 Redis job queue，不绕过 worker 直接运行。
 - 每个常驻 worker 绑定一张物理 NPU，并串行处理任务；只有 worker 完成当前
   job 后才会 dequeue 下一个 job。
+- profile job 不与任何先前 verify job 建立卡亲和性。哪张已配置 NPU 的
+  worker 先空闲并 dequeue 到该 job，就使用哪张卡。
+- profile job 一旦开始，其全部选中 case、warmup 和 7+1 轮 deep 采集都固定
+  在领取该 job 的同一张卡上，中途不跨卡迁移。
 - 因此服务管理范围内，同一张卡上的 verify、内部 benchmark 和 profile 不会
-  重叠执行；profile 的 `needs_bound_card=True`。
+  重叠执行；profile 的 `needs_bound_card=True`。只有 `/verify` 内部的
+  benchmark 与该次 verify 必须使用同一张卡。
 - “卡空闲”指该卡对应的服务 worker 当前可接收任务。v1 不调用 `npu-smi`
   检测服务外进程，也不与服务外调度器共享锁；部署必须将配置给本服务的卡
   视为专用资源。若未来需要和外部任务共享 NPU，必须另行增加跨进程卡租约和
