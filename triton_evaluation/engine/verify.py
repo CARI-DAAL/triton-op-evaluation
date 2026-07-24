@@ -92,6 +92,7 @@ class InputSpec:
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from _log_utils import setup_logger as _setup_logger_shared  # noqa: E402	 
 from _common_utils import describe_input as _describe_input_shared  # noqa: E402
+from _common_utils import enforce_conv_fp32 as _enforce_conv_fp32  # noqa: E402
 
 logger = logging.getLogger("triton_op_verifier.verify")
 
@@ -1078,6 +1079,8 @@ if __name__ == "__main__":
 
     if args.subprocess:
         # 子进程模式：直接执行验证逻辑
+        # 先关闭 HF32 卷积并回读校验，避免低精度卷积污染精度比对
+        _enforce_conv_fp32()
         try:
             passed, total = verify_implementations(
                 args.op_name, verify_dir, args.triton_impl_name, args.output,

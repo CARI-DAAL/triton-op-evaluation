@@ -13,6 +13,33 @@
 from typing import Any, Dict, List
 
 
+def enforce_conv_fp32() -> None:
+    """关闭 HF32 卷积并回读校验 (torch_npu.npu.conv.allow_hf32=False)。"""
+    import logging
+
+    log = logging.getLogger("triton_op_verifier")
+    try:
+        import torch_npu
+
+        conv = torch_npu.npu.conv
+        # 写入后立即回读，防止设置被静默忽略。
+        conv.allow_hf32 = False
+        observed = conv.allow_hf32
+    except AttributeError as exc:
+        log.warning(
+            "torch_npu.npu.conv.allow_hf32 不可用，跳过关闭 HF32 卷积: %s", exc
+        )
+        return
+    if observed is not False:
+        raise RuntimeError(
+            "无法关闭 HF32 卷积: torch_npu.npu.conv.allow_hf32 "
+            f"回读值为 {observed!r}，预期为 False"
+        )
+    log.info(
+        "已关闭 HF32 卷积: torch_npu.npu.conv.allow_hf32=False（回读校验通过）"
+    )
+
+
 def describe_input(inputs: List[Any]) -> List[Dict[str, Any]]:
     """将输入列表描述为结构化字段，便于写入 JSON。
 
