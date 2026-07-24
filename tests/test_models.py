@@ -1,8 +1,4 @@
-import pytest
-from pydantic import ValidationError
-
 from triton_evaluation.models import (
-    BenchmarkRequest,
     Job,
     JobSpec,
     JobType,
@@ -21,17 +17,31 @@ def test_job_json_roundtrip():
     assert back.spec.triton_impl_name == "triton_ascend_impl"
 
 
-def test_benchmark_request_requires_gate():
-    with pytest.raises(ValidationError):
-        BenchmarkRequest(op_name="s", reference_code="R", kernel_code="K")
-
-
-def test_benchmark_request_accepts_verify_task_id():
-    r = BenchmarkRequest(op_name="s", reference_code="R", kernel_code="K", verify_task_id="v1")
-    assert r.verify_task_id == "v1"
+def test_job_json_roundtrip_carries_measure_speed():
+    spec = JobSpec(
+        op_name="softmax", reference_code="R", kernel_code="K",
+        measure_speed=True, warmup=3, repeats=7,
+    )
+    back = Job.from_json(Job(task_id="t1", type=JobType.VERIFY.value, spec=spec).to_json())
+    assert back.spec.measure_speed is True
+    assert back.spec.warmup == 3
+    assert back.spec.repeats == 7
 
 
 def test_verify_request_defaults():
     r = VerifyRequest(op_name="s", reference_code="R", kernel_code="K")
     assert r.timeout == 900
     assert r.non_compute is False
+    assert r.measure_speed is False
+    assert r.warmup == 5
+    assert r.repeats == 50
+
+
+def test_verify_request_accepts_measure_speed():
+    r = VerifyRequest(
+        op_name="s", reference_code="R", kernel_code="K",
+        measure_speed=True, warmup=2, repeats=20,
+    )
+    assert r.measure_speed is True
+    assert r.warmup == 2
+    assert r.repeats == 20

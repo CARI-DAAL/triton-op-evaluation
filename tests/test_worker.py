@@ -41,40 +41,6 @@ def test_run_once_idle_returns_false(broker, settings):
     assert w.run_once() is False
 
 
-def test_benchmark_gate_resolution_injects_seed(broker, settings):
-    # prior verify task with a stored result
-    broker.create_task(Job("v1", JobType.VERIFY.value, _spec()))
-    broker.dequeue()  # v1 already processed; keep only its stored result, not a queued job
-    broker.store_result(
-        "v1", TaskStatus.SUCCEEDED.value, result={"total_cases": 2, "passed_cases": 2}
-    )
-    ev = FakeEvaluator()
-    bspec = _spec()
-    bspec.verify_task_id = "v1"
-    broker.create_task(Job("b1", JobType.BENCHMARK.value, bspec))
-    w = Worker(broker, {"benchmark": ev}, device_id=0, settings=settings)
-    w.run_once()
-    seen_spec = ev.seen[0][0]
-    assert seen_spec.verify_result_seed == {"total_cases": 2, "passed_cases": 2}
-
-
-def test_benchmark_before_verify_completes_is_failed_not_rejected(broker, settings):
-    # referenced verify is still RUNNING (no result yet) — a race, not a gate failure
-    broker.create_task(Job("v1", JobType.VERIFY.value, _spec()))
-    broker.dequeue()  # v1 pulled off the queue; it is mid-run
-    broker.mark_running("v1", 0, deadline=time.time() + 1000)
-    ev = FakeEvaluator()
-    bspec = _spec()
-    bspec.verify_task_id = "v1"
-    broker.create_task(Job("b1", JobType.BENCHMARK.value, bspec))
-    w = Worker(broker, {"benchmark": ev}, device_id=0, settings=settings)
-    w.run_once()
-    rec = broker.get_task("b1")
-    assert rec["status"] == "FAILED"
-    assert "not SUCCEEDED" in rec["error"]
-    assert ev.seen == []  # evaluator never invoked
-
-
 def test_evaluator_exception_marks_failed(broker, settings):
     class Boom:
         name = "verify"

@@ -1,4 +1,3 @@
-import json
 import sys
 from pathlib import Path
 
@@ -6,19 +5,11 @@ from ..models import JobSpec, TaskStatus
 from .base import EvaluatorResult, materialize, read_json, run_script, tail
 
 
-def verify_json_name(triton_impl_name: str) -> str:
-    """Mirror the engine's resolve_verify_json_name; the engine runs as a subprocess."""
-    if triton_impl_name == "triton_ascend_impl":
-        return "verify_result.json"
-    suffix = (
-        triton_impl_name[len("triton_") :]
-        if triton_impl_name.startswith("triton_")
-        else triton_impl_name
-    )
-    return f"verify_result_{suffix}.json"
-
-
 class BenchmarkEvaluator:
+    """Runs benchmark.py in a verify_dir. Used internally by VerifyEvaluator once
+    verify has passed and written verify_result.json — benchmark.py's L1 gate reads
+    that file in-place, so no seeding is needed."""
+
     name = "benchmark"
     needs_bound_card = True
 
@@ -30,11 +21,6 @@ class BenchmarkEvaluator:
 
     def run(self, spec: JobSpec, verify_dir: str, device_id: int) -> EvaluatorResult:
         materialize(spec, verify_dir)
-
-        # Seed the verify JSON so benchmark.py's L1 gate can pass.
-        if spec.verify_result_seed is not None:
-            seed_path = Path(verify_dir) / verify_json_name(spec.triton_impl_name)
-            seed_path.write_text(json.dumps(spec.verify_result_seed))
 
         out_path = str(Path(verify_dir) / "perf_result.json")
         cmd = [
@@ -53,8 +39,6 @@ class BenchmarkEvaluator:
             "--output",
             out_path,
         ]
-        if spec.verify_not_required:
-            cmd.append("--verify_not_required")
 
         outcome = run_script(cmd, verify_dir, device_id, timeout=spec.timeout)
         if outcome.timed_out:
