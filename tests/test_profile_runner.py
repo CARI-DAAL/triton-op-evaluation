@@ -212,3 +212,61 @@ def test_runner_disables_hf32_before_selected_case_launch(tmp_path):
     assert outcome.exit_code == 0, outcome.stderr
     assert hf32_marker.read_text() == "off"
     assert kernel_marker.read_text() == "22"
+
+
+def test_runner_registers_path_modules_before_execution(tmp_path):
+    _write_fake_runtime(tmp_path)
+    (tmp_path / "sample_torch.py").write_text(
+        "from __future__ import annotations\n"
+        "from dataclasses import dataclass\n"
+        "@dataclass\n"
+        "class InputSpec:\n"
+        "    value: int\n"
+        "def get_init_inputs(): return []\n"
+        "def get_inputs(): return [InputSpec(7).value]\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "sample_triton_ascend_impl.py").write_text(
+        "from __future__ import annotations\n"
+        "from dataclasses import dataclass\n"
+        "import os\n"
+        "@dataclass\n"
+        "class ModelNew:\n"
+        "    value: int = 1\n"
+        "    def to(self, device): return self\n"
+        "    def __call__(self, value):\n"
+        "        open(os.environ['KERNEL_MARKER'], 'w').write(str(value))\n",
+        encoding="utf-8",
+    )
+    runner = profile.write_runner(str(tmp_path))
+    hf32_marker = tmp_path / "hf32.txt"
+    kernel_marker = tmp_path / "kernel.txt"
+    env = dict(os.environ)
+    env.update(
+        {
+            "PYTHONPATH": str(tmp_path),
+            "HF32_MARKER": str(hf32_marker),
+            "KERNEL_MARKER": str(kernel_marker),
+        }
+    )
+    outcome = profile.run_command(
+        [
+            sys.executable,
+            runner,
+            "--engine-dir",
+            str(tmp_path),
+            "--verify-dir",
+            str(tmp_path),
+            "--op-name",
+            "sample",
+            "--triton-impl-name",
+            "triton_ascend_impl",
+            "--case-idx",
+            "0",
+        ],
+        cwd=str(tmp_path),
+        env=env,
+        timeout=30,
+    )
+    assert outcome.exit_code == 0, outcome.stderr
+    assert kernel_marker.read_text() == "7"
