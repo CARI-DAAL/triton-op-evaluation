@@ -45,6 +45,56 @@ def test_post_verify_measure_speed_sets_spec(settings):
     assert job.spec.repeats == 20
 
 
+def test_post_profile_defaults_to_all_cases(settings):
+    client, broker = _client(settings)
+    response = client.post(
+        "/profile",
+        json={"op_name": "softmax", "reference_code": "R", "kernel_code": "K"},
+    )
+    assert response.status_code == 200
+    job = broker.dequeue()
+    assert job.type == "profile"
+    assert job.spec.profile_mode == "op"
+    assert job.spec.case_idx is None
+    assert job.spec.timeout == 3600
+
+
+def test_post_profile_accepts_one_deep_case(settings):
+    client, broker = _client(settings)
+    response = client.post(
+        "/profile",
+        json={
+            "op_name": "softmax",
+            "reference_code": "R",
+            "kernel_code": "K",
+            "profile_mode": "deep",
+            "case_idx": 3,
+            "timeout": 7200,
+        },
+    )
+    assert response.status_code == 200
+    job = broker.dequeue()
+    assert job.spec.profile_mode == "deep"
+    assert job.spec.case_idx == 3
+    assert job.spec.timeout == 7200
+
+
+def test_post_profile_rejects_deep_launch_count(settings):
+    client, broker = _client(settings)
+    response = client.post(
+        "/profile",
+        json={
+            "op_name": "softmax",
+            "reference_code": "R",
+            "kernel_code": "K",
+            "profile_mode": "deep",
+            "profile_launch_count": 2,
+        },
+    )
+    assert response.status_code == 422
+    assert broker.dequeue() is None
+
+
 def test_benchmark_route_is_gone(settings):
     client, _ = _client(settings)
     r = client.post("/benchmark", json={"op_name": "s", "reference_code": "R", "kernel_code": "K"})
