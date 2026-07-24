@@ -22,6 +22,8 @@ from __future__ import annotations
 import csv
 import glob
 import os
+import sqlite3
+import statistics
 import time
 from typing import Any
 
@@ -40,6 +42,20 @@ METRIC_GROUPS = (
     "L2Cache",
     "ResourceConflictRatio",
 )
+
+PIPE_ALIASES = {
+    "MTE2": ("aic_mte2_ratio", "aiv_mte2_ratio", "mte2_ratio"),
+    "CUBE": ("aic_cube_ratio", "aic_mac_ratio", "cube_ratio"),
+    "PUSHQ": ("pushq_ratio", "aiv_pushq_ratio"),
+    "FIXP": ("aic_fixpipe_ratio", "fixpipe_ratio"),
+    "MTE3": ("aic_mte3_ratio", "aiv_mte3_ratio", "mte3_ratio"),
+    "SCALAR": ("aic_scalar_ratio", "aiv_scalar_ratio", "scalar_ratio"),
+    "SCALARLDST": (
+        "scalarldst_ratio",
+        "aic_scalarldst_ratio",
+        "aiv_scalarldst_ratio",
+    ),
+}
 
 
 def _read_rows(path: str) -> list[dict[str, str]]:
@@ -167,6 +183,214 @@ def select_and_merge_metrics(
     }
 
 
+def _max_alias(raw: dict[str, Any], aliases: tuple[str, ...]) -> float | None:
+    values = [_float(raw.get(alias)) for alias in aliases]
+    present = [value for value in values if value is not None]
+    return max(present) if present else None
+
+
+def canonical_pipe_ratios(raw: dict[str, Any]) -> dict[str, float | None]:
+    return {
+        name: _max_alias(raw, aliases)
+        for name, aliases in PIPE_ALIASES.items()
+    }
+
+
+def missing_canonical_pipe_fields(raw: dict[str, Any]) -> list[str]:
+    return [
+        f"PipeUtilization.{name}"
+        for name, value in canonical_pipe_ratios(raw).items()
+        if value is None
+    ]
+
+
+def classify_bound(raw: dict[str, Any]) -> dict[str, Any] | None:
+    ratios = canonical_pipe_ratios(raw)
+    comparison = [ratios[name] for name in PIPE_ALIASES]
+
+    def largest(name: str) -> bool | None:
+        if any(value is None for value in comparison):
+            return None
+        value = ratios[name]
+        return value == max(comparison) and value > 0.70
+
+    rules: list[tuple[str, str, bool | None]] = [
+        (
+            "MTE2 BOUND",
+            "MTE2 > 0.80",
+            None if ratios["MTE2"] is None else ratios["MTE2"] > 0.80,
+        ),
+        ("MTE2 BOUND", "MTE2 is largest and > 0.70", largest("MTE2")),
+        (
+            "CUBE BOUND",
+            "CUBE > 0.80",
+            None if ratios["CUBE"] is None else ratios["CUBE"] > 0.80,
+        ),
+        ("CUBE BOUND", "CUBE is largest and > 0.70", largest("CUBE")),
+        (
+            "VEC BOUND",
+            "PUSHQ > 0.80",
+            None if ratios["PUSHQ"] is None else ratios["PUSHQ"] > 0.80,
+        ),
+        (
+            "FIXP BOUND",
+            "FIXP > 0.80",
+            None if ratios["FIXP"] is None else ratios["FIXP"] > 0.80,
+        ),
+        (
+            "MTE3 BOUND",
+            "MTE3 > 0.80",
+            None if ratios["MTE3"] is None else ratios["MTE3"] > 0.80,
+        ),
+        (
+            "SCALAR BOUND",
+            "SCALAR > 0.80 or SCALARLDST > 0.80",
+            (
+                None
+                if ratios["SCALAR"] is None or ratios["SCALARLDST"] is None
+                else (
+                    ratios["SCALAR"] > 0.80
+                    or ratios["SCALARLDST"] > 0.80
+                )
+            ),
+        ),
+    ]
+    for name, rule, decision in rules:
+        if decision is None:
+            return None
+        if decision:
+            return {
+                "name": name,
+                "ratios": ratios,
+                "rule": rule,
+                "evidence": dict(raw),
+            }
+    return {
+        "name": "NO BOUND",
+        "ratios": ratios,
+        "rule": "no rule matched",
+        "evidence": dict(raw),
+    }
+
+
+def load_per_core_cycles(sample_dir: str) -> list[tuple[int, int]]:
+    candidates = sorted(
+        glob.glob(
+            os.path.join(
+                sample_dir,
+                "**",
+                "device_0",
+                "sqlite",
+                "aicore.db",
+            ),
+            recursive=True,
+        )
+    )
+    if not candidates:
+        return []
+    connection = None
+    try:
+        connection = sqlite3.connect(candidates[-1])
+        rows = list(
+            connection.execute(
+                "SELECT coreid, SUM(task_cyc) "
+                "FROM AICoreOriginalData WHERE task_cyc > 0 "
+                "GROUP BY coreid ORDER BY coreid"
+            )
+        )
+    except sqlite3.Error:
+        return []
+    finally:
+        if connection is not None:
+            connection.close()
+    return [
+        (int(core_id), int(cycles))
+        for core_id, cycles in rows
+        if core_id is not None and cycles is not None
+    ]
+
+
+def per_core_balance(
+    raw: dict[str, Any],
+    sample_dir: str,
+) -> dict[str, Any] | None:
+    rows = load_per_core_cycles(sample_dir)
+    aicore_time = _float(raw.get("aicore_time(us)"))
+    if not rows or aicore_time is None or aicore_time <= 0:
+        return None
+    max_cycles = max(cycles for _, cycles in rows)
+    if max_cycles <= 0:
+        return None
+    ns_per_cycle = aicore_time * 1000.0 / max_cycles
+    per_core = [
+        {
+            "core_id": core_id,
+            "time_us": cycles * ns_per_cycle / 1000.0,
+        }
+        for core_id, cycles in rows
+    ]
+    times = [entry["time_us"] for entry in per_core]
+    maximum = max(times)
+    minimum = min(times)
+    spread = (maximum - minimum) / maximum if maximum else 0.0
+    if spread < 0.10:
+        verdict = "balanced"
+    elif spread < 0.30:
+        verdict = "warning"
+    else:
+        verdict = "severely_imbalanced"
+    return {
+        "scope": "profile_run",
+        "warning": (
+            "SQLite rows are run-wide and are not claimed as target-only."
+        ),
+        "core_ids": [entry["core_id"] for entry in per_core],
+        "active_cores": len(per_core),
+        "frequency_ghz": 1.0 / ns_per_cycle,
+        "min_us": minimum,
+        "avg_us": statistics.mean(times),
+        "max_us": maximum,
+        "spread_ratio": spread,
+        "balanced_under_10pct": spread < 0.10,
+        "verdict": verdict,
+        "per_core": per_core,
+    }
+
+
+_RECOMMENDATIONS = {
+    "MTE2 BOUND": (
+        "Reduce GM loads, improve contiguous access, and evaluate buffering overlap."
+    ),
+    "CUBE BOUND": (
+        "Increase useful Cube work per launch and validate tiling with measured latency."
+    ),
+    "VEC BOUND": "Reduce vector issue pressure or fuse redundant vector passes.",
+    "FIXP BOUND": "Check output alignment and FixPipe writeback configuration.",
+    "MTE3 BOUND": (
+        "Reduce or coalesce GM stores and avoid unnecessary intermediate outputs."
+    ),
+    "SCALAR BOUND": (
+        "Reduce scalar address/control work and shorten serial dependency chains."
+    ),
+}
+
+
+def recommendations_for(bound: dict[str, Any] | None) -> list[dict[str, Any]]:
+    if bound is None or bound["name"] == "NO BOUND":
+        return []
+    return [
+        {
+            "bound": bound["name"],
+            "evidence": {
+                "ratios": bound["ratios"],
+                "rule": bound["rule"],
+            },
+            "recommendation": _RECOMMENDATIONS[bound["name"]],
+            "source": "ops-profiling/references/optimization_quickref.md",
+        }
+    ]
+
+
 def _task_command(
     msprof_bin: str,
     output: str,
@@ -292,20 +516,40 @@ def profile_deep_case(
 
     merged = select_and_merge_metrics(metric_dirs, kernel_names)
     warnings.extend(merged["warnings"])
+    missing_metrics = sorted(
+        set(
+            merged["missing_metrics"]
+            + missing_canonical_pipe_fields(merged["raw_metrics"])
+        )
+    )
+    bound = classify_bound(merged["raw_metrics"])
+    per_core = (
+        per_core_balance(merged["raw_metrics"], sample_dir)
+        if sample_ok
+        else None
+    )
+    if bound is None and merged["target_kernel"] is not None:
+        warnings.append(
+            "insufficient canonical pipe fields for Bound classification"
+        )
+    if sample_ok and per_core is None:
+        warnings.append(
+            "sample-based output could not produce reliable per-core data"
+        )
     failed = merged["target_kernel"] is None
-    partial = bool(warnings or merged["missing_metrics"])
+    partial = bool(warnings or missing_metrics)
+    raw_metrics = dict(merged["raw_metrics"])
+    raw_metrics["_merge_evidence"] = merged["evidence"]
     return {
         "status": "failed" if failed else ("partial" if partial else "complete"),
         "target_kernel": merged["target_kernel"],
         "target_selection_metric": merged["target_selection_metric"],
         "kernels": [],
-        "raw_metrics": merged["raw_metrics"],
-        "bound": None,
-        "per_core": None,
-        "recommendations": [],
-        "missing_metrics": merged["missing_metrics"],
+        "raw_metrics": raw_metrics,
+        "bound": bound,
+        "per_core": per_core,
+        "recommendations": recommendations_for(bound),
+        "missing_metrics": missing_metrics,
         "warnings": warnings,
         "error": merged["error"],
-        "_sample_dir": sample_dir if sample_ok else None,
-        "_merge_evidence": merged["evidence"],
     }

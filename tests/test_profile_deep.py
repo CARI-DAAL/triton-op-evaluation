@@ -1,5 +1,8 @@
 import csv
+import sqlite3
 from pathlib import Path
+
+import pytest
 
 from triton_evaluation.engine import msprof_deep
 
@@ -156,3 +159,134 @@ def test_deep_metric_pass_timeout_is_partial_not_job_timeout(tmp_path, monkeypat
     assert calls == 11
     assert result["status"] == "partial"
     assert "per-process timeout" in " ".join(result["warnings"])
+
+
+def _base_ratios():
+    return {
+        "aiv_mte2_ratio": "0.10",
+        "aic_cube_ratio": "0.10",
+        "pushq_ratio": "0.10",
+        "aic_fixpipe_ratio": "0.10",
+        "aiv_mte3_ratio": "0.10",
+        "aiv_scalar_ratio": "0.10",
+        "scalarldst_ratio": "0.10",
+    }
+
+
+def test_bound_priority_and_exact_thresholds():
+    raw = _base_ratios()
+    raw.update(
+        {
+            "aiv_mte2_ratio": "0.81",
+            "aic_cube_ratio": "0.95",
+            "pushq_ratio": "0.90",
+        }
+    )
+    bound = msprof_deep.classify_bound(raw)
+    assert bound["name"] == "MTE2 BOUND"
+    assert bound["rule"] == "MTE2 > 0.80"
+
+
+def test_vec_uses_pushq_not_aiv_vec_ratio():
+    raw = _base_ratios()
+    raw.update({"aiv_vec_ratio": "0.99", "pushq_ratio": "0.20"})
+    assert msprof_deep.classify_bound(raw)["name"] == "NO BOUND"
+
+
+def test_missing_prior_metric_makes_bound_unknown():
+    raw = _base_ratios()
+    raw.pop("aiv_mte2_ratio")
+    raw["aic_cube_ratio"] = "0.95"
+    assert msprof_deep.classify_bound(raw) is None
+    assert "PipeUtilization.MTE2" in msprof_deep.missing_canonical_pipe_fields(raw)
+
+
+@pytest.mark.parametrize(
+    ("field", "expected"),
+    [
+        ("aic_cube_ratio", "CUBE BOUND"),
+        ("pushq_ratio", "VEC BOUND"),
+        ("aic_fixpipe_ratio", "FIXP BOUND"),
+        ("aiv_mte3_ratio", "MTE3 BOUND"),
+        ("aiv_scalar_ratio", "SCALAR BOUND"),
+        ("scalarldst_ratio", "SCALAR BOUND"),
+    ],
+)
+def test_each_bound_rule_is_reachable(field, expected):
+    raw = _base_ratios()
+    raw[field] = "0.81"
+    assert msprof_deep.classify_bound(raw)["name"] == expected
+
+
+@pytest.mark.parametrize(
+    "field",
+    [
+        "pushq_ratio",
+        "aic_fixpipe_ratio",
+        "aiv_mte3_ratio",
+        "aiv_scalar_ratio",
+        "scalarldst_ratio",
+    ],
+)
+def test_eighty_percent_is_not_above_threshold(field):
+    raw = _base_ratios()
+    raw[field] = "0.80"
+    assert msprof_deep.classify_bound(raw)["name"] == "NO BOUND"
+
+
+@pytest.mark.parametrize("field", ["aiv_mte2_ratio", "aic_cube_ratio"])
+def test_seventy_percent_is_not_above_largest_threshold(field):
+    raw = _base_ratios()
+    raw[field] = "0.70"
+    assert msprof_deep.classify_bound(raw)["name"] == "NO BOUND"
+
+
+def test_per_core_reports_observed_ids_and_profile_run_scope(tmp_path):
+    db_dir = tmp_path / "PROF_fake" / "device_0" / "sqlite"
+    db_dir.mkdir(parents=True)
+    database = db_dir / "aicore.db"
+    connection = sqlite3.connect(database)
+    connection.execute(
+        "CREATE TABLE AICoreOriginalData(coreid INTEGER, task_cyc INTEGER)"
+    )
+    connection.executemany(
+        "INSERT INTO AICoreOriginalData VALUES (?, ?)",
+        [(2, 100), (2, 50), (9, 200)],
+    )
+    connection.commit()
+    connection.close()
+    result = msprof_deep.per_core_balance(
+        {"aicore_time(us)": "20"},
+        str(tmp_path),
+    )
+    assert result["scope"] == "profile_run"
+    assert result["core_ids"] == [2, 9]
+    assert result["active_cores"] == 2
+    assert "%" not in result["verdict"]
+    assert result["spread_ratio"] == 0.25
+
+
+def test_per_core_missing_database_is_none(tmp_path):
+    assert (
+        msprof_deep.per_core_balance(
+            {"aicore_time(us)": "20"},
+            str(tmp_path),
+        )
+        is None
+    )
+
+
+def test_per_core_unknown_schema_is_none(tmp_path):
+    db_dir = tmp_path / "PROF_fake" / "device_0" / "sqlite"
+    db_dir.mkdir(parents=True)
+    connection = sqlite3.connect(db_dir / "aicore.db")
+    connection.execute("CREATE TABLE DifferentData(core INTEGER, cycles INTEGER)")
+    connection.commit()
+    connection.close()
+    assert (
+        msprof_deep.per_core_balance(
+            {"aicore_time(us)": "20"},
+            str(tmp_path),
+        )
+        is None
+    )
