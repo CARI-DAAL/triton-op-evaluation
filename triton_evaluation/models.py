@@ -1,8 +1,9 @@
 import json
 from dataclasses import asdict, dataclass
 from enum import Enum
+from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class TaskStatus(str, Enum):
@@ -16,6 +17,10 @@ class TaskStatus(str, Enum):
 
 class JobType(str, Enum):
     VERIFY = "verify"
+    PROFILE = "profile"
+
+
+ProfileMode = Literal["op", "deep"]
 
 
 @dataclass
@@ -31,6 +36,10 @@ class JobSpec:
     measure_speed: bool = False
     warmup: int = 5
     repeats: int = 50
+    # standalone profile job
+    profile_mode: ProfileMode = "op"
+    case_idx: int | None = None
+    profile_launch_count: int | None = None
 
 
 @dataclass
@@ -59,6 +68,23 @@ class VerifyRequest(BaseModel):
     measure_speed: bool = False
     warmup: int = Field(default=5, ge=0, le=100)
     repeats: int = Field(default=50, ge=1, le=1000)
+
+
+class ProfileRequest(BaseModel):
+    op_name: str
+    reference_code: str
+    kernel_code: str
+    triton_impl_name: str = "triton_ascend_impl"
+    profile_mode: ProfileMode = "op"
+    case_idx: int | None = Field(default=None, ge=0)
+    profile_launch_count: int | None = Field(default=None, ge=1, le=100)
+    timeout: int = Field(default=3600, ge=10, le=86400)
+
+    @model_validator(mode="after")
+    def validate_mode_specific_fields(self):
+        if self.profile_mode == "deep" and self.profile_launch_count is not None:
+            raise ValueError("profile_launch_count is only valid in op mode")
+        return self
 
 
 class SubmitResponse(BaseModel):

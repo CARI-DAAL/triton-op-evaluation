@@ -7,6 +7,7 @@ from ..models import (
     Job,
     JobSpec,
     JobType,
+    ProfileRequest,
     SubmitResponse,
     TaskResponse,
     VerifyRequest,
@@ -31,6 +32,23 @@ def submit_verify(req: VerifyRequest, broker: Broker = Depends(get_broker)):
         repeats=req.repeats,
     )
     broker.create_task(Job(task_id, JobType.VERIFY.value, spec))
+    return SubmitResponse(task_id=task_id)
+
+
+@router.post("/profile", response_model=SubmitResponse)
+def submit_profile(req: ProfileRequest, broker: Broker = Depends(get_broker)):
+    task_id = uuid.uuid4().hex
+    spec = JobSpec(
+        op_name=req.op_name,
+        reference_code=req.reference_code,
+        kernel_code=req.kernel_code,
+        triton_impl_name=req.triton_impl_name,
+        timeout=req.timeout,
+        profile_mode=req.profile_mode,
+        case_idx=req.case_idx,
+        profile_launch_count=req.profile_launch_count,
+    )
+    broker.create_task(Job(task_id, JobType.PROFILE.value, spec))
     return SubmitResponse(task_id=task_id)
 
 

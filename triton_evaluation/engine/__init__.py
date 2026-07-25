@@ -1,4 +1,4 @@
-"""Vendored Triton-Ascend evaluation engine (verify / benchmark / validate).
+"""Vendored engine (verify / internal benchmark / profile / validate).
 
 Run as scripts via subprocess (see triton_evaluation.evaluators). Sourced from
 cannbot-skills/ops/triton-op-verifier; redistributed under CANN Open Software
