@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from triton_evaluation.engine import profile
+from triton_evaluation.engine import profile_runner as profile
 
 
 def _config(tmp_path, **overrides):

@@ -1,10 +1,23 @@
 import os
+import subprocess
 import sys
 from pathlib import Path
 
 import pytest
 
-from triton_evaluation.engine import profile
+from triton_evaluation.engine import profile_runner as profile
+
+
+def test_engine_directory_does_not_shadow_stdlib_profile():
+    engine_dir = Path(profile.__file__).parent
+    completed = subprocess.run(
+        [sys.executable, "-c", "import cProfile"],
+        cwd=engine_dir,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert completed.returncode == 0, completed.stderr
 
 
 def _write_fake_runtime(root: Path):

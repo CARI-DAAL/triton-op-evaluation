@@ -29,7 +29,7 @@ from typing import Any
 
 try:
     from .msprof_op import CommandOutcome, remaining_pass_timeout, run_command
-except ImportError:  # direct execution through engine/profile.py
+except ImportError:  # direct execution through engine/profile_runner.py
     from msprof_op import CommandOutcome, remaining_pass_timeout, run_command
 
 
