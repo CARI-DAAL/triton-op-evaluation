@@ -37,7 +37,7 @@ try:
         remaining_pass_timeout,
         run_command,
     )
-except ImportError:  # direct execution: python engine/profile.py
+except ImportError:  # direct execution: python engine/profile_runner.py
     from msprof_deep import profile_deep_case
     from msprof_op import (
         extract_triton_kernel_names,

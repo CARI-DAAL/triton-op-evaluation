@@ -15,7 +15,7 @@ class ProfileEvaluator:
         self.engine_dir = engine_dir
 
     def _script_path(self) -> str:
-        return str(Path(self.engine_dir) / "profile.py")
+        return str(Path(self.engine_dir) / "profile_runner.py")
 
     @staticmethod
     def _msprof_bin() -> str:

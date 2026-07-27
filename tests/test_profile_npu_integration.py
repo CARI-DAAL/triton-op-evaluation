@@ -31,7 +31,7 @@ def _run(tmp_path, mode, case_idx):
         Path(__file__).parents[1]
         / "triton_evaluation"
         / "engine"
-        / "profile.py"
+        / "profile_runner.py"
     )
     command = [
         sys.executable,
