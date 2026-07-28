@@ -1,13 +1,27 @@
-# triton-evaluation on an Ascend host — manual device-mount (no ascend-docker-runtime),
-# reusing the proven vllm-ascend scheme. CANN is baked in the base image; only the host
-# DRIVER + NPU devices are mounted. Redis is the HOST's (via --network host); not bundled.
+# triton-evaluation on an Ascend host — runs the HOST's proven Python env inside the
+# container (Plan A / "copy host env to docker"). The image supplies the base + /opt/triton-eval
+# source + entrypoint; the actual Python stack (the kernelgym conda env + ~/.local user-site,
+# where torch 2.9.0 / torch_npu / triton + ascend backend live) and the host CANN are
+# bind-mounted, and PYTHON_BIN points the service at the kernelgym python.
 #
-#   cp docker.env.example docker.env      # edit CARDS + redis
-#   docker compose --env-file docker.env build
+# This sidesteps the image's own conda env, which diverged from the host and is missing the
+# CANN-TBE + triton-ascend runtime deps (decorator/scipy/attrs/psutil/pybind11/...). Replicating
+# the host env is the only reliable way to make the Ascend triton path work in-container today.
+#
+# Configured for THIS host: cards 8-15, port 11907, redis db7.
+# To change the card set, edit TWO places together: the `devices:` davinci list AND
+# TRITON_EVAL_CARDS (here or in docker.env).
+#
+#   docker compose --env-file docker.env build     # one-time (base + source only)
 #   docker compose --env-file docker.env up -d
+#   docker compose --env-file docker.env logs -f
+#   python3 scripts/test_eval_service.py --url http://127.0.0.1:11907
+#   docker compose --env-file docker.env down
 #
-# NOTE: this compose assumes a SINGLE chip (TRITON_EVAL_CARDS). For multiple cards,
-# add one `- /dev/davinciN` line per card under `devices:`.
+# Runs as root: NPU device access (rtSetDefaultDeviceId / get-device-count) fails for non-root
+# in the container even with privileged + group_add, but works as root. The bind-mounted
+# kernelgym env / ~/.local / CANN are owned by host uid 1001; root reads them fine (torch_npu
+# emits an owner-mismatch WARNING, harmless).
 
 services:
   triton-eval:
@@ -15,34 +29,71 @@ services:
       context: .
       dockerfile: Dockerfile
       args:
+        # Only relevant if you rebuild AND stop using the host env below. The host-env
+        # bind-mount bypasses the image's conda env at runtime regardless of these.
         BASE_IMAGE: ${BASE_IMAGE:-quay.io/ascend/vllm-ascend:v0.22.1rc1-a3}
         TORCH_SPEC: ${TORCH_SPEC:-torch==2.9.0}
         TORCH_NPU_SPEC: ${TORCH_NPU_SPEC:-torch_npu==2.9.0}
         TRITON_SPEC: ${TRITON_SPEC:-triton==3.5.0}
-        TRITON_ASCEND_SPEC: ${TRITON_ASCEND_SPEC:-triton-ascend==3.2.1}
+        TRITON_ASCEND_SPEC: ${TRITON_ASCEND_SPEC:-triton-ascend==3.2.0}
         PIP_EXTRA_INDEX_URL: ${PIP_EXTRA_INDEX_URL:-}
     image: triton-evaluation:latest
     command: ["all"]
     restart: unless-stopped
-    network_mode: host           # reach the host's Redis at 127.0.0.1
+    depends_on: [redis]          # start redis first (host network; eval tolerates a brief gap)
+    network_mode: host           # reach Redis at 127.0.0.1:6379
+    privileged: true             # required for NPU device access in-container (see note above)
     shm_size: "32gb"             # torch_npu needs a large /dev/shm
     environment:
-      TRITON_EVAL_REDIS_URL: ${TRITON_EVAL_REDIS_URL:-redis://127.0.0.1:6379/0}
+      # Run the service with the HOST kernelgym python (replicate host env in docker).
+      PYTHON_BIN: ${PYTHON_BIN:-/home/n84449292/miniconda3/envs/kernelgym/bin/python3}
+      # user-site = ~/.local (torch 2.9.0 / torch_npu / triton + ascend backend), decoupled from
+      # HOME so HOME can point at a writable dir for ascend/triton compile caches.
+      PYTHONUSERBASE: ${PYTHONUSERBASE:-/home/n84449292/.local}
+      HOME: /tmp
+      TRITON_EVAL_REDIS_URL: ${TRITON_EVAL_REDIS_URL:-redis://127.0.0.1:6379/7}
       TRITON_EVAL_API_HOST: 0.0.0.0
-      TRITON_EVAL_API_PORT: ${TRITON_EVAL_API_PORT:-10907}
-      TRITON_EVAL_CARDS: ${TRITON_EVAL_CARDS:-0}
-      CANN_SET_ENV_PATH: /usr/local/Ascend/ascend-toolkit/set_env.sh   # baked in base image
+      TRITON_EVAL_API_PORT: ${TRITON_EVAL_API_PORT:-11907}
+      TRITON_EVAL_CARDS: ${TRITON_EVAL_CARDS:-8,9,10,11,12,13,14,15}
+      CANN_SET_ENV_PATH: ${CANN_SET_ENV_PATH:-/home/canada_group_folder/CANN/9.0.0.0430/ascend-toolkit/set_env.sh}
       ASCEND_DRIVER_PATH: /usr/local/Ascend/driver                     # mounted from host
     devices:
+      # shared Ascend control devices
       - /dev/davinci_manager
       - /dev/devmm_svm
       - /dev/hisi_hdc
-      - /dev/davinci${TRITON_EVAL_CARDS:-0}      # the chip; MUST match TRITON_EVAL_CARDS
+      # one davinci device per physical card — keep in sync with TRITON_EVAL_CARDS
+      - /dev/davinci8
+      - /dev/davinci9
+      - /dev/davinci10
+      - /dev/davinci11
+      - /dev/davinci12
+      - /dev/davinci13
+      - /dev/davinci14
+      - /dev/davinci15
     volumes:
+      # The host's working Python stack — kernelgym conda env + user-site (~/.local).
+      - /home/n84449292/miniconda3:/home/n84449292/miniconda3:ro
+      - /home/n84449292/.local:/home/n84449292/.local:ro
+      # Host CANN (canada 9.0.0.0430, matches driver 25.5.0). Mounted at the same host path so
+      # set_env.sh resolves. The base image's baked-in CANN is too old (rtGetDevMsg unsupported).
+      - /home/canada_group_folder/CANN/9.0.0.0430:/home/canada_group_folder/CANN/9.0.0.0430
       - /usr/local/dcmi:/usr/local/dcmi
-      - /usr/local/Ascend/driver/lib64:/usr/local/Ascend/driver/lib64
-      - /usr/local/Ascend/driver/version.info:/usr/local/Ascend/driver/version.info
-      - /usr/local/Ascend/driver/tools/hccn_tool:/usr/local/Ascend/driver/tools/hccn_tool
+      # Full host driver (lib64/device/kernel/...). GE op-store init needs more than lib64.
+      - /usr/local/Ascend/driver:/usr/local/Ascend/driver
       - /usr/local/bin/npu-smi:/usr/local/bin/npu-smi
       - /etc/ascend_install.info:/etc/ascend_install.info
+      # Fixed entrypoint: PYTHON_BIN + unset baked-in CANN vars + add arch lib64 (libhccl.so).
+      # (A future image rebuild that COPYs this entrypoint would let you drop this mount.)
+      - ./docker/entrypoint.sh:/usr/local/bin/entrypoint.sh
       - ./logs:/opt/triton-eval/logs
+
+  # Redis: the eval service's task queue + result store. Compose-managed so it comes up with
+  # the service and survives reboot (restart: unless-stopped). Data is ephemeral (task queue
+  # with TTL), so no AOF/RDB persistence. Binds 127.0.0.1:6379 on the host network — the same
+  # address TRITON_EVAL_REDIS_URL points at.
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    network_mode: host
+    command: ["redis-server", "--bind", "127.0.0.1", "--port", "6379", "--save", "", "--appendonly", "no"]

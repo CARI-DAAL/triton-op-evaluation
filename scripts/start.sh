@@ -30,6 +30,19 @@ if [[ -n "${CANN_SET_ENV_PATH:-}" && -r "${CANN_SET_ENV_PATH}" ]]; then
   source "${CANN_SET_ENV_PATH}"
 fi
 
+# CANN's set_env.sh adds <toolkit>/lib64, but on this install libhccl.so (loaded by
+# torch_npu) lives under <toolkit>/aarch64-linux/lib64. Without it `import torch` fails
+# ("libhccl.so: cannot open shared object file"). Add the arch lib dir if it exists.
+if [[ -n "${CANN_SET_ENV_PATH:-}" ]]; then
+  _cann_toolkit_dir="$(dirname "$(readlink -f "${CANN_SET_ENV_PATH}")")"
+  for _archlib in "${_cann_toolkit_dir}/aarch64-linux/lib64" "${_cann_toolkit_dir}/lib64"; do
+    if [[ -d "${_archlib}" && ":${LD_LIBRARY_PATH:-}:" != *":${_archlib}:"* ]]; then
+      export LD_LIBRARY_PATH="${_archlib}:${LD_LIBRARY_PATH:-}"
+    fi
+  done
+  unset _cann_toolkit_dir _archlib
+fi
+
 PYTHON_BIN="${PYTHON_BIN:-python3}"
 API_HOST="${TRITON_EVAL_API_HOST:-0.0.0.0}"
 API_PORT="${TRITON_EVAL_API_PORT:-10907}"
