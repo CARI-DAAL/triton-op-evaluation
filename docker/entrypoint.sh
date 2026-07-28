@@ -6,9 +6,11 @@
 #   entrypoint.sh workers   -> workers only
 #   entrypoint.sh <cmd...>  -> exec cmd (escape hatch, e.g. `bash`)
 #
-# python3 / uvicorn resolve to the py3.11 conda env (on PATH from the Dockerfile),
-# so the engine subprocess (sys.executable) also runs under py3.11 + torch_npu.
+# Python interpreter: defaults to the image's py3.11 conda env python3 (on PATH from the
+# Dockerfile). Override with PYTHON_BIN to run a different interpreter — e.g. a bind-mounted
+# host conda env (Plan A), so the engine subprocess (sys.executable) shares that env too.
 set -euo pipefail
+: "${PYTHON_BIN:=python3}"
 
 # --- Host driver libs (mounted from host) ---
 DRIVER_LIB="${ASCEND_DRIVER_PATH:-/usr/local/Ascend/driver}/lib64"
@@ -16,8 +18,15 @@ if [[ -d "${DRIVER_LIB}" ]]; then
   export LD_LIBRARY_PATH="${DRIVER_LIB}:${DRIVER_LIB}/driver:${LD_LIBRARY_PATH:-}"
 fi
 
-# --- CANN toolkit env (baked into the base image) ---
+# --- CANN toolkit env (host CANN mounted over the base image's baked-in copy) ---
+# The base image pre-sets ASCEND_TOOLKIT_HOME / ASCEND_OPP_PATH / ASCEND_HOME_PATH to its
+# baked-in /usr/local/Ascend CANN. That build is too old for this driver: GEInitialize /
+# OpCompileProcessor init fail (ACL_ALLOW_HF32 error 500001). CANN's set_env.sh will NOT
+# overwrite those vars when already set, so unset them first and let the HOST CANN's
+# set_env.sh repopulate them from its own install path.
 if [[ -n "${CANN_SET_ENV_PATH:-}" && -r "${CANN_SET_ENV_PATH}" ]]; then
+  unset ASCEND_TOOLKIT_HOME ASCEND_HOME_PATH ASCEND_OPP_PATH \
+        ASCEND_AICPU_PATH ASCEND_SLOG_PATH DAVINCIHOME 2>/dev/null || true
   # shellcheck disable=SC1090
   source "${CANN_SET_ENV_PATH}"
 else
@@ -25,10 +34,23 @@ else
        "torch_npu / the engine will likely fail to import." >&2
 fi
 
+# libhccl.so (loaded by torch_npu) lives under <toolkit>/aarch64-linux/lib64, which
+# set_env.sh does not add — without it `import torch` fails
+# ("libhccl.so: cannot open shared object file"). Add the arch lib dir if present.
+if [[ -n "${CANN_SET_ENV_PATH:-}" ]]; then
+  _cann_toolkit_dir="$(dirname "$(readlink -f "${CANN_SET_ENV_PATH}")")"
+  for _archlib in "${_cann_toolkit_dir}/aarch64-linux/lib64" "${_cann_toolkit_dir}/lib64"; do
+    if [[ -d "${_archlib}" && ":${LD_LIBRARY_PATH:-}:" != *":${_archlib}:"* ]]; then
+      export LD_LIBRARY_PATH="${_archlib}:${LD_LIBRARY_PATH:-}"
+    fi
+  done
+  unset _cann_toolkit_dir _archlib
+fi
+
 cd /opt/triton-eval
 
 run_api() {
-  exec python3 -m uvicorn run_api:app \
+  exec "${PYTHON_BIN}" -m uvicorn run_api:app \
     --host "${TRITON_EVAL_API_HOST:-0.0.0.0}" \
     --port "${TRITON_EVAL_API_PORT:-10907}"
 }
@@ -40,7 +62,7 @@ run_workers() {
     c="${c//[[:space:]]/}"
     [[ -z "${c}" ]] && continue
     echo "Starting worker on NPU card ${c}" >&2
-    python3 run_worker.py --card "${c}" &
+    "${PYTHON_BIN}" run_worker.py --card "${c}" &
     pids+=("$!")
   done
   [[ ${#pids[@]} -eq 0 ]] && { echo "No cards in TRITON_EVAL_CARDS" >&2; exit 2; }
@@ -58,7 +80,7 @@ case "${1:-all}" in
     run_workers
     ;;
   all)
-    python3 -m uvicorn run_api:app \
+    "${PYTHON_BIN}" -m uvicorn run_api:app \
       --host "${TRITON_EVAL_API_HOST:-0.0.0.0}" \
       --port "${TRITON_EVAL_API_PORT:-10907}" &
     api_pid=$!

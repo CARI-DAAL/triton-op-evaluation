@@ -1,0 +1,39 @@
+# Plan A — isolated single-card smoke test. Bind-mount host kernelgym env + ~/.local + host
+# CANN, run as root, point PYTHON_BIN at the kernelgym python. card 0 / port 11908 / redis db8.
+#
+#   docker compose -f docker-compose.npu0-test.yml up -d
+#   python3 scripts/test_eval_service.py --url http://127.0.0.1:11908
+#   docker compose -f docker-compose.npu0-test.yml down
+
+services:
+  triton-eval-npu0:
+    image: triton-evaluation:latest
+    command: ["all"]
+    network_mode: host
+    privileged: true
+    shm_size: "32gb"
+    environment:
+      PYTHON_BIN: /home/n84449292/miniconda3/envs/kernelgym/bin/python3
+      PYTHONUSERBASE: /home/n84449292/.local
+      HOME: /tmp
+      TRITON_EVAL_REDIS_URL: redis://127.0.0.1:6379/8
+      TRITON_EVAL_API_HOST: 0.0.0.0
+      TRITON_EVAL_API_PORT: "11908"
+      TRITON_EVAL_CARDS: "0"
+      CANN_SET_ENV_PATH: /home/canada_group_folder/CANN/9.0.0.0430/ascend-toolkit/set_env.sh
+      ASCEND_DRIVER_PATH: /usr/local/Ascend/driver
+    devices:
+      - /dev/davinci_manager
+      - /dev/devmm_svm
+      - /dev/hisi_hdc
+      - /dev/davinci0
+    volumes:
+      - /home/n84449292/miniconda3:/home/n84449292/miniconda3:ro
+      - /home/n84449292/.local:/home/n84449292/.local:ro
+      - /home/canada_group_folder/CANN/9.0.0.0430:/home/canada_group_folder/CANN/9.0.0.0430
+      - /usr/local/dcmi:/usr/local/dcmi
+      - /usr/local/Ascend/driver:/usr/local/Ascend/driver
+      - /usr/local/bin/npu-smi:/usr/local/bin/npu-smi
+      - /etc/ascend_install.info:/etc/ascend_install.info
+      - ./docker/entrypoint.sh:/usr/local/bin/entrypoint.sh
+      - ./logs:/opt/triton-eval/logs
