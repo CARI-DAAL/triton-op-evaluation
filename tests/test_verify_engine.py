@@ -57,6 +57,41 @@ def test_candidate_import_error_writes_compilation_failure(tmp_path, monkeypatch
     assert "unexpected keyword argument" in failure["error_msg"]
 
 
+def test_candidate_missing_model_new_writes_compilation_failure(
+    tmp_path, monkeypatch
+):
+    reference = SimpleNamespace(
+        Model=object,
+        get_init_inputs=lambda: [],
+        get_inputs=lambda: [17],
+    )
+    candidate = SimpleNamespace()
+
+    def fake_import_module(name):
+        if name == "histc_torch":
+            return reference
+        if name == "histc_triton_ascend_impl":
+            return candidate
+        raise AssertionError(f"unexpected module import: {name}")
+
+    monkeypatch.setitem(sys.modules, "torch", _fake_torch_module())
+    monkeypatch.setitem(sys.modules, "torch_npu", ModuleType("torch_npu"))
+    monkeypatch.setattr(verify.importlib, "import_module", fake_import_module)
+    monkeypatch.setattr(verify.sys, "path", list(verify.sys.path))
+
+    output = tmp_path / "verify_result.json"
+    assert verify.verify_implementations(
+        "histc",
+        str(tmp_path),
+        output_path=str(output),
+    ) == (0, 1)
+
+    failure = json.loads(output.read_text())["failures"][0]
+    assert failure["error_type"] == "CompilationError"
+    assert "AttributeError" in failure["error_msg"]
+    assert "ModelNew" in failure["error_msg"]
+
+
 def test_reference_import_error_is_not_reclassified(tmp_path, monkeypatch):
     def fake_import_module(name):
         assert name == "histc_torch"
