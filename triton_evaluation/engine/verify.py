@@ -53,6 +53,15 @@ class AccuracyError(AssertionError):
         self.metrics = metrics
 
 
+class _CandidateImportError(Exception):
+    """候选代码在加载模块契约时失败。"""
+
+    def __init__(self, torch_module, error_msg):
+        super().__init__("candidate module import failed")
+        self.torch_module = torch_module
+        self.error_msg = error_msg
+
+
 @dataclass
 class CaseContext:
     """单个测试用例在整体序列中的定位（1-based）。"""
@@ -911,12 +920,21 @@ def _load_verify_modules(op_name, verify_dir, triton_impl_name):
     """导入 framework / impl 模块并解析关键符号。"""
     sys.path.insert(0, verify_dir)
     torch_module = importlib.import_module(f"{op_name}_torch")
-    impl_module = importlib.import_module(f"{op_name}_{triton_impl_name}")
+    framework_cls = torch_module.Model
+    get_init_inputs = torch_module.get_init_inputs
+    try:
+        impl_module = importlib.import_module(f"{op_name}_{triton_impl_name}")
+        impl_cls = impl_module.ModelNew
+    except Exception as exc:
+        raise _CandidateImportError(
+            torch_module,
+            truncate_error(traceback.format_exc()),
+        ) from exc
     return {
         "torch_module": torch_module,
-        "framework_cls": torch_module.Model,
-        "impl_cls": impl_module.ModelNew,
-        "get_init_inputs": torch_module.get_init_inputs,
+        "framework_cls": framework_cls,
+        "impl_cls": impl_cls,
+        "get_init_inputs": get_init_inputs,
     }
 
 
@@ -997,18 +1015,31 @@ def verify_implementations(
     import torch
     import torch_npu  # noqa: F401
 
-    modules = _load_verify_modules(op_name, verify_dir, triton_impl_name)
+    candidate_import_error = None
+    try:
+        modules = _load_verify_modules(op_name, verify_dir, triton_impl_name)
+    except _CandidateImportError as exc:
+        candidate_import_error = exc.error_msg
+        modules = {"torch_module": exc.torch_module}
 
     # 在获取输入之前设置种子，确保随机生成的输入可复现
     torch.manual_seed(0)
     torch.npu.manual_seed(0)
 
     input_groups, total_cases = resolve_input_provider(modules["torch_module"])
-    device = torch.device("npu")
+    device = None if candidate_import_error is not None else torch.device("npu")
 
     failures = []
     passed_cases = 0
     for case_idx, inputs in enumerate(input_groups, start=1):
+        if candidate_import_error is not None:
+            failures.append({
+                "case_idx": case_idx,
+                "input_desc": describe_input(inputs),
+                "error_type": "CompilationError",
+                "error_msg": candidate_import_error,
+            })
+            continue
         ok, failure = _try_run_case(
             modules, CaseContext(case_idx=case_idx, total_cases=total_cases),
             inputs, device, non_compute=non_compute,
