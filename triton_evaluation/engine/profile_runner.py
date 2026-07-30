@@ -37,6 +37,7 @@ try:
         remaining_pass_timeout,
         run_command,
     )
+    from ._common_utils import set_process_title as _set_process_title
 except ImportError:  # direct execution: python engine/profile_runner.py
     from msprof_deep import profile_deep_case
     from msprof_op import (
@@ -45,6 +46,7 @@ except ImportError:  # direct execution: python engine/profile_runner.py
         remaining_pass_timeout,
         run_command,
     )
+    from _common_utils import set_process_title as _set_process_title
 
 
 def build_runner_source() -> str:
@@ -482,4 +484,5 @@ def main() -> int:
 
 
 if __name__ == "__main__":
+    _set_process_title("TritonEvalWork")
     raise SystemExit(main())
