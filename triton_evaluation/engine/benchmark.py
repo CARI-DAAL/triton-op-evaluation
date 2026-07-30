@@ -35,6 +35,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from _log_utils import setup_logger as _setup_logger_shared  # noqa: E402	 
 from _common_utils import describe_input as _describe_input_shared  # noqa: E402
 from _common_utils import enforce_conv_fp32 as _enforce_conv_fp32  # noqa: E402
+from _common_utils import set_process_title as _set_process_title  # noqa: E402
 
 logger = logging.getLogger("triton_op_verifier.benchmark")
 
@@ -1106,4 +1107,5 @@ def main():
 
 
 if __name__ == "__main__":
+    _set_process_title("TritonEvalWork")
     main()

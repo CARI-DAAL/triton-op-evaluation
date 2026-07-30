@@ -10,7 +10,11 @@
 # ----------------------------------------------------------------------------------------------------------
 
 """verify.py / benchmark.py 共用的工具函数，避免重复实现。"""
+import ctypes
 from typing import Any, Dict, List
+
+# prctl(PR_SET_NAME) option code，见 set_process_title()。
+_PR_SET_NAME = 15
 
 
 def enforce_conv_fp32() -> None:
@@ -66,3 +70,40 @@ def describe_input(inputs: List[Any]) -> List[Dict[str, Any]]:
                 val = "<unrepr>"
             descs.append({"type": "scalar", "value": val})
     return descs
+
+
+def set_process_title(title: str) -> None:
+    """设置内核进程名 (/proc/<pid>/comm)，让 `npu-smi info` 显示直观名称而非 "python3"。
+
+    npu-smi 读取 /proc/<pid>/comm（TASK_COMM_LEN=16，可用 15 字节），通过
+    prctl(PR_SET_NAME) 改名。零依赖、失败静默——重命名不得影响评测运行。
+    """
+    # comm 上限 15 字节，自行截断以保证命名可预期。
+    title = title[:15]
+
+    # prctl(PR_SET_NAME) 设 /proc/<pid>/comm —— npu-smi 实际读取的字段。
+    try:
+        libc = ctypes.CDLL(None)
+    except OSError:
+        try:
+            libc = ctypes.CDLL("libc.so.6")
+        except OSError:
+            return
+    try:
+        libc.prctl.argtypes = [
+            ctypes.c_int,
+            ctypes.c_char_p,
+            ctypes.c_ulong,
+            ctypes.c_ulong,
+            ctypes.c_ulong,
+        ]
+        libc.prctl.restype = ctypes.c_long
+        libc.prctl(
+            _PR_SET_NAME,
+            ctypes.c_char_p(title.encode("utf-8", "replace")),
+            0,
+            0,
+            0,
+        )
+    except Exception:
+        pass
