@@ -9,9 +9,6 @@ from triton_evaluation.worker import Worker, reap_stale_tasks
 
 
 class FakeEvaluator:
-    name = "fake"
-    needs_bound_card = True
-
     def __init__(self):
         self.seen = []
 
@@ -34,6 +31,39 @@ def test_run_once_dispatches_and_stores(broker, settings):
     assert rec["result"] == {"ok": True}
     assert rec["device_id"] == 4
     assert ev.seen[0][2] == 4  # device_id passed through
+
+
+@pytest.mark.parametrize(
+    ("measure_speed", "expected_deadline"),
+    [
+        (False, 2020.0),
+        (True, 2320.0),
+    ],
+)
+def test_run_once_deadline_includes_benchmark_only_when_requested(
+    broker,
+    settings,
+    monkeypatch,
+    measure_speed,
+    expected_deadline,
+):
+    import triton_evaluation.worker as worker_mod
+
+    evaluator = FakeEvaluator()
+    spec = _spec()
+    spec.measure_speed = measure_speed
+    broker.create_task(Job("deadline-task", JobType.VERIFY.value, spec))
+    monkeypatch.setattr(worker_mod.time, "time", lambda: 1000.0)
+
+    worker = Worker(
+        broker,
+        {"verify": evaluator},
+        device_id=0,
+        settings=settings,
+    )
+    worker.run_once()
+
+    assert broker.get_task("deadline-task")["deadline"] == expected_deadline
 
 
 def test_profile_job_runs_on_whichever_worker_dequeues_it(broker, settings):
@@ -64,9 +94,6 @@ def test_run_once_idle_returns_false(broker, settings):
 
 def test_evaluator_exception_marks_failed(broker, settings):
     class Boom:
-        name = "verify"
-        needs_bound_card = True
-
         def run(self, *a):
             raise RuntimeError("kaboom")
 

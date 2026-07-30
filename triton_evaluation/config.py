@@ -7,6 +7,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 # defaults to the bundled engine; the env override exists only to point at a
 # different engine build.
 _DEFAULT_ENGINE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "engine")
+BENCHMARK_TIMEOUT_SECONDS = 300
 
 
 class Settings(BaseSettings):

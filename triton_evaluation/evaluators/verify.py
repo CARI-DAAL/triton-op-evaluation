@@ -8,9 +8,6 @@ from .benchmark import BenchmarkEvaluator
 
 
 class VerifyEvaluator:
-    name = "verify"
-    needs_bound_card = True
-
     def __init__(self, engine_dir: str):
         self.engine_dir = engine_dir
 

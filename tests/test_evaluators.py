@@ -2,6 +2,7 @@ import json
 import sys
 from pathlib import Path
 
+from triton_evaluation.evaluators import benchmark as benchmark_mod
 from triton_evaluation.evaluators import build_registry
 from triton_evaluation.evaluators import profile as profile_mod
 from triton_evaluation.evaluators import verify as verify_mod
@@ -94,6 +95,25 @@ def _spec(measure_speed=False):
     return JobSpec(
         op_name="softmax", reference_code="R", kernel_code="K", measure_speed=measure_speed
     )
+
+
+def test_benchmark_uses_300_second_hard_timeout(tmp_path, monkeypatch):
+    seen = {}
+
+    def fake_run(cmd, cwd, device_id, timeout):
+        seen["timeout"] = timeout
+        return ScriptOutcome(-1, "", "", True)
+
+    monkeypatch.setattr(benchmark_mod, "run_script", fake_run)
+
+    result = BenchmarkEvaluator("unused").run(
+        _spec(),
+        str(tmp_path),
+        device_id=0,
+    )
+
+    assert result.status == TaskStatus.TIMEOUT.value
+    assert seen["timeout"] == 300
 
 
 def _profile_spec(**overrides):
@@ -282,7 +302,6 @@ def test_measure_speed_benchmark_flake_keeps_verify_succeeded(tmp_path, monkeypa
 def test_registry_has_verify_and_profile_only(tmp_path):
     registry = build_registry(str(tmp_path))
     assert set(registry) == {"verify", "profile"}
-    assert registry["profile"].needs_bound_card is True
 
 
 def test_verify_step0_decoy_short_circuits(monkeypatch, tmp_path):

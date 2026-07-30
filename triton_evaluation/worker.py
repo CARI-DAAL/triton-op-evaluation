@@ -6,7 +6,7 @@ import time
 import redis
 
 from .broker import Broker
-from .config import Settings
+from .config import BENCHMARK_TIMEOUT_SECONDS, Settings
 from .models import TaskStatus
 
 logger = logging.getLogger(__name__)
@@ -23,7 +23,10 @@ class Worker:
         job = self.broker.dequeue()
         if job is None:
             return False
-        deadline = time.time() + job.spec.timeout + self.settings.reaper_grace_seconds
+        max_runtime = job.spec.timeout
+        if job.spec.measure_speed:
+            max_runtime += BENCHMARK_TIMEOUT_SECONDS
+        deadline = time.time() + max_runtime + self.settings.reaper_grace_seconds
         self.broker.mark_running(job.task_id, self.device_id, deadline)
         try:
             evaluator = self.registry[job.type]

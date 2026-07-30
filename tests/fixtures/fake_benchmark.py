@@ -10,7 +10,6 @@ p.add_argument("--triton_impl_name", default="triton_ascend_impl")
 p.add_argument("--warmup", type=int, default=5)
 p.add_argument("--repeats", type=int, default=50)
 p.add_argument("--output", default=None)
-p.add_argument("--verify_not_required", action="store_true")
 args = p.parse_args()
 
 
@@ -21,17 +20,16 @@ def _verify_json_name(name):
     return f"verify_result_{suffix}.json"
 
 
-if not args.verify_not_required:
-    vpath = os.path.join(args.verify_dir, _verify_json_name(args.triton_impl_name))
-    try:
-        with open(vpath) as f:
-            v = json.load(f)
-    except Exception:
-        sys.stderr.write("L1 gate: verify_result missing\n")
-        sys.exit(2)
-    if v.get("total_cases", 0) == 0 or v.get("passed_cases") != v.get("total_cases"):
-        sys.stderr.write("L1 gate: verify not all passed\n")
-        sys.exit(2)
+vpath = os.path.join(args.verify_dir, _verify_json_name(args.triton_impl_name))
+try:
+    with open(vpath) as f:
+        v = json.load(f)
+except Exception:
+    sys.stderr.write("L1 gate: verify_result missing\n")
+    sys.exit(2)
+if v.get("total_cases", 0) == 0 or v.get("passed_cases") != v.get("total_cases"):
+    sys.stderr.write("L1 gate: verify not all passed\n")
+    sys.exit(2)
 
 out = args.output or os.path.join(args.verify_dir, "perf_result.json")
 with open(out, "w") as f:

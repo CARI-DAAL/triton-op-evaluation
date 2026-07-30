@@ -920,7 +920,7 @@ def _load_verify_json(verify_json_path, triton_impl_name):
             "[L1 闸门] 拒绝执行 benchmark：未找到 verify_result 文件\n"
             "  expected: %s\n"
             "  triton_impl_name: %s\n"
-            "  请先运行 verify.py，或在确实不需要精度校验的场景下传 --verify_not_required",
+            "  请先运行 verify.py 并确保精度校验全部通过",
             verify_json_path,
             triton_impl_name,
         )
@@ -1012,8 +1012,6 @@ def _build_argparser():
                        help="跳过 framework 性能测试（GPU Kernel 模式使用）")
     parser.add_argument("--framework_latency_ms", type=float, default=0.0,
                        help="预设的 framework 参考延迟（毫秒），用于计算 speedup")
-    parser.add_argument("--verify_not_required", action="store_true",
-                       help="跳过 L1 verify 闸门（默认强制要求 verify_result 全过）")
     parser.add_argument("--clear_l2_cache", action="store_true",
                        help="每次迭代前清除 L2 cache")
     parser.add_argument("--keep_res", action="store_true",
@@ -1087,17 +1085,10 @@ def main():
         logger.error("错误: 验证目录不存在: %s", verify_dir)
         sys.exit(1)
 
-    if args.verify_not_required:
-        logger.warning(
-            "[L1 闸门] 已通过 --verify_not_required 跳过 verify 闸门检查 "
-            "(triton_impl_name=%s)",
-            args.triton_impl_name,
-        )
-    else:
-        try:
-            check_verify_gate(verify_dir, args.triton_impl_name)
-        except VerifyGateError as e:
-            sys.exit(e.exit_code)
+    try:
+        check_verify_gate(verify_dir, args.triton_impl_name)
+    except VerifyGateError as e:
+        sys.exit(e.exit_code)
 
     config = _build_config(args, verify_dir)
 

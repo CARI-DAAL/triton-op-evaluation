@@ -8,9 +8,6 @@ from .base import EvaluatorResult, materialize, read_json, run_script, tail
 
 
 class ProfileEvaluator:
-    name = "profile"
-    needs_bound_card = True
-
     def __init__(self, engine_dir: str):
         self.engine_dir = engine_dir
 
