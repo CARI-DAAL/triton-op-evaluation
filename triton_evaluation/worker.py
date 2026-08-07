@@ -12,6 +12,23 @@ from .models import TaskStatus
 logger = logging.getLogger(__name__)
 
 
+def compute_max_runtime(spec) -> float:
+    """Wall-clock budget for a job, accounting for v2 checks.
+
+    correctness/profile each may take up to ``spec.timeout`` (their subprocess
+    timeout is spec.timeout + 60); performance adds the benchmark hard cap."""
+    budget = spec.timeout
+    checks = spec.checks
+    if checks:
+        if "performance" in checks:
+            budget += BENCHMARK_TIMEOUT_SECONDS
+        if "profile" in checks:
+            budget += spec.timeout
+    elif getattr(spec, "measure_speed", False):
+        budget += BENCHMARK_TIMEOUT_SECONDS
+    return budget
+
+
 class Worker:
     def __init__(self, broker: Broker, registry: dict, device_id: int, settings: Settings):
         self.broker = broker
@@ -23,9 +40,7 @@ class Worker:
         job = self.broker.dequeue()
         if job is None:
             return False
-        max_runtime = job.spec.timeout
-        if job.spec.measure_speed:
-            max_runtime += BENCHMARK_TIMEOUT_SECONDS
+        max_runtime = compute_max_runtime(job.spec)
         deadline = time.time() + max_runtime + self.settings.reaper_grace_seconds
         self.broker.mark_running(job.task_id, self.device_id, deadline)
         try:

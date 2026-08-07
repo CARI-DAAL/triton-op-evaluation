@@ -101,3 +101,19 @@ def test_profile_request_rejects_launch_count_in_deep_mode():
             profile_mode="deep",
             profile_launch_count=2,
         )
+
+
+def test_jobspec_roundtrip_carries_checks():
+    from triton_evaluation.models import Job, JobSpec, JobType
+    spec = JobSpec(op_name="addmm", reference_code="R", kernel_code="K",
+                   checks=["correctness", "performance"], warmup=2, repeats=20)
+    back = Job.from_json(Job(task_id="e1", type=JobType.EVALUATION.value, spec=spec).to_json())
+    assert back.type == "evaluation"
+    assert back.spec.checks == ["correctness", "performance"]
+    assert back.spec.warmup == 2
+
+
+def test_jobspec_checks_default_none_keeps_v1_jobs():
+    from triton_evaluation.models import JobSpec
+    spec = JobSpec(op_name="addmm", reference_code="R", kernel_code="K")
+    assert spec.checks is None

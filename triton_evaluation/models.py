@@ -18,6 +18,7 @@ class TaskStatus(str, Enum):
 class JobType(str, Enum):
     VERIFY = "verify"
     PROFILE = "profile"
+    EVALUATION = "evaluation"
 
 
 ProfileMode = Literal["op", "deep"]
@@ -40,6 +41,8 @@ class JobSpec:
     profile_mode: ProfileMode = "op"
     case_idx: int | None = None
     profile_launch_count: int | None = None
+    # v2 evaluation jobs: which checks to run. None for v1 verify/profile jobs.
+    checks: list[str] | None = None
 
 
 @dataclass

@@ -147,3 +147,20 @@ def test_serve_forever_survives_redis_connection_error(settings, monkeypatch):
         w.serve_forever()
     # survived 2 connection errors with capped exponential backoff, then continued
     assert sleeps == [2, 4]
+
+
+def test_deadline_budgets_performance_and_profile_checks():
+    from triton_evaluation.config import BENCHMARK_TIMEOUT_SECONDS
+    from triton_evaluation.models import JobSpec
+    from triton_evaluation.worker import compute_max_runtime
+
+    base = JobSpec(op_name="addmm", reference_code="R", kernel_code="K", timeout=100)
+    assert compute_max_runtime(base) == 100  # v1 verify, no checks
+
+    perf = JobSpec(op_name="a", reference_code="R", kernel_code="K", timeout=100,
+                   checks=["correctness", "performance"])
+    assert compute_max_runtime(perf) == 100 + BENCHMARK_TIMEOUT_SECONDS
+
+    both = JobSpec(op_name="a", reference_code="R", kernel_code="K", timeout=100,
+                   checks=["correctness", "performance", "profile"])
+    assert compute_max_runtime(both) == 100 + BENCHMARK_TIMEOUT_SECONDS + 100
