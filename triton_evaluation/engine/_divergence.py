@@ -12,7 +12,6 @@ documented; ``classify`` returns the first matching kind.
 """
 import heapq
 import math
-from collections import defaultdict
 
 DIVERGENCE_KINDS = (
     "sign_flip",
@@ -168,8 +167,10 @@ def worst_sample(reference, candidate, abs_diff, shape, *, k=SAMPLE_DEFAULT_K):
     n = min(len(reference), len(candidate), len(abs_diff))
     if n == 0:
         return []
-    # top-k by |diff|; heapq.nlargest is O(n log k). Non-finite |diff| sorts largest.
-    triples = [((0.0 if not math.isfinite(abs_diff[i]) else abs_diff[i]), i)
+    # top-k by |diff|; heapq.nlargest is O(n log k). Non-finite |diff| (inf/nan) is the
+    # WORST kind of divergence, so rank it largest by mapping it to +inf — otherwise it
+    # would compare as 0.0 and be hidden when k < n.
+    triples = [((float("inf") if not math.isfinite(abs_diff[i]) else abs_diff[i]), i)
                for i in range(n)]
     top = heapq.nlargest(min(k, n), triples, key=lambda t: t[0])
     # row-major flat index -> multi-index

@@ -86,12 +86,27 @@ def test_worst_sample_non_finite_become_string_sentinels():
     candidate = [1.0, -math.inf, math.nan]
     abs_diff = [0.0, math.inf, math.nan]
     sample = worst_sample(reference, candidate, abs_diff, (3,), k=3)
-    assert sample[1]["candidate"] == "-inf"
-    assert sample[1]["reference"] == "inf"
-    assert sample[2]["candidate"] == "nan"
+    assert len(sample) == 3
+    # k == n, so every element is present; locate by flat index to stay order-independent
+    # (the worst-by-|diff| ranking is exercised by test_worst_sample_ranks_non_finite_above_finite).
+    by_idx = {tuple(s["idx"]): s for s in sample}
+    assert by_idx[(1,)]["candidate"] == "-inf"
+    assert by_idx[(1,)]["reference"] == "inf"
+    assert by_idx[(2,)]["candidate"] == "nan"
 
 
 def test_kind_always_returned_even_when_sample_empty():
     out = classify_divergence([1, 2], [1, 2], (2,), **TOLS, small_count=0, normal_count=2)
     assert out["kind"] in ("constant_offset", "precision_loss", "scattered")
     assert isinstance(out["sample"], list)
+
+
+def test_worst_sample_ranks_non_finite_above_finite():
+    # inf |diff| is the worst divergence — it must surface FIRST even when k < n
+    reference = [1.0, 2.0, 3.0, 4.0]
+    candidate = [1.0, 2.0, 3.0, math.inf]
+    abs_diff = [0.0, 0.5, 1.0, math.inf]
+    sample = worst_sample(reference, candidate, abs_diff, (4,), k=2)
+    assert len(sample) == 2
+    assert sample[0]["idx"] == [3]  # inf ranks above every finite diff
+    assert sample[0]["diff"] == "inf"
