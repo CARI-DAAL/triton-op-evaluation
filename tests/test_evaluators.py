@@ -299,9 +299,9 @@ def test_measure_speed_benchmark_flake_keeps_verify_succeeded(tmp_path, monkeypa
     assert "benchmark" not in res.result
 
 
-def test_registry_has_verify_and_profile_only(tmp_path):
+def test_registry_has_verify_profile_and_evaluation(tmp_path):
     registry = build_registry(str(tmp_path))
-    assert set(registry) == {"verify", "profile"}
+    assert set(registry) == {"verify", "profile", "evaluation"}
 
 
 def test_verify_step0_decoy_short_circuits(monkeypatch, tmp_path):

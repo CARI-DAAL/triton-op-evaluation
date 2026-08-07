@@ -9,5 +9,5 @@ def test_build_worker_sets_visible_devices(monkeypatch, tmp_path):
     w = run_worker.build_worker(card=3)
     assert os.environ["ASCEND_RT_VISIBLE_DEVICES"] == "3"
     assert w.device_id == 3
-    assert set(w.registry) == {"verify", "profile"}
+    assert set(w.registry) == {"verify", "profile", "evaluation"}
     assert "benchmark" not in w.registry
