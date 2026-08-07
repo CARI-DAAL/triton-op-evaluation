@@ -106,3 +106,25 @@ def test_reference_import_error_is_not_reclassified(tmp_path, monkeypatch):
             str(tmp_path),
             "triton_ascend_impl",
         )
+
+
+def test_failure_divergence_computes_kind_and_sample():
+    """_failure_divergence computes {kind, sample} from flat lists via the classifier."""
+    reference = [1.0, 2.0, 3.0, 4.0]
+    candidate = [6.0, 7.0, 8.0, 9.0]  # uniform +5 offset -> constant_offset
+    out = verify._failure_divergence(reference, candidate, (4,),
+                                     atol=1e-3, rtol=2 ** -13,
+                                     small_value_threshold=2 ** -14,
+                                     small_value_error=2 ** -30,
+                                     rel_threshold=2 ** -13,
+                                     small_count=0, normal_count=4)
+    assert out["kind"] == "constant_offset"
+    assert out["sample"] and out["sample"][0]["diff"] == 5.0
+
+
+def test_shape_mismatch_failure_gets_shape_mismatch_kind():
+    """The shape-mismatch helper records kind without needing tensors."""
+    failure = verify._shape_mismatch_failure(case_idx=1, fw_shape=(2, 3), impl_shape=(2, 4))
+    assert failure["kind"] == "shape_mismatch"
+    assert failure["sample"] == []
+    assert "shape" in failure["error_msg"]

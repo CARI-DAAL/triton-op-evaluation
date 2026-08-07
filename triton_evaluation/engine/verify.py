@@ -103,6 +103,7 @@ from _log_utils import setup_logger as _setup_logger_shared  # noqa: E402
 from _common_utils import describe_input as _describe_input_shared  # noqa: E402
 from _common_utils import enforce_conv_fp32 as _enforce_conv_fp32  # noqa: E402
 from _common_utils import set_process_title as _set_process_title  # noqa: E402
+from _divergence import classify_divergence as _classify_divergence  # noqa: E402
 
 logger = logging.getLogger("triton_op_verifier.verify")
 
@@ -119,6 +120,39 @@ def truncate_error(msg: str, limit: int = ERROR_MSG_LIMIT) -> str:
         return msg
     half = limit // 2
     return f"{msg[:half]}\n... [truncated {len(msg) - limit} chars] ...\n{msg[-half:]}"
+
+
+class _ShapeMismatchError(AssertionError):
+    """输出形状不一致 — 携带 framework/impl 两端 shape，供失败归因使用。"""
+
+    def __init__(self, message, fw_shape, impl_shape):
+        super().__init__(message)
+        self.fw_shape = fw_shape
+        self.impl_shape = impl_shape
+
+
+def _shape_mismatch_failure(case_idx, fw_shape, impl_shape):
+    """构造形状不一致的 failure dict（携带 kind=shape_mismatch，sample 为空）。"""
+    return {
+        "case_idx": case_idx,
+        "kind": "shape_mismatch",
+        "sample": [],
+        "error_type": "_ShapeMismatchError",
+        "error_msg": f"输出形状不一致 (shape mismatch): framework={tuple(fw_shape)}, impl={tuple(impl_shape)}",
+    }
+
+
+def _failure_divergence(reference, candidate, shape, *, atol, rtol,
+                        small_value_threshold, small_value_error, rel_threshold,
+                        small_count, normal_count, sample_k=8):
+    """从扁平 Python list 计算 {kind, sample}（engine 侧先把 tensor 转成 list）。"""
+    return _classify_divergence(
+        reference, candidate, shape,
+        atol=atol, rtol=rtol,
+        small_value_threshold=small_value_threshold, small_value_error=small_value_error,
+        rel_threshold=rel_threshold, small_count=small_count, normal_count=normal_count,
+        sample_k=sample_k,
+    )
 
 
 def describe_input(inputs):
@@ -643,8 +677,9 @@ def compare(fw_out, impl_out, data_type, input_spec=None, non_compute=False):
     size = fw_flat.numel()
 
     if fw_flat.shape != impl_flat.shape:
-        raise AssertionError(
-            f"验证失败，输出形状不一致: framework={fw_flat.shape}, impl={impl_flat.shape}"
+        raise _ShapeMismatchError(
+            f"验证失败，输出形状不一致: framework={fw_flat.shape}, impl={impl_flat.shape}",
+            tuple(fw_flat.shape), tuple(impl_flat.shape),
         )
 
     # 非计算类：二进制完全一致（先于其他判定，跳过 NaN/Inf/finite 过滤）
@@ -685,7 +720,19 @@ def compare(fw_out, impl_out, data_type, input_spec=None, non_compute=False):
         return
 
     # 输出浮点：按浮点精度标准执行（dtype-aware 三项判定）
-    _compare_float_output(fw_finite, impl_finite, ctx)
+    try:
+        _compare_float_output(fw_finite, impl_finite, ctx)
+    except AccuracyError as e:
+        e.metrics["divergence"] = _failure_divergence(
+            fw_flat.tolist(), impl_flat.tolist(), tuple(fw_out.shape),
+            atol=get_allclose_tols(data_type)[0], rtol=get_allclose_tols(data_type)[1],
+            small_value_threshold=get_limits(data_type)[0],
+            small_value_error=get_limits(data_type)[1],
+            rel_threshold=get_limits(data_type)[2],
+            small_count=e.metrics.get("small_count", 0),
+            normal_count=e.metrics.get("normal_count", 0),
+        )
+        raise
 
 
 def _compute_accuracy_state(golden, actual, data_type):
@@ -968,6 +1015,11 @@ def _try_run_case(modules, case_ctx: CaseContext, inputs, device, non_compute=Fa
             case_ctx, non_compute=non_compute,
         )
         return True, None
+    except _ShapeMismatchError as e:
+        logger.error("  [用例 %d/%d] 形状不一致", case_ctx.case_idx, case_ctx.total_cases)
+        return False, _shape_mismatch_failure(
+            case_ctx.case_idx, e.fw_shape, e.impl_shape,
+        )
     except Exception as e:
         err_detail = traceback.format_exc()
         logger.error(
@@ -979,9 +1031,15 @@ def _try_run_case(modules, case_ctx: CaseContext, inputs, device, non_compute=Fa
             "input_desc": describe_input(inputs),
             "error_type": type(e).__name__,
             "error_msg": truncate_error(err_detail),
+            "kind": None,
+            "sample": [],
         }
         if isinstance(e, AccuracyError):
             failure["metrics"] = e.metrics
+            div = e.metrics.get("divergence")
+            if div is not None:
+                failure["kind"] = div.get("kind")
+                failure["sample"] = div.get("sample", [])
         return False, failure
     finally:
         del framework_model
