@@ -9,14 +9,15 @@ from typing import Any
 
 def _case_failure(raw: dict) -> dict:
     metrics = raw.get("metrics") or {}
+    mere = metrics.get("MERE")  # MERE = mean RELATIVE error (verify.py:_compute_accuracy_state)
     return {
         "case_idx": raw.get("case_idx"),
         "kind": raw.get("kind"),
         "metrics": {
             "max_abs_diff": metrics.get("max_abs_diff"),
-            "mean_abs_err": metrics.get("MERE"),  # MERE is the mean rel err; keep mean_abs_err null
+            "mean_abs_err": None,  # engine produces no mean ABSOLUTE error (only max_abs_diff + MERE)
             "matched_ratio": metrics.get("matched_ratio"),
-            "mere": metrics.get("MERE"),
+            "mere": mere,
             "small_count": metrics.get("small_count"),
             "normal_count": metrics.get("normal_count"),
             "atol": metrics.get("atol"),

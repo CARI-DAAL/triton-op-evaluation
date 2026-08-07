@@ -38,6 +38,8 @@ def test_correctness_only_maps_failures_with_kind_and_sample():
     assert corr["passed_cases"] == 1 and corr["total_cases"] == 2
     assert corr["failures"][0]["kind"] == "constant_offset"
     assert corr["failures"][0]["sample"][0]["diff"] == 5.0
+    assert corr["failures"][0]["metrics"]["mean_abs_err"] is None  # engine has no mean abs err
+    assert corr["failures"][0]["metrics"]["mere"] == 1.0  # MERE (mean rel err) passes through
     assert payload["performance"] is None
     assert payload["profile"] is None
 
