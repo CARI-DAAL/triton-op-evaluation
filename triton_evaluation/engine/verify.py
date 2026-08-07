@@ -958,6 +958,10 @@ def run_single_case(models: ModelPair, inputs, device, case_ctx: CaseContext, no
                     InputSpec(input_type, input_dtype),
                     non_compute=non_compute,
                 )
+            except _ShapeMismatchError:
+                # 裸 raise 保留原始异常类型与 fw_shape/impl_shape 属性，使 _try_run_case
+                # 的 except _ShapeMismatchError 分支能命中（否则会被下方 AssertionError 吞掉）。
+                raise
             except AccuracyError as e:
                 raise AccuracyError(f"[用例 {case_idx}/{total_cases}] {str(e)}", e.metrics) from e
             except AssertionError as e:
@@ -1016,6 +1020,7 @@ def _try_run_case(modules, case_ctx: CaseContext, inputs, device, non_compute=Fa
         )
         return True, None
     except _ShapeMismatchError as e:
+        # 依赖 run_single_case 中的 except _ShapeMismatchError: raise 透传（否则会被展平为普通 AssertionError）。
         logger.error("  [用例 %d/%d] 形状不一致", case_ctx.case_idx, case_ctx.total_cases)
         return False, _shape_mismatch_failure(
             case_ctx.case_idx, e.fw_shape, e.impl_shape,
