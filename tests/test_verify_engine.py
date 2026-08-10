@@ -56,7 +56,7 @@ class _FakeTensor:
         self.shape = shape or (len(self.values),)
 
     def flatten(self):
-        return self
+        return _FakeTensor(self.values, self.dtype)
 
     def detach(self):
         return self
@@ -305,3 +305,21 @@ def test_try_run_case_projects_attached_divergence_into_failure(monkeypatch):
     assert passed is False
     assert failure["kind"] == "constant_offset"
     assert failure["sample"] == divergence["sample"]
+
+
+def test_compare_rejects_same_numel_with_different_shapes(monkeypatch):
+    dtype = _FakeDType("float32", floating=True)
+    torch = _comparison_torch(_FakeDType("bool"))
+    monkeypatch.setitem(sys.modules, "torch", torch)
+    monkeypatch.setattr(verify, "_check_nan_inf", lambda *args: None)
+    monkeypatch.setattr(verify, "_is_integer_dtype", lambda value: False)
+    monkeypatch.setattr(verify, "_compare_float_output", lambda *args: None)
+
+    reference = _FakeTensor(range(6), dtype, shape=(2, 3))
+    candidate = _FakeTensor(range(6), dtype, shape=(3, 2))
+
+    with pytest.raises(verify._ShapeMismatchError) as caught:
+        verify.compare(reference, candidate, "float32")
+
+    assert caught.value.fw_shape == (2, 3)
+    assert caught.value.impl_shape == (3, 2)

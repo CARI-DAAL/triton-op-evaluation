@@ -721,6 +721,11 @@ def compare(fw_out, impl_out, data_type, input_spec=None, non_compute=False):
         input_spec = InputSpec()
     input_type = input_spec.input_type
     input_dtype = input_spec.input_dtype
+    if isinstance(impl_out, torch.Tensor) and tuple(fw_out.shape) != tuple(impl_out.shape):
+        raise _ShapeMismatchError(
+            f"验证失败，输出形状不一致: framework={fw_out.shape}, impl={impl_out.shape}",
+            tuple(fw_out.shape), tuple(impl_out.shape),
+        )
     fw_flat = fw_out.flatten().detach().cpu()
     impl_flat = impl_out.flatten()
     if isinstance(impl_flat, torch.Tensor):

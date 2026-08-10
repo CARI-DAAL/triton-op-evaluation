@@ -18,8 +18,33 @@ SESSION_ID_RE = re.compile(r"^[A-Za-z0-9._:-]{1,128}$")
 TERMINAL = {"SUCCEEDED", "FAILED", "TIMEOUT", "REJECTED"}
 
 
+class _DeadlineExpired(Exception):
+    pass
+
+
 def _monotonic() -> float:
     return time.monotonic()
+
+
+def _timeout_result(task_id: str) -> EvaluationResult:
+    return EvaluationResult(
+        task_id=task_id,
+        status="TIMEOUT",
+        error="evaluation request timed out",
+        result=EvaluationPayload(),
+    )
+
+
+async def _broker_call_before(deadline: float, call, *args):
+    remaining = deadline - _monotonic()
+    if remaining <= 0:
+        raise _DeadlineExpired
+    task = asyncio.create_task(asyncio.to_thread(call, *args))
+    done, _ = await asyncio.wait({task}, timeout=remaining)
+    if not done:
+        task.cancel()
+        raise _DeadlineExpired
+    return task.result()
 
 
 def _validate_session_id(value: str | None) -> str:
@@ -55,21 +80,14 @@ async def _wait_for_result(
     while True:
         remaining = deadline - _monotonic()
         if remaining <= 0:
-            return EvaluationResult(
-                task_id=task_id,
-                status="TIMEOUT",
-                error="evaluation request timed out",
-                result=EvaluationPayload(),
-            )
-        record = await asyncio.to_thread(broker.get_task, task_id)
+            return _timeout_result(task_id)
+        try:
+            record = await _broker_call_before(deadline, broker.get_task, task_id)
+        except _DeadlineExpired:
+            return _timeout_result(task_id)
         remaining = deadline - _monotonic()
         if remaining <= 0:
-            return EvaluationResult(
-                task_id=task_id,
-                status="TIMEOUT",
-                error="evaluation request timed out",
-                result=EvaluationPayload(),
-            )
+            return _timeout_result(task_id)
         if record is not None and record.get("status") in TERMINAL:
             return _to_evaluation_result(record)
         await asyncio.sleep(min(poll_interval, remaining))
@@ -103,11 +121,15 @@ async def submit_evaluation(
         session_id=session_id,
     )
     lease_ttl = compute_session_lease_ttl(spec, broker.s)
-    submitted = await asyncio.to_thread(
-        broker.submit,
-        Job(task_id, JobType.EVALUATION.value, spec),
-        lease_ttl,
-    )
+    try:
+        submitted = await _broker_call_before(
+            deadline,
+            broker.submit,
+            Job(task_id, JobType.EVALUATION.value, spec),
+            lease_ttl,
+        )
+    except _DeadlineExpired:
+        return _timeout_result(task_id)
     if not submitted:
         raise HTTPException(
             status_code=429,

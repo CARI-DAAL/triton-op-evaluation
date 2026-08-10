@@ -219,7 +219,7 @@ def test_ambiguous_submit_failure_retains_session_lease(settings, monkeypatch):
     redis_client = fakeredis.FakeStrictRedis(decode_responses=True)
     broker = _AmbiguousSubmitBroker(redis_client, settings)
     client = TestClient(create_app(broker), raise_server_exceptions=False)
-    ticks = iter([0.0, 11.0])
+    ticks = iter([0.0, 0.0])
     monkeypatch.setattr(routes, "_monotonic", lambda: next(ticks))
 
     response = client.post(
@@ -238,7 +238,7 @@ def test_request_timeout_returns_terminal_payload_without_cancelling_job(
 ):
     import triton_evaluation.api.routes as routes
 
-    ticks = iter([100.0, 111.0])
+    ticks = iter([100.0, 100.0, 111.0])
     monkeypatch.setattr(routes, "_monotonic", lambda: next(ticks))
     client, broker = _client(settings)
 
@@ -332,6 +332,86 @@ def test_async_route_runs_blocking_broker_calls_off_event_loop(settings, monkeyp
     assert handler_threads
     assert broker_threads
     assert set(handler_threads).isdisjoint(broker_threads)
+
+
+def test_stalled_submit_is_bounded_by_remaining_request_deadline(settings, monkeypatch):
+    import triton_evaluation.api.routes as routes
+
+    class _SlowSubmitBroker(Broker):
+        def submit(self, job, lease_ttl_seconds):
+            time.sleep(0.05)
+            submitted = super().submit(job, lease_ttl_seconds)
+            self.store_result(
+                job.task_id,
+                "SUCCEEDED",
+                result={
+                    "correctness": {
+                        "passed": True,
+                        "compiled": True,
+                        "decoy": False,
+                        "passed_cases": 1,
+                        "total_cases": 1,
+                        "failures": [],
+                    },
+                    "performance": None,
+                    "profile": None,
+                },
+            )
+            return submitted
+
+    ticks = iter([100.0, 109.99])
+    monkeypatch.setattr(routes, "_monotonic", lambda: next(ticks, 109.99))
+    client, _ = _client(settings, _SlowSubmitBroker)
+
+    response = client.post(
+        "/evaluations",
+        headers={"X-Session-ID": "session-a"},
+        json=_request_body(timeout=10),
+    )
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "TIMEOUT"
+
+
+def test_stalled_poll_is_bounded_by_remaining_request_deadline(settings, monkeypatch):
+    import triton_evaluation.api.routes as routes
+
+    class _SlowPollBroker(Broker):
+        def get_task(self, task_id):
+            time.sleep(0.05)
+            record = super().get_task(task_id)
+            if record is not None and record["status"] == "QUEUED":
+                self.store_result(
+                    task_id,
+                    "SUCCEEDED",
+                    result={
+                        "correctness": {
+                            "passed": True,
+                            "compiled": True,
+                            "decoy": False,
+                            "passed_cases": 1,
+                            "total_cases": 1,
+                            "failures": [],
+                        },
+                        "performance": None,
+                        "profile": None,
+                    },
+                )
+                return super().get_task(task_id)
+            return record
+
+    ticks = iter([100.0, 100.0, 100.0, 109.99])
+    monkeypatch.setattr(routes, "_monotonic", lambda: next(ticks, 109.99))
+    client, _ = _client(settings, _SlowPollBroker)
+
+    response = client.post(
+        "/evaluations",
+        headers={"X-Session-ID": "session-a"},
+        json=_request_body(timeout=10),
+    )
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "TIMEOUT"
 
 
 def test_removed_v1_and_polling_routes_are_404(settings):
