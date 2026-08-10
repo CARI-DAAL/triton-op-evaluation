@@ -1,4 +1,5 @@
 import logging
+import math
 import shutil
 import tempfile
 import time
@@ -29,6 +30,13 @@ def compute_max_runtime(spec) -> float:
     return budget
 
 
+def compute_session_lease_ttl(spec, settings: Settings) -> int:
+    """Cover queue wait, the full worker budget, and reaper grace."""
+    return math.ceil(
+        compute_max_runtime(spec) + settings.reaper_grace_seconds + spec.timeout
+    )
+
+
 class Worker:
     def __init__(self, broker: Broker, registry: dict, device_id: int, settings: Settings):
         self.broker = broker
@@ -43,6 +51,7 @@ class Worker:
         max_runtime = compute_max_runtime(job.spec)
         deadline = time.time() + max_runtime + self.settings.reaper_grace_seconds
         self.broker.mark_running(job.task_id, self.device_id, deadline)
+        terminal_stored = False
         try:
             evaluator = self.registry[job.type]
             verify_dir = tempfile.mkdtemp(prefix=f"eval_{job.task_id}_")
@@ -51,8 +60,13 @@ class Worker:
             finally:
                 shutil.rmtree(verify_dir, ignore_errors=True)
             self.broker.store_result(job.task_id, res.status, res.result, res.error)
+            terminal_stored = True
         except Exception as e:  # dispatch/setup failure — never crash the worker
             self.broker.store_result(job.task_id, TaskStatus.FAILED.value, error=repr(e))
+            terminal_stored = True
+        finally:
+            if terminal_stored and job.spec.session_id is not None:
+                self.broker.release_session(job.spec.session_id, job.task_id)
         return True
 
     def serve_forever(self) -> None:

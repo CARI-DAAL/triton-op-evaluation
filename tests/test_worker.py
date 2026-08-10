@@ -5,7 +5,11 @@ import redis
 
 from triton_evaluation.evaluators.base import EvaluatorResult
 from triton_evaluation.models import Job, JobSpec, JobType, TaskStatus
-from triton_evaluation.worker import Worker, reap_stale_tasks
+from triton_evaluation.worker import (
+    Worker,
+    compute_session_lease_ttl,
+    reap_stale_tasks,
+)
 
 
 class FakeEvaluator:
@@ -164,3 +168,90 @@ def test_deadline_budgets_performance_and_profile_checks():
     both = JobSpec(op_name="a", reference_code="R", kernel_code="K", timeout=100,
                    checks=["correctness", "performance", "profile"])
     assert compute_max_runtime(both) == 100 + BENCHMARK_TIMEOUT_SECONDS + 100
+
+
+def test_session_lease_ttl_covers_worker_and_request_budgets(settings):
+    spec = JobSpec(
+        op_name="a",
+        reference_code="R",
+        kernel_code="K",
+        timeout=100,
+        checks=["correctness", "performance", "profile"],
+    )
+
+    assert compute_session_lease_ttl(spec, settings) == 100 + 300 + 100 + 120 + 100
+
+
+def test_worker_releases_session_after_storing_success(broker, settings):
+    spec = JobSpec(
+        op_name="a",
+        reference_code="R",
+        kernel_code="K",
+        checks=["correctness"],
+        session_id="session-a",
+    )
+    assert broker.acquire_session("session-a", "task-a", 60) is True
+    broker.create_task(Job("task-a", JobType.EVALUATION.value, spec))
+
+    worker = Worker(
+        broker,
+        {JobType.EVALUATION.value: FakeEvaluator()},
+        device_id=0,
+        settings=settings,
+    )
+    assert worker.run_once() is True
+    assert broker.get_task("task-a")["status"] == TaskStatus.SUCCEEDED.value
+    assert broker.acquire_session("session-a", "task-b", 60) is True
+
+
+def test_worker_releases_session_after_storing_evaluator_failure(broker, settings):
+    class Boom:
+        def run(self, *args):
+            raise RuntimeError("kaboom")
+
+    spec = JobSpec(
+        op_name="a",
+        reference_code="R",
+        kernel_code="K",
+        checks=["correctness"],
+        session_id="session-a",
+    )
+    assert broker.acquire_session("session-a", "task-a", 60) is True
+    broker.create_task(Job("task-a", JobType.EVALUATION.value, spec))
+
+    Worker(
+        broker,
+        {JobType.EVALUATION.value: Boom()},
+        device_id=0,
+        settings=settings,
+    ).run_once()
+
+    assert broker.get_task("task-a")["status"] == TaskStatus.FAILED.value
+    assert broker.acquire_session("session-a", "task-b", 60) is True
+
+
+def test_worker_retains_session_when_terminal_store_fails(broker, settings, monkeypatch):
+    spec = JobSpec(
+        op_name="a",
+        reference_code="R",
+        kernel_code="K",
+        checks=["correctness"],
+        session_id="session-a",
+    )
+    assert broker.acquire_session("session-a", "task-a", 60) is True
+    broker.create_task(Job("task-a", JobType.EVALUATION.value, spec))
+
+    def fail_store(*args, **kwargs):
+        raise redis.exceptions.ConnectionError("redis unavailable")
+
+    monkeypatch.setattr(broker, "store_result", fail_store)
+    worker = Worker(
+        broker,
+        {JobType.EVALUATION.value: FakeEvaluator()},
+        device_id=0,
+        settings=settings,
+    )
+
+    with pytest.raises(redis.exceptions.ConnectionError):
+        worker.run_once()
+    assert broker.acquire_session("session-a", "task-b", 60) is False

@@ -117,3 +117,16 @@ def test_jobspec_checks_default_none_keeps_v1_jobs():
     from triton_evaluation.models import JobSpec
     spec = JobSpec(op_name="addmm", reference_code="R", kernel_code="K")
     assert spec.checks is None
+
+
+def test_jobspec_roundtrip_carries_session_id():
+    spec = JobSpec(
+        op_name="addmm",
+        reference_code="R",
+        kernel_code="K",
+        checks=["correctness"],
+        session_id="container-17",
+    )
+    job = Job(task_id="e2", type=JobType.EVALUATION.value, spec=spec)
+
+    assert Job.from_json(job.to_json()).spec.session_id == "container-17"

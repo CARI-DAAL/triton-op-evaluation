@@ -1,5 +1,6 @@
 import time
 
+import pytest
 import redis
 
 from triton_evaluation.broker import Broker
@@ -62,3 +63,21 @@ def test_dequeue_returns_none_on_socket_timeout(settings):
 
     broker = Broker(_TimingOutClient(), settings)
     assert broker.dequeue() is None
+
+
+def test_session_lease_has_single_owner(broker):
+    assert broker.acquire_session("session-a", "task-1", 60) is True
+    assert broker.acquire_session("session-a", "task-2", 60) is False
+    assert broker.release_session("session-a", "task-2") is False
+    assert broker.release_session("session-a", "task-1") is True
+    assert broker.acquire_session("session-a", "task-2", 60) is True
+
+
+def test_sessions_are_independent(broker):
+    assert broker.acquire_session("session-a", "task-a", 60) is True
+    assert broker.acquire_session("session-b", "task-b", 60) is True
+
+
+def test_session_lease_rejects_non_positive_ttl(broker):
+    with pytest.raises(ValueError, match="positive"):
+        broker.acquire_session("session-a", "task-a", 0)

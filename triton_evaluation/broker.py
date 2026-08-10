@@ -37,11 +37,44 @@ class Broker:
     def _task_key(self, task_id: str) -> str:
         return f"{self.s.task_key_prefix}{task_id}"
 
+    def _session_key(self, session_id: str) -> str:
+        return f"{self.s.session_key_prefix}{session_id}"
+
     def ping(self) -> None:
         self.r.ping()
 
     def close(self) -> None:
         self.r.close()
+
+    def acquire_session(self, session_id: str, task_id: str, ttl_seconds: int) -> bool:
+        if ttl_seconds <= 0:
+            raise ValueError("session lease TTL must be positive")
+        return bool(
+            self.r.set(
+                self._session_key(session_id),
+                task_id,
+                nx=True,
+                ex=ttl_seconds,
+            )
+        )
+
+    def release_session(self, session_id: str, task_id: str) -> bool:
+        key = self._session_key(session_id)
+        while True:
+            pipeline = self.r.pipeline()
+            try:
+                pipeline.watch(key)
+                if pipeline.get(key) != task_id:
+                    pipeline.unwatch()
+                    return False
+                pipeline.multi()
+                pipeline.delete(key)
+                pipeline.execute()
+                return True
+            except redis.exceptions.WatchError:
+                continue
+            finally:
+                pipeline.reset()
 
     def create_task(self, job: Job) -> None:
         key = self._task_key(job.task_id)

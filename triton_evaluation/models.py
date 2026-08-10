@@ -43,6 +43,7 @@ class JobSpec:
     profile_launch_count: int | None = None
     # v2 evaluation jobs: which checks to run. None for v1 verify/profile jobs.
     checks: list[str] | None = None
+    session_id: str | None = None
 
 
 @dataclass

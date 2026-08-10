@@ -7,6 +7,8 @@ def test_defaults():
     s = Settings()
     assert s.queue_key == "eval:queue"
     assert s.task_key_prefix == "eval:task:"
+    assert s.session_key_prefix == "eval:session:"
+    assert s.api_poll_interval_seconds == 0.25
     assert s.task_ttl_seconds == 24 * 3600
     # engine is vendored inside the package; default points at the bundled dir
     assert s.engine_dir.endswith(os.path.join("triton_evaluation", "engine"))
