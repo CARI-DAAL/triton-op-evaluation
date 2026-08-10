@@ -92,13 +92,14 @@ class EvaluationEvaluator:
                     decoy = bool(verify_result.result.get("decoy"))
                     verify_json = None if decoy else verify_result.result
 
-        def _all_passed(d: dict) -> bool:
-            return d.get("total_cases", 0) > 0 and d.get("passed_cases") == d.get("total_cases")
-
-        correctness_passed = bool(verify_json and _all_passed(verify_json))
-        correctness = (
-            shape_correctness(verify_json, decoy=decoy) if "correctness" in checks else None
-        )
+        correctness = None
+        if "correctness" in checks:
+            try:
+                correctness = shape_correctness(verify_json, decoy=decoy)
+            except Exception as exc:
+                statuses.append(TaskStatus.FAILED.value)
+                errors.append(f"correctness result is invalid: {exc}")
+        correctness_passed = bool(correctness and correctness.get("passed"))
 
         performance = None
         if "performance" in checks and not decoy and correctness_passed:

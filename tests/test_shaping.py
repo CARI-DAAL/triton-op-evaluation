@@ -89,6 +89,19 @@ def test_correctness_keeps_compile_error_and_sets_compiled_false():
     assert payload["correctness"]["failures"][0]["error"] == "boom"
 
 
+@pytest.mark.parametrize(
+    "raw",
+    [
+        {},
+        {"total_cases": 1, "passed_cases": 2, "failures": []},
+        {"total_cases": 1, "passed_cases": 0, "failures": "not-a-list"},
+    ],
+)
+def test_correctness_rejects_malformed_engine_result(raw):
+    with pytest.raises(ShapingError, match="correctness"):
+        shape_payload(raw, None, None, checks=["correctness"])
+
+
 def test_performance_projects_only_stable_per_shape_fields():
     assert shape_performance(_complete_perf_json()) == {
         "speedup_vs_torch": 2.5,
@@ -251,6 +264,11 @@ def test_profile_partial_when_failures_remain():
         "per_case_results": [],
     }
     assert shape_profile(raw)["profile_state"] == "partial"
+
+
+def test_profile_rejects_missing_summary_counts():
+    with pytest.raises(ShapingError, match="profile"):
+        shape_profile({"profile_mode": "op", "per_case_results": []})
 
 
 def test_decoy_correctness_result():

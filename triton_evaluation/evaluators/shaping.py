@@ -9,6 +9,13 @@ class ShapingError(ValueError):
     """An engine result cannot satisfy the stable v2 contract."""
 
 
+def _required_count(raw: dict, name: str, result_name: str) -> int:
+    value = raw.get(name)
+    if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+        raise ShapingError(f"{result_name} result has an invalid {name}")
+    return value
+
+
 def _case_failure(raw: dict) -> dict:
     metrics = raw.get("metrics") or {}
     kind = raw.get("kind")
@@ -42,9 +49,15 @@ def shape_correctness(verify_json: dict | None, *, decoy: bool = False) -> dict 
         }
     if verify_json is None:
         return None
-    total = verify_json.get("total_cases", 0)
-    passed = verify_json.get("passed_cases", 0)
-    failures = verify_json.get("failures", [])
+    if not isinstance(verify_json, dict):
+        raise ShapingError("correctness result is not an object")
+    total = _required_count(verify_json, "total_cases", "correctness")
+    passed = _required_count(verify_json, "passed_cases", "correctness")
+    failures = verify_json.get("failures")
+    if passed > total or not isinstance(failures, list) or not all(
+        isinstance(failure, dict) for failure in failures
+    ):
+        raise ShapingError("correctness result is invalid")
     compiled = not any(failure.get("error_type") == "CompilationError" for failure in failures)
     return {
         "passed": total > 0 and passed == total,
@@ -183,9 +196,17 @@ def _deep_summaries(profile_json: dict) -> list[dict]:
 
 
 def shape_profile(profile_json: dict) -> dict:
+    if not isinstance(profile_json, dict):
+        raise ShapingError("profile result is not an object")
     mode = profile_json.get("profile_mode")
     if mode not in {"op", "deep"}:
         raise ShapingError("profile result has an invalid mode")
+    for name in ("selected_cases", "completed_cases", "partial_cases", "failed_cases"):
+        _required_count(profile_json, name, "profile")
+    if not isinstance(profile_json.get("timed_out"), bool) or not isinstance(
+        profile_json.get("per_case_results"), list
+    ):
+        raise ShapingError("profile result is invalid")
     data = {
         "mode": mode,
         "selected_cases": profile_json.get("selected_cases", 0),

@@ -287,3 +287,23 @@ def test_successful_profile_without_result_is_failed(tmp_path):
     assert "profile result is missing" in result.error
     assert result.result["correctness"]["passed"] is True
     assert result.result["profile"] is None
+
+
+def test_malformed_correctness_result_still_runs_profile(tmp_path):
+    class _MalformedCorrectness:
+        def run(self, *args):
+            return EvaluatorResult(TaskStatus.SUCCEEDED.value, result={})
+
+    harness = _Harness()
+    harness.verify = _MalformedCorrectness()
+
+    result = harness.run(
+        _spec(["correctness", "profile"]),
+        str(tmp_path),
+        device_id=0,
+    )
+
+    assert result.status == TaskStatus.FAILED.value
+    assert "correctness result is invalid" in result.error
+    assert result.result["correctness"] is None
+    assert result.result["profile"]["profile_state"] == "complete"
