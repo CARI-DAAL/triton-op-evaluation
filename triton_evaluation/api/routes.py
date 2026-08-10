@@ -1,63 +1,118 @@
+import asyncio
+import re
+import time
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException
+from pydantic import ValidationError
 
 from ..broker import Broker
-from ..models import (
-    Job,
-    JobSpec,
-    JobType,
-    ProfileRequest,
-    SubmitResponse,
-    TaskResponse,
-    VerifyRequest,
-)
+from ..models import Job, JobSpec, JobType
+from ..worker import compute_session_lease_ttl
+from .contract import EvaluationPayload, EvaluationRequest, EvaluationResult
 from .dependencies import get_broker
 
 router = APIRouter()
 
+SESSION_ID_RE = re.compile(r"^[A-Za-z0-9._:-]{1,128}$")
+TERMINAL = {"SUCCEEDED", "FAILED", "TIMEOUT", "REJECTED"}
 
-@router.post("/verify", response_model=SubmitResponse)
-def submit_verify(req: VerifyRequest, broker: Broker = Depends(get_broker)):
+
+def _monotonic() -> float:
+    return time.monotonic()
+
+
+def _validate_session_id(value: str | None) -> str:
+    if value is None or SESSION_ID_RE.fullmatch(value) is None:
+        raise HTTPException(status_code=400, detail="invalid or missing X-Session-ID")
+    return value
+
+
+def _to_evaluation_result(record: dict) -> EvaluationResult:
+    try:
+        payload = EvaluationPayload.model_validate(record.get("result") or {})
+        return EvaluationResult(
+            task_id=record["task_id"],
+            status=record["status"],
+            error=record.get("error"),
+            result=payload,
+        )
+    except (KeyError, TypeError, ValidationError):
+        return EvaluationResult(
+            task_id=record.get("task_id") or "unknown",
+            status="FAILED",
+            error="invalid worker result",
+            result=EvaluationPayload(),
+        )
+
+
+async def _wait_for_result(
+    broker: Broker,
+    task_id: str,
+    timeout: int,
+    poll_interval: float,
+) -> EvaluationResult:
+    deadline = _monotonic() + timeout
+    while True:
+        record = broker.get_task(task_id)
+        if record is not None and record.get("status") in TERMINAL:
+            return _to_evaluation_result(record)
+        remaining = deadline - _monotonic()
+        if remaining <= 0:
+            return EvaluationResult(
+                task_id=task_id,
+                status="TIMEOUT",
+                error="evaluation request timed out",
+                result=EvaluationPayload(),
+            )
+        await asyncio.sleep(min(poll_interval, remaining))
+
+
+@router.post("/evaluations", response_model=EvaluationResult)
+async def submit_evaluation(
+    request: EvaluationRequest,
+    x_session_id: str | None = Header(default=None, alias="X-Session-ID"),
+    broker: Broker = Depends(get_broker),
+):
+    session_id = _validate_session_id(x_session_id)
+    if "performance" in request.checks and "correctness" not in request.checks:
+        raise HTTPException(status_code=400, detail="performance requires correctness")
+
     task_id = uuid.uuid4().hex
     spec = JobSpec(
-        op_name=req.op_name,
-        reference_code=req.reference_code,
-        kernel_code=req.kernel_code,
-        triton_impl_name=req.triton_impl_name,
-        non_compute=req.non_compute,
-        timeout=req.timeout,
-        measure_speed=req.measure_speed,
-        warmup=req.warmup,
-        repeats=req.repeats,
+        op_name=request.op_name,
+        reference_code=request.reference_code,
+        kernel_code=request.kernel_code,
+        triton_impl_name=request.triton_impl_name,
+        non_compute=request.non_compute,
+        timeout=request.timeout,
+        checks=list(request.checks),
+        warmup=request.performance.warmup if request.performance else 5,
+        repeats=request.performance.repeats if request.performance else 50,
+        profile_mode=request.profile.mode if request.profile else "op",
+        case_idx=request.profile.case_idx if request.profile else None,
+        profile_launch_count=request.profile.launch_count if request.profile else None,
+        session_id=session_id,
     )
-    broker.create_task(Job(task_id, JobType.VERIFY.value, spec))
-    return SubmitResponse(task_id=task_id)
+    lease_ttl = compute_session_lease_ttl(spec, broker.s)
+    if not broker.acquire_session(session_id, task_id, lease_ttl):
+        raise HTTPException(
+            status_code=429,
+            detail="session already has an in-flight evaluation",
+            headers={"Retry-After": "1"},
+        )
+    try:
+        broker.create_task(Job(task_id, JobType.EVALUATION.value, spec))
+    except Exception:
+        broker.release_session(session_id, task_id)
+        raise
 
-
-@router.post("/profile", response_model=SubmitResponse)
-def submit_profile(req: ProfileRequest, broker: Broker = Depends(get_broker)):
-    task_id = uuid.uuid4().hex
-    spec = JobSpec(
-        op_name=req.op_name,
-        reference_code=req.reference_code,
-        kernel_code=req.kernel_code,
-        triton_impl_name=req.triton_impl_name,
-        timeout=req.timeout,
-        profile_mode=req.profile_mode,
-        case_idx=req.case_idx,
-        profile_launch_count=req.profile_launch_count,
+    return await _wait_for_result(
+        broker,
+        task_id,
+        request.timeout,
+        broker.s.api_poll_interval_seconds,
     )
-    broker.create_task(Job(task_id, JobType.PROFILE.value, spec))
-    return SubmitResponse(task_id=task_id)
-
-
-@router.get("/tasks/{task_id}", response_model=TaskResponse)
-def get_task(task_id: str, broker: Broker = Depends(get_broker)):
-    rec = broker.get_task(task_id)
-    if rec is None:
-        raise HTTPException(status_code=404, detail="task not found")
-    return TaskResponse(**rec)
 
 
 @router.get("/healthz")
