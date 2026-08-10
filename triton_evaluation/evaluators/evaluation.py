@@ -15,8 +15,22 @@ from ..models import JobSpec, TaskStatus
 from .base import EvaluatorResult, materialize
 from .benchmark import BenchmarkEvaluator
 from .profile import ProfileEvaluator
-from .shaping import shape_payload
+from .shaping import ShapingError, shape_correctness, shape_performance, shape_profile
 from .verify import VerifyEvaluator
+
+_STATUS_PRIORITY = {
+    TaskStatus.SUCCEEDED.value: 0,
+    TaskStatus.REJECTED.value: 1,
+    TaskStatus.FAILED.value: 2,
+    TaskStatus.TIMEOUT.value: 3,
+}
+
+
+def _worst_status(statuses: list[str]) -> str:
+    return max(
+        statuses or [TaskStatus.SUCCEEDED.value],
+        key=_STATUS_PRIORITY.__getitem__,
+    )
 
 
 class EvaluationEvaluator:
@@ -35,39 +49,67 @@ class EvaluationEvaluator:
     def run(self, spec: JobSpec, verify_dir: str, device_id: int) -> EvaluatorResult:
         checks = spec.checks or ["correctness"]
         materialize(spec, verify_dir)
+        statuses: list[str] = []
+        errors: list[str] = []
 
         verify_json = None
         decoy = False
         if "correctness" in checks:
-            v = self._verify_evaluator().run(spec, verify_dir, device_id)
-            terminal = (
-                TaskStatus.TIMEOUT.value, TaskStatus.FAILED.value, TaskStatus.REJECTED.value
-            )
-            if v.status in terminal:
-                return EvaluatorResult(v.status, error=v.error)
-            # VerifyEvaluator.run returns the verify_result dict (incl. validate key),
-            # or {"decoy": True, ...} when the AST pre-check flagged a regression.
-            decoy = bool(v.result and v.result.get("decoy"))
-            verify_json = None if decoy else v.result
+            verify_result = self._verify_evaluator().run(spec, verify_dir, device_id)
+            statuses.append(verify_result.status)
+            if verify_result.error:
+                errors.append(verify_result.error)
+            if verify_result.status == TaskStatus.SUCCEEDED.value:
+                if verify_result.result is None:
+                    statuses.append(TaskStatus.FAILED.value)
+                    errors.append("correctness result is missing")
+                else:
+                    decoy = bool(verify_result.result.get("decoy"))
+                    verify_json = None if decoy else verify_result.result
 
         def _all_passed(d: dict) -> bool:
             return d.get("total_cases", 0) > 0 and d.get("passed_cases") == d.get("total_cases")
 
         correctness_passed = bool(verify_json and _all_passed(verify_json))
+        correctness = (
+            shape_correctness(verify_json, decoy=decoy) if "correctness" in checks else None
+        )
 
-        perf_json = None
+        performance = None
         if "performance" in checks and not decoy and correctness_passed:
-            p = self._benchmark_evaluator().run(spec, verify_dir, device_id)
-            # A flaky/rejected benchmark must not fail the evaluation (spec §7: omit).
-            if p.status == TaskStatus.SUCCEEDED.value:
-                perf_json = p.result
+            benchmark_result = self._benchmark_evaluator().run(spec, verify_dir, device_id)
+            statuses.append(benchmark_result.status)
+            if benchmark_result.error:
+                errors.append(benchmark_result.error)
+            if benchmark_result.status == TaskStatus.SUCCEEDED.value:
+                try:
+                    if benchmark_result.result is None:
+                        raise ShapingError("benchmark result is missing")
+                    performance = shape_performance(benchmark_result.result)
+                except ShapingError as exc:
+                    statuses.append(TaskStatus.FAILED.value)
+                    errors.append(str(exc))
 
-        profile_json = None
-        if "profile" in checks and not decoy:
-            pr = self._profile_evaluator().run(spec, verify_dir, device_id)
-            if pr.status == TaskStatus.SUCCEEDED.value and pr.result is not None:
-                profile_json = pr.result
+        profile = None
+        if "profile" in checks:
+            profile_result = self._profile_evaluator().run(spec, verify_dir, device_id)
+            statuses.append(profile_result.status)
+            if profile_result.error:
+                errors.append(profile_result.error)
+            if profile_result.result is not None:
+                try:
+                    profile = shape_profile(profile_result.result)
+                except ShapingError as exc:
+                    statuses.append(TaskStatus.FAILED.value)
+                    errors.append(str(exc))
 
-        payload = shape_payload(verify_json, perf_json, profile_json,
-                                checks=checks, decoy=decoy)
-        return EvaluatorResult(TaskStatus.SUCCEEDED.value, result=payload)
+        payload = {
+            "correctness": correctness,
+            "performance": performance,
+            "profile": profile,
+        }
+        return EvaluatorResult(
+            _worst_status(statuses),
+            result=payload,
+            error="; ".join(errors) or None,
+        )

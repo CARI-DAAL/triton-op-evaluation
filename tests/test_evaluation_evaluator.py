@@ -3,14 +3,13 @@ from triton_evaluation.evaluators.evaluation import EvaluationEvaluator
 from triton_evaluation.models import JobSpec, TaskStatus
 
 
-def _spec(checks, **kw):
-    base = dict(op_name="softmax", reference_code="R", kernel_code="K", checks=checks)
-    base.update(kw)
-    return JobSpec(**base)
+def _spec(checks, **overrides):
+    values = dict(op_name="softmax", reference_code="R", kernel_code="K", checks=checks)
+    values.update(overrides)
+    return JobSpec(**values)
 
 
 class _StubVerify:
-    """Returns a canned correctness result. mode: pass | fail | decoy | timeout."""
     def __init__(self, mode):
         self.mode = mode
 
@@ -18,107 +17,191 @@ class _StubVerify:
         if self.mode == "timeout":
             return EvaluatorResult(TaskStatus.TIMEOUT.value, error="verify timed out")
         if self.mode == "decoy":
-            return EvaluatorResult(TaskStatus.SUCCEEDED.value,
-                                   result={"decoy": True, "valid": False, "regression_type": 1})
+            return EvaluatorResult(
+                TaskStatus.SUCCEEDED.value,
+                result={"decoy": True, "valid": False, "regression_type": 1},
+            )
         passed, total = (2, 2) if self.mode == "pass" else (1, 2)
-        failures = [] if self.mode == "pass" else [
-            {"case_idx": 2, "kind": "constant_offset", "sample": []}
-        ]
+        failures = []
+        if self.mode != "pass":
+            failures = [
+                {
+                    "case_idx": 2,
+                    "error_type": "AccuracyError",
+                    "error_msg": "classified traceback",
+                    "kind": "constant_offset",
+                    "sample": [],
+                }
+            ]
         return EvaluatorResult(
             TaskStatus.SUCCEEDED.value,
-            result={"op_name": spec.op_name, "total_cases": total, "passed_cases": passed,
-                    "failed_cases": total - passed, "failures": failures},
+            result={
+                "op_name": spec.op_name,
+                "total_cases": total,
+                "passed_cases": passed,
+                "failed_cases": total - passed,
+                "failures": failures,
+            },
         )
 
 
 class _StubBench:
-    def __init__(self, speedup=2.5):
-        self.speedup = speedup
+    def __init__(self, mode="success"):
+        self.mode = mode
         self.called = False
 
     def run(self, spec, verify_dir, device_id):
         self.called = True
-        return EvaluatorResult(TaskStatus.SUCCEEDED.value,
-                               result={"speedup_vs_torch": self.speedup, "per_shape_results": []})
+        if self.mode == "timeout":
+            return EvaluatorResult(TaskStatus.TIMEOUT.value, error="benchmark timed out")
+        result = {
+            "speedup_vs_torch": 2.5 if self.mode == "success" else None,
+            "failed_cases": 0,
+            "per_shape_results": [
+                {
+                    "case_idx": 1,
+                    "input_desc": [{"type": "tensor", "shape": [16], "dtype": "float32"}],
+                    "status": "pass",
+                    "implementation": {"avg_latency_ms": 0.4, "peak_memory_mb": 1.0},
+                    "speedup_vs_torch": 2.5,
+                }
+            ],
+        }
+        return EvaluatorResult(TaskStatus.SUCCEEDED.value, result=result)
 
 
 class _StubProfile:
-    def __init__(self, state="complete"):
+    def __init__(self, status="SUCCEEDED", state="complete"):
+        self.status = status
         self.state = state
         self.called = False
 
     def run(self, spec, verify_dir, device_id):
         self.called = True
-        return EvaluatorResult(TaskStatus.SUCCEEDED.value,
-                               result={"profile_mode": "op", "selected_cases": 2,
-                                       "completed_cases": 2 if self.state == "complete" else 1,
-                                       "failed_cases": 0, "partial_cases": 0})
+        complete = self.state == "complete"
+        result = {
+            "profile_mode": "op",
+            "selected_cases": 1,
+            "completed_cases": 1 if complete else 0,
+            "partial_cases": 0 if complete else 1,
+            "failed_cases": 0,
+            "timed_out": self.status == TaskStatus.TIMEOUT.value,
+            "per_case_results": [
+                {
+                    "case_idx": 0,
+                    "status": "complete" if complete else "partial",
+                    "kernels": [{"name": "softmax_kernel", "duration_us": 400.0}],
+                }
+            ],
+        }
+        error = "profile timed out" if self.status == TaskStatus.TIMEOUT.value else None
+        return EvaluatorResult(self.status, result=result, error=error)
 
 
 class _Harness(EvaluationEvaluator):
-    def __init__(self, verify_mode="pass", speedup=2.5, profile_state="complete"):
+    def __init__(
+        self,
+        verify_mode="pass",
+        bench_mode="success",
+        profile_status="SUCCEEDED",
+        profile_state="complete",
+    ):
         super().__init__("unused")
-        self._verify = _StubVerify(verify_mode)
-        self._bench = _StubBench(speedup)
-        self._profile = _StubProfile(profile_state)
+        self.verify = _StubVerify(verify_mode)
+        self.bench = _StubBench(bench_mode)
+        self.profile = _StubProfile(profile_status, profile_state)
 
-    def _verify_evaluator(self): return self._verify
-    def _benchmark_evaluator(self): return self._bench
-    def _profile_evaluator(self): return self._profile
+    def _verify_evaluator(self):
+        return self.verify
 
+    def _benchmark_evaluator(self):
+        return self.bench
 
-def test_correctness_only_returns_payload_with_correctness(tmp_path):
-    h = _Harness()
-    res = h.run(_spec(["correctness"]), str(tmp_path), device_id=0)
-    assert res.status == TaskStatus.SUCCEEDED.value
-    assert res.result["correctness"]["passed"] is True
-    assert res.result["performance"] is None
-    assert res.result["profile"] is None
-    assert h._bench.called is False  # performance not requested -> not run
+    def _profile_evaluator(self):
+        return self.profile
 
 
-def test_performance_runs_only_when_correctness_passes(tmp_path):
-    h = _Harness(verify_mode="fail")
-    res = h.run(_spec(["correctness", "performance"], warmup=2, repeats=5),
-                str(tmp_path), device_id=0)
-    assert res.status == TaskStatus.SUCCEEDED.value
-    assert res.result["correctness"]["passed"] is False
-    assert res.result["performance"] is None  # combination rule: correctness failed
-    assert h._bench.called is False
+def test_correctness_only_returns_typed_payload(tmp_path):
+    result = _Harness().run(_spec(["correctness"]), str(tmp_path), device_id=0)
+
+    assert result.status == TaskStatus.SUCCEEDED.value
+    assert result.result["correctness"]["passed"] is True
+    assert result.result["performance"] is None
+    assert result.result["profile"] is None
+
+
+def test_wrong_kernel_skips_performance_but_keeps_profile(tmp_path):
+    harness = _Harness(verify_mode="fail")
+    result = harness.run(
+        _spec(["correctness", "performance", "profile"]),
+        str(tmp_path),
+        device_id=0,
+    )
+
+    assert result.status == TaskStatus.SUCCEEDED.value
+    assert result.result["correctness"]["passed"] is False
+    assert result.result["performance"] is None
+    assert result.result["profile"]["profile_state"] == "complete"
+    assert harness.bench.called is False
 
 
 def test_performance_runs_when_correctness_passes(tmp_path):
-    h = _Harness(verify_mode="pass")
-    res = h.run(_spec(["correctness", "performance"], warmup=2, repeats=5),
-                str(tmp_path), device_id=0)
-    assert res.result["performance"]["speedup_vs_torch"] == 2.5
-    assert h._bench.called is True
+    result = _Harness().run(
+        _spec(["correctness", "performance"]),
+        str(tmp_path),
+        device_id=0,
+    )
+
+    assert result.status == TaskStatus.SUCCEEDED.value
+    assert result.result["performance"]["speedup_vs_torch"] == 2.5
+    assert result.result["performance"]["per_shape"][0]["shape"] == "[16]"
 
 
-def test_profile_runs_independently_of_correctness(tmp_path):
-    h = _Harness(verify_mode="fail")
-    res = h.run(_spec(["correctness", "profile"], profile_mode="op"), str(tmp_path), device_id=1)
-    assert res.result["profile"]["profile_state"] in ("complete", "partial")
-    assert h._profile.called is True  # profile runs even though correctness failed
+def test_decoy_still_returns_profile(tmp_path):
+    result = _Harness(verify_mode="decoy").run(
+        _spec(["correctness", "performance", "profile"]),
+        str(tmp_path),
+        device_id=0,
+    )
+
+    assert result.result["correctness"]["decoy"] is True
+    assert result.result["performance"] is None
+    assert result.result["profile"]["profile_state"] == "complete"
 
 
-def test_profile_only_has_no_correctness(tmp_path):
-    res = _Harness().run(_spec(["profile"], profile_mode="op"), str(tmp_path), device_id=0)
-    assert res.result["correctness"] is None
-    assert res.result["profile"]["profile_state"] == "complete"
+def test_profile_timeout_returns_timeout_with_partial_profile(tmp_path):
+    result = _Harness(profile_status="TIMEOUT", profile_state="partial").run(
+        _spec(["profile"]),
+        str(tmp_path),
+        device_id=0,
+    )
+
+    assert result.status == TaskStatus.TIMEOUT.value
+    assert result.error == "profile timed out"
+    assert result.result["profile"]["profile_state"] == "partial"
 
 
-def test_verify_timeout_propagates(tmp_path):
-    res = _Harness(verify_mode="timeout").run(_spec(["correctness"]), str(tmp_path), device_id=0)
-    assert res.status == TaskStatus.TIMEOUT.value
-    assert res.result is None or res.result == {}
+def test_verify_timeout_still_runs_independent_profile(tmp_path):
+    result = _Harness(verify_mode="timeout").run(
+        _spec(["correctness", "profile"]),
+        str(tmp_path),
+        device_id=0,
+    )
+
+    assert result.status == TaskStatus.TIMEOUT.value
+    assert result.result["correctness"] is None
+    assert result.result["profile"]["profile_state"] == "complete"
 
 
-def test_decoy_short_circuits_to_decoy_correctness(tmp_path):
-    h = _Harness(verify_mode="decoy")
-    res = h.run(_spec(["correctness", "performance"], warmup=2, repeats=5),
-                str(tmp_path), device_id=0)
-    assert res.status == TaskStatus.SUCCEEDED.value
-    assert res.result["correctness"]["decoy"] is True
-    assert res.result["performance"] is None  # no benchmark on a decoy
-    assert h._bench.called is False
+def test_malformed_benchmark_fails_but_retains_other_results(tmp_path):
+    result = _Harness(bench_mode="malformed").run(
+        _spec(["correctness", "performance", "profile"]),
+        str(tmp_path),
+        device_id=0,
+    )
+
+    assert result.status == TaskStatus.FAILED.value
+    assert "benchmark result is incomplete" in result.error
+    assert result.result["correctness"]["passed"] is True
+    assert result.result["performance"] is None
+    assert result.result["profile"] is not None
