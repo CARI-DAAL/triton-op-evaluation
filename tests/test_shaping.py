@@ -102,6 +102,16 @@ def test_correctness_rejects_malformed_engine_result(raw):
         shape_payload(raw, None, None, checks=["correctness"])
 
 
+def test_correctness_rejects_malformed_nested_failure():
+    with pytest.raises(ShapingError, match="correctness"):
+        shape_payload(
+            _verify_json(passed=0, total=1, failures=[{}]),
+            None,
+            None,
+            checks=["correctness"],
+        )
+
+
 def test_performance_projects_only_stable_per_shape_fields():
     assert shape_performance(_complete_perf_json()) == {
         "speedup_vs_torch": 2.5,
@@ -269,6 +279,53 @@ def test_profile_partial_when_failures_remain():
 def test_profile_rejects_missing_summary_counts():
     with pytest.raises(ShapingError, match="profile"):
         shape_profile({"profile_mode": "op", "per_case_results": []})
+
+
+def test_op_profile_rejects_kernel_without_name():
+    raw = {
+        "profile_mode": "op",
+        "selected_cases": 1,
+        "completed_cases": 1,
+        "partial_cases": 0,
+        "failed_cases": 0,
+        "timed_out": False,
+        "per_case_results": [
+            {
+                "case_idx": 0,
+                "status": "complete",
+                "kernels": [{"name": None, "duration_us": 400.0}],
+            }
+        ],
+    }
+
+    with pytest.raises(ShapingError, match="profile"):
+        shape_profile(raw)
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [("status", "unknown"), ("bound", {"name": "UNKNOWN BOUND"})],
+)
+def test_deep_profile_rejects_invalid_nested_summary(field, value):
+    case = {
+        "case_idx": 0,
+        "status": "complete",
+        "target_kernel": "kernel_a",
+        "bound": {"name": "NO BOUND"},
+    }
+    case[field] = value
+    raw = {
+        "profile_mode": "deep",
+        "selected_cases": 1,
+        "completed_cases": 1,
+        "partial_cases": 0,
+        "failed_cases": 0,
+        "timed_out": False,
+        "per_case_results": [case],
+    }
+
+    with pytest.raises(ShapingError, match="profile"):
+        shape_profile(raw)
 
 
 def test_decoy_correctness_result():

@@ -4,9 +4,20 @@ import json
 import math
 from typing import Any
 
+from pydantic import BaseModel, ValidationError
+
+from ..api.contract import CorrectnessResult, PerformanceResult, ProfileResult
+
 
 class ShapingError(ValueError):
     """An engine result cannot satisfy the stable v2 contract."""
+
+
+def _validated(model: type[BaseModel], value: dict, result_name: str) -> dict:
+    try:
+        return model.model_validate(value).model_dump()
+    except ValidationError as exc:
+        raise ShapingError(f"{result_name} result is invalid: {exc}") from exc
 
 
 def _required_count(raw: dict, name: str, result_name: str) -> int:
@@ -38,15 +49,21 @@ def _case_failure(raw: dict) -> dict:
 
 
 def shape_correctness(verify_json: dict | None, *, decoy: bool = False) -> dict | None:
+    if not isinstance(decoy, bool):
+        raise ShapingError("correctness result has an invalid decoy flag")
     if decoy:
-        return {
-            "passed": False,
-            "compiled": False,
-            "decoy": True,
-            "passed_cases": 0,
-            "total_cases": 0,
-            "failures": [],
-        }
+        return _validated(
+            CorrectnessResult,
+            {
+                "passed": False,
+                "compiled": False,
+                "decoy": True,
+                "passed_cases": 0,
+                "total_cases": 0,
+                "failures": [],
+            },
+            "correctness",
+        )
     if verify_json is None:
         return None
     if not isinstance(verify_json, dict):
@@ -59,14 +76,18 @@ def shape_correctness(verify_json: dict | None, *, decoy: bool = False) -> dict 
     ):
         raise ShapingError("correctness result is invalid")
     compiled = not any(failure.get("error_type") == "CompilationError" for failure in failures)
-    return {
-        "passed": total > 0 and passed == total,
-        "compiled": compiled,
-        "decoy": False,
-        "passed_cases": passed,
-        "total_cases": total,
-        "failures": [_case_failure(failure) for failure in failures],
-    }
+    return _validated(
+        CorrectnessResult,
+        {
+            "passed": total > 0 and passed == total,
+            "compiled": compiled,
+            "decoy": False,
+            "passed_cases": passed,
+            "total_cases": total,
+            "failures": [_case_failure(failure) for failure in failures],
+        },
+        "correctness",
+    )
 
 
 def _positive_finite(value: object) -> bool:
@@ -112,7 +133,11 @@ def shape_performance(perf_json: dict) -> dict:
         )
     if not per_shape:
         raise ShapingError("benchmark contains no valid per-shape results")
-    return {"speedup_vs_torch": float(overall), "per_shape": per_shape}
+    return _validated(
+        PerformanceResult,
+        {"speedup_vs_torch": float(overall), "per_shape": per_shape},
+        "benchmark",
+    )
 
 
 def _profile_state(profile_json: dict) -> str:
@@ -217,7 +242,11 @@ def shape_profile(profile_json: dict) -> dict:
         "ops": _op_profiles(profile_json) if mode == "op" else None,
         "summaries": _deep_summaries(profile_json) if mode == "deep" else None,
     }
-    return {"profile_state": _profile_state(profile_json), "data": data}
+    return _validated(
+        ProfileResult,
+        {"profile_state": _profile_state(profile_json), "data": data},
+        "profile",
+    )
 
 
 def shape_payload(

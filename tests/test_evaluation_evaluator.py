@@ -307,3 +307,90 @@ def test_malformed_correctness_result_still_runs_profile(tmp_path):
     assert "correctness result is invalid" in result.error
     assert result.result["correctness"] is None
     assert result.result["profile"]["profile_state"] == "complete"
+
+
+def test_non_boolean_decoy_is_rejected_but_profile_is_retained(tmp_path):
+    class _MalformedDecoy:
+        def run(self, *args):
+            return EvaluatorResult(
+                TaskStatus.SUCCEEDED.value,
+                result={"decoy": "false"},
+            )
+
+    harness = _Harness()
+    harness.verify = _MalformedDecoy()
+
+    result = harness.run(
+        _spec(["correctness", "profile"]),
+        str(tmp_path),
+        device_id=0,
+    )
+
+    assert result.status == TaskStatus.FAILED.value
+    assert "decoy" in result.error
+    assert result.result["correctness"] is None
+    assert result.result["profile"]["profile_state"] == "complete"
+
+
+def test_malformed_nested_correctness_retains_profile(tmp_path):
+    class _MalformedFailure:
+        def run(self, *args):
+            return EvaluatorResult(
+                TaskStatus.SUCCEEDED.value,
+                result={
+                    "total_cases": 1,
+                    "passed_cases": 0,
+                    "failures": [{}],
+                },
+            )
+
+    harness = _Harness()
+    harness.verify = _MalformedFailure()
+
+    result = harness.run(
+        _spec(["correctness", "profile"]),
+        str(tmp_path),
+        device_id=0,
+    )
+
+    assert result.status == TaskStatus.FAILED.value
+    assert "correctness result is invalid" in result.error
+    assert result.result["correctness"] is None
+    assert result.result["profile"]["profile_state"] == "complete"
+
+
+def test_malformed_nested_profile_retains_correctness(tmp_path):
+    class _MalformedProfile:
+        def run(self, *args):
+            return EvaluatorResult(
+                TaskStatus.SUCCEEDED.value,
+                result={
+                    "profile_mode": "op",
+                    "selected_cases": 1,
+                    "completed_cases": 1,
+                    "partial_cases": 0,
+                    "failed_cases": 0,
+                    "timed_out": False,
+                    "per_case_results": [
+                        {
+                            "case_idx": 0,
+                            "status": "complete",
+                            "kernels": [{"name": None, "duration_us": 400.0}],
+                        }
+                    ],
+                },
+            )
+
+    harness = _Harness()
+    harness.profile = _MalformedProfile()
+
+    result = harness.run(
+        _spec(["correctness", "profile"]),
+        str(tmp_path),
+        device_id=0,
+    )
+
+    assert result.status == TaskStatus.FAILED.value
+    assert "profile" in result.error
+    assert result.result["correctness"]["passed"] is True
+    assert result.result["profile"] is None

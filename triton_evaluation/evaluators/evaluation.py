@@ -89,8 +89,13 @@ class EvaluationEvaluator:
                     statuses.append(TaskStatus.FAILED.value)
                     errors.append("correctness result is invalid")
                 else:
-                    decoy = bool(verify_result.result.get("decoy"))
-                    verify_json = None if decoy else verify_result.result
+                    raw_decoy = verify_result.result.get("decoy", False)
+                    if not isinstance(raw_decoy, bool):
+                        statuses.append(TaskStatus.FAILED.value)
+                        errors.append("correctness result has an invalid decoy flag")
+                    else:
+                        decoy = raw_decoy
+                        verify_json = None if decoy else verify_result.result
 
         correctness = None
         if "correctness" in checks:
