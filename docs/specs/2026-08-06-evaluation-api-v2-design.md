@@ -326,10 +326,10 @@ API poll 使用可配置的短间隔，测试中可设为 0。每次 poll 只读
 ## 9. 网络与部署
 
 - 不引入 token 或 `EVALUATION_TOKEN`。
-- 宿主进程默认绑定 `127.0.0.1`。容器部署可在私有 Docker network 内监听
-  `0.0.0.0`，但只向宿主 loopback 发布端口；不得把服务发布到远程网卡。
-- sandbox/container 通过私有 Docker network 访问 eval service；所有请求发送
-  `X-Session-ID`。
+- 宿主进程和当前 host-network 容器部署都绑定 `127.0.0.1`；不得把 eval service
+  直接发布到远程网卡。
+- sandbox/container 经 kernel-harness 管理的 gateway/relay 访问宿主 loopback 服务；
+  relay 是消费方边界，不改变 eval service 的监听地址。所有请求发送 `X-Session-ID`。
 - worker 数量至少覆盖预期并发长请求；HTTP/反向代理 read timeout 至少为 body timeout
   + 30 秒，官方客户端使用 +60 秒。
 - 如果将来把服务暴露到远程网络或多租户 host，再引入认证、租户配额和更强 rate limit。
@@ -347,4 +347,3 @@ API poll 使用可配置的短间隔，测试中可设为 0。每次 poll 只读
 - 旧路由：`/verify`、`/profile`、`/tasks/{id}` 均为 404。
 - 回归：所有保留的 worker、broker、engine、profile、benchmark tests 通过。
 - NPU 校准：真实失败集达到 precision > 90%、recall > 80%，否则收缩 kind 集合。
-
