@@ -2,7 +2,7 @@
 
 - 日期：2026-08-06
 - 审阅确认：2026-08-10
-- 状态：已确认，进入实现
+- 状态：实现完成；本地验证通过，真实 NPU smoke / divergence 校准待外部环境
 - 位置：`triton_evaluation/api/`（同步路由 + 正式 response model）、
   `triton_evaluation/evaluators/`（engine JSON → 正式 model）
 - 取代：v1 `/verify`、`/profile` 和隐式 benchmark → 唯一入口 `POST /evaluations`
@@ -187,6 +187,8 @@ class CorrectnessResult(BaseModel):
 - `sample` 最多 8 个点，按 `abs(diff)` 降序；索引是行主序多维坐标。
 - 非有限值编码为字符串；shape mismatch 的 sample 为空。
 - engine 没有 mean absolute error，因此 `mean_abs_err=None`；MERE 映射到 `mere`。
+- response model 强制上述关系，并拒绝裸 float NaN/Inf；非有限值只能使用字符串 sentinel，
+  防止 JSON serializer 在响应末端产生 500。
 
 ### 4.2 Performance
 
@@ -289,6 +291,9 @@ decision tree 互斥，按以下顺序先命中先返回：
 7. `scattered`：无结构模式命中。
 
 分类器必须是 pure stdlib，接收 flat Python list + 原 shape，使 torch-free CI 可测试。
+所有 value mismatch 路径（float、bool、integer、quantized、non-compute、NaN/Inf）都在
+`compare()` 的统一边界附加诊断；相同位置/符号的非有限值不参与结构特征计算，但 sample
+仍保留原始多维坐标和 sentinel。shape 在 flatten 前比较，避免相同 numel 的异形输出漏判。
 真实 NPU 校准集覆盖各 kind 至少数十个失败 case；验收 precision > 90%、recall > 80%。
 达不到标准的 kind 必须合并或删除，不能用低置信标签污染消费方。
 
@@ -308,13 +313,17 @@ decision tree 互斥，按以下顺序先命中先返回：
 
 ## 7. 同步等待、孤儿任务与 session lease
 
-API 在创建 task 前获取 Redis session lease，lease value 为 `task_id`。只有 worker 在写入
-最终 task record 后释放该 lease；API 自身的整体等待超时不会释放它，所以 orphan job
-期间同一 session 不能再次排队。lease 还设置有限 TTL，覆盖 job 最大执行预算、reaper
-grace 和一次请求 timeout，避免 worker 永久消失时死锁。
+API 使用 Redis WATCH/MULTI 原子地完成 session lease 获取、task record 创建和 LPUSH，lease
+value 为 `task_id`。worker / reaper 同样原子地完成“首个终态写入 + owner-checked lease
+删除”，避免网络响应不确定时出现已排队却释放 lease，或已终态却遗留 lease 的窗口。API
+自身的整体等待超时不会释放不确定状态的 lease，所以 orphan job 期间同一 session 不能
+再次排队。lease 还设置有限 TTL，覆盖 job 最大执行预算、reaper grace 和一次请求 timeout，
+避免 worker 永久消失时死锁。
 
 API poll 使用可配置的短间隔，测试中可设为 0。每次 poll 只读取 Redis task record；
-不在 API 进程里执行 evaluator。同步长连接占用一个请求协程，但不阻塞 event loop。
+不在 API 进程里执行 evaluator。同步 redis-py 调用在线程池中执行，并且每次 submit / poll
+都受 request absolute deadline 的剩余时间约束；线程调用超时后保持潜在 job/lease，不做
+不安全的释放。同步长连接占用一个请求协程，但不阻塞 event loop。
 
 ## 8. 兼容与迁移
 

@@ -769,3 +769,22 @@ Use one focused fix commit per reproduced failure; do not make a catch-all clean
   calibration acceptance item.
 - No task reintroduces async consumer polling, v1 aliases, `revision`, untyped performance/profile
   passthrough, or cancellation.
+
+## Post-Implementation Review Hardening (2026-08-10)
+
+An independent read-only review of `ebd49bd..aa1b2f4` found production-edge gaps not covered by
+the first execution pass. They were reproduced test-first and closed in focused commits:
+
+- `57c904c`: reject raw non-finite response floats; enforce sample length and kind/error/sample
+  relationships in the Pydantic contract.
+- `28350d2`, `b9b9ab8`: use one absolute handler deadline, run sync Redis calls off the event loop,
+  and bound every submit/poll call by the remaining deadline.
+- `cbd5e67`, `3c78cbc`: isolate sub-check exceptions, reject malformed successful engine payloads,
+  preserve available correctness/profile data, and continue independent profile execution.
+- `b787a0a`: make lease+task+enqueue and terminal+lease-release transitions atomic with
+  owner-checked WATCH/MULTI; reaper uses the same terminal path.
+- `c4112f4`, `b9b9ab8`: attach diagnostics to every supported value mismatch, ignore matching
+  non-finite pairs in classifier features, and detect same-numel shape mismatch before flattening.
+
+The NPU smoke and labeled precision/recall calibration remain external evidence gates; local
+synthetic coverage does not satisfy or replace them.
