@@ -1,3 +1,5 @@
+import math
+
 import fakeredis
 from fastapi.testclient import TestClient
 
@@ -60,6 +62,44 @@ class _MalformedCompletingBroker(Broker):
         return record
 
 
+class _NonFiniteCompletingBroker(Broker):
+    def get_task(self, task_id):
+        record = super().get_task(task_id)
+        if record is not None and record["status"] == "QUEUED":
+            self.store_result(
+                task_id,
+                "SUCCEEDED",
+                result={
+                    "correctness": {
+                        "passed": False,
+                        "compiled": True,
+                        "decoy": False,
+                        "passed_cases": 0,
+                        "total_cases": 1,
+                        "failures": [
+                            {
+                                "case_idx": 1,
+                                "kind": "scattered",
+                                "sample": [
+                                    {
+                                        "idx": [0],
+                                        "candidate": math.nan,
+                                        "reference": 0.0,
+                                        "diff": math.nan,
+                                    }
+                                ],
+                                "error": None,
+                            }
+                        ],
+                    },
+                    "performance": None,
+                    "profile": None,
+                },
+            )
+            return super().get_task(task_id)
+        return record
+
+
 def test_post_evaluations_waits_and_returns_terminal_result(settings):
     client, broker = _client(settings, _CompletingBroker)
 
@@ -103,6 +143,20 @@ def test_malformed_worker_result_becomes_contract_shaped_failure(settings):
         "performance": None,
         "profile": None,
     }
+
+
+def test_non_finite_worker_float_becomes_contract_shaped_failure(settings):
+    client, _ = _client(settings, _NonFiniteCompletingBroker)
+
+    response = client.post(
+        "/evaluations",
+        headers={"X-Session-ID": "container-17"},
+        json=_request_body(),
+    )
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "FAILED"
+    assert response.json()["error"] == "invalid worker result"
 
 
 def test_missing_or_invalid_session_header_is_400(settings):

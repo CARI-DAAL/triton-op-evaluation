@@ -6,7 +6,7 @@ the typed response they get back. It depends only on pydantic — no app interna
 """
 from typing import Literal
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, FiniteFloat, model_validator
 
 Check = Literal["correctness", "performance", "profile"]
 
@@ -20,7 +20,7 @@ DivergenceKind = Literal[
     "scattered",
 ]
 
-FiniteValue = float | Literal["inf", "-inf", "nan"]
+FiniteValue = FiniteFloat | Literal["inf", "-inf", "nan"]
 
 TerminalStatus = Literal["SUCCEEDED", "FAILED", "TIMEOUT", "REJECTED"]
 ProfileState = Literal["complete", "partial"]
@@ -83,22 +83,34 @@ class SampleElement(BaseModel):
 
 
 class CaseMetrics(BaseModel):
-    max_abs_diff: float | None = None
-    mean_abs_err: float | None = None
-    matched_ratio: float | None = None
-    mere: float | None = None
+    max_abs_diff: FiniteFloat | None = None
+    mean_abs_err: FiniteFloat | None = None
+    matched_ratio: FiniteFloat | None = None
+    mere: FiniteFloat | None = None
     small_count: int | None = None
     normal_count: int | None = None
-    atol: float | None = None
-    rtol: float | None = None
+    atol: FiniteFloat | None = None
+    rtol: FiniteFloat | None = None
 
 
 class CaseFailure(BaseModel):
     case_idx: int
     kind: DivergenceKind | None = None
     metrics: CaseMetrics = Field(default_factory=CaseMetrics)
-    sample: list[SampleElement] = Field(default_factory=list)
+    sample: list[SampleElement] = Field(default_factory=list, max_length=8)
     error: str | None = None
+
+    @model_validator(mode="after")
+    def _diagnostic_fields_are_consistent(self):
+        if self.kind == "shape_mismatch" and self.sample:
+            raise ValueError("shape_mismatch must have an empty sample")
+        if self.kind is not None and self.error is not None:
+            raise ValueError("classified failure must not include an error")
+        if self.kind is None and self.error is None:
+            raise ValueError("unclassified failure must include an error")
+        if self.kind is None and self.sample:
+            raise ValueError("unclassified failure must have an empty sample")
+        return self
 
 
 class CorrectnessResult(BaseModel):
@@ -112,21 +124,21 @@ class CorrectnessResult(BaseModel):
 
 class PerShapeResult(BaseModel):
     shape: str
-    latency_ms: float
-    throughput: float | None = None
-    speedup_vs_torch: float
+    latency_ms: FiniteFloat
+    throughput: FiniteFloat | None = None
+    speedup_vs_torch: FiniteFloat
 
 
 class PerformanceResult(BaseModel):
-    speedup_vs_torch: float
+    speedup_vs_torch: FiniteFloat
     per_shape: list[PerShapeResult] = Field(default_factory=list)
 
 
 class OpProfile(BaseModel):
     case_idx: int
     op_name: str
-    time_ms: float
-    percentage: float | None = None
+    time_ms: FiniteFloat
+    percentage: FiniteFloat | None = None
 
 
 class DeepProfileSummary(BaseModel):
@@ -135,13 +147,13 @@ class DeepProfileSummary(BaseModel):
     target_kernel: str | None = None
     bound: BoundKind | None = None
     rule: str | None = None
-    mte2_ratio: float | None = None
-    cube_ratio: float | None = None
-    vec_ratio: float | None = None
-    fixp_ratio: float | None = None
-    mte3_ratio: float | None = None
-    scalar_ratio: float | None = None
-    per_core_spread_ratio: float | None = None
+    mte2_ratio: FiniteFloat | None = None
+    cube_ratio: FiniteFloat | None = None
+    vec_ratio: FiniteFloat | None = None
+    fixp_ratio: FiniteFloat | None = None
+    mte3_ratio: FiniteFloat | None = None
+    scalar_ratio: FiniteFloat | None = None
+    per_core_spread_ratio: FiniteFloat | None = None
     per_core_verdict: str | None = None
     recommendations: list[str] = Field(default_factory=list)
     missing_metrics: list[str] = Field(default_factory=list)

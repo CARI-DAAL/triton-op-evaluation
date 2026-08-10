@@ -1,3 +1,5 @@
+import math
+
 import pytest
 from pydantic import ValidationError
 
@@ -139,6 +141,51 @@ def test_case_failure_with_non_finite_sample_sentinels():
     assert back.sample[0].candidate == "inf"
     assert back.sample[2].diff == "nan"
     assert back.sample[1].candidate == 2.0
+
+
+@pytest.mark.parametrize("value", [math.inf, -math.inf, math.nan])
+def test_sample_rejects_raw_non_finite_floats(value):
+    with pytest.raises(ValidationError):
+        SampleElement(idx=[0], candidate=value, reference=0.0, diff=value)
+
+
+def test_case_failure_enforces_diagnostic_relationships():
+    point = SampleElement(idx=[0], candidate=1.0, reference=0.0, diff=1.0)
+
+    with pytest.raises(ValidationError, match="at most 8"):
+        CaseFailure(case_idx=1, kind="scattered", sample=[point] * 9)
+    with pytest.raises(ValidationError, match="shape_mismatch"):
+        CaseFailure(case_idx=1, kind="shape_mismatch", sample=[point])
+    with pytest.raises(ValidationError, match="classified"):
+        CaseFailure(case_idx=1, kind="scattered", error="traceback")
+    with pytest.raises(ValidationError, match="unclassified"):
+        CaseFailure(case_idx=1, kind=None, error=None)
+
+
+@pytest.mark.parametrize(
+    "model",
+    [
+        lambda: CaseMetrics(max_abs_diff=math.nan),
+        lambda: PerShapeResult(
+            shape="[1]",
+            latency_ms=math.inf,
+            speedup_vs_torch=1.0,
+        ),
+        lambda: OpProfile(
+            case_idx=0,
+            op_name="kernel",
+            time_ms=math.nan,
+        ),
+        lambda: DeepProfileSummary(
+            case_idx=0,
+            status="partial",
+            mte2_ratio=math.inf,
+        ),
+    ],
+)
+def test_typed_numeric_fields_reject_non_finite_values(model):
+    with pytest.raises(ValidationError):
+        model()
 
 
 def test_evaluation_result_is_terminal_and_has_no_revision():
