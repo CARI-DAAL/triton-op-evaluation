@@ -1,4 +1,6 @@
 import math
+import threading
+import time
 
 import fakeredis
 from fastapi.testclient import TestClient
@@ -225,6 +227,86 @@ def test_request_timeout_returns_terminal_payload_without_cancelling_job(
     assert body["result"] == {"correctness": None, "performance": None, "profile": None}
     assert broker.get_task(body["task_id"])["status"] == "QUEUED"
     assert broker.acquire_session("session-a", "duplicate-task", 60) is False
+
+
+def test_request_deadline_includes_submission_and_wins_over_late_terminal(
+    settings,
+    monkeypatch,
+):
+    import triton_evaluation.api.routes as routes
+
+    clock = {"now": 100.0}
+
+    class _SlowCompletingBroker(Broker):
+        def create_task(self, job):
+            super().create_task(job)
+            clock["now"] = 111.0
+            self.store_result(
+                job.task_id,
+                "SUCCEEDED",
+                result={
+                    "correctness": {
+                        "passed": True,
+                        "compiled": True,
+                        "decoy": False,
+                        "passed_cases": 1,
+                        "total_cases": 1,
+                        "failures": [],
+                    },
+                    "performance": None,
+                    "profile": None,
+                },
+            )
+
+    monkeypatch.setattr(routes, "_monotonic", lambda: clock["now"])
+    client, _ = _client(settings, _SlowCompletingBroker)
+
+    response = client.post(
+        "/evaluations",
+        headers={"X-Session-ID": "session-a"},
+        json=_request_body(timeout=10),
+    )
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "TIMEOUT"
+
+
+def test_async_route_runs_blocking_broker_calls_off_event_loop(settings, monkeypatch):
+    import triton_evaluation.api.routes as routes
+
+    handler_threads = []
+    broker_threads = []
+
+    def monotonic():
+        handler_threads.append(threading.get_ident())
+        return time.monotonic()
+
+    class _ThreadRecordingBroker(_CompletingBroker):
+        def acquire_session(self, *args, **kwargs):
+            broker_threads.append(threading.get_ident())
+            return super().acquire_session(*args, **kwargs)
+
+        def create_task(self, *args, **kwargs):
+            broker_threads.append(threading.get_ident())
+            return super().create_task(*args, **kwargs)
+
+        def get_task(self, *args, **kwargs):
+            broker_threads.append(threading.get_ident())
+            return super().get_task(*args, **kwargs)
+
+    monkeypatch.setattr(routes, "_monotonic", monotonic)
+    client, _ = _client(settings, _ThreadRecordingBroker)
+
+    response = client.post(
+        "/evaluations",
+        headers={"X-Session-ID": "session-a"},
+        json=_request_body(),
+    )
+
+    assert response.status_code == 200
+    assert handler_threads
+    assert broker_threads
+    assert set(handler_threads).isdisjoint(broker_threads)
 
 
 def test_removed_v1_and_polling_routes_are_404(settings):

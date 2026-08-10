@@ -49,14 +49,10 @@ def _to_evaluation_result(record: dict) -> EvaluationResult:
 async def _wait_for_result(
     broker: Broker,
     task_id: str,
-    timeout: int,
+    deadline: float,
     poll_interval: float,
 ) -> EvaluationResult:
-    deadline = _monotonic() + timeout
     while True:
-        record = broker.get_task(task_id)
-        if record is not None and record.get("status") in TERMINAL:
-            return _to_evaluation_result(record)
         remaining = deadline - _monotonic()
         if remaining <= 0:
             return EvaluationResult(
@@ -65,6 +61,17 @@ async def _wait_for_result(
                 error="evaluation request timed out",
                 result=EvaluationPayload(),
             )
+        record = await asyncio.to_thread(broker.get_task, task_id)
+        remaining = deadline - _monotonic()
+        if remaining <= 0:
+            return EvaluationResult(
+                task_id=task_id,
+                status="TIMEOUT",
+                error="evaluation request timed out",
+                result=EvaluationPayload(),
+            )
+        if record is not None and record.get("status") in TERMINAL:
+            return _to_evaluation_result(record)
         await asyncio.sleep(min(poll_interval, remaining))
 
 
@@ -74,6 +81,7 @@ async def submit_evaluation(
     x_session_id: str | None = Header(default=None, alias="X-Session-ID"),
     broker: Broker = Depends(get_broker),
 ):
+    deadline = _monotonic() + request.timeout
     session_id = _validate_session_id(x_session_id)
     if "performance" in request.checks and "correctness" not in request.checks:
         raise HTTPException(status_code=400, detail="performance requires correctness")
@@ -95,22 +103,31 @@ async def submit_evaluation(
         session_id=session_id,
     )
     lease_ttl = compute_session_lease_ttl(spec, broker.s)
-    if not broker.acquire_session(session_id, task_id, lease_ttl):
+    acquired = await asyncio.to_thread(
+        broker.acquire_session,
+        session_id,
+        task_id,
+        lease_ttl,
+    )
+    if not acquired:
         raise HTTPException(
             status_code=429,
             detail="session already has an in-flight evaluation",
             headers={"Retry-After": "1"},
         )
     try:
-        broker.create_task(Job(task_id, JobType.EVALUATION.value, spec))
+        await asyncio.to_thread(
+            broker.create_task,
+            Job(task_id, JobType.EVALUATION.value, spec),
+        )
     except Exception:
-        broker.release_session(session_id, task_id)
+        await asyncio.to_thread(broker.release_session, session_id, task_id)
         raise
 
     return await _wait_for_result(
         broker,
         task_id,
-        request.timeout,
+        deadline,
         broker.s.api_poll_interval_seconds,
     )
 
