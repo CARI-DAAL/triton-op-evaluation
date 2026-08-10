@@ -205,3 +205,85 @@ def test_malformed_benchmark_fails_but_retains_other_results(tmp_path):
     assert result.result["correctness"]["passed"] is True
     assert result.result["performance"] is None
     assert result.result["profile"] is not None
+
+
+class _Raises:
+    def __init__(self, message):
+        self.message = message
+        self.called = False
+
+    def run(self, *args):
+        self.called = True
+        raise RuntimeError(self.message)
+
+
+class _MissingResult:
+    def run(self, *args):
+        return EvaluatorResult(TaskStatus.SUCCEEDED.value, result=None)
+
+
+def test_verify_exception_becomes_failure_and_profile_still_runs(tmp_path):
+    harness = _Harness()
+    harness.verify = _Raises("verify infrastructure broke")
+
+    result = harness.run(
+        _spec(["correctness", "performance", "profile"]),
+        str(tmp_path),
+        device_id=0,
+    )
+
+    assert result.status == TaskStatus.FAILED.value
+    assert "verify infrastructure broke" in result.error
+    assert result.result["correctness"] is None
+    assert result.result["performance"] is None
+    assert result.result["profile"]["profile_state"] == "complete"
+    assert harness.bench.called is False
+
+
+def test_benchmark_exception_retains_correctness_and_profile(tmp_path):
+    harness = _Harness()
+    harness.bench = _Raises("benchmark infrastructure broke")
+
+    result = harness.run(
+        _spec(["correctness", "performance", "profile"]),
+        str(tmp_path),
+        device_id=0,
+    )
+
+    assert result.status == TaskStatus.FAILED.value
+    assert "benchmark infrastructure broke" in result.error
+    assert result.result["correctness"]["passed"] is True
+    assert result.result["performance"] is None
+    assert result.result["profile"]["profile_state"] == "complete"
+
+
+def test_profile_exception_retains_correctness(tmp_path):
+    harness = _Harness()
+    harness.profile = _Raises("profile infrastructure broke")
+
+    result = harness.run(
+        _spec(["correctness", "profile"]),
+        str(tmp_path),
+        device_id=0,
+    )
+
+    assert result.status == TaskStatus.FAILED.value
+    assert "profile infrastructure broke" in result.error
+    assert result.result["correctness"]["passed"] is True
+    assert result.result["profile"] is None
+
+
+def test_successful_profile_without_result_is_failed(tmp_path):
+    harness = _Harness()
+    harness.profile = _MissingResult()
+
+    result = harness.run(
+        _spec(["correctness", "profile"]),
+        str(tmp_path),
+        device_id=0,
+    )
+
+    assert result.status == TaskStatus.FAILED.value
+    assert "profile result is missing" in result.error
+    assert result.result["correctness"]["passed"] is True
+    assert result.result["profile"] is None
