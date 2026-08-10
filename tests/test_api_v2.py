@@ -189,3 +189,98 @@ def test_healthz(settings):
 
     assert response.status_code == 200
     assert response.json() == {"redis": "ok"}
+
+
+def test_end_to_end_sync_combination_contract(settings):
+    from threading import Thread
+
+    from triton_evaluation.evaluators.base import EvaluatorResult
+    from triton_evaluation.evaluators.evaluation import EvaluationEvaluator
+    from triton_evaluation.models import TaskStatus
+    from triton_evaluation.worker import Worker
+
+    class _FailVerify:
+        def run(self, spec, verify_dir, device_id):
+            return EvaluatorResult(
+                TaskStatus.SUCCEEDED.value,
+                result={
+                    "op_name": spec.op_name,
+                    "total_cases": 2,
+                    "passed_cases": 1,
+                    "failed_cases": 1,
+                    "failures": [
+                        {
+                            "case_idx": 2,
+                            "error_type": "AccuracyError",
+                            "error_msg": "classified traceback",
+                            "kind": "constant_offset",
+                            "sample": [],
+                        }
+                    ],
+                },
+            )
+
+    class _MustNotBenchmark:
+        def run(self, spec, verify_dir, device_id):
+            raise AssertionError("performance must not run for a wrong kernel")
+
+    class _CompleteProfile:
+        def run(self, spec, verify_dir, device_id):
+            return EvaluatorResult(
+                TaskStatus.SUCCEEDED.value,
+                result={
+                    "profile_mode": "op",
+                    "selected_cases": 1,
+                    "completed_cases": 1,
+                    "partial_cases": 0,
+                    "failed_cases": 0,
+                    "timed_out": False,
+                    "per_case_results": [
+                        {
+                            "case_idx": 0,
+                            "status": "complete",
+                            "kernels": [
+                                {"name": "softmax_kernel", "duration_us": 400.0}
+                            ],
+                        }
+                    ],
+                },
+            )
+
+    class _HarnessEvaluation(EvaluationEvaluator):
+        def _verify_evaluator(self):
+            return _FailVerify()
+
+        def _benchmark_evaluator(self):
+            return _MustNotBenchmark()
+
+        def _profile_evaluator(self):
+            return _CompleteProfile()
+
+    client, broker = _client(settings)
+    worker = Worker(
+        broker,
+        {"evaluation": _HarnessEvaluation("unused")},
+        device_id=0,
+        settings=settings,
+    )
+    worker_thread = Thread(target=worker.run_once)
+    worker_thread.start()
+
+    response = client.post(
+        "/evaluations",
+        headers={"X-Session-ID": "e2e-session"},
+        json=_request_body(checks=["correctness", "performance", "profile"]),
+    )
+    worker_thread.join(timeout=5)
+
+    assert worker_thread.is_alive() is False
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "SUCCEEDED"
+    assert body["result"]["correctness"]["passed"] is False
+    assert body["result"]["correctness"]["failures"][0]["kind"] == "constant_offset"
+    assert body["result"]["correctness"]["failures"][0]["error"] is None
+    assert body["result"]["performance"] is None
+    assert body["result"]["profile"]["profile_state"] == "complete"
+    assert broker.acquire_session("e2e-session", "next-task", 60) is True
