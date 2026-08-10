@@ -25,6 +25,7 @@ import gc
 import importlib
 import json
 import logging
+import math
 import os
 import sys
 import subprocess
@@ -153,6 +154,44 @@ def _failure_divergence(reference, candidate, shape, *, atol, rtol,
         rel_threshold=rel_threshold, small_count=small_count, normal_count=normal_count,
         sample_k=sample_k,
     )
+
+
+def _diagnostic_value(value):
+    if isinstance(value, complex):
+        return float(abs(value))
+    return float(value)
+
+
+def _attach_failure_divergence(error, reference, candidate, shape, data_type):
+    """Attach diagnostics without changing the existing accuracy verdict."""
+    if error.metrics.get("divergence") is not None:
+        return
+    reference = [_diagnostic_value(value) for value in reference]
+    candidate = [_diagnostic_value(value) for value in candidate]
+    small_value_threshold, small_value_error, rel_threshold = get_limits(data_type)
+    atol, rtol = get_allclose_tols(data_type)
+    finite_reference = [value for value in reference if math.isfinite(value)]
+    small_count = error.metrics.get("small_count")
+    normal_count = error.metrics.get("normal_count")
+    if not isinstance(small_count, int) or not isinstance(normal_count, int):
+        small_count = sum(abs(value) < small_value_threshold for value in finite_reference)
+        normal_count = len(finite_reference) - small_count
+    try:
+        divergence = _failure_divergence(
+            reference,
+            candidate,
+            shape,
+            atol=atol,
+            rtol=rtol,
+            small_value_threshold=small_value_threshold,
+            small_value_error=small_value_error,
+            rel_threshold=rel_threshold,
+            small_count=small_count,
+            normal_count=normal_count,
+        )
+    except Exception:
+        divergence = {"kind": "scattered", "sample": []}
+    error.metrics["divergence"] = divergence
 
 
 def describe_input(inputs):
@@ -479,16 +518,22 @@ def _compare_binary_exact(fw_out, impl_out, data_type):
 
 
 def _check_nan_inf(fw_flat, impl_flat, size):
-    """校验 NaN / Inf 的位置与符号一致；不一致抛 AssertionError。"""
+    """校验 NaN / Inf 的位置与符号一致；不一致抛 AccuracyError。"""
     import torch
     fw_nan_mask = torch.isnan(fw_flat)
     impl_nan_mask = torch.isnan(impl_flat)
     if not torch.equal(fw_nan_mask, impl_nan_mask):
         fw_nan_count = fw_nan_mask.sum().item()
         impl_nan_count = impl_nan_mask.sum().item()
-        raise AssertionError(
+        raise AccuracyError(
             f"验证失败，NaN 位置不匹配: Framework={fw_nan_count}/{size}, "
-            f"Implementation={impl_nan_count}/{size}"
+            f"Implementation={impl_nan_count}/{size}",
+            {
+                "category": "nan_position_mismatch",
+                "framework_nan_count": fw_nan_count,
+                "implementation_nan_count": impl_nan_count,
+                "total_elements": size,
+            },
         )
 
     fw_inf_mask = torch.isinf(fw_flat)
@@ -496,16 +541,25 @@ def _check_nan_inf(fw_flat, impl_flat, size):
     if not torch.equal(fw_inf_mask, impl_inf_mask):
         fw_inf_count = fw_inf_mask.sum().item()
         impl_inf_count = impl_inf_mask.sum().item()
-        raise AssertionError(
+        raise AccuracyError(
             f"验证失败，Inf 位置不匹配: Framework={fw_inf_count}/{size}, "
-            f"Implementation={impl_inf_count}/{size}"
+            f"Implementation={impl_inf_count}/{size}",
+            {
+                "category": "inf_position_mismatch",
+                "framework_inf_count": fw_inf_count,
+                "implementation_inf_count": impl_inf_count,
+                "total_elements": size,
+            },
         )
     if fw_inf_mask.any():
         if not torch.equal(
             torch.sign(fw_flat[fw_inf_mask]),
             torch.sign(impl_flat[impl_inf_mask]),
         ):
-            raise AssertionError("验证失败，Inf 符号不匹配")
+            raise AccuracyError(
+                "验证失败，Inf 符号不匹配",
+                {"category": "inf_sign_mismatch", "total_elements": size},
+            )
 
 
 def _compare_bool_output(fw_finite, impl_finite, ctx):
@@ -682,55 +736,53 @@ def compare(fw_out, impl_out, data_type, input_spec=None, non_compute=False):
             tuple(fw_flat.shape), tuple(impl_flat.shape),
         )
 
-    # 非计算类：二进制完全一致（先于其他判定，跳过 NaN/Inf/finite 过滤）
-    if non_compute:
-        logger.info(
-            f"  [评测模式] 模式=non_compute（非计算类），"
-            f"输入 dtype={input_dtype}（{input_type}），输出 dtype={data_type}；"
-            f"误差要求=二进制完全一致（view-as-int bit pattern 全等，含 NaN payload）"
-        )
-        _compare_binary_exact(fw_out, impl_out, data_type)
-        return
-
-    _check_nan_inf(fw_flat, impl_flat, size)
-
-    finite_mask = torch.isfinite(fw_flat) & torch.isfinite(impl_flat)
-    finite_count = finite_mask.sum().item()
-    if finite_count == 0:
-        logger.warning("警告: 所有值都是非有限值，跳过精度检查")
-        return
-
-    fw_finite = fw_flat[finite_mask]
-    impl_finite = impl_flat[finite_mask]
-    ctx = _CompareCtx(data_type, input_type, input_dtype, finite_count, size)
-
-    # bool 输出独立处理：严格相等
-    if fw_finite.dtype == torch.bool:
-        _compare_bool_output(fw_finite, impl_finite, ctx)
-        return
-
-    # 输出整型：按 input_type 分流
-    # input_type == "float" → 量化类 (|diff|<=1)
-    # input_type == "int" 或 "no_tensor" 或 None → 整数计算类 (|diff|==0，最严)
-    if _is_integer_dtype(fw_finite.dtype):
-        if input_type == "float":
-            _compare_quant_fp_to_int(fw_finite, impl_finite, ctx)
-        else:
-            _compare_integer_compute(fw_finite, impl_finite, ctx)
-        return
-
-    # 输出浮点：按浮点精度标准执行（dtype-aware 三项判定）
     try:
+        # 非计算类：二进制完全一致（先于其他判定，跳过 NaN/Inf/finite 过滤）
+        if non_compute:
+            logger.info(
+                f"  [评测模式] 模式=non_compute（非计算类），"
+                f"输入 dtype={input_dtype}（{input_type}），输出 dtype={data_type}；"
+                f"误差要求=二进制完全一致（view-as-int bit pattern 全等，含 NaN payload）"
+            )
+            _compare_binary_exact(fw_out, impl_out, data_type)
+            return
+
+        _check_nan_inf(fw_flat, impl_flat, size)
+
+        finite_mask = torch.isfinite(fw_flat) & torch.isfinite(impl_flat)
+        finite_count = finite_mask.sum().item()
+        if finite_count == 0:
+            logger.warning("警告: 所有值都是非有限值，跳过精度检查")
+            return
+
+        fw_finite = fw_flat[finite_mask]
+        impl_finite = impl_flat[finite_mask]
+        ctx = _CompareCtx(data_type, input_type, input_dtype, finite_count, size)
+
+        # bool 输出独立处理：严格相等
+        if fw_finite.dtype == torch.bool:
+            _compare_bool_output(fw_finite, impl_finite, ctx)
+            return
+
+        # 输出整型：按 input_type 分流
+        # input_type == "float" → 量化类 (|diff|<=1)
+        # input_type == "int" 或 "no_tensor" 或 None → 整数计算类 (|diff|==0，最严)
+        if _is_integer_dtype(fw_finite.dtype):
+            if input_type == "float":
+                _compare_quant_fp_to_int(fw_finite, impl_finite, ctx)
+            else:
+                _compare_integer_compute(fw_finite, impl_finite, ctx)
+            return
+
+        # 输出浮点：按浮点精度标准执行（dtype-aware 三项判定）
         _compare_float_output(fw_finite, impl_finite, ctx)
     except AccuracyError as e:
-        e.metrics["divergence"] = _failure_divergence(
-            fw_flat.tolist(), impl_flat.tolist(), tuple(fw_out.shape),
-            atol=get_allclose_tols(data_type)[0], rtol=get_allclose_tols(data_type)[1],
-            small_value_threshold=get_limits(data_type)[0],
-            small_value_error=get_limits(data_type)[1],
-            rel_threshold=get_limits(data_type)[2],
-            small_count=e.metrics.get("small_count", 0),
-            normal_count=e.metrics.get("normal_count", 0),
+        _attach_failure_divergence(
+            e,
+            fw_flat.tolist(),
+            impl_flat.tolist(),
+            tuple(fw_out.shape),
+            data_type,
         )
         raise
 

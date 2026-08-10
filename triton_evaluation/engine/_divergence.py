@@ -79,20 +79,28 @@ def _axis_peak_ratios(abs_diff, shape):
 def extract_features(reference, candidate, shape, *, atol, rtol,
                      small_value_threshold, small_value_error, rel_threshold,
                      small_count, normal_count):
-    n = min(len(reference), len(candidate))
+    full_n = min(len(reference), len(candidate))
+    pairs = [
+        (reference[i], candidate[i])
+        for i in range(full_n)
+        if math.isfinite(reference[i]) and math.isfinite(candidate[i])
+    ]
+    n = len(pairs)
     if n == 0:
         return {"n": 0}
-    diff = [candidate[i] - reference[i] for i in range(n)]
+    finite_reference = [pair[0] for pair in pairs]
+    finite_candidate = [pair[1] for pair in pairs]
+    diff = [candidate_value - reference_value for reference_value, candidate_value in pairs]
     abs_diff = [abs(d) for d in diff]
     mean_diff = _mean(diff)
     std_diff = _std(diff, mean_diff)
-    mean_abs_ref = _mean([abs(r) for r in reference[:n]])
-    corr = _correlation(reference[:n], candidate[:n])
+    mean_abs_ref = _mean([abs(r) for r in finite_reference])
+    corr = _correlation(finite_reference, finite_candidate)
 
-    cand_min = min(candidate[:n])
-    cand_max = max(candidate[:n])
-    sat = sum(1 for c in candidate[:n] if c == cand_min or c == cand_max)
-    ref_range = (max(reference[:n]) - min(reference[:n])) or 1e-30
+    cand_min = min(finite_candidate)
+    cand_max = max(finite_candidate)
+    sat = sum(1 for c in finite_candidate if c == cand_min or c == cand_max)
+    ref_range = (max(finite_reference) - min(finite_reference)) or 1e-30
     cand_range = cand_max - cand_min
 
     finite_diffs = sorted(d for d in abs_diff if math.isfinite(d))
@@ -114,7 +122,12 @@ def extract_features(reference, candidate, shape, *, atol, rtol,
         "small_value_error": small_value_error,
         "atol": atol,
         "rtol": rtol,
-        "abs_diff": abs_diff if n <= PER_AXIS_MAX_N else None,
+        "abs_diff": [
+            abs(candidate[i] - reference[i])
+            if math.isfinite(reference[i]) and math.isfinite(candidate[i])
+            else 0.0
+            for i in range(full_n)
+        ] if full_n <= PER_AXIS_MAX_N else None,
         "shape": shape,
     }
     return features
@@ -200,7 +213,19 @@ def classify_divergence(reference, candidate, shape, *, atol, rtol,
         rel_threshold=rel_threshold, small_count=small_count, normal_count=normal_count,
     )
     kind = classify(features)
-    diff = [candidate[i] - reference[i] for i in range(len(reference))]
-    abs_diff = [abs(d) for d in diff]
+    abs_diff = []
+    for reference_value, candidate_value in zip(reference, candidate):
+        if math.isfinite(reference_value) and math.isfinite(candidate_value):
+            abs_diff.append(abs(candidate_value - reference_value))
+        elif math.isnan(reference_value) and math.isnan(candidate_value):
+            abs_diff.append(0.0)
+        elif (
+            math.isinf(reference_value)
+            and math.isinf(candidate_value)
+            and (reference_value > 0) == (candidate_value > 0)
+        ):
+            abs_diff.append(0.0)
+        else:
+            abs_diff.append(float("inf"))
     sample = worst_sample(reference, candidate, abs_diff, shape, k=sample_k)
     return {"kind": kind, "sample": sample}

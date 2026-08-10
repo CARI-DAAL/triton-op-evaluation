@@ -115,3 +115,12 @@ def test_worst_sample_ranks_non_finite_above_finite():
     assert len(sample) == 2
     assert sample[0]["idx"] == [3]  # inf ranks above every finite diff
     assert sample[0]["diff"] == "inf"
+
+
+def test_matching_non_finite_pairs_do_not_poison_structural_features():
+    reference = [math.inf, math.nan, 1.0, 2.0, 3.0, 4.0]
+    candidate = [math.inf, math.nan, 6.0, 7.0, 8.0, 9.0]
+
+    out = _result(reference, candidate, (6,))
+
+    assert out["kind"] == "constant_offset"

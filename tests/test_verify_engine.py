@@ -1,4 +1,5 @@
 import json
+import math
 import sys
 from types import ModuleType, SimpleNamespace
 
@@ -13,6 +14,78 @@ def _fake_torch_module():
     torch.manual_seed = lambda seed: None
     torch.npu = SimpleNamespace(manual_seed=lambda seed: None)
     torch.device = lambda name: name
+    return torch
+
+
+class _FakeScalar:
+    def __init__(self, value):
+        self.value = value
+
+    def item(self):
+        return self.value
+
+
+class _FakeMask:
+    def __init__(self, values):
+        self.values = list(values)
+
+    def __and__(self, other):
+        return _FakeMask(a and b for a, b in zip(self.values, other.values, strict=True))
+
+    def sum(self):
+        return _FakeScalar(sum(self.values))
+
+    def any(self):
+        return any(self.values)
+
+
+class _FakeDType:
+    def __init__(self, name, *, floating=False):
+        self.name = name
+        self.is_floating_point = floating
+        self.is_complex = False
+
+    def __str__(self):
+        return self.name
+
+
+class _FakeTensor:
+    def __init__(self, values, dtype, shape=None):
+        self.values = list(values)
+        self.dtype = dtype
+        self.shape = shape or (len(self.values),)
+
+    def flatten(self):
+        return self
+
+    def detach(self):
+        return self
+
+    def cpu(self):
+        return self
+
+    def numel(self):
+        return len(self.values)
+
+    def tolist(self):
+        return list(self.values)
+
+    def __getitem__(self, key):
+        if isinstance(key, _FakeMask):
+            return _FakeTensor(
+                [value for value, keep in zip(self.values, key.values, strict=True) if keep],
+                self.dtype,
+            )
+        return _FakeScalar(self.values[key])
+
+
+def _comparison_torch(bool_dtype):
+    torch = ModuleType("torch")
+    torch.Tensor = _FakeTensor
+    torch.bool = bool_dtype
+    torch.isfinite = lambda tensor: _FakeMask(
+        math.isfinite(value) for value in tensor.values
+    )
     return torch
 
 
@@ -128,3 +201,107 @@ def test_shape_mismatch_failure_gets_shape_mismatch_kind():
     assert failure["kind"] == "shape_mismatch"
     assert failure["sample"] == []
     assert "shape" in failure["error_msg"]
+
+
+@pytest.mark.parametrize(
+    "mode",
+    ["non_compute", "non_finite", "bool", "integer", "quantized", "float"],
+)
+def test_compare_attaches_divergence_to_every_value_mismatch_path(mode, monkeypatch):
+    bool_dtype = _FakeDType("bool")
+    int_dtype = _FakeDType("int64")
+    float_dtype = _FakeDType("float32", floating=True)
+    if mode == "bool":
+        dtype = bool_dtype
+    elif mode in {"integer", "quantized"}:
+        dtype = int_dtype
+    else:
+        dtype = float_dtype
+    torch = _comparison_torch(bool_dtype)
+    monkeypatch.setitem(sys.modules, "torch", torch)
+
+    def fail(*args, **kwargs):
+        raise verify.AccuracyError("mismatch", {"category": mode})
+
+    monkeypatch.setattr(verify, "_check_nan_inf", lambda *args: None)
+    monkeypatch.setattr(verify, "_is_integer_dtype", lambda value: value is int_dtype)
+    if mode == "non_compute":
+        monkeypatch.setattr(verify, "_compare_binary_exact", fail)
+    elif mode == "non_finite":
+        monkeypatch.setattr(verify, "_check_nan_inf", fail)
+    elif mode == "bool":
+        monkeypatch.setattr(verify, "_compare_bool_output", fail)
+    elif mode == "integer":
+        monkeypatch.setattr(verify, "_compare_integer_compute", fail)
+    elif mode == "quantized":
+        monkeypatch.setattr(verify, "_compare_quant_fp_to_int", fail)
+    else:
+        monkeypatch.setattr(verify, "_compare_float_output", fail)
+
+    reference = _FakeTensor([1.0, 2.0, 3.0, 4.0], dtype)
+    candidate = _FakeTensor([6.0, 7.0, 8.0, 9.0], dtype)
+    input_type = "float" if mode == "quantized" else "int"
+
+    with pytest.raises(verify.AccuracyError) as caught:
+        verify.compare(
+            reference,
+            candidate,
+            "float32",
+            verify.InputSpec(input_type=input_type),
+            non_compute=mode == "non_compute",
+        )
+
+    assert caught.value.metrics["divergence"]["kind"] == "constant_offset"
+    assert caught.value.metrics["divergence"]["sample"][0]["diff"] == 5.0
+
+
+def test_nan_position_mismatch_is_structured_accuracy_error(monkeypatch):
+    dtype = _FakeDType("float32", floating=True)
+    torch = _comparison_torch(_FakeDType("bool"))
+    torch.isnan = lambda tensor: _FakeMask(math.isnan(value) for value in tensor.values)
+    torch.isinf = lambda tensor: _FakeMask(math.isinf(value) for value in tensor.values)
+    torch.equal = lambda left, right: left.values == right.values
+    monkeypatch.setitem(sys.modules, "torch", torch)
+
+    with pytest.raises(verify.AccuracyError, match="NaN"):
+        verify._check_nan_inf(
+            _FakeTensor([math.nan, 1.0], dtype),
+            _FakeTensor([0.0, 1.0], dtype),
+            2,
+        )
+
+
+def test_try_run_case_projects_attached_divergence_into_failure(monkeypatch):
+    divergence = {
+        "kind": "constant_offset",
+        "sample": [
+            {"idx": [0], "candidate": 6.0, "reference": 1.0, "diff": 5.0}
+        ],
+    }
+
+    def fail_case(*args, **kwargs):
+        raise verify.AccuracyError(
+            "integer mismatch",
+            {"category": "integer_compute", "divergence": divergence},
+        )
+
+    monkeypatch.setattr(verify, "_instantiate_models", lambda *args: (object(), object()))
+    monkeypatch.setattr(verify, "run_single_case", fail_case)
+    monkeypatch.setattr(verify, "describe_input", lambda inputs: [])
+    monkeypatch.setattr(verify, "cleanup_npu_memory", lambda: None)
+    modules = {
+        "framework_cls": object,
+        "impl_cls": object,
+        "get_init_inputs": lambda: [],
+    }
+
+    passed, failure = verify._try_run_case(
+        modules,
+        verify.CaseContext(case_idx=1, total_cases=1),
+        inputs=[],
+        device="npu:0",
+    )
+
+    assert passed is False
+    assert failure["kind"] == "constant_offset"
+    assert failure["sample"] == divergence["sample"]
