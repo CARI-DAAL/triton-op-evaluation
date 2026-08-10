@@ -8,8 +8,6 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, model_validator
 
-CONTRACT_REVISION = "v2"
-
 Check = Literal["correctness", "performance", "profile"]
 
 DivergenceKind = Literal[
@@ -24,7 +22,18 @@ DivergenceKind = Literal[
 
 FiniteValue = float | Literal["inf", "-inf", "nan"]
 
-TaskState = Literal["QUEUED", "RUNNING", "SUCCEEDED", "FAILED", "TIMEOUT", "REJECTED"]
+TerminalStatus = Literal["SUCCEEDED", "FAILED", "TIMEOUT", "REJECTED"]
+ProfileState = Literal["complete", "partial"]
+ProfileCaseState = Literal["complete", "partial", "failed"]
+BoundKind = Literal[
+    "MTE2 BOUND",
+    "CUBE BOUND",
+    "VEC BOUND",
+    "FIXP BOUND",
+    "MTE3 BOUND",
+    "SCALAR BOUND",
+    "NO BOUND",
+]
 
 
 class PerformanceParams(BaseModel):
@@ -57,6 +66,8 @@ class EvaluationRequest(BaseModel):
 
     @model_validator(mode="after")
     def _params_only_with_matching_check(self):
+        if len(set(self.checks)) != len(self.checks):
+            raise ValueError("checks must not contain duplicates")
         if "performance" not in self.checks:
             self.performance = None
         if "profile" not in self.checks:
@@ -87,7 +98,7 @@ class CaseFailure(BaseModel):
     kind: DivergenceKind | None = None
     metrics: CaseMetrics = Field(default_factory=CaseMetrics)
     sample: list[SampleElement] = Field(default_factory=list)
-    error: str = ""
+    error: str | None = None
 
 
 class CorrectnessResult(BaseModel):
@@ -99,14 +110,69 @@ class CorrectnessResult(BaseModel):
     failures: list[CaseFailure] = Field(default_factory=list)
 
 
+class PerShapeResult(BaseModel):
+    shape: str
+    latency_ms: float
+    throughput: float | None = None
+    speedup_vs_torch: float
+
+
 class PerformanceResult(BaseModel):
-    speedup_vs_torch: float | None = None
-    per_shape: list[dict] = Field(default_factory=list)
+    speedup_vs_torch: float
+    per_shape: list[PerShapeResult] = Field(default_factory=list)
+
+
+class OpProfile(BaseModel):
+    case_idx: int
+    op_name: str
+    time_ms: float
+    percentage: float | None = None
+
+
+class DeepProfileSummary(BaseModel):
+    case_idx: int
+    status: ProfileCaseState
+    target_kernel: str | None = None
+    bound: BoundKind | None = None
+    rule: str | None = None
+    mte2_ratio: float | None = None
+    cube_ratio: float | None = None
+    vec_ratio: float | None = None
+    fixp_ratio: float | None = None
+    mte3_ratio: float | None = None
+    scalar_ratio: float | None = None
+    per_core_spread_ratio: float | None = None
+    per_core_verdict: str | None = None
+    recommendations: list[str] = Field(default_factory=list)
+    missing_metrics: list[str] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+    error: str | None = None
+
+
+class ProfileData(BaseModel):
+    mode: Literal["op", "deep"]
+    selected_cases: int
+    completed_cases: int
+    partial_cases: int
+    failed_cases: int
+    timed_out: bool
+    ops: list[OpProfile] | None = None
+    summaries: list[DeepProfileSummary] | None = None
+
+    @model_validator(mode="after")
+    def _mode_specific_payload(self):
+        if self.mode == "op":
+            self.ops = self.ops or []
+            self.summaries = None
+        else:
+            self.summaries = self.summaries or []
+            self.ops = None
+        return self
 
 
 class ProfileResult(BaseModel):
-    profile_state: Literal["complete", "partial"]
-    data: dict = Field(default_factory=dict)
+    profile_state: ProfileState
+    data: ProfileData
 
 
 class EvaluationPayload(BaseModel):
@@ -117,7 +183,6 @@ class EvaluationPayload(BaseModel):
 
 class EvaluationResult(BaseModel):
     task_id: str
-    status: TaskState
-    revision: str = CONTRACT_REVISION
+    status: TerminalStatus
     error: str | None = None
     result: EvaluationPayload = Field(default_factory=EvaluationPayload)
