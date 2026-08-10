@@ -2,9 +2,13 @@ import math
 
 from triton_evaluation.engine._divergence import classify_divergence, worst_sample
 
-
-TOLS = dict(atol=1e-3, rtol=2 ** -13, small_value_threshold=2 ** -14,
-            small_value_error=2 ** -30, rel_threshold=2 ** -13)
+TOLS = dict(
+    atol=1e-3,
+    rtol=2**-13,
+    small_value_threshold=2**-14,
+    small_value_error=2**-30,
+    rel_threshold=2**-13,
+)
 
 
 def _result(reference, candidate, shape, **extra):
@@ -71,7 +75,8 @@ def test_scattered_when_no_pattern_matches():
 def test_worst_sample_top_k_by_abs_diff_descending():
     reference = [0.0, 0.0, 0.0, 0.0, 0.0]
     candidate = [1.0, 5.0, -2.0, 9.0, 3.0]
-    sample = worst_sample(reference, candidate, [c - r for r, c in zip(reference, candidate)], (5,), k=3)
+    diff = [c - r for r, c in zip(reference, candidate, strict=True)]
+    sample = worst_sample(reference, candidate, diff, (5,), k=3)
     assert len(sample) == 3
     # descending by |diff|
     diffs = [abs(s["diff"]) for s in sample]
