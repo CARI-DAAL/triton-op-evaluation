@@ -89,7 +89,7 @@ def test_production_compose_exposes_the_host_runtime_and_all_cards(monkeypatch):
         "HOME": "/tmp",
         "PYTHONUSERBASE": "/home/n84449292/.local",
         "PYTHON_BIN": "/home/n84449292/miniconda3/envs/kernelgym/bin/python3",
-        "TRITON_EVAL_API_HOST": "0.0.0.0",
+        "TRITON_EVAL_API_HOST": "127.0.0.1",
         "TRITON_EVAL_API_PORT": "11907",
         "TRITON_EVAL_CARDS": "8,9,10,11,12,13,14,15",
         "TRITON_EVAL_REDIS_URL": "redis://127.0.0.1:6379/7",
@@ -140,6 +140,7 @@ def test_isolated_compose_targets_npu0_without_production_resources():
     service = config["services"]["triton-eval-npu0"]
 
     assert service["environment"]["TRITON_EVAL_API_PORT"] == "11908"
+    assert service["environment"]["TRITON_EVAL_API_HOST"] == "127.0.0.1"
     assert service["environment"]["TRITON_EVAL_CARDS"] == "0"
     assert service["environment"]["TRITON_EVAL_REDIS_URL"] == "redis://127.0.0.1:6379/8"
     assert {device["source"] for device in service["devices"]} == {
@@ -222,7 +223,6 @@ printf 'args=%s\n' "$*"
             "ASCEND_HOME_PATH=baked-home",
             "ASCEND_OPP_PATH=baked-opp",
             "LD_LIBRARY_PATH=baked-ld",
-            "TRITON_EVAL_API_HOST=127.0.0.1",
             "TRITON_EVAL_API_PORT=12000",
             "TRITON_EVAL_CARDS=3",
             "/bin/bash",

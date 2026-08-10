@@ -45,7 +45,7 @@ supervise with systemd/docker and restart on crash.
 export TRITON_EVAL_REDIS_URL=redis://localhost:6379/0
 # engine is bundled; TRITON_EVAL_ENGINE_DIR is optional (override only)
 
-python3 run_api.py                 # API on 0.0.0.0:10907
+python3 run_api.py                 # API on 127.0.0.1:10907
 python3 run_worker.py --card 0 &   # one worker per physical NPU card
 python3 run_worker.py --card 1 &
 ```
@@ -100,95 +100,44 @@ after bring-up to confirm triton-ascend links `bishengir-compile` from the image
 
 ## Endpoints
 
-- `POST /verify` → `{task_id}`. Pass `measure_speed: true` to run the internal
-  benchmark after every verify case passes; performance is returned under
-  `result.benchmark`.
-- `POST /profile` → `{task_id}`. `profile_mode` is `"op"` (default) or
-  `"deep"`. Omit `case_idx` to profile every input case, or pass a zero-based
-  index to profile one case. Profile does not require a verify task.
-- `GET /tasks/{task_id}` → task status and direct evaluator result JSON.
+- `POST /evaluations` synchronously waits for one terminal, typed evaluation result.
+  Select `correctness`, `performance`, and/or `profile` with `checks`. Performance
+  requires correctness and only runs when correctness passes; profile is independent.
+  Every request requires an `X-Session-ID` header so the service can enforce one
+  in-flight evaluation per session/container.
 - `GET /healthz` → Redis health.
 
-All verify/profile jobs share one Redis queue. Whichever configured card worker
-becomes free first may claim a profile job. Once claimed, all cases and metric
-passes in that job stay on that card. “Free” is worker state, not an
-`npu-smi` probe; cards configured for this service are expected to be
-dedicated.
+The API submits work to the Redis queue and polls it internally; clients never receive
+or poll a non-terminal task. `timeout` covers the whole server-side request, including
+queue wait and all checks. Set the client HTTP timeout higher than the request timeout
+(the smoke client uses 60 seconds of grace), and do not automatically retry an HTTP read
+timeout because the worker may still be running. Server timeouts do not cancel workers.
 
-The following creates a complete two-case profile request, submits the default
-full-case op profile, polls its result once, and then submits a deep profile for
-case 1:
+All checks share one FIFO Redis queue. Whichever configured card worker becomes free
+first claims the next evaluation. Once claimed, all requested checks stay on that card.
+“Free” is worker state, not an `npu-smi` probe; cards configured for this service are
+expected to be dedicated.
+
+Example correctness + performance request:
 
 ```bash
-python3 - <<'PY' >/tmp/triton-profile-request.json
-import json
-
-reference_code = """import torch
-
-class Model(torch.nn.Module):
-    def forward(self, x, y):
-        return x + y
-
-def get_init_inputs():
-    return []
-
-def get_input_groups():
-    return [
-        [torch.randn(4096), torch.randn(4096)],
-        [torch.randn(8192), torch.randn(8192)],
-    ]
-"""
-
-kernel_code = """import torch
-import triton
-import triton.language as tl
-
-@triton.jit
-def add_kernel(x, y, out, n, BLOCK: tl.constexpr):
-    offsets = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
-    mask = offsets < n
-    value = tl.load(x + offsets, mask=mask) + tl.load(y + offsets, mask=mask)
-    tl.store(out + offsets, value, mask=mask)
-
-class ModelNew(torch.nn.Module):
-    def forward(self, x, y):
-        out = torch.empty_like(x)
-        n = x.numel()
-        add_kernel[(triton.cdiv(n, 1024),)](x, y, out, n, BLOCK=1024)
-        return out
-"""
-
-print(json.dumps({
-    "op_name": "add",
-    "reference_code": reference_code,
-    "kernel_code": kernel_code,
-    "profile_mode": "op",
-}))
-PY
-
-TASK_ID=$(
-  curl -sS -X POST http://127.0.0.1:10907/profile \
-    -H 'Content-Type: application/json' \
-    --data-binary @/tmp/triton-profile-request.json |
-  python3 -c 'import json,sys; print(json.load(sys.stdin)["task_id"])'
-)
-curl -sS "http://127.0.0.1:10907/tasks/${TASK_ID}"
-
-python3 - <<'PY'
-import json
-
-path = "/tmp/triton-profile-request.json"
-with open(path, encoding="utf-8") as handle:
-    payload = json.load(handle)
-payload.update({"profile_mode": "deep", "case_idx": 1, "timeout": 7200})
-with open(path, "w", encoding="utf-8") as handle:
-    json.dump(payload, handle)
-PY
-
-curl -X POST http://127.0.0.1:10907/profile \
+curl --max-time 960 -X POST http://127.0.0.1:10907/evaluations \
   -H 'Content-Type: application/json' \
-  --data-binary @/tmp/triton-profile-request.json
+  -H 'X-Session-ID: example-shell' \
+  --data '{
+    "op_name": "add",
+    "reference_code": "import torch ...",
+    "kernel_code": "import torch ...",
+    "checks": ["correctness", "performance"],
+    "timeout": 900,
+    "performance": {"warmup": 5, "repeats": 50}
+  }'
 ```
+
+The response always has terminal `status` plus typed `result.correctness`,
+`result.performance`, and `result.profile` fields. It never returns reference code or
+test inputs. The API binds to loopback by default; sandbox consumers should reach it
+through the managed kernel-harness gateway/relay rather than exposing the port remotely.
 
 ## Test
 

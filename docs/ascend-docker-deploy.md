@@ -5,8 +5,9 @@ environment** (bind-mounted), not the image's conda env (which diverged and is m
 CANN-TBE / triton-ascend runtime deps). This doc contains the **exact repo file contents** to
 sync to another machine, plus the per-host setup that lives outside the repo.
 
-Production: docker compose, 1 eval + 1 redis, cards 8-15, port **11907**, redis db7,
-`restart: unless-stopped`. Smoke test (correctness **and** speed benchmark) passes.
+Production: docker compose, 1 eval + 1 redis, cards 8-15, loopback port **11907**, redis db7,
+`restart: unless-stopped`. The smoke test makes one synchronous v2 request for correctness
+and performance.
 
 > Host-specific paths below (`/home/n84449292/miniconda3`, `/home/n84449292/.local`,
 > `/home/canada_group_folder/CANN/9.0.0.0430`, card ids 8-15) are for THIS host. On another
@@ -72,7 +73,7 @@ services:
       PYTHONUSERBASE: ${PYTHONUSERBASE:-/home/n84449292/.local}
       HOME: /tmp
       TRITON_EVAL_REDIS_URL: ${TRITON_EVAL_REDIS_URL:-redis://127.0.0.1:6379/7}
-      TRITON_EVAL_API_HOST: 0.0.0.0
+      TRITON_EVAL_API_HOST: 127.0.0.1
       TRITON_EVAL_API_PORT: ${TRITON_EVAL_API_PORT:-11907}
       TRITON_EVAL_CARDS: ${TRITON_EVAL_CARDS:-8,9,10,11,12,13,14,15}
       CANN_SET_ENV_PATH: ${CANN_SET_ENV_PATH:-/home/canada_group_folder/CANN/9.0.0.0430/ascend-toolkit/set_env.sh}
@@ -174,7 +175,7 @@ cd /opt/triton-eval
 
 run_api() {
   exec "${PYTHON_BIN}" -m uvicorn run_api:app \
-    --host "${TRITON_EVAL_API_HOST:-0.0.0.0}" \
+    --host "${TRITON_EVAL_API_HOST:-127.0.0.1}" \
     --port "${TRITON_EVAL_API_PORT:-10907}"
 }
 
@@ -204,7 +205,7 @@ case "${1:-all}" in
     ;;
   all)
     "${PYTHON_BIN}" -m uvicorn run_api:app \
-      --host "${TRITON_EVAL_API_HOST:-0.0.0.0}" \
+      --host "${TRITON_EVAL_API_HOST:-127.0.0.1}" \
       --port "${TRITON_EVAL_API_PORT:-10907}" &
     api_pid=$!
     run_workers "${api_pid}"
@@ -257,7 +258,7 @@ services:
       PYTHONUSERBASE: /home/n84449292/.local
       HOME: /tmp
       TRITON_EVAL_REDIS_URL: redis://127.0.0.1:6379/8
-      TRITON_EVAL_API_HOST: 0.0.0.0
+      TRITON_EVAL_API_HOST: 127.0.0.1
       TRITON_EVAL_API_PORT: "11908"
       TRITON_EVAL_CARDS: "0"
       CANN_SET_ENV_PATH: /home/canada_group_folder/CANN/9.0.0.0430/ascend-toolkit/set_env.sh
@@ -305,6 +306,9 @@ PYTHON_BIN=/home/n84449292/miniconda3/envs/kernelgym/bin/python3
 Plus the usual: `TRITON_EVAL_API_PORT=11907`, `TRITON_EVAL_CARDS=8,9,...,15`,
 `TRITON_EVAL_REDIS_URL=redis://localhost:6379/7`,
 `CANN_SET_ENV_PATH=/home/canada_group_folder/CANN/9.0.0.0430/ascend-toolkit/set_env.sh`.
+
+Keep `TRITON_EVAL_API_HOST=127.0.0.1`. The v2 API intentionally has no token and must not
+be exposed directly; sandbox consumers reach it through the kernel-harness gateway/relay.
 
 > The repo templates `.env.example` and `docker.env.example` now document `PYTHON_BIN` as a
 > commented line (with the why), so deployers know to set it.
@@ -362,8 +366,12 @@ docker compose --env-file docker.env build       # one-time
 docker compose --env-file docker.env up -d        # start eval + redis
 docker compose --env-file docker.env logs -f
 docker compose --env-file docker.env down
-python3 scripts/test_eval_service.py --url http://127.0.0.1:11907   # smoke (correctness + speed)
+python3 scripts/test_eval_service.py --url http://127.0.0.1:11907   # one synchronous v2 request
 ```
+
+The smoke client sends the required `X-Session-ID`, requests correctness + performance,
+and sets its HTTP timeout to the request-wide evaluation timeout plus 60 seconds. It does
+not poll or automatically retry a read timeout.
 
 ## 5. Notes / future work
 - Container depends on the host `kernelgym` env + `~/.local` (less portable than a

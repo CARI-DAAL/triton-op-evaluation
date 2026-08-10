@@ -17,7 +17,7 @@ services:
       PYTHONUSERBASE: /home/n84449292/.local
       HOME: /tmp
       TRITON_EVAL_REDIS_URL: redis://127.0.0.1:6379/8
-      TRITON_EVAL_API_HOST: 0.0.0.0
+      TRITON_EVAL_API_HOST: 127.0.0.1
       TRITON_EVAL_API_PORT: "11908"
       TRITON_EVAL_CARDS: "0"
       CANN_SET_ENV_PATH: /home/canada_group_folder/CANN/9.0.0.0430/ascend-toolkit/set_env.sh
