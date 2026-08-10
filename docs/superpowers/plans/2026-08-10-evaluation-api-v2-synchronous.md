@@ -781,6 +781,8 @@ the first execution pass. They were reproduced test-first and closed in focused 
   and bound every submit/poll call by the remaining deadline.
 - `cbd5e67`, `3c78cbc`: isolate sub-check exceptions, reject malformed successful engine payloads,
   preserve available correctness/profile data, and continue independent profile execution.
+- `013409a`: validate every shaped correctness/performance/profile subresult against its formal
+  Pydantic model before aggregation, including nested fields and a strictly boolean decoy flag.
 - `b787a0a`: make lease+task+enqueue and terminal+lease-release transitions atomic with
   owner-checked WATCH/MULTI; reaper uses the same terminal path.
 - `c4112f4`, `b9b9ab8`: attach diagnostics to every supported value mismatch, ignore matching
