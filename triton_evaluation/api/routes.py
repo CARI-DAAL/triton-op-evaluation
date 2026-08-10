@@ -103,27 +103,17 @@ async def submit_evaluation(
         session_id=session_id,
     )
     lease_ttl = compute_session_lease_ttl(spec, broker.s)
-    acquired = await asyncio.to_thread(
-        broker.acquire_session,
-        session_id,
-        task_id,
+    submitted = await asyncio.to_thread(
+        broker.submit,
+        Job(task_id, JobType.EVALUATION.value, spec),
         lease_ttl,
     )
-    if not acquired:
+    if not submitted:
         raise HTTPException(
             status_code=429,
             detail="session already has an in-flight evaluation",
             headers={"Retry-After": "1"},
         )
-    try:
-        await asyncio.to_thread(
-            broker.create_task,
-            Job(task_id, JobType.EVALUATION.value, spec),
-        )
-    except Exception:
-        await asyncio.to_thread(broker.release_session, session_id, task_id)
-        raise
-
     return await _wait_for_result(
         broker,
         task_id,

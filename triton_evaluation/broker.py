@@ -6,6 +6,13 @@ import redis
 from .config import Settings
 from .models import Job, TaskStatus
 
+_TERMINAL_STATUSES = {
+    TaskStatus.SUCCEEDED.value,
+    TaskStatus.FAILED.value,
+    TaskStatus.TIMEOUT.value,
+    TaskStatus.REJECTED.value,
+}
+
 
 def _parse_task(raw: dict) -> dict:
     def _f(v):
@@ -22,6 +29,7 @@ def _parse_task(raw: dict) -> dict:
         "started_at": _f(raw.get("started_at")),
         "finished_at": _f(raw.get("finished_at")),
         "deadline": _f(raw.get("deadline")),
+        "session_id": raw.get("session_id") or None,
     }
 
 
@@ -76,17 +84,48 @@ class Broker:
             finally:
                 pipeline.reset()
 
+    @staticmethod
+    def _queued_mapping(job: Job) -> dict[str, str]:
+        return {
+            "task_id": job.task_id,
+            "type": job.type,
+            "status": TaskStatus.QUEUED.value,
+            "created_at": repr(time.time()),
+            "session_id": job.spec.session_id or "",
+        }
+
+    def submit(self, job: Job, lease_ttl_seconds: int) -> bool:
+        """Atomically acquire a session lease, create the task, and enqueue it."""
+        session_id = job.spec.session_id
+        if session_id is None:
+            raise ValueError("submitted evaluation must have a session_id")
+        if lease_ttl_seconds <= 0:
+            raise ValueError("session lease TTL must be positive")
+
+        session_key = self._session_key(session_id)
+        task_key = self._task_key(job.task_id)
+        while True:
+            pipeline = self.r.pipeline()
+            try:
+                pipeline.watch(session_key)
+                if pipeline.exists(session_key):
+                    pipeline.unwatch()
+                    return False
+                pipeline.multi()
+                pipeline.set(session_key, job.task_id, ex=lease_ttl_seconds)
+                pipeline.hset(task_key, mapping=self._queued_mapping(job))
+                pipeline.expire(task_key, self.s.task_ttl_seconds)
+                pipeline.lpush(self.s.queue_key, job.to_json())
+                pipeline.execute()
+                return True
+            except redis.exceptions.WatchError:
+                continue
+            finally:
+                pipeline.reset()
+
     def create_task(self, job: Job) -> None:
         key = self._task_key(job.task_id)
-        self.r.hset(
-            key,
-            mapping={
-                "task_id": job.task_id,
-                "type": job.type,
-                "status": TaskStatus.QUEUED.value,
-                "created_at": repr(time.time()),
-            },
-        )
+        self.r.hset(key, mapping=self._queued_mapping(job))
         self.r.expire(key, self.s.task_ttl_seconds)
         self.r.lpush(self.s.queue_key, job.to_json())
 
@@ -118,15 +157,47 @@ class Broker:
 
     def store_result(
         self, task_id: str, status: str, result: dict | None = None, error: str | None = None
-    ) -> None:
-        key = self._task_key(task_id)
+    ) -> bool:
+        """Atomically persist the first terminal result and release its owned lease."""
+        if status not in _TERMINAL_STATUSES:
+            raise ValueError(f"status is not terminal: {status}")
+        task_key = self._task_key(task_id)
         mapping = {"status": status, "finished_at": repr(time.time())}
         if result is not None:
             mapping["result"] = json.dumps(result)
         if error is not None:
             mapping["error"] = error
-        self.r.hset(key, mapping=mapping)
-        self.r.expire(key, self.s.task_ttl_seconds)
+
+        while True:
+            pipeline = self.r.pipeline()
+            try:
+                pipeline.watch(task_key)
+                if not pipeline.exists(task_key):
+                    pipeline.unwatch()
+                    return False
+                if pipeline.hget(task_key, "status") in _TERMINAL_STATUSES:
+                    pipeline.unwatch()
+                    return False
+
+                session_id = pipeline.hget(task_key, "session_id") or None
+                session_key = self._session_key(session_id) if session_id else None
+                if session_key is not None:
+                    pipeline.watch(session_key)
+                owns_lease = bool(
+                    session_key is not None and pipeline.get(session_key) == task_id
+                )
+
+                pipeline.multi()
+                pipeline.hset(task_key, mapping=mapping)
+                pipeline.expire(task_key, self.s.task_ttl_seconds)
+                if owns_lease:
+                    pipeline.delete(session_key)
+                pipeline.execute()
+                return True
+            except redis.exceptions.WatchError:
+                continue
+            finally:
+                pipeline.reset()
 
     def get_task(self, task_id: str) -> dict | None:
         key = self._task_key(task_id)

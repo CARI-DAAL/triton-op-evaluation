@@ -204,6 +204,34 @@ def test_existing_session_lease_is_429(settings):
     assert broker.dequeue() is None
 
 
+def test_ambiguous_submit_failure_retains_session_lease(settings, monkeypatch):
+    import triton_evaluation.api.routes as routes
+
+    class _AmbiguousSubmitBroker(Broker):
+        def submit(self, job, lease_ttl_seconds):
+            assert self.acquire_session(
+                job.spec.session_id,
+                job.task_id,
+                lease_ttl_seconds,
+            )
+            raise ConnectionError("lost submit response")
+
+    redis_client = fakeredis.FakeStrictRedis(decode_responses=True)
+    broker = _AmbiguousSubmitBroker(redis_client, settings)
+    client = TestClient(create_app(broker), raise_server_exceptions=False)
+    ticks = iter([0.0, 11.0])
+    monkeypatch.setattr(routes, "_monotonic", lambda: next(ticks))
+
+    response = client.post(
+        "/evaluations",
+        headers={"X-Session-ID": "session-a"},
+        json=_request_body(),
+    )
+
+    assert response.status_code == 500
+    assert broker.acquire_session("session-a", "duplicate", 60) is False
+
+
 def test_request_timeout_returns_terminal_payload_without_cancelling_job(
     settings,
     monkeypatch,
@@ -238,8 +266,8 @@ def test_request_deadline_includes_submission_and_wins_over_late_terminal(
     clock = {"now": 100.0}
 
     class _SlowCompletingBroker(Broker):
-        def create_task(self, job):
-            super().create_task(job)
+        def submit(self, job, lease_ttl_seconds):
+            submitted = super().submit(job, lease_ttl_seconds)
             clock["now"] = 111.0
             self.store_result(
                 job.task_id,
@@ -257,6 +285,7 @@ def test_request_deadline_includes_submission_and_wins_over_late_terminal(
                     "profile": None,
                 },
             )
+            return submitted
 
     monkeypatch.setattr(routes, "_monotonic", lambda: clock["now"])
     client, _ = _client(settings, _SlowCompletingBroker)
@@ -282,13 +311,9 @@ def test_async_route_runs_blocking_broker_calls_off_event_loop(settings, monkeyp
         return time.monotonic()
 
     class _ThreadRecordingBroker(_CompletingBroker):
-        def acquire_session(self, *args, **kwargs):
+        def submit(self, *args, **kwargs):
             broker_threads.append(threading.get_ident())
-            return super().acquire_session(*args, **kwargs)
-
-        def create_task(self, *args, **kwargs):
-            broker_threads.append(threading.get_ident())
-            return super().create_task(*args, **kwargs)
+            return super().submit(*args, **kwargs)
 
         def get_task(self, *args, **kwargs):
             broker_threads.append(threading.get_ident())

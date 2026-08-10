@@ -4,7 +4,7 @@ import pytest
 import redis
 
 from triton_evaluation.broker import Broker
-from triton_evaluation.models import Job, JobSpec, TaskStatus
+from triton_evaluation.models import Job, JobSpec, JobType, TaskStatus
 
 
 def _job(task_id="t1", type_="verify"):
@@ -81,3 +81,75 @@ def test_sessions_are_independent(broker):
 def test_session_lease_rejects_non_positive_ttl(broker):
     with pytest.raises(ValueError, match="positive"):
         broker.acquire_session("session-a", "task-a", 0)
+
+
+def test_submit_atomically_creates_lease_task_and_queue_item(broker):
+    spec = JobSpec(
+        op_name="softmax",
+        reference_code="R",
+        kernel_code="K",
+        checks=["correctness"],
+        session_id="session-a",
+    )
+    job = Job("task-a", JobType.EVALUATION.value, spec)
+
+    assert broker.submit(job, lease_ttl_seconds=60) is True
+    assert broker.get_task("task-a")["status"] == TaskStatus.QUEUED.value
+    assert broker.get_task("task-a")["session_id"] == "session-a"
+    assert broker.acquire_session("session-a", "other", 60) is False
+    assert broker.dequeue().task_id == "task-a"
+
+
+def test_submit_conflict_does_not_create_or_enqueue_second_task(broker):
+    first = JobSpec(
+        op_name="a",
+        reference_code="R",
+        kernel_code="K",
+        checks=["correctness"],
+        session_id="session-a",
+    )
+    second = JobSpec(
+        op_name="b",
+        reference_code="R",
+        kernel_code="K",
+        checks=["correctness"],
+        session_id="session-a",
+    )
+
+    assert broker.submit(Job("task-a", "evaluation", first), 60) is True
+    assert broker.submit(Job("task-b", "evaluation", second), 60) is False
+    assert broker.get_task("task-b") is None
+    assert broker.dequeue().task_id == "task-a"
+    assert broker.dequeue() is None
+
+
+def test_terminal_store_and_owned_lease_release_are_atomic(broker):
+    spec = JobSpec(
+        op_name="a",
+        reference_code="R",
+        kernel_code="K",
+        checks=["correctness"],
+        session_id="session-a",
+    )
+    assert broker.submit(Job("task-a", "evaluation", spec), 60) is True
+
+    assert broker.store_result("task-a", "SUCCEEDED", result={"ok": True}) is True
+
+    assert broker.get_task("task-a")["status"] == "SUCCEEDED"
+    assert broker.acquire_session("session-a", "task-b", 60) is True
+
+
+def test_old_terminal_store_does_not_delete_new_session_owner(broker):
+    old_spec = JobSpec(
+        op_name="a",
+        reference_code="R",
+        kernel_code="K",
+        checks=["correctness"],
+        session_id="session-a",
+    )
+    broker.create_task(Job("old-task", "evaluation", old_spec))
+    assert broker.acquire_session("session-a", "new-task", 60) is True
+
+    assert broker.store_result("old-task", "FAILED", error="late") is True
+
+    assert broker.acquire_session("session-a", "third-task", 60) is False

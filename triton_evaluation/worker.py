@@ -51,7 +51,6 @@ class Worker:
         max_runtime = compute_max_runtime(job.spec)
         deadline = time.time() + max_runtime + self.settings.reaper_grace_seconds
         self.broker.mark_running(job.task_id, self.device_id, deadline)
-        terminal_stored = False
         try:
             evaluator = self.registry[job.type]
             verify_dir = tempfile.mkdtemp(prefix=f"eval_{job.task_id}_")
@@ -59,14 +58,15 @@ class Worker:
                 res = evaluator.run(job.spec, verify_dir, self.device_id)
             finally:
                 shutil.rmtree(verify_dir, ignore_errors=True)
-            self.broker.store_result(job.task_id, res.status, res.result, res.error)
-            terminal_stored = True
         except Exception as e:  # dispatch/setup failure — never crash the worker
-            self.broker.store_result(job.task_id, TaskStatus.FAILED.value, error=repr(e))
-            terminal_stored = True
-        finally:
-            if terminal_stored and job.spec.session_id is not None:
-                self.broker.release_session(job.spec.session_id, job.task_id)
+            status = TaskStatus.FAILED.value
+            result = None
+            error = repr(e)
+        else:
+            status = res.status
+            result = res.result
+            error = res.error
+        self.broker.store_result(job.task_id, status, result, error)
         return True
 
     def serve_forever(self) -> None:

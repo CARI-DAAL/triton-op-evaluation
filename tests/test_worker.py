@@ -109,14 +109,18 @@ def test_evaluator_exception_marks_failed(broker, settings):
     assert "kaboom" in rec["error"]
 
 
-def test_reaper_marks_stale_running(broker, settings):
-    broker.create_task(Job("t3", JobType.VERIFY.value, _spec()))
+def test_reaper_marks_stale_running_and_releases_session(broker, settings):
+    spec = _spec()
+    spec.session_id = "session-a"
+    assert broker.acquire_session("session-a", "t3", 60) is True
+    broker.create_task(Job("t3", JobType.VERIFY.value, spec))
     broker.mark_running("t3", 0, deadline=time.time() + 10000)
     # backdate the deadline into the past
     broker.r.hset(broker._task_key("t3"), "deadline", repr(time.time() - 10))
     n = reap_stale_tasks(broker, settings)
     assert n == 1
     assert broker.get_task("t3")["status"] == "FAILED"
+    assert broker.acquire_session("session-a", "next-task", 60) is True
 
 
 def test_reaper_does_not_reap_live_task(broker, settings):
