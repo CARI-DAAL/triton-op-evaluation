@@ -2,15 +2,18 @@
 
 - 日期：2026-08-06
 - 审阅确认：2026-08-10
-- 状态：实现完成；本地验证通过，真实 NPU smoke / divergence 校准待外部环境
+- 部署扩展审阅：2026-08-12
+- 状态：API v2 实现完成且本地验证通过；bridge 直连部署待实现；真实 NPU smoke /
+  divergence 校准待外部环境
 - 位置：`triton_evaluation/api/`（同步路由 + 正式 response model）、
   `triton_evaluation/evaluators/`（engine JSON → 正式 model）
 - 取代：v1 `/verify`、`/profile` 和隐式 benchmark → 唯一入口 `POST /evaluations`
-- 关联消费方：kernel-harness 的 `te` CLI（agent 经 `execute_bash` 调用）
+- 关联消费方：kernel-harness 的 `te` CLI（agent 经 `execute_bash` 调用）、Eval Hub 的
+  grader adapter
 
 ## 1. 目标与非目标
 
-eval service v2 面向 kernel-harness agent、批量跑分和后续消费方，提供稳定、显式、
+eval service v2 面向 kernel-harness agent、Eval Hub、批量跑分和后续消费方，提供稳定、显式、
 可组合的评测契约。它解决 v1 的三个问题：
 
 - `/verify?measure_speed=true` 混合正确性与性能职责；
@@ -27,6 +30,8 @@ v2 使用一个同步资源、可组合 `checks` 和正式 pydantic response mod
   的测量算法。`verify.py` 只 additive 地增加 `kind` + `sample`。
 - 不把服务变成可执行任意代码的通用 runner。
 - v2 不实现后台任务取消。同步请求超时后，已提交任务仍可能继续运行。
+- 不提供公开 task polling、幂等重放、队列深度或 NPU 卡忙闲 API；需要这些能力的管理面
+  必须另行设计，不能从 `/healthz` 推断。
 
 ## 2. 已确认决策
 
@@ -43,8 +48,10 @@ v2 使用一个同步资源、可组合 `checks` 和正式 pydantic response mod
 | profile 依赖 | 独立；correctness 不通过或 decoy 也不跳过 profile |
 | v1 | 删除 `/verify`、`/profile` 和公开 `/tasks/{id}`，不留 alias |
 | 版本 | 直接 `/evaluations`，不加 URL 前缀，也不加 `revision` / `judge_version` |
-| 鉴权 | 无 token；依赖网络隔离和按 session 的在途限制 |
+| 鉴权 | 无 token；依赖仅绑定已验证的 Docker bridge gateway 和按 session 的在途限制 |
 | 调度 | FIFO |
+| 生产网络 | `network_mode: host`，API 仅绑定 `kernel-agent-sandbox-net` 的已验证 gateway |
+| 消费路径 | sandbox、Eval Hub、host observer 直连 bridge 地址；不增加 relay / NAT / facade |
 
 ## 3. HTTP API
 
@@ -69,7 +76,7 @@ v2 使用一个同步资源、可组合 `checks` 和正式 pydantic response mod
 请求头：
 
 ```http
-X-Session-ID: <kernel-harness session/container id>
+X-Session-ID: <consumer-scoped stable evaluation id>
 ```
 
 规则：
@@ -82,6 +89,8 @@ X-Session-ID: <kernel-harness session/container id>
   HTTP 400。
 - 同一个 session 最多一个未完成的后端 evaluation。Redis lease 已存在时返回 HTTP 429，
   并带 `Retry-After: 1`。
+- kernel-harness 使用 session/container 范围 ID；Eval Hub 使用只含允许字符且不超过
+  128 字符的稳定 ID，例如 `hub:<run_uuid>:<problem_result_uuid>:a<attempt>`。
 
 成功接收请求后，API 创建一个 `evaluation` job，再直接轮询 Broker；不会把 `task_id`
 作为一次中间响应返回。任务在 `timeout` 内进入终态时返回对应 `EvaluationResult`。
@@ -89,7 +98,8 @@ X-Session-ID: <kernel-harness session/container id>
 `error="evaluation request timed out"` 和空 payload；后台任务继续。
 
 客户端 HTTP timeout 必须为请求 `timeout + 60s`。客户端只自动重试连接拒绝与明确的
-5xx；HTTP read timeout 不自动重试，因为服务可能已经提交了任务。
+5xx；HTTP 429 按 `Retry-After` 等待；HTTP read timeout 不自动重试，因为服务可能已经
+提交任务。HTTP 200 + `status="TIMEOUT"` 是一次终态结果，同样不自动重提。
 
 ### 3.2 `GET /healthz`
 
@@ -99,7 +109,9 @@ X-Session-ID: <kernel-harness session/container id>
 
 Redis task record 及 `task_id` 继续用于 API 内部轮询、日志和管理，但没有公开的
 `GET /tasks/{id}` 或 `GET /evaluations/{id}`。`task_id` 只在最终 `EvaluationResult`
-中用于追踪。
+中用于追踪。消费方在同步 HTTP 请求完成前崩溃时无法重新查询该次结果；已在 worker
+执行的任务可能继续消耗 NPU。消费方必须把这种恢复状态记为 `unknown`，不得声称
+exactly-once，也不得盲目自动重提。
 
 ## 4. 正式 response model
 
@@ -212,6 +224,10 @@ class PerformanceResult(BaseModel):
   `"[20120,512]"`，多 tensor 例如 `"[[16,32],[32,64]]"`。
 - `latency_ms` 使用 implementation 的 `avg_latency_ms`。
 - engine 不提供可靠 op-count，因此当前 `throughput=None`。
+- 一个 problem 可以有多个 `per_shape`。消费方不得把它压缩成单个 runtime 后丢弃 shape；
+  若需要 reference latency，可按每 shape 的
+  `latency_ms * speedup_vs_torch` 推导。`speedup_vs_torch` 是正式契约字段，推导值不是
+  service 新增的原始测量字段。
 - benchmark 有任意 failed case、无有效 overall speedup 或没有有效 per-shape 结果时，
   performance check 为 `FAILED`，而不是构造不完整的 `PerformanceResult`。
 
@@ -325,6 +341,10 @@ API poll 使用可配置的短间隔，测试中可设为 0。每次 poll 只读
 都受 request absolute deadline 的剩余时间约束；线程调用超时后保持潜在 job/lease，不做
 不安全的释放。同步长连接占用一个请求协程，但不阻塞 event loop。
 
+Eval Hub 可以在自身进程内用 semaphore 限制同步长连接数量。这是消费方 backpressure，
+不是替代或绕过 service 的 FIFO/NPU worker 调度。Hub 取消 run 时只能停止派发并忽略晚到
+响应，不能取消已经提交的 evaluation。
+
 ## 8. 兼容与迁移
 
 - 删除 `/verify`、`/profile`、`/tasks/{id}`；它们返回 404。
@@ -332,16 +352,70 @@ API poll 使用可配置的短间隔，测试中可设为 0。每次 poll 只读
 - 老消费方一次性迁移到同步 `POST /evaluations`，并把 HTTP timeout 配成 body timeout + 60s。
 - response 绝不回传 `reference_code` 或测试输入原值。
 
+### 8.1 Eval Hub grader adapter
+
+Eval Hub 把 service 注册为 capability 为 `correctness`、`performance`、`profile` 的
+grader。v1 adapter 使用一个同步方法，不建造公开 job/poll 抽象：
+
+```python
+async def evaluate(
+    problem: GraderProblem,
+    answer: AnswerResult,
+    config: EvaluationConfig,
+    session_id: str,
+) -> EvaluationResult: ...
+```
+
+映射规则：
+
+- `problem` 提供 `op_name`、`reference_code`、`triton_impl_name`、`non_compute`；
+  `answer` 提供 `kernel_code`。
+- 需要 speedup 时请求 `checks=["correctness", "performance"]`；performance 失败或因
+  correctness 未通过而跳过时为 `None`。
+- Hub 分别持久化顶层 `status`、`correctness.passed` 和 performance/profile outcome；
+  不能用一个 `grade_status` 混淆“kernel 错误”和“性能基础设施失败”。
+- Hub 保存完整 grader response artifact、`task_id`、overall speedup 及所有 `per_shape`；
+  聚合时同时报告 performance coverage。
+- `/healthz` 只表示 Redis 可达性，不承诺队列深度、worker 数量或卡忙闲信息。
+- Hub checkpoint 只保证已持久化结果不重跑。崩溃时正在进行的 HTTP evaluation 标为
+  `unknown`；未来若需要精确恢复，另行设计 idempotency key 或管理查询契约。
+
 ## 9. 网络与部署
 
 - 不引入 token 或 `EVALUATION_TOKEN`。
-- 宿主进程和当前 host-network 容器部署都绑定 `127.0.0.1`；不得把 eval service
-  直接发布到远程网卡。
-- sandbox/container 经 kernel-harness 管理的 gateway/relay 访问宿主 loopback 服务；
-  relay 是消费方边界，不改变 eval service 的监听地址。所有请求发送 `X-Session-ID`。
+- 生产配置固定为：
+
+  ```dotenv
+  TRITON_EVAL_API_HOST=172.18.0.1
+  TRITON_EVAL_API_PORT=10907
+  EVALUATION_URL=http://172.18.0.1:10907
+  PROXY_HOST=172.18.0.1
+  NO_PROXY=127.0.0.1,localhost,::1,172.18.0.1
+  no_proxy=127.0.0.1,localhost,::1,172.18.0.1
+  ```
+
+  `172.18.0.1` 是当前部署值，不是可盲信的常量；每次启动前必须与
+  `kernel-agent-sandbox-net` 实际 IPv4 gateway 完全一致。
+- eval 与 Redis Compose service 都保持 `network_mode: host`。Redis 继续只监听
+  `127.0.0.1:6379`，生产 `TRITON_EVAL_REDIS_URL` 只能指向该 loopback 地址；bridge
+  consumer 不能访问 Redis。
+- sandbox 的 `te`、Eval Hub 和 host-side observer 都直接访问
+  `http://172.18.0.1:10907`，不增加 relay、NAT 或 facade。所有 evaluation 请求仍发送
+  `X-Session-ID`。
+- 新增 host-side `scripts/compose.sh` 包装 `docker compose`。`up`、`start`、`restart`
+  在调用 Compose 前必须通过 pure-stdlib `scripts/deployment_preflight.py`；其他命令
+  原样透传。preflight 失败时不得启动或重启 service，也不把 Docker socket 挂进容器。
+- preflight 调用 Docker CLI 读取 `kernel-agent-sandbox-net` IPAM，检查 network 存在且有
+  唯一可用 IPv4 gateway，并强制 gateway、`TRITON_EVAL_API_HOST`、`PROXY_HOST`、
+  `EVALUATION_URL` host 完全一致。它还检查端口为 `10907`、两个 proxy bypass 变量包含
+  gateway、rendered Compose 保持 host network，以及 Redis bind/URL 都是 loopback。
+- 唯一允许的生产 API bind 是 preflight 得到的 bridge gateway。明确拒绝 `0.0.0.0`、
+  `::`、loopback、任意物理网卡/公网地址、缺失 network 和 gateway 不匹配；不得用
+  `--network host` 作为绑定 wildcard 的理由。
 - worker 数量至少覆盖预期并发长请求；HTTP/反向代理 read timeout 至少为 body timeout
   + 30 秒，官方客户端使用 +60 秒。
-- 如果将来把服务暴露到远程网络或多租户 host，再引入认证、租户配额和更强 rate limit。
+- 如果将来需要 bridge 之外的远程消费方或多租户 host，必须先重新评审鉴权、租户配额、
+  TLS 和更强 rate limit，不能直接放宽 bind 地址。
 
 ## 10. 测试与验收
 
@@ -355,4 +429,11 @@ API poll 使用可配置的短间隔，测试中可设为 0。每次 poll 只读
 - 组合规则：correctness fail 跳过 performance 但不跳过 profile；decoy 同样不跳过 profile。
 - 旧路由：`/verify`、`/profile`、`/tasks/{id}` 均为 404。
 - 回归：所有保留的 worker、broker、engine、profile、benchmark tests 通过。
+- 部署配置：Compose、`.env.example`、`docker.env.example`、README、部署文档、health-check
+  示例对 gateway、端口、Redis loopback 和 `NO_PROXY` 的描述一致。
+- preflight（不依赖 NPU）：用 fake Docker CLI 覆盖正确 gateway、network 不存在、gateway
+  不匹配、wildcard/loopback/物理地址、错误端口、proxy bypass 缺失、Redis 非 loopback、
+  rendered Compose 非 host network。包装脚本在失败时不得调用启动命令，成功时原样转发
+  Compose 参数。
+- 本机验收不运行真实 NPU evaluation；API/配置/preflight/文档测试必须在无 NPU 环境通过。
 - NPU 校准：真实失败集达到 precision > 90%、recall > 80%，否则收缩 kind 集合。
