@@ -1,9 +1,15 @@
 # Profile Endpoint（msprof）设计文档
 
+> [!NOTE]
+> **ACTIVE ENGINE DESIGN; PUBLIC WIRE SUPERSEDED.** 保留本文的 msprof op/deep、capture、
+> cleanup 和 provenance 设计；其中 `/profile`、`task_id` 与 response API 描述已被
+> `docs/specs/2026-08-06-evaluation-api-v2-design.md` 的 typed profile check 取代。
+
 - 日期：2026-07-25
 - 状态：设计已确认，待文档审阅
 - 适用仓库：`triton-op-evaluation`
-- 对应实施计划：`docs/plans/2026-07-25-profile-endpoint-msprof.md`（后续修订为 v2）
+- 历史已完成实施计划：`docs/plans/2026-07-25-profile-endpoint-msprof.md`（仅解释
+  engine/capture 来源，不作为 Evaluation API v2 wire plan）
 
 本文档在 profile 和公开 API 边界上取代
 `docs/specs/2026-07-23-triton-evaluation-design.md` 中“独立

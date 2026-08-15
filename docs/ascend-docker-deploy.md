@@ -1,13 +1,19 @@
 # triton-evaluation on Ascend — docker deploy + repo sync guide
 
+> [!CAUTION]
+> **PARTIALLY SUPERSEDED.** Keep this guide only for its host-specific Ascend/CANN/Python
+> environment and device-mount knowledge. Its Redis durability, API authentication, bind/health
+> endpoints, and synchronous smoke examples predate Evaluation API v2 and MUST NOT be copied.
+> Those parts are governed by `docs/specs/2026-08-06-evaluation-api-v2-design.md` and must be
+> replaced during the Phase 0 contract/deployment freeze.
+
 This host runs the triton-evaluation service in **docker**, but using the **host's own Python
 environment** (bind-mounted), not the image's conda env (which diverged and is missing the
 CANN-TBE / triton-ascend runtime deps). This doc contains the **exact repo file contents** to
 sync to another machine, plus the per-host setup that lives outside the repo.
 
-Production: docker compose, 1 eval + 1 redis, cards 8-15, loopback port **11907**, redis db7,
-`restart: unless-stopped`. The smoke test makes one synchronous v2 request for correctness
-and performance.
+Historical deployment snapshot: docker compose, 1 eval + 1 redis, cards 8-15, loopback port
+**11907**, redis db7, `restart: unless-stopped`. The old smoke below is not a v2 acceptance test.
 
 > Host-specific paths below (`/home/n84449292/miniconda3`, `/home/n84449292/.local`,
 > `/home/canada_group_folder/CANN/9.0.0.0430`, card ids 8-15) are for THIS host. On another

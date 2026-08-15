@@ -1,5 +1,10 @@
 # triton-evaluation Implementation Plan
 
+> [!NOTE]
+> **COMPLETED / HISTORICAL — DO NOT RE-EXECUTE.** This plan explains the origin of the v1
+> broker/worker/evaluator implementation. It is not the Evaluation API v2 implementation plan;
+> v2 planning must start from `docs/specs/2026-08-06-evaluation-api-v2-design.md`.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Package the `triton-op-verifier` skill's verify/benchmark scripts into a standalone FastAPI + Redis evaluator service with one worker pinned per NPU card.
