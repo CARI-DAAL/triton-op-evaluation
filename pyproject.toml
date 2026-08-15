@@ -8,10 +8,11 @@ dependencies = [
     "redis==8.0.1",
     "pydantic==2.13.4",
     "pydantic-settings==2.14.2",
+    "rfc8785==0.1.4",
 ]
 
 [project.optional-dependencies]
-test = ["pytest==9.1.1", "fakeredis==2.37.0", "httpx==0.28.1"]
+test = ["pytest==9.1.1", "fakeredis==2.37.0", "httpx==0.28.1", "jsonschema==4.26.0"]
 dev = ["ruff==0.16.0"]
 
 [tool.setuptools.packages.find]
