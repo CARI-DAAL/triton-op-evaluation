@@ -11,12 +11,14 @@ from pathlib import Path
 from ..api.contract import EvaluationRequest, ProfileParams
 from .base import (
     EngineCheckResult,
+    LeaseLostError,
     engine_failure,
     engine_timeout,
     materialize,
     read_json,
     remaining_seconds,
     run_script,
+    safe_module_stem,
 )
 
 # The engine requires --timeout within [10, 86400].
@@ -68,6 +70,7 @@ class ProfileEvaluator:
         work_dir: Path,
         device_id: int,
         deadline_at,
+        lease_valid=None,
     ) -> EngineCheckResult:
         materialize(request, work_dir)
         params = request.profile or ProfileParams()
@@ -75,7 +78,9 @@ class ProfileEvaluator:
         if indices is not None and not indices:
             return engine_failure("profile", "profile case selection is empty")
         if indices is None:
-            result = self._run_once(request, params, work_dir, device_id, deadline_at, None)
+            result = self._run_once(
+                request, params, work_dir, device_id, deadline_at, None, lease_valid
+            )
             if result.status != "succeeded":
                 return result
             raw = result.raw
@@ -83,7 +88,8 @@ class ProfileEvaluator:
             envelopes = []
             for index in indices:
                 result = self._run_once(
-                    request, params, work_dir, device_id, deadline_at, index
+                    request, params, work_dir, device_id, deadline_at, index,
+                    lease_valid,
                 )
                 if result.status != "succeeded":
                     return result
@@ -102,6 +108,7 @@ class ProfileEvaluator:
         device_id: int,
         deadline_at,
         case_idx: int | None,
+        lease_valid=None,
     ) -> EngineCheckResult:
         remaining = remaining_seconds(deadline_at)
         if remaining <= 0:
@@ -120,7 +127,7 @@ class ProfileEvaluator:
             sys.executable,
             str(Path(self.engine_dir) / "profile_runner.py"),
             "--op_name",
-            request.op_name,
+            safe_module_stem(request),
             "--verify_dir",
             str(work_dir),
             "--triton_impl_name",
@@ -134,7 +141,12 @@ class ProfileEvaluator:
         ]
         if case_idx is not None:
             cmd.extend(["--case-idx", str(case_idx)])
-        outcome = run_script(cmd, str(work_dir), device_id, timeout=budget + 60)
+        outcome = run_script(
+            cmd, str(work_dir), device_id, deadline_at, lease_valid,
+            budget_seconds=budget + 60,
+        )
+        if outcome.outcome == "fenced":
+            raise LeaseLostError("profile engine lost its lease")
         if outcome.timed_out or outcome.exit_code == 124:
             return engine_timeout("profile", "profile exceeded the resource deadline")
         if remaining_seconds(deadline_at) <= 0:

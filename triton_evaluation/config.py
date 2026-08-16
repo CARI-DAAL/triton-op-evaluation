@@ -41,6 +41,7 @@ class Settings(BaseSettings):
     lease_seconds: int = Field(default=30, gt=0)
     heartbeat_interval_seconds: float = Field(default=10.0, gt=0)
     maintenance_interval_seconds: float = Field(default=1.0, ge=0.05, le=5)
+    queue_poll_interval_seconds: float = Field(default=1.0, ge=0.05, le=5)
 
     # --- admission quotas; trial and trusted buckets stay independent ---
     trial_rate_limit_per_minute: int = Field(default=60, gt=0)

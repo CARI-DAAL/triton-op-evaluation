@@ -11,12 +11,15 @@ import json
 import os
 import signal
 import subprocess
+import tempfile
+import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Literal, Protocol
 
 from ..api.contract import Check, CheckOutcome, ErrorInfo, EvaluationRequest, Purpose
+from ..api.contract_artifacts import canonical_json_bytes, sha256_hex
 from ..models import AlgorithmVersions
 
 
@@ -73,6 +76,7 @@ class ScriptOutcome:
     stdout: str
     stderr: str
     timed_out: bool
+    outcome: Literal["exited", "budget", "resource_deadline", "fenced"] = "exited"
 
 
 def engine_failure(
@@ -112,36 +116,107 @@ def remaining_seconds(deadline_at: datetime) -> float:
     return (deadline_at - datetime.now(timezone.utc)).total_seconds()
 
 
-def materialize(request: EvaluationRequest, work_dir: Path) -> None:
+def safe_module_stem(request: EvaluationRequest) -> str:
+    """Internal module stem: ``eval_`` plus the first 24 request-digest hex chars.
+
+    The public ``op_name`` is never interpolated into filesystem paths or
+    import arguments; the digest-derived stem is the only name crossing into
+    engine invocations.
+    """
+    digest = sha256_hex(
+        canonical_json_bytes(request.model_dump(mode="json", exclude_none=False))
+    )
+    return f"eval_{digest[:24]}"
+
+
+def materialize(request: EvaluationRequest, work_dir: Path) -> str:
+    """Write the reference and implementation modules; return the safe stem."""
+    stem = safe_module_stem(request)
     d = Path(work_dir)
     d.mkdir(parents=True, exist_ok=True)
-    (d / f"{request.op_name}_torch.py").write_text(
-        request.reference_code, encoding="utf-8"
-    )
-    (d / f"{request.op_name}_{request.triton_impl_name}.py").write_text(
+    (d / f"{stem}_torch.py").write_text(request.reference_code, encoding="utf-8")
+    (d / f"{stem}_{request.triton_impl_name}.py").write_text(
         request.kernel_code, encoding="utf-8"
     )
+    return stem
 
 
-def run_script(cmd: list, cwd: str, device_id: int, timeout: int) -> ScriptOutcome:
+_SCRIPT_POLL_SECONDS = 0.05
+
+
+def run_script(
+    cmd: list,
+    cwd,
+    device_id: int,
+    deadline_at=None,
+    lease_valid=None,
+    *,
+    budget_seconds: float | None = None,
+) -> ScriptOutcome:
+    """Run one engine invocation with bounded polling.
+
+    The process group is killed when the absolute resource deadline expires
+    (``resource_deadline``), when the attempt lease is lost (``fenced``), or
+    when the engine-level ``budget_seconds`` elapses (``budget``). None of
+    those is a candidate execution timeout. Output goes to temporary files so
+    a chatty engine can never deadlock on a full pipe.
+    """
     env = dict(os.environ)
     env["ASCEND_RT_VISIBLE_DEVICES"] = str(device_id)
-    proc = subprocess.Popen(
-        cmd,
-        cwd=cwd,
-        env=env,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-        start_new_session=True,
-    )
+    with tempfile.TemporaryFile(mode="w+") as out_file, tempfile.TemporaryFile(
+        mode="w+"
+    ) as err_file:
+        proc = subprocess.Popen(
+            cmd,
+            cwd=str(cwd),
+            env=env,
+            stdout=out_file,
+            stderr=err_file,
+            start_new_session=True,
+        )
+        try:
+            started = time.monotonic()
+            while True:
+                if proc.poll() is not None:
+                    break
+                if deadline_at is not None and remaining_seconds(deadline_at) <= 0:
+                    _kill_group(proc)
+                    return _collected(proc, out_file, err_file, "resource_deadline")
+                if lease_valid is not None and not lease_valid():
+                    _kill_group(proc)
+                    return _collected(proc, out_file, err_file, "fenced")
+                if (
+                    budget_seconds is not None
+                    and time.monotonic() - started >= budget_seconds
+                ):
+                    _kill_group(proc)
+                    return _collected(proc, out_file, err_file, "budget")
+                time.sleep(_SCRIPT_POLL_SECONDS)
+            return _collected(proc, out_file, err_file, "exited")
+        finally:
+            if proc.poll() is None:
+                _kill_group(proc)
+
+
+def _kill_group(proc: subprocess.Popen) -> None:
     try:
-        out, err = proc.communicate(timeout=timeout)
-        return ScriptOutcome(proc.returncode, out, err, False)
-    except subprocess.TimeoutExpired:
         os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
-        out, err = proc.communicate()
-        return ScriptOutcome(-1, out or "", err or "", True)
+    except ProcessLookupError:
+        pass
+    proc.wait()
+
+
+def _collected(proc, out_file, err_file, outcome: str) -> ScriptOutcome:
+    proc.wait()
+    out_file.seek(0)
+    err_file.seek(0)
+    return ScriptOutcome(
+        exit_code=proc.returncode,
+        stdout=out_file.read(),
+        stderr=err_file.read(),
+        timed_out=outcome != "exited",
+        outcome=outcome,
+    )
 
 
 def read_json(path: str) -> dict | None:

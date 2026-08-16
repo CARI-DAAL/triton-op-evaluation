@@ -8,17 +8,21 @@ never receive candidate attribution (design section 5).
 import json
 import re
 import sys
+from collections.abc import Callable
+from datetime import datetime
 from pathlib import Path
 
 from ..api.contract import EvaluationRequest
 from .base import (
     EngineCheckResult,
+    LeaseLostError,
     engine_failure,
     engine_timeout,
     materialize,
     read_json,
     remaining_seconds,
     run_script,
+    safe_module_stem,
 )
 
 # The decoy pre-check and reference case counting are short fixed budgets; the
@@ -74,7 +78,8 @@ class VerifyEvaluator:
         request: EvaluationRequest,
         work_dir: Path,
         device_id: int,
-        deadline_at,
+        deadline_at: datetime,
+        lease_valid: Callable[[], bool] | None = None,
     ) -> EngineCheckResult:
         materialize(request, work_dir)
         if remaining_seconds(deadline_at) <= 0:
@@ -82,19 +87,29 @@ class VerifyEvaluator:
                 "correctness", "resource deadline expired before correctness ran"
             )
 
-        verdict = self._decoy_verdict(request, work_dir, device_id, deadline_at)
+        verdict = self._decoy_verdict(
+            request, work_dir, device_id, deadline_at, lease_valid
+        )
         if isinstance(verdict, EngineCheckResult):
             return verdict
         if verdict:
-            return self._decoy_result(request, work_dir, device_id, deadline_at)
-        return self._run_verify(request, work_dir, device_id, deadline_at)
+            return self._decoy_result(
+                request, work_dir, device_id, deadline_at, lease_valid
+            )
+        return self._run_verify(request, work_dir, device_id, deadline_at, lease_valid)
 
     def _decoy_verdict(
-        self, request: EvaluationRequest, work_dir: Path, device_id: int, deadline_at
+        self,
+        request: EvaluationRequest,
+        work_dir: Path,
+        device_id: int,
+        deadline_at,
+        lease_valid,
     ):
         """True for a proven decoy, False/None to proceed with engine verify."""
         remaining = remaining_seconds(deadline_at)
-        impl_file = Path(work_dir) / f"{request.op_name}_{request.triton_impl_name}.py"
+        stem = safe_module_stem(request)
+        impl_file = Path(work_dir) / f"{stem}_{request.triton_impl_name}.py"
         outcome = run_script(
             [
                 sys.executable,
@@ -104,8 +119,16 @@ class VerifyEvaluator:
             ],
             str(work_dir),
             device_id,
-            timeout=max(1, min(_DECOY_CHECK_TIMEOUT_SECONDS, int(remaining))),
+            deadline_at,
+            lease_valid,
+            budget_seconds=max(1, min(_DECOY_CHECK_TIMEOUT_SECONDS, int(remaining))),
         )
+        if outcome.outcome == "fenced":
+            raise LeaseLostError("decoy pre-check lost its lease")
+        if outcome.outcome == "resource_deadline":
+            return engine_timeout(
+                "correctness", "resource deadline expired during the decoy pre-check"
+            )
         if outcome.timed_out:
             return engine_failure("correctness", "decoy pre-check timed out")
         parsed = _extract_validate_json(outcome.stdout)
@@ -114,7 +137,12 @@ class VerifyEvaluator:
         return parsed.get("valid") is False
 
     def _reference_case_count(
-        self, request: EvaluationRequest, work_dir: Path, device_id: int, deadline_at
+        self,
+        request: EvaluationRequest,
+        work_dir: Path,
+        device_id: int,
+        deadline_at,
+        lease_valid,
     ):
         """Resolve the trusted reference input count without running the candidate."""
         remaining = remaining_seconds(deadline_at)
@@ -122,13 +150,22 @@ class VerifyEvaluator:
             return engine_timeout(
                 "correctness", "resource deadline expired before case counting"
             )
-        reference = Path(work_dir) / f"{request.op_name}_torch.py"
+        stem = safe_module_stem(request)
+        reference = Path(work_dir) / f"{stem}_torch.py"
         outcome = run_script(
             [sys.executable, "-c", _COUNT_SNIPPET, str(reference)],
             str(work_dir),
             device_id,
-            timeout=max(1, min(_DECOY_CHECK_TIMEOUT_SECONDS, int(remaining))),
+            deadline_at,
+            lease_valid,
+            budget_seconds=max(1, min(_DECOY_CHECK_TIMEOUT_SECONDS, int(remaining))),
         )
+        if outcome.outcome == "fenced":
+            raise LeaseLostError("reference case counting lost its lease")
+        if outcome.outcome == "resource_deadline":
+            return engine_timeout(
+                "correctness", "resource deadline expired during case counting"
+            )
         if outcome.timed_out:
             return engine_failure("correctness", "reference case counting timed out")
         try:
@@ -146,9 +183,16 @@ class VerifyEvaluator:
         return count
 
     def _decoy_result(
-        self, request: EvaluationRequest, work_dir: Path, device_id: int, deadline_at
+        self,
+        request: EvaluationRequest,
+        work_dir: Path,
+        device_id: int,
+        deadline_at,
+        lease_valid,
     ) -> EngineCheckResult:
-        count = self._reference_case_count(request, work_dir, device_id, deadline_at)
+        count = self._reference_case_count(
+            request, work_dir, device_id, deadline_at, lease_valid
+        )
         if isinstance(count, EngineCheckResult):
             return count
         return EngineCheckResult(
@@ -156,7 +200,12 @@ class VerifyEvaluator:
         )
 
     def _run_verify(
-        self, request: EvaluationRequest, work_dir: Path, device_id: int, deadline_at
+        self,
+        request: EvaluationRequest,
+        work_dir: Path,
+        device_id: int,
+        deadline_at,
+        lease_valid,
     ) -> EngineCheckResult:
         remaining = remaining_seconds(deadline_at)
         if remaining <= 0:
@@ -169,7 +218,7 @@ class VerifyEvaluator:
             sys.executable,
             str(Path(self.engine_dir) / "verify.py"),
             "--op_name",
-            request.op_name,
+            safe_module_stem(request),
             "--verify_dir",
             str(work_dir),
             "--triton_impl_name",
@@ -185,8 +234,14 @@ class VerifyEvaluator:
             cmd,
             str(work_dir),
             device_id,
-            timeout=budget + _ENGINE_OUTER_GRACE_SECONDS + _KILL_MARGIN_SECONDS,
+            deadline_at,
+            lease_valid,
+            budget_seconds=(
+                budget + _ENGINE_OUTER_GRACE_SECONDS + _KILL_MARGIN_SECONDS
+            ),
         )
+        if outcome.outcome == "fenced":
+            raise LeaseLostError("verify engine lost its lease")
         if outcome.timed_out or remaining_seconds(deadline_at) <= 0:
             # The outer kill is ambiguous: never a candidate execution timeout.
             return engine_timeout(

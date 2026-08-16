@@ -12,11 +12,13 @@ from ..api.contract import EvaluationRequest, PerformanceParams
 from ..config import BENCHMARK_TIMEOUT_SECONDS
 from .base import (
     EngineCheckResult,
+    LeaseLostError,
     engine_failure,
     engine_timeout,
     read_json,
     remaining_seconds,
     run_script,
+    safe_module_stem,
 )
 
 
@@ -30,6 +32,7 @@ class BenchmarkEvaluator:
         work_dir: Path,
         device_id: int,
         deadline_at,
+        lease_valid=None,
     ) -> EngineCheckResult:
         remaining = remaining_seconds(deadline_at)
         if remaining <= 0:
@@ -42,7 +45,7 @@ class BenchmarkEvaluator:
             sys.executable,
             str(Path(self.engine_dir) / "benchmark.py"),
             "--op_name",
-            request.op_name,
+            safe_module_stem(request),
             "--verify_dir",
             str(work_dir),
             "--triton_impl_name",
@@ -58,8 +61,12 @@ class BenchmarkEvaluator:
             cmd,
             str(work_dir),
             device_id,
-            timeout=max(1, min(BENCHMARK_TIMEOUT_SECONDS, int(remaining))),
+            deadline_at,
+            lease_valid,
+            budget_seconds=max(1, min(BENCHMARK_TIMEOUT_SECONDS, int(remaining))),
         )
+        if outcome.outcome == "fenced":
+            raise LeaseLostError("benchmark engine lost its lease")
         if outcome.timed_out or remaining_seconds(deadline_at) <= 0:
             return engine_timeout(
                 "performance", "performance exceeded the resource deadline"

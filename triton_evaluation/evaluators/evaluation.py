@@ -159,7 +159,7 @@ class EvaluationEvaluator:
                 lambda: _engine_outcome(
                     "correctness",
                     self._verify_evaluator().run(
-                        request, work_dir, device_id, deadline_at
+                        request, work_dir, device_id, deadline_at, lease_valid
                     ),
                     lambda raw: shape_correctness(raw, decoy=_is_decoy(raw)),
                 ),
@@ -181,7 +181,8 @@ class EvaluationEvaluator:
                     lambda: _engine_outcome(
                         "performance",
                         self._benchmark_evaluator().run(
-                            request, work_dir, device_id, deadline_at
+                            request, work_dir, device_id, deadline_at,
+                            lease_valid,
                         ),
                         shape_performance,
                     ),
@@ -219,7 +220,8 @@ class EvaluationEvaluator:
                     lambda: _engine_outcome(
                         "profile",
                         self._profile_evaluator().run(
-                            request, work_dir, device_id, deadline_at
+                            request, work_dir, device_id, deadline_at,
+                            lease_valid,
                         ),
                         shape_profile,
                     ),

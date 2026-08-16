@@ -58,7 +58,7 @@ class StubCheck:
         self.result = result
         self.calls = 0
 
-    def run(self, request, work_dir, device_id, deadline_at):
+    def run(self, request, work_dir, device_id, deadline_at, lease_valid=None):
         self.calls += 1
         return self.result
 
@@ -476,9 +476,10 @@ def test_evaluator_outer_kill_fires_after_the_engine_grace(tmp_path, monkeypatch
 
     seen = {}
 
-    def fake_run_script(cmd, cwd, device_id, timeout):
+    def fake_run_script(cmd, cwd, device_id, deadline_at=None, lease_valid=None,
+                      *, budget_seconds=None):
         seen["cmd"] = cmd
-        seen["timeout"] = timeout
+        seen["budget"] = budget_seconds
         # validate pre-check yields no JSON verdict -> proceed to verify
         return ScriptOutcome(0, "", "", False)
 
@@ -493,7 +494,7 @@ def test_evaluator_outer_kill_fires_after_the_engine_grace(tmp_path, monkeypatch
     budget = int(seen["cmd"][seen["cmd"].index("--timeout") + 1])
     # The evaluator kill must come strictly after the engine's own outer kill
     # (budget + engine grace), so the per-subject attribution wins the race.
-    assert seen["timeout"] > budget + verify_mod._ENGINE_OUTER_GRACE_SECONDS
+    assert seen["budget"] > budget + verify_mod._ENGINE_OUTER_GRACE_SECONDS
 
 
 def test_ambiguous_exit_past_deadline_is_timeout_never_attributed(tmp_path, monkeypatch):
