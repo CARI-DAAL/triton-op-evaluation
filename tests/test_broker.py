@@ -1,155 +1,163 @@
-import time
+"""Durable resource admission: creation shape, FIFO ordering, keyspace, TTLs."""
+import re
+from datetime import datetime, timedelta, timezone
 
 import pytest
-import redis
+from conftest import make_request
 
-from triton_evaluation.broker import Broker
-from triton_evaluation.models import Job, JobSpec, JobType, TaskStatus
-
-
-def _job(task_id="t1", type_="verify"):
-    spec = JobSpec(op_name="softmax", reference_code="R", kernel_code="K")
-    return Job(task_id=task_id, type=type_, spec=spec)
+from triton_evaluation.api.contract import EvaluationResource
+from triton_evaluation.api.contract_artifacts import sha256_hex
+from triton_evaluation.broker import EvaluationStore, StorageError
+from triton_evaluation.config import Settings
+from triton_evaluation.models import new_evaluation_id
 
 
-def test_create_then_get(broker):
-    broker.create_task(_job())
-    rec = broker.get_task("t1")
-    assert rec["task_id"] == "t1"
-    assert rec["type"] == "verify"
-    assert rec["status"] == "QUEUED"
-    assert isinstance(rec["created_at"], float)
+def _key(settings, suffix):
+    return f"{settings.redis_prefix}:{suffix}"
 
 
-def test_get_missing_returns_none(broker):
-    assert broker.get_task("nope") is None
+def _idem_key(settings, caller_id, idempotency_key):
+    digest = sha256_hex(f"{caller_id}\0{idempotency_key}".encode())
+    return _key(settings, f"idempotency:{digest}")
 
 
-def test_enqueue_dequeue_roundtrip(broker):
-    broker.create_task(_job("t2"))
-    job = broker.dequeue()
-    assert job.task_id == "t2"
-    assert job.spec.op_name == "softmax"
+def test_new_evaluation_id_format():
+    evaluation_id = new_evaluation_id()
+    assert re.fullmatch(r"ev_[0-9a-f]{32}", evaluation_id)
+    assert new_evaluation_id() != evaluation_id
 
 
-def test_dequeue_empty_returns_none(broker):
-    assert broker.dequeue() is None
+def test_create_returns_initial_queued_resource(store, make_command, clock):
+    command = make_command()
+    result = store.create_or_replay(command)
 
-
-def test_store_result_parses_json(broker):
-    broker.create_task(_job("t3"))
-    broker.store_result(
-        "t3", TaskStatus.SUCCEEDED.value, result={"passed_cases": 3, "total_cases": 3}
+    assert result.decision == "created"
+    resource = result.resource
+    accepted_at = datetime.fromtimestamp(clock.now_ms / 1000, tz=timezone.utc)
+    assert resource.schema_version == "2.0"
+    assert resource.evaluation_id == command.evaluation_id
+    assert resource.revision == 1
+    assert resource.state == "queued"
+    assert resource.created_at == accepted_at
+    assert resource.updated_at == accepted_at
+    assert resource.started_at is None
+    assert resource.finished_at is None
+    assert resource.deadline_at == accepted_at + timedelta(
+        seconds=make_request().deadline_seconds
     )
-    rec = broker.get_task("t3")
-    assert rec["status"] == "SUCCEEDED"
-    assert rec["result"]["passed_cases"] == 3
+    assert resource.request_digest == command.admission.request_digest
+    assert resource.reference_digest == command.admission.reference_digest
+    assert resource.result is None
 
 
-def test_mark_running_sets_device(broker):
-    broker.create_task(_job("t4"))
-    broker.mark_running("t4", 5, deadline=time.time() + 100)
-    rec = broker.get_task("t4")
-    assert rec["status"] == "RUNNING"
-    assert rec["device_id"] == 5
+def test_resource_hash_stores_exact_canonical_bytes_and_metadata(
+    store, redis_client, settings, make_command, clock
+):
+    command = make_command()
+    result = store.create_or_replay(command)
+
+    stored = redis_client.hgetall(_key(settings, f"resource:{command.evaluation_id}"))
+    assert stored[b"canonical_request"] == command.admission.canonical_request
+    assert EvaluationResource.model_validate_json(stored[b"resource"]) == result.resource
+    assert stored[b"owner"] == b"caller-1"
+    assert stored[b"purpose"] == b"trial"
+    assert stored[b"session_digest"] == sha256_hex(b"caller-1\0session-1").encode()
+    assert stored[b"idempotency_key"] == _idem_key(settings, "caller-1", "key-1").encode()
+    assert stored[b"request_digest"] == command.admission.request_digest.encode()
+    assert stored[b"reference_digest"] == command.admission.reference_digest.encode()
+    assert stored[b"requested_checks"] == b'["correctness"]'
+    assert stored[b"evaluator_build"] == settings.evaluator_build.encode()
+    assert stored[b"correctness_algorithm"] == settings.correctness_algorithm_version.encode()
+    assert stored[b"decoy_algorithm"] == settings.decoy_algorithm_version.encode()
+    assert stored[b"benchmark_algorithm"] == settings.benchmark_algorithm_version.encode()
+    assert stored[b"profiler_algorithm"] == settings.profiler_algorithm_version.encode()
+    assert stored[b"attempt_count"] == b"0"
+    assert stored[b"created_at_ms"] == str(clock.now_ms).encode()
+    assert stored[b"updated_at_ms"] == str(clock.now_ms).encode()
+    expected_deadline_ms = clock.now_ms + make_request().deadline_seconds * 1000
+    assert stored[b"deadline_ms"] == str(expected_deadline_ms).encode()
 
 
-def test_dequeue_returns_none_on_socket_timeout(settings):
-    # A blocking BRPOP that hits the client socket read timeout must be "no task",
-    # not a crash — dequeue honours its Job | None contract.
-    class _TimingOutClient:
-        def brpop(self, *args, **kwargs):
-            raise redis.exceptions.TimeoutError("read timed out")
+def test_fifo_sequence_numbers_are_monotonic(store, redis_client, settings, make_command):
+    ids = []
+    for index in range(3):
+        command = make_command(idempotency_key=f"key-{index}", session_id=f"s-{index}")
+        assert store.create_or_replay(command).decision == "created"
+        ids.append(command.evaluation_id)
 
-    broker = Broker(_TimingOutClient(), settings)
-    assert broker.dequeue() is None
-
-
-def test_session_lease_has_single_owner(broker):
-    assert broker.acquire_session("session-a", "task-1", 60) is True
-    assert broker.acquire_session("session-a", "task-2", 60) is False
-    assert broker.release_session("session-a", "task-2") is False
-    assert broker.release_session("session-a", "task-1") is True
-    assert broker.acquire_session("session-a", "task-2", 60) is True
+    assert redis_client.get(_key(settings, "queue-sequence")) == b"3"
+    entries = redis_client.zrange(_key(settings, "ready"), 0, -1, withscores=True)
+    assert entries == [(ids[0].encode(), 1.0), (ids[1].encode(), 2.0), (ids[2].encode(), 3.0)]
 
 
-def test_sessions_are_independent(broker):
-    assert broker.acquire_session("session-a", "task-a", 60) is True
-    assert broker.acquire_session("session-b", "task-b", 60) is True
+def test_state_and_deadline_indexes_track_queued_resource(
+    store, redis_client, settings, make_command, clock
+):
+    command = make_command()
+    store.create_or_replay(command)
+
+    deadline_ms = float(clock.now_ms + make_request().deadline_seconds * 1000)
+    member = command.evaluation_id.encode()
+    assert redis_client.zscore(_key(settings, "deadlines"), member) == deadline_ms
+    assert redis_client.zscore(_key(settings, "state:queued"), member) == deadline_ms
+    # Indexes carry only evaluation IDs — never request source.
+    assert redis_client.zrange(_key(settings, "deadlines"), 0, -1) == [member]
+    assert redis_client.zrange(_key(settings, "state:queued"), 0, -1) == [member]
 
 
-def test_session_lease_rejects_non_positive_ttl(broker):
-    with pytest.raises(ValueError, match="positive"):
-        broker.acquire_session("session-a", "task-a", 0)
+def test_nonterminal_keys_have_no_expiry(store, redis_client, settings, make_command, clock):
+    command = make_command()
+    store.create_or_replay(command)
+
+    caller_digest = sha256_hex(b"caller-1")
+    session_digest = sha256_hex(b"caller-1\0session-1")
+    minute = clock.now_ms // 60_000
+    no_expiry_keys = [
+        _key(settings, f"resource:{command.evaluation_id}"),
+        _idem_key(settings, "caller-1", "key-1"),
+        _key(settings, "queue-sequence"),
+        _key(settings, f"inflight:caller:trial:{caller_digest}"),
+        _key(settings, f"inflight:session:{session_digest}"),
+    ]
+    for key in no_expiry_keys:
+        assert redis_client.ttl(key) == -1, key
+    rate_key = _key(settings, f"rate:trial:{caller_digest}:{minute}")
+    assert redis_client.ttl(rate_key) == 120
 
 
-def test_submit_atomically_creates_lease_task_and_queue_item(broker):
-    spec = JobSpec(
-        op_name="softmax",
-        reference_code="R",
-        kernel_code="K",
-        checks=["correctness"],
-        session_id="session-a",
+def test_idempotency_record_mapping_to_missing_resource_is_storage_failure(
+    store, redis_client, settings, make_command
+):
+    command = make_command()
+    redis_client.hset(
+        _idem_key(settings, "caller-1", "key-1"),
+        mapping={
+            "evaluation_id": "ev_" + "f" * 32,
+            "request_digest": command.admission.request_digest,
+        },
     )
-    job = Job("task-a", JobType.EVALUATION.value, spec)
 
-    assert broker.submit(job, lease_ttl_seconds=60) is True
-    assert broker.get_task("task-a")["status"] == TaskStatus.QUEUED.value
-    assert broker.get_task("task-a")["session_id"] == "session-a"
-    assert broker.acquire_session("session-a", "other", 60) is False
-    assert broker.dequeue().task_id == "task-a"
+    with pytest.raises(StorageError):
+        store.create_or_replay(command)
 
 
-def test_submit_conflict_does_not_create_or_enqueue_second_task(broker):
-    first = JobSpec(
-        op_name="a",
-        reference_code="R",
-        kernel_code="K",
-        checks=["correctness"],
-        session_id="session-a",
+def test_store_rejects_retention_below_recovery_window(redis_client, clock):
+    settings = Settings.model_construct(
+        redis_prefix="triton-eval:v2",
+        retention_seconds=60,
+        max_recovery_age_seconds=120,
     )
-    second = JobSpec(
-        op_name="b",
-        reference_code="R",
-        kernel_code="K",
-        checks=["correctness"],
-        session_id="session-a",
-    )
-
-    assert broker.submit(Job("task-a", "evaluation", first), 60) is True
-    assert broker.submit(Job("task-b", "evaluation", second), 60) is False
-    assert broker.get_task("task-b") is None
-    assert broker.dequeue().task_id == "task-a"
-    assert broker.dequeue() is None
+    with pytest.raises(ValueError, match="retention"):
+        EvaluationStore(redis_client, settings, clock=clock)
 
 
-def test_terminal_store_and_owned_lease_release_are_atomic(broker):
-    spec = JobSpec(
-        op_name="a",
-        reference_code="R",
-        kernel_code="K",
-        checks=["correctness"],
-        session_id="session-a",
-    )
-    assert broker.submit(Job("task-a", "evaluation", spec), 60) is True
+def test_default_clock_comes_from_redis_time(redis_client, settings, make_command):
+    store = EvaluationStore(redis_client, settings)
+    before = datetime.now(timezone.utc)
+    result = store.create_or_replay(make_command())
+    after = datetime.now(timezone.utc)
 
-    assert broker.store_result("task-a", "SUCCEEDED", result={"ok": True}) is True
-
-    assert broker.get_task("task-a")["status"] == "SUCCEEDED"
-    assert broker.acquire_session("session-a", "task-b", 60) is True
-
-
-def test_old_terminal_store_does_not_delete_new_session_owner(broker):
-    old_spec = JobSpec(
-        op_name="a",
-        reference_code="R",
-        kernel_code="K",
-        checks=["correctness"],
-        session_id="session-a",
-    )
-    broker.create_task(Job("old-task", "evaluation", old_spec))
-    assert broker.acquire_session("session-a", "new-task", 60) is True
-
-    assert broker.store_result("old-task", "FAILED", error="late") is True
-
-    assert broker.acquire_session("session-a", "third-task", 60) is False
+    assert result.decision == "created"
+    # The store clock truncates to epoch milliseconds; allow that rounding.
+    assert before - timedelta(milliseconds=1) <= result.resource.created_at <= after
+    assert result.resource.deadline_at - result.resource.created_at == timedelta(seconds=900)

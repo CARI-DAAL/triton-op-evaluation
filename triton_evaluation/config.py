@@ -22,6 +22,8 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="TRITON_EVAL_", extra="ignore")
 
     redis_url: str = "redis://localhost:6379/0"
+    # Fixed v2 durable-core keyspace root; v1 keys live outside this prefix.
+    redis_prefix: str = Field(default="triton-eval:v2", min_length=1)
     engine_dir: str = _DEFAULT_ENGINE_DIR
     queue_key: str = "eval:queue"
     task_key_prefix: str = "eval:task:"
