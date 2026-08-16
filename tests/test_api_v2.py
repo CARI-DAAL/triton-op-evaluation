@@ -1,527 +1,310 @@
-import math
-import threading
-import time
+"""Header, body, and admission validation at the durable HTTP boundary."""
+import json
 
-import fakeredis
-from fastapi.testclient import TestClient
+import pytest
+from test_api import (
+    OBSERVER_TOKEN,
+    build_app,
+    grade_headers,
+    post,
+    request_payload,
+    seed_worker,
+    trial_headers,
+)
 
-from triton_evaluation.api import create_app
-from triton_evaluation.broker import Broker
+from triton_evaluation.api.contract import ErrorEnvelope
 
+pytestmark = pytest.mark.anyio
 
-def _request_body(**overrides):
-    body = {
-        "op_name": "addmm",
-        "reference_code": "R",
-        "kernel_code": "K",
-        "checks": ["correctness"],
-        "timeout": 10,
-    }
-    body.update(overrides)
-    return body
-
-
-def _client(settings, broker_class=Broker):
-    redis_client = fakeredis.FakeStrictRedis(decode_responses=True)
-    broker = broker_class(redis_client, settings)
-    return TestClient(create_app(broker)), broker
-
-
-class _CompletingBroker(Broker):
-    def get_task(self, task_id):
-        record = super().get_task(task_id)
-        if record is not None and record["status"] == "QUEUED":
-            self.store_result(
-                task_id,
-                "SUCCEEDED",
-                result={
-                    "correctness": {
-                        "passed": True,
-                        "compiled": True,
-                        "decoy": False,
-                        "passed_cases": 1,
-                        "total_cases": 1,
-                        "failures": [],
-                    },
-                    "performance": None,
-                    "profile": None,
-                },
-            )
-            return super().get_task(task_id)
-        return record
+GRADE_BODY = {
+    "schema_version": "2.0",
+    "purpose": "grade",
+    "op_name": "addmm",
+    "reference_code": "import torch\n\n\nclass Model(torch.nn.Module):\n    pass\n",
+    "kernel_code": "IMPL",
+    "checks": ["correctness"],
+}
 
 
-class _MalformedCompletingBroker(Broker):
-    def get_task(self, task_id):
-        record = super().get_task(task_id)
-        if record is not None and record["status"] == "QUEUED":
-            self.store_result(
-                task_id,
-                "SUCCEEDED",
-                result={"correctness": {"passed": True}},
-            )
-            return super().get_task(task_id)
-        return record
+def grade_payload():
+    from conftest import CATALOG_REFERENCE_CODE
 
+    from triton_evaluation.api.contract_artifacts import sha256_hex
 
-class _NonFiniteCompletingBroker(Broker):
-    def get_task(self, task_id):
-        record = super().get_task(task_id)
-        if record is not None and record["status"] == "QUEUED":
-            self.store_result(
-                task_id,
-                "SUCCEEDED",
-                result={
-                    "correctness": {
-                        "passed": False,
-                        "compiled": True,
-                        "decoy": False,
-                        "passed_cases": 0,
-                        "total_cases": 1,
-                        "failures": [
-                            {
-                                "case_idx": 1,
-                                "kind": "scattered",
-                                "sample": [
-                                    {
-                                        "idx": [0],
-                                        "candidate": math.nan,
-                                        "reference": 0.0,
-                                        "diff": math.nan,
-                                    }
-                                ],
-                                "error": None,
-                            }
-                        ],
-                    },
-                    "performance": None,
-                    "profile": None,
-                },
-            )
-            return super().get_task(task_id)
-        return record
-
-
-def test_post_evaluations_waits_and_returns_terminal_result(settings):
-    client, broker = _client(settings, _CompletingBroker)
-
-    response = client.post(
-        "/evaluations",
-        headers={"X-Session-ID": "container-17"},
-        json=_request_body(
-            checks=["correctness", "performance"],
-            performance={"warmup": 2, "repeats": 20},
-        ),
-    )
-
-    assert response.status_code == 200
-    body = response.json()
-    assert set(body) == {"task_id", "status", "error", "result"}
-    assert body["status"] == "SUCCEEDED"
-    assert body["result"]["correctness"]["passed"] is True
-    assert body["result"]["performance"] is None
-    job = broker.dequeue()
-    assert job.type == "evaluation"
-    assert job.spec.checks == ["correctness", "performance"]
-    assert job.spec.warmup == 2
-    assert job.spec.repeats == 20
-    assert job.spec.session_id == "container-17"
-
-
-def test_malformed_worker_result_becomes_contract_shaped_failure(settings):
-    client, _ = _client(settings, _MalformedCompletingBroker)
-
-    response = client.post(
-        "/evaluations",
-        headers={"X-Session-ID": "container-17"},
-        json=_request_body(),
-    )
-
-    assert response.status_code == 200
-    assert response.json()["status"] == "FAILED"
-    assert response.json()["error"] == "invalid worker result"
-    assert response.json()["result"] == {
-        "correctness": None,
-        "performance": None,
-        "profile": None,
+    return GRADE_BODY | {
+        "reference_code": CATALOG_REFERENCE_CODE,
+        "grade_context": {
+            "manifest_id": "release-1",
+            "problem_id": "addmm-1",
+            "reference_digest": sha256_hex(CATALOG_REFERENCE_CODE.encode("utf-8")),
+        },
     }
 
 
-def test_non_finite_worker_float_becomes_contract_shaped_failure(settings):
-    client, _ = _client(settings, _NonFiniteCompletingBroker)
-
-    response = client.post(
-        "/evaluations",
-        headers={"X-Session-ID": "container-17"},
-        json=_request_body(),
-    )
-
-    assert response.status_code == 200
-    assert response.json()["status"] == "FAILED"
-    assert response.json()["error"] == "invalid worker result"
+@pytest.fixture
+def app(tmp_path, release_catalog_files):
+    return build_app(tmp_path, release_catalog_files)
 
 
-def test_missing_or_invalid_session_header_is_400(settings):
-    client, broker = _client(settings)
-
-    missing = client.post("/evaluations", json=_request_body())
-    invalid = client.post(
-        "/evaluations",
-        headers={"X-Session-ID": "contains a space"},
-        json=_request_body(),
-    )
-
-    assert missing.status_code == 400
-    assert invalid.status_code == 400
-    assert broker.dequeue() is None
+# ---------------------------------------------------------------------------
+# Authentication
+# ---------------------------------------------------------------------------
 
 
-def test_performance_without_correctness_is_400(settings):
-    client, broker = _client(settings)
+async def test_missing_authorization_is_401(app):
+    async with app.http as client:
+        headers = trial_headers()
+        del headers["Authorization"]
+        response = await post(client, headers=headers)
+    assert response.status_code == 401
+    assert response.headers["WWW-Authenticate"] == "Bearer"
+    envelope = ErrorEnvelope.model_validate_json(response.content)
+    assert envelope.error.code == "UNAUTHENTICATED"
 
-    response = client.post(
-        "/evaluations",
-        headers={"X-Session-ID": "session-a"},
-        json=_request_body(checks=["performance"]),
-    )
 
+async def test_wrong_token_is_indistinguishable_401(app):
+    async with app.http as client:
+        response = await post(
+            client, headers=trial_headers() | {"Authorization": "Bearer nope"}
+        )
+        response2 = await post(
+            client, headers=trial_headers() | {"Authorization": "Basic abc"}
+        )
+    assert response.status_code == response2.status_code == 401
+    assert response.json()["error"]["message"] == response2.json()["error"]["message"]
+    assert "nope" not in response.text
+
+
+async def test_read_only_caller_cannot_submit(app):
+    async with app.http as client:
+        response = await post(
+            client,
+            headers=trial_headers() | {"Authorization": f"Bearer {OBSERVER_TOKEN}"},
+        )
+    assert response.status_code == 403
+    assert ErrorEnvelope.model_validate_json(response.content).error.code == "FORBIDDEN"
+
+
+# ---------------------------------------------------------------------------
+# Headers
+# ---------------------------------------------------------------------------
+
+
+async def test_missing_session_id_is_rejected(app):
+    async with app.http as client:
+        headers = trial_headers()
+        del headers["X-Session-ID"]
+        response = await post(client, headers=headers)
     assert response.status_code == 400
-    assert broker.dequeue() is None
-
-
-def test_existing_session_lease_is_429(settings):
-    client, broker = _client(settings)
-    assert broker.acquire_session("session-a", "existing-task", 60) is True
-
-    response = client.post(
-        "/evaluations",
-        headers={"X-Session-ID": "session-a"},
-        json=_request_body(),
+    assert ErrorEnvelope.model_validate_json(response.content).error.code == (
+        "INVALID_REQUEST"
     )
 
-    assert response.status_code == 429
-    assert response.headers["Retry-After"] == "1"
-    assert broker.dequeue() is None
+
+async def test_invalid_session_id_is_rejected(app):
+    async with app.http as client:
+        response = await post(client, headers=trial_headers(session="bad session id"))
+    assert response.status_code == 400
 
 
-def test_ambiguous_submit_failure_retains_session_lease(settings, monkeypatch):
-    import triton_evaluation.api.routes as routes
+async def test_missing_idempotency_key_is_rejected(app):
+    async with app.http as client:
+        headers = trial_headers()
+        del headers["Idempotency-Key"]
+        response = await post(client, headers=headers)
+    assert response.status_code == 400
 
-    class _AmbiguousSubmitBroker(Broker):
-        def submit(self, job, lease_ttl_seconds):
-            assert self.acquire_session(
-                job.spec.session_id,
-                job.task_id,
-                lease_ttl_seconds,
-            )
-            raise ConnectionError("lost submit response")
 
-    redis_client = fakeredis.FakeStrictRedis(decode_responses=True)
-    broker = _AmbiguousSubmitBroker(redis_client, settings)
-    client = TestClient(create_app(broker), raise_server_exceptions=False)
-    ticks = iter([0.0, 0.0])
-    monkeypatch.setattr(routes, "_monotonic", lambda: next(ticks))
+async def test_idempotency_key_rejects_non_visible_ascii(app):
+    async with app.http as client:
+        response = await post(client, headers=trial_headers(key="bad\tkey"))
+        response2 = await post(client, headers=trial_headers(key="x" * 129))
+    assert response.status_code == response2.status_code == 400
 
-    response = client.post(
-        "/evaluations",
-        headers={"X-Session-ID": "session-a"},
-        json=_request_body(),
+
+async def test_session_header_is_not_stripped(app):
+    async with app.http as client:
+        response = await post(client, headers=trial_headers(session="session-1 "))
+    assert response.status_code == 400  # trailing space is not trimmed
+
+
+# ---------------------------------------------------------------------------
+# Body validation
+# ---------------------------------------------------------------------------
+
+
+async def test_missing_content_type_is_rejected(app):
+    async with app.http as client:
+        headers = trial_headers()
+        del headers["Content-Type"]
+        response = await post(client, headers=headers)
+    assert response.status_code == 400
+
+
+async def test_malformed_json_is_400(app):
+    async with app.http as client:
+        response = await client.post(
+            "/evaluations", content=b"{not json", headers=trial_headers()
+        )
+    assert response.status_code == 400
+    assert ErrorEnvelope.model_validate_json(response.content).error.code == (
+        "INVALID_REQUEST"
     )
 
-    assert response.status_code == 500
-    assert broker.acquire_session("session-a", "duplicate", 60) is False
+
+async def test_nonstandard_json_constants_are_rejected(app):
+    async with app.http as client:
+        body = json.dumps(request_payload()).replace(
+            '"checks":', '"padding": NaN, "checks":', 1
+        ).encode()
+        response = await client.post("/evaluations", content=body,
+                                     headers=trial_headers())
+    assert response.status_code == 400
 
 
-def test_request_timeout_returns_terminal_payload_without_cancelling_job(
-    settings,
-    monkeypatch,
-):
-    import triton_evaluation.api.routes as routes
+async def test_field_errors_are_422(app):
+    async with app.http as client:
+        response = await post(client, payload=request_payload(op_name=123))
+    assert response.status_code == 422
+    envelope = ErrorEnvelope.model_validate_json(response.content)
+    assert envelope.error.code == "INVALID_REQUEST"
 
-    ticks = iter([100.0, 100.0, 111.0])
-    monkeypatch.setattr(routes, "_monotonic", lambda: next(ticks))
-    client, broker = _client(settings)
 
-    response = client.post(
-        "/evaluations",
-        headers={"X-Session-ID": "session-a"},
-        json=_request_body(timeout=10),
+async def test_cross_field_combination_errors_are_400(app):
+    async with app.http as client:
+        response = await post(
+            client,
+            payload=request_payload(
+                purpose="grade", grade_context=None
+            ),
+        )
+    assert response.status_code == 400
+
+
+async def test_source_over_two_mib_is_413(app):
+    async with app.http as client:
+        payload = request_payload(kernel_code="k" * (2 * 1024 * 1024 + 1))
+        response = await post(client, payload=payload)
+    assert response.status_code == 413
+    assert ErrorEnvelope.model_validate_json(response.content).error.code == (
+        "LIMIT_EXCEEDED"
     )
 
+
+async def test_body_over_four_mib_is_413_with_streamed_count(app):
+    async with app.http as client:
+        payload = request_payload(kernel_code="k" * (3 * 1024 * 1024))
+        response = await post(client, payload=payload)
+    assert response.status_code == 413
+
+
+async def test_body_over_four_mib_without_content_length_is_413(app):
+    async with app.http as client:
+        payload = request_payload(kernel_code="k" * (3 * 1024 * 1024))
+        response = await client.post(
+            "/evaluations",
+            content=_chunked(raw_chunk(payload)),
+            headers=trial_headers(),
+        )
+    assert response.status_code == 413
+
+
+def raw_chunk(payload):
+    return json.dumps(payload).encode()
+
+
+async def _chunked(data, size=1024 * 1024):
+    for index in range(0, len(data), size):
+        yield data[index : index + size]
+
+
+async def test_invalid_wait_range_is_400(app):
+    async with app.http as client:
+        response = await post(client, params={"wait_seconds": "61"})
+        response2 = await post(client, params={"wait_seconds": "-1"})
+    assert response.status_code == response2.status_code == 400
+
+
+# ---------------------------------------------------------------------------
+# Admission
+# ---------------------------------------------------------------------------
+
+
+async def test_trial_caller_cannot_submit_grade(app):
+    async with app.http as client:
+        response = await post(
+            client, payload=grade_payload(), headers=trial_headers()
+        )
+    assert response.status_code == 403
+    envelope = ErrorEnvelope.model_validate_json(response.content)
+    assert envelope.error.code == "FORBIDDEN"
+
+
+async def test_grade_binding_failure_is_403_manifest_code(app):
+    async with app.http as client:
+        payload = grade_payload() | {
+            "grade_context": grade_payload()["grade_context"]
+            | {"reference_digest": "0" * 64}
+        }
+        response = await post(client, payload=payload, headers=grade_headers())
+    assert response.status_code == 403
+    envelope = ErrorEnvelope.model_validate_json(response.content)
+    assert envelope.error.code == "MANIFEST_BINDING_FAILED"
+    assert envelope.error.phase == "admission"
+    assert envelope.error.retryable is False
+
+
+async def test_idempotency_conflict_is_409(app):
+    seed_worker(app)
+    async with app.http as client:
+        await post(client)  # same key, canonical request pinned
+        response = await post(client, payload=request_payload(reference_code="OTHER"))
+    assert response.status_code == 409
+    envelope = ErrorEnvelope.model_validate_json(response.content)
+    assert envelope.error.code == "IDEMPOTENCY_CONFLICT"
+
+
+# ---------------------------------------------------------------------------
+# Cross-caller isolation
+# ---------------------------------------------------------------------------
+
+
+async def test_cross_caller_get_is_indistinguishable_404(app):
+    seed_worker(app)
+    async with app.http as client:
+        created = await post(client)
+        evaluation_id = created.json()["evaluation_id"]
+        # trial-caller-2 holds no observer scope: another caller's resource
+        # is indistinguishable from an unknown ID.
+        response = await client.get(
+            f"/evaluations/{evaluation_id}",
+            headers=trial_headers() | {"Authorization": "Bearer trial-token-2"},
+        )
+    assert response.status_code == 404
+
+
+async def test_forged_shared_session_does_not_authorize(app):
+    seed_worker(app)
+    async with app.http as client:
+        created = await post(client, headers=trial_headers(session="shared"))
+        evaluation_id = created.json()["evaluation_id"]
+        # Same session header, different caller: still invisible.
+        response = await client.get(
+            f"/evaluations/{evaluation_id}",
+            headers=trial_headers(session="shared")
+            | {"Authorization": "Bearer trial-token-2"},
+        )
+    assert response.status_code == 404
+
+
+async def test_observer_reads_any_resource(app):
+    seed_worker(app)
+    async with app.http as client:
+        created = await post(client)
+        evaluation_id = created.json()["evaluation_id"]
+        response = await client.get(
+            f"/evaluations/{evaluation_id}",
+            headers=trial_headers() | {"Authorization": f"Bearer {OBSERVER_TOKEN}"},
+        )
     assert response.status_code == 200
-    body = response.json()
-    assert body["status"] == "TIMEOUT"
-    assert body["error"] == "evaluation request timed out"
-    assert body["result"] == {"correctness": None, "performance": None, "profile": None}
-    assert broker.get_task(body["task_id"])["status"] == "QUEUED"
-    assert broker.acquire_session("session-a", "duplicate-task", 60) is False
-
-
-def test_request_deadline_includes_submission_and_wins_over_late_terminal(
-    settings,
-    monkeypatch,
-):
-    import triton_evaluation.api.routes as routes
-
-    clock = {"now": 100.0}
-
-    class _SlowCompletingBroker(Broker):
-        def submit(self, job, lease_ttl_seconds):
-            submitted = super().submit(job, lease_ttl_seconds)
-            clock["now"] = 111.0
-            self.store_result(
-                job.task_id,
-                "SUCCEEDED",
-                result={
-                    "correctness": {
-                        "passed": True,
-                        "compiled": True,
-                        "decoy": False,
-                        "passed_cases": 1,
-                        "total_cases": 1,
-                        "failures": [],
-                    },
-                    "performance": None,
-                    "profile": None,
-                },
-            )
-            return submitted
-
-    monkeypatch.setattr(routes, "_monotonic", lambda: clock["now"])
-    client, _ = _client(settings, _SlowCompletingBroker)
-
-    response = client.post(
-        "/evaluations",
-        headers={"X-Session-ID": "session-a"},
-        json=_request_body(timeout=10),
-    )
-
-    assert response.status_code == 200
-    assert response.json()["status"] == "TIMEOUT"
-
-
-def test_async_route_runs_blocking_broker_calls_off_event_loop(settings, monkeypatch):
-    import triton_evaluation.api.routes as routes
-
-    handler_threads = []
-    broker_threads = []
-
-    def monotonic():
-        handler_threads.append(threading.get_ident())
-        return time.monotonic()
-
-    class _ThreadRecordingBroker(_CompletingBroker):
-        def submit(self, *args, **kwargs):
-            broker_threads.append(threading.get_ident())
-            return super().submit(*args, **kwargs)
-
-        def get_task(self, *args, **kwargs):
-            broker_threads.append(threading.get_ident())
-            return super().get_task(*args, **kwargs)
-
-    monkeypatch.setattr(routes, "_monotonic", monotonic)
-    client, _ = _client(settings, _ThreadRecordingBroker)
-
-    response = client.post(
-        "/evaluations",
-        headers={"X-Session-ID": "session-a"},
-        json=_request_body(),
-    )
-
-    assert response.status_code == 200
-    assert handler_threads
-    assert broker_threads
-    assert set(handler_threads).isdisjoint(broker_threads)
-
-
-def test_stalled_submit_is_bounded_by_remaining_request_deadline(settings, monkeypatch):
-    import triton_evaluation.api.routes as routes
-
-    class _SlowSubmitBroker(Broker):
-        def submit(self, job, lease_ttl_seconds):
-            time.sleep(0.05)
-            submitted = super().submit(job, lease_ttl_seconds)
-            self.store_result(
-                job.task_id,
-                "SUCCEEDED",
-                result={
-                    "correctness": {
-                        "passed": True,
-                        "compiled": True,
-                        "decoy": False,
-                        "passed_cases": 1,
-                        "total_cases": 1,
-                        "failures": [],
-                    },
-                    "performance": None,
-                    "profile": None,
-                },
-            )
-            return submitted
-
-    ticks = iter([100.0, 109.99])
-    monkeypatch.setattr(routes, "_monotonic", lambda: next(ticks, 109.99))
-    client, _ = _client(settings, _SlowSubmitBroker)
-
-    response = client.post(
-        "/evaluations",
-        headers={"X-Session-ID": "session-a"},
-        json=_request_body(timeout=10),
-    )
-
-    assert response.status_code == 200
-    assert response.json()["status"] == "TIMEOUT"
-
-
-def test_stalled_poll_is_bounded_by_remaining_request_deadline(settings, monkeypatch):
-    import triton_evaluation.api.routes as routes
-
-    class _SlowPollBroker(Broker):
-        def get_task(self, task_id):
-            time.sleep(0.05)
-            record = super().get_task(task_id)
-            if record is not None and record["status"] == "QUEUED":
-                self.store_result(
-                    task_id,
-                    "SUCCEEDED",
-                    result={
-                        "correctness": {
-                            "passed": True,
-                            "compiled": True,
-                            "decoy": False,
-                            "passed_cases": 1,
-                            "total_cases": 1,
-                            "failures": [],
-                        },
-                        "performance": None,
-                        "profile": None,
-                    },
-                )
-                return super().get_task(task_id)
-            return record
-
-    ticks = iter([100.0, 100.0, 100.0, 109.99])
-    monkeypatch.setattr(routes, "_monotonic", lambda: next(ticks, 109.99))
-    client, _ = _client(settings, _SlowPollBroker)
-
-    response = client.post(
-        "/evaluations",
-        headers={"X-Session-ID": "session-a"},
-        json=_request_body(timeout=10),
-    )
-
-    assert response.status_code == 200
-    assert response.json()["status"] == "TIMEOUT"
-
-
-def test_removed_v1_and_polling_routes_are_404(settings):
-    client, _ = _client(settings)
-
-    assert client.post("/verify", json={}).status_code == 404
-    assert client.post("/profile", json={}).status_code == 404
-    assert client.get("/tasks/t1").status_code == 404
-    assert client.get("/evaluations/t1").status_code == 404
-
-
-def test_healthz(settings):
-    client, _ = _client(settings)
-
-    response = client.get("/healthz")
-
-    assert response.status_code == 200
-    assert response.json() == {"redis": "ok"}
-
-
-def test_end_to_end_sync_combination_contract(settings):
-    from threading import Thread
-
-    from triton_evaluation.evaluators.base import EvaluatorResult
-    from triton_evaluation.evaluators.evaluation import EvaluationEvaluator
-    from triton_evaluation.models import TaskStatus
-    from triton_evaluation.worker import Worker
-
-    class _FailVerify:
-        def run(self, spec, verify_dir, device_id):
-            return EvaluatorResult(
-                TaskStatus.SUCCEEDED.value,
-                result={
-                    "op_name": spec.op_name,
-                    "total_cases": 2,
-                    "passed_cases": 1,
-                    "failed_cases": 1,
-                    "failures": [
-                        {
-                            "case_idx": 2,
-                            "error_type": "AccuracyError",
-                            "error_msg": "classified traceback",
-                            "kind": "constant_offset",
-                            "sample": [],
-                        }
-                    ],
-                },
-            )
-
-    class _MustNotBenchmark:
-        def run(self, spec, verify_dir, device_id):
-            raise AssertionError("performance must not run for a wrong kernel")
-
-    class _CompleteProfile:
-        def run(self, spec, verify_dir, device_id):
-            return EvaluatorResult(
-                TaskStatus.SUCCEEDED.value,
-                result={
-                    "profile_mode": "op",
-                    "selected_cases": 1,
-                    "completed_cases": 1,
-                    "partial_cases": 0,
-                    "failed_cases": 0,
-                    "timed_out": False,
-                    "per_case_results": [
-                        {
-                            "case_idx": 0,
-                            "status": "complete",
-                            "kernels": [
-                                {"name": "softmax_kernel", "duration_us": 400.0}
-                            ],
-                        }
-                    ],
-                },
-            )
-
-    class _HarnessEvaluation(EvaluationEvaluator):
-        def _verify_evaluator(self):
-            return _FailVerify()
-
-        def _benchmark_evaluator(self):
-            return _MustNotBenchmark()
-
-        def _profile_evaluator(self):
-            return _CompleteProfile()
-
-    client, broker = _client(settings)
-    worker = Worker(
-        broker,
-        {"evaluation": _HarnessEvaluation("unused")},
-        device_id=0,
-        settings=settings,
-    )
-    worker_thread = Thread(target=worker.run_once)
-    worker_thread.start()
-
-    response = client.post(
-        "/evaluations",
-        headers={"X-Session-ID": "e2e-session"},
-        json=_request_body(checks=["correctness", "performance", "profile"]),
-    )
-    worker_thread.join(timeout=5)
-
-    assert worker_thread.is_alive() is False
-    assert response.status_code == 200
-    body = response.json()
-    assert body["status"] == "SUCCEEDED"
-    assert body["result"]["correctness"]["passed"] is False
-    assert body["result"]["correctness"]["failures"][0]["kind"] == "constant_offset"
-    assert body["result"]["correctness"]["failures"][0]["error"] is None
-    assert body["result"]["performance"] is None
-    assert body["result"]["profile"]["profile_state"] == "complete"
-    assert broker.acquire_session("e2e-session", "next-task", 60) is True
+    assert response.json()["evaluation_id"] == evaluation_id

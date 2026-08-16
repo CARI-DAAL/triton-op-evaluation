@@ -37,6 +37,7 @@ running state, exact attempt ID, exact fencing token, expected public
 revision, and ``now < deadline_at``.
 """
 import json
+import uuid
 from collections.abc import Callable
 from datetime import datetime, timedelta, timezone
 
@@ -296,6 +297,38 @@ class EvaluationStore:
         elif "observer:read" not in caller.scopes:
             return None
         return EvaluationResource.model_validate_json(stored[b"resource"])
+
+    def lookup_idempotent(
+        self, caller_id: str, idempotency_key: str
+    ) -> EvaluationResource | None:
+        """Return the resource an existing idempotency record maps to, if any.
+
+        Read-only pre-check used by admission so an idempotent replay stays
+        recoverable through transient unreadiness; readiness applies only to
+        genuinely new admissions.
+        """
+        record_key = self._key(
+            f"idempotency:{_scoped_digest(caller_id, idempotency_key)}"
+        )
+        record = self._r.hgetall(record_key)
+        if not record:
+            return None
+        resource_key = self._key(f"resource:{record[b'evaluation_id'].decode('utf-8')}")
+        stored = self._r.hget(resource_key, b"resource")
+        if stored is None:
+            # A mapped-but-missing resource is a storage failure, never a
+            # silent pass-through to new admission.
+            raise StorageError("idempotency record maps to a missing resource")
+        return EvaluationResource.model_validate_json(stored)
+
+    def probe_storage(self) -> bool:
+        """One ephemeral write/delete proving the store accepts writes."""
+        probe_key = self._key(f"readiness-probe:{uuid.uuid4().hex}")
+        pipeline = self._r.pipeline()
+        pipeline.set(probe_key, b"1", nx=True, px=5000)
+        pipeline.delete(probe_key)
+        results = pipeline.execute()
+        return bool(results and results[0])
 
     # ------------------------------------------------------------------
     # Claims and leases (design section 6)
