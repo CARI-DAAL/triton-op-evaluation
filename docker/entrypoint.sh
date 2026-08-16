@@ -49,6 +49,56 @@ fi
 
 cd /opt/triton-eval
 
+# --- Fail closed before API/workers: artifacts, secret/catalog, build equality, bind ---
+# The host preflight owns image/digest verification (no docker socket is mounted in the
+# container by design); this boundary re-verifies everything reachable in-process.
+verify_readiness() {
+  "${PYTHON_BIN}" - <<'PYREADINESS'
+import sys
+
+from triton_evaluation.api.contract_artifacts import CONTRACT_ROOT, verify_artifacts
+from triton_evaluation.catalog import ReleaseCatalog
+from triton_evaluation.security import CapabilityRegistry
+
+problems = verify_artifacts(CONTRACT_ROOT)
+if problems:
+    sys.exit(f"contract artifacts failed verification: {len(problems)} file(s)")
+import os
+
+from triton_evaluation.config import Settings
+
+settings = Settings.from_env()
+try:
+    CapabilityRegistry.from_secret_file(settings.capability_secret_path)
+except Exception:
+    sys.exit("capability secret failed validation")
+try:
+    ReleaseCatalog.load(settings.catalog_root, settings.catalog_manifest_path)
+except Exception:
+    sys.exit("release catalog failed validation")
+
+build = os.environ.get("TRITON_EVAL_EVALUATOR_BUILD", "")
+image = os.environ.get("TRITON_EVAL_IMAGE", "")
+git_sha = build.removeprefix("git:")
+reviewed_git = (
+    build.startswith("git:") and len(git_sha) == 40
+    and all(char in "0123456789abcdef" for char in git_sha)
+)
+if build != settings.evaluator_build:
+    sys.exit("evaluator build disagrees with the configured setting")
+if image and build != image and not reviewed_git:
+    sys.exit("evaluator build must equal the immutable image")
+
+host = os.environ.get("TRITON_EVAL_API_HOST", "127.0.0.1")
+if host in ("0.0.0.0", "::") or ":" in host:
+    sys.exit("API host must be a single IPv4 address, never a wildcard")
+PYREADINESS
+}
+
+if [[ "${TRITON_EVAL_SKIP_READINESS:-}" != "1" ]]; then
+  verify_readiness
+fi
+
 run_api() {
   exec "${PYTHON_BIN}" -m uvicorn run_api:app \
     --host "${TRITON_EVAL_API_HOST:-127.0.0.1}" \
