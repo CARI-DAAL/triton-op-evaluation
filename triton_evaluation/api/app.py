@@ -74,6 +74,12 @@ def create_app(context: AppContext) -> FastAPI:
     app.state.context = context
     app.add_middleware(RequestIdBodyLimitMiddleware)
     app.include_router(router)
+    if context.settings.legacy_routes_enabled:
+        # Settings validation already rejected enabling without the exact
+        # published sunset instant, past it, or with a window over 90 days.
+        from .legacy_routes import router as legacy_router
+
+        app.include_router(legacy_router)
 
     _install_exception_handlers(app)
     return app

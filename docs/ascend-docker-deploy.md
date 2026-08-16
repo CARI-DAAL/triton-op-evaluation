@@ -369,15 +369,38 @@ docker compose --env-file docker.env build       # one-time
 
 ## 4. Operate
 ```
-docker compose --env-file docker.env up -d        # start eval + redis
-docker compose --env-file docker.env logs -f
-docker compose --env-file docker.env down
-python3 scripts/test_eval_service.py --url http://127.0.0.1:11907   # one synchronous v2 request
+scripts/compose.sh up -d      # deployment preflight, then compose up (eval + redis)
+scripts/compose.sh logs -f
+scripts/compose.sh down       # keeps the triton-eval-redis-v2 volume — never down -v
+python3 scripts/test_eval_service.py --url http://172.18.0.1:11907 --token <trial-capability>
 ```
 
-The smoke client sends the required `X-Session-ID`, requests correctness + performance,
-and sets its HTTP timeout to the request-wide evaluation timeout plus 60 seconds. It does
-not poll or automatically retry a read timeout.
+`scripts/compose.sh up|start|restart` runs `scripts/deployment_preflight.py` first and
+refuses to touch Compose when any check fails: the API must bind the one IPv4 gateway of
+Docker network `kernel-agent-sandbox-net` (byte-equal to `TRITON_EVAL_API_HOST`,
+`PROXY_HOST`, and `EVALUATION_URL=http://{gateway}:11907`, with the gateway a complete
+`NO_PROXY` entry), the Redis and eval images must resolve to their pinned digests
+(`TRITON_EVAL_IMAGE` is a required sha256 reference with no tag-only default, and
+`TRITON_EVAL_EVALUATOR_BUILD` must equal it), the secret file must be mode 0600, and the
+catalog must pass the production loaders. The wrapper exports the validated gateway and
+never prints secret values.
+
+Durability: Redis runs the pinned `redis:7.4.10-alpine3.21` index digest with
+`--appendonly yes --appendfsync always` and the named `triton-eval-redis-v2:/data`
+volume. EXEC acknowledgement under appendfsync always is the first-2xx durability
+boundary — an accepted evaluation survives a container crash. Rollback rule: keep the
+volume; a prior compatible build reads the same `triton-eval:v2` keyspace.
+
+The smoke client authenticates with a caller capability, sends the mandatory session
+and idempotency headers, persists the returned `evaluation_id`, and recovers through
+`GET /evaluations/{id}` with bounded backoff; it replays the original POST only when
+no response was obtained. Client HTTP timeouts cover only `wait_seconds` plus transport
+margin — they never cancel or terminalize the evaluation.
+
+Legacy compatibility routes (`/verify`, `/profile`, `/tasks/{task_id}`) are time-boxed
+to the published removal date `2026-10-15T00:00:00Z`: enabling requires
+`legacy_routes_enabled=true` plus exactly that instant, at most 90 days ahead, and
+fails startup otherwise.
 
 ## 5. Notes / future work
 - Container depends on the host `kernelgym` env + `~/.local` (less portable than a

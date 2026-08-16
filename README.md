@@ -98,48 +98,85 @@ curl 127.0.0.1:10907/healthz          # -> {"redis":"ok"}
 `TRITON_EVAL_CARDS` must match the mounted `/dev/davinciN`. Smoke-test one real Triton kernel
 after bring-up to confirm triton-ascend links `bishengir-compile` from the image's CANN.
 
-## Endpoints
+## Endpoints (evaluation API v2 — durable)
 
-- `POST /evaluations` synchronously waits for one terminal, typed evaluation result.
-  Select `correctness`, `performance`, and/or `profile` with `checks`. Performance
-  requires correctness and only runs when correctness passes; profile is independent.
-  Every request requires an `X-Session-ID` header so the service can enforce one
-  in-flight evaluation per session/container.
-- `GET /healthz` → Redis health.
+- `POST /evaluations?wait_seconds=0..60` — authenticate with a caller-scoped opaque
+  capability (`Authorization: Bearer <token>`), always send `X-Session-ID`
+  (correlation + secondary quota; never authorizes) and `Idempotency-Key`
+  (scoped to the authenticated caller). Returns `200` with a terminal
+  `EvaluationResource`, or `202` with the nonterminal resource plus
+  `Location: /evaluations/{evaluation_id}`. Same key + same canonical request
+  replays the same resource; a different request with the same key is `409`.
+- `GET /evaluations/{evaluation_id}` — recover a visible resource by ID; unknown and
+  invisible IDs are the same `404`. Nonterminal responses carry `Retry-After: 1`.
+- `GET /livez` / `GET /readyz` — process liveness / dependency-aware readiness.
+- `GET /internal/metrics` — observer-authenticated OpenMetrics.
 
-The API submits work to the Redis queue and polls it internally; clients never receive
-or poll a non-terminal task. `timeout` covers the whole server-side request, including
-queue wait and all checks. Set the client HTTP timeout higher than the request timeout
-(the smoke client uses 60 seconds of grace), and do not automatically retry an HTTP read
-timeout because the worker may still be running. Server timeouts do not cancel workers.
+All non-2xx responses are one redacted `ErrorEnvelope` shape. The wire contract is
+frozen and published as reproducible artifacts — the only cross-repository contract:
 
-All checks share one FIFO Redis queue. Whichever configured card worker becomes free
-first claims the next evaluation. Once claimed, all requested checks stay on that card.
-“Free” is worker state, not an `npu-smi` probe; cards configured for this service are
-expected to be dedicated.
+- `contracts/evaluation-api/2.0/contract.json` (schema + fixture-index digests)
+- `contracts/evaluation-api/2.0/schema.json` (entrypoints
+  `#/$defs/EvaluationRequest`, `#/$defs/EvaluationResource`, `#/$defs/ErrorEnvelope`)
+- `contracts/evaluation-api/2.0/fixtures/index.json` (+ 29 golden fixtures)
+
+Current digests (pin these in consumer contract tests):
+
+- schema: `5c81434931f7178ee9c1a4f2220404a42764c076f64b0a1b9f40bb88b87ca502`
+- fixture index: `50c226aa68c926284e3bd130145056e3b542bb5eb7090e9fb513b5a4ee5f0d52`
+
+Callers hold static capabilities from a mounted secret file: `trial:submit/read` for
+interactive harnesses (trial traffic only), `grade:submit/read` for the trusted hub
+(grade traffic, manifest-bound reference), and `observer:read` for global read-only
+observability. Identity, visibility, idempotency, and primary quotas key on the
+authenticated `caller_id` — never the session header.
+
+Durability: Redis runs `--appendonly yes --appendfsync always`; EXEC acknowledgement
+is the first-2xx durability boundary. The API binds the preflight-validated IPv4
+gateway of Docker network `kernel-agent-sandbox-net` on port `11907` — never loopback
+or wildcard. `scripts/compose.sh` runs `scripts/deployment_preflight.py` before
+`up|start|restart` and refuses to start otherwise. Rollback rule: keep the
+`triton-eval-redis-v2` volume (never `down -v`); the prior build can read the same
+v2 keyspace.
+
+Client HTTP timeouts cover only `wait_seconds` plus transport margin — a wait-budget
+expiry or disconnect never cancels or terminalizes the evaluation. Persist the
+`evaluation_id` from any 200/202 body immediately and recover through GET; replay the
+original POST (same key and body) only when no response was obtained at all.
+
+Legacy compatibility (`POST /verify`, `POST /profile`, `GET /tasks/{task_id}`) is
+time-boxed: enabled only with `legacy_routes_enabled=true` and the exact published
+sunset instant `2026-10-15T00:00:00Z`, with a window of at most 90 days. Enabling
+without that instant, after it, or wider fails startup. The routes require the same
+authorization/session/idempotency headers and trial capabilities as v2.
 
 Example correctness + performance request:
 
 ```bash
-curl --max-time 960 -X POST http://127.0.0.1:10907/evaluations \
+curl -X POST "http://127.0.0.1:11907/evaluations?wait_seconds=30" \
   -H 'Content-Type: application/json' \
+  -H 'Authorization: Bearer <trial-capability-token>' \
   -H 'X-Session-ID: example-shell' \
+  -H 'Idempotency-Key: example-run-1' \
   --data '{
+    "schema_version": "2.0",
+    "purpose": "trial",
     "op_name": "add",
     "reference_code": "import torch ...",
     "kernel_code": "import torch ...",
     "checks": ["correctness", "performance"],
-    "timeout": 900,
+    "deadline_seconds": 900,
     "performance": {"warmup": 5, "repeats": 50}
   }'
 ```
 
-The response always has terminal `status` plus typed `result.correctness`,
-`result.performance`, and `result.profile` fields. It never returns reference code or
-test inputs. The API binds to loopback by default; sandbox consumers should reach it
-through the managed kernel-harness gateway/relay rather than exposing the port remotely.
+The response is an `EvaluationResource` with a monotonic `revision`, `state` in
+`queued|running|completed|failed|timed_out`, and (once terminal) a typed
+`result.correctness`, `result.performance`, `result.profile` plus `provenance`.
+It never returns reference code or test inputs.
 
 ## Test
+
 
 ```bash
 pip install -e ".[test]"

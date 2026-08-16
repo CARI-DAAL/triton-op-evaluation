@@ -41,7 +41,7 @@ LABEL_VALUES = {
         "renewed", "rejected", "won", "lost", "requeued", "failed", "bound",
         "rejected_binding", "compatible", "incompatible",
     ),
-    "route": ("evaluations_post", "evaluations_get"),
+    "route": ("evaluations_post", "evaluations_get", "verify", "profile", "tasks"),
     "purpose": ("trial", "grade"),
     "eligible": ("true", "false"),
     "decoy": ("true", "false"),
@@ -53,6 +53,7 @@ ALLOWED_METRICS = {
     "idempotency_replays_total": ("caller_class",),
     "api_error_responses_total": ("code",),
     "auth_failures_total": ("code",),
+    "legacy_route_requests_total": ("route",),
     # Resource lifecycle
     "resource_terminal_transitions_total": ("state", "caller_class"),
     "resource_terminal_duration_seconds": ("state",),

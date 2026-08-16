@@ -18,6 +18,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import time
 import urllib.error
 import urllib.request
 
@@ -78,111 +79,144 @@ def http_json(
         return json.loads(r.read().decode())
 
 
-def response_exit_code(payload: dict) -> int:
-    """Map a typed evaluation response to the smoke-test process exit code."""
-    status = payload.get("status")
-    result = payload.get("result")
-    if status not in {"SUCCEEDED", "FAILED", "TIMEOUT", "REJECTED"}:
+def response_exit_code(resource: dict) -> int:
+    """Map a terminal durable resource to the smoke-test process exit code."""
+    state = resource.get("state")
+    if state not in {"completed", "failed", "timed_out"}:
         return 2
-    if not isinstance(result, dict):
+    if state != "completed" or resource.get("result") is None:
+        return 1
+    correctness = (resource.get("result") or {}).get("correctness") or {}
+    if correctness.get("status") != "succeeded" or not isinstance(
+        correctness.get("data"), dict
+    ):
         return 2
-    correctness = result.get("correctness")
-    if status == "SUCCEEDED":
-        if not isinstance(correctness, dict) or not isinstance(
-            correctness.get("passed"), bool
-        ):
-            return 2
-        return 0 if correctness["passed"] else 1
-    return 1
+    return 0 if correctness["data"].get("passed") else 1
 
 
-def _print_result(payload: dict) -> None:
-    status = payload.get("status")
-    result = payload.get("result") or {}
+def _print_resource(resource: dict) -> None:
+    result = resource.get("result") or {}
+    print(f"\n[result] state={resource.get('state')} "
+          f"evaluation_id={resource.get('evaluation_id')}")
     correctness = result.get("correctness") or {}
-    print(f"\n[result] status={status} task_id={payload.get('task_id')}")
-    if correctness:
-        print(
-            "  cases: "
-            f"{correctness.get('passed_cases')}/{correctness.get('total_cases')} passed"
-        )
-        for failure in correctness.get("failures") or []:
-            detail = failure.get("kind") or failure.get("error") or "unknown failure"
-            print(f"  [case {failure.get('case_idx')}] {detail}")
-
+    data = correctness.get("data") or {}
+    if data:
+        print(f"  cases: {data.get('passed_cases')}/{data.get('total_cases')} passed")
+        for failure in data.get("failures") or []:
+            print(f"  [case {failure.get('case_idx')}] {failure.get('kind')}")
     performance = result.get("performance") or {}
-    if performance:
-        print(f"  speedup_vs_torch: {performance.get('speedup_vs_torch')}")
+    perf_data = performance.get("data") or {}
+    if perf_data:
+        print(f"  speedup_vs_reference: "
+              f"{perf_data.get('overall_speedup_vs_reference')} "
+              f"(coverage {perf_data.get('coverage')})")
+    if correctness.get("error"):
+        print(f"  error: {correctness['error'].get('message')}")
 
-    if status != "SUCCEEDED":
-        print(f"  error: {payload.get('error')}")
+
+def submit_and_recover(base: str, body: dict, headers: dict, timeout: float) -> dict:
+    """POST once; on no-response transport failure replay the original request.
+
+    The evaluation_id is persisted immediately after a 200/202 body — the only
+    safe replay is when NO response was obtained at all.
+    """
+    for attempt in range(2):
+        try:
+            return http_json("POST", f"{base}/evaluations", body=body,
+                             timeout=timeout, headers=headers)
+        except (urllib.error.URLError, OSError):
+            if attempt == 1:
+                raise
+            time.sleep(1.0)
+    raise AssertionError("unreachable")
+
+
+def poll_until_terminal(base: str, evaluation_id: str, headers: dict,
+                        deadline_seconds: float, max_backoff: float = 5.0) -> dict:
+    """GET with capped exponential backoff until a terminal resource appears."""
+    backoff = 0.5
+    deadline = time.monotonic() + deadline_seconds
+    while True:
+        resource = http_json("GET", f"{base}/evaluations/{evaluation_id}",
+                             headers=headers, timeout=15.0)
+        if resource.get("state") in {"completed", "failed", "timed_out"}:
+            return resource
+        if time.monotonic() >= deadline:
+            return resource
+        time.sleep(min(backoff, max_backoff))
+        backoff = min(backoff * 2, max_backoff)
 
 
 def main() -> int:
+    import uuid
+
     ap = argparse.ArgumentParser()
     ap.add_argument("--url", default="http://127.0.0.1:11907",
                     help="base URL of the triton-eval service")
     ap.add_argument("--op", default="smoke_add", help="op_name (filename-safe slug)")
+    ap.add_argument("--token", required=True,
+                    help="caller-scoped opaque capability token (Bearer)")
     ap.add_argument("--measure-speed", dest="measure_speed", action="store_true",
                     default=True, help="also benchmark a passing kernel (default on)")
     ap.add_argument("--no-speed", dest="measure_speed", action="store_false")
-    ap.add_argument(
-        "--job-timeout",
-        type=int,
-        default=600,
-        help="request-wide service timeout including queue wait (s)",
-    )
-    ap.add_argument(
-        "--session-id",
-        default="triton-eval-smoke",
-        help="session/container identity used by the service rate limit",
-    )
+    ap.add_argument("--job-timeout", type=int, default=600,
+                    help="client recovery window in seconds (the resource deadline "
+                         "is set by the request body)")
+    ap.add_argument("--session-id", default="triton-eval-smoke",
+                    help="correlation session (never authorizes anything)")
     args = ap.parse_args()
 
     base = args.url.rstrip("/")
 
-    # 0) health
+    # 0) liveness/readiness
     try:
-        print(f"[healthz] {http_json('GET', f'{base}/healthz', timeout=5.0)}")
+        print(f"[livez] {http_json('GET', f'{base}/livez', timeout=5.0)}")
+        print(f"[readyz] {http_json('GET', f'{base}/readyz', timeout=5.0)}")
     except Exception as e:
-        print(f"[healthz] FAILED: {e}", file=sys.stderr)
+        print(f"[health] FAILED: {e}", file=sys.stderr)
         return 2
 
-    # One synchronous request. The client timeout intentionally exceeds the server
-    # timeout so it does not disconnect while the worker may still be running.
+    headers = {
+        "Authorization": f"Bearer {args.token}",
+        "X-Session-ID": args.session_id,
+        "Idempotency-Key": f"smoke-{uuid.uuid4().hex}",
+    }
     body = {
+        "schema_version": "2.0",
+        "purpose": "trial",
         "op_name": args.op,
         "reference_code": REFERENCE_CODE,
         "kernel_code": KERNEL_CODE,
-        "triton_impl_name": "triton_ascend_impl",
         "checks": (
-            ["correctness", "performance"]
-            if args.measure_speed
-            else ["correctness"]
+            ["correctness", "performance"] if args.measure_speed else ["correctness"]
         ),
         "non_compute": False,
-        "timeout": args.job_timeout,
+        "deadline_seconds": 600,
     }
+    if args.measure_speed:
+        body["performance"] = {"warmup": 5, "repeats": 20}
+
     print(f"\n[evaluate] POST /evaluations  op={args.op} checks={body['checks']}")
     try:
-        response = http_json(
-            "POST",
-            f"{base}/evaluations",
-            body=body,
-            timeout=args.job_timeout + 60,
-            headers={"X-Session-ID": args.session_id},
-        )
-    except urllib.error.HTTPError as e:
-        print(f"[evaluate] HTTP {e.code}: {e.read().decode()[:500]}", file=sys.stderr)
-        return 2
-    except (OSError, ValueError, json.JSONDecodeError) as e:
+        # Client HTTP timeout covers only wait_seconds plus transport margin;
+        # recovery after that goes through GET with the persisted ID.
+        resource = submit_and_recover(base, body, headers, timeout=15.0)
+    except Exception as e:
         print(f"[evaluate] FAILED: {e}", file=sys.stderr)
         return 2
 
-    _print_result(response)
-    code = response_exit_code(response)
-    print("  ✅ evaluation PASS" if code == 0 else "  ❌ evaluation did not pass")
-    return code
+    if not isinstance(resource, dict) or not resource.get("evaluation_id"):
+        print("[evaluate] malformed response: no evaluation_id", file=sys.stderr)
+        return 2
+    evaluation_id = resource["evaluation_id"]
+    print(f"  evaluation_id={evaluation_id} state={resource.get('state')}")
+
+    if resource.get("state") not in {"completed", "failed", "timed_out"}:
+        resource = poll_until_terminal(base, evaluation_id, headers,
+                                       deadline_seconds=float(args.job_timeout))
+
+    _print_resource(resource)
+    return response_exit_code(resource)
 
 
 if __name__ == "__main__":
