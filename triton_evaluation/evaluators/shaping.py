@@ -80,10 +80,24 @@ class ShapingError(ValueError):
     """An engine result cannot satisfy the stable v2 contract."""
 
 
+_SHAPING_METRICS = None  # optional RedisMetrics; wired by the deployment
+
+
+def note_shaping_failure(check: str) -> None:
+    """Best-effort bounded counter at the exact shaping failure decision."""
+    if _SHAPING_METRICS is None:
+        return
+    try:
+        _SHAPING_METRICS.increment("shaping_failures_total", {"check": check})
+    except ValueError:
+        pass
+
+
 def _parse(model, raw, name: str):
     try:
         return model.model_validate(raw)
     except ValidationError as exc:
+        note_shaping_failure(name)
         raise ShapingError(f"{name} result does not match the engine protocol") from exc
 
 
@@ -91,6 +105,7 @@ def _checked(build, name: str):
     try:
         return build()
     except ValidationError as exc:
+        note_shaping_failure(name)
         raise ShapingError(f"{name} result cannot satisfy the stable contract") from exc
 
 

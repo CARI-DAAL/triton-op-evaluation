@@ -85,19 +85,44 @@ def _algorithms(context: AppContext):
     )
 
 
+def _metrics(context: AppContext):
+    return context.metrics
+
+
+def _bump(context: AppContext, name: str, **labels) -> None:
+    """Best-effort bounded counter; never affects the response."""
+    metrics = _metrics(context)
+    if metrics is None:
+        return
+    try:
+        metrics.increment(name, labels)
+    except Exception as error:  # noqa: BLE001 — never affect the response
+        import logging
+
+        logging.getLogger(__name__).warning(
+            "metrics write failed (%s)", type(error).__name__
+        )
+
+
 def _require_ready(context: AppContext, caller: Caller) -> None:
     if not context.artifacts_verified:
+        _bump(context, "worker_compatibility_total", outcome="incompatible")
         raise errors.not_ready("published contract artifacts are not verified")
     if not context.store.probe_storage():
         raise errors.queue_unavailable()
-    if not context.store.has_fresh_compatible_worker(
+    compatible = context.store.has_fresh_compatible_worker(
         type(
             "Compatibility",
             (),
             {"evaluator_build": context.settings.evaluator_build,
              "algorithms": _algorithms(context)},
         )()
-    ):
+    )
+    _bump(
+        context, "worker_compatibility_total",
+        outcome="compatible" if compatible else "incompatible",
+    )
+    if not compatible:
         raise errors.not_ready()
 
 
@@ -161,9 +186,12 @@ async def submit_evaluation(
 
     try:
         admission = admit(evaluation_request, caller, context.catalog)
+        if evaluation_request.purpose == "grade":
+            _bump(context, "catalog_binding_outcomes_total", outcome="bound")
     except ForbiddenError:
         raise errors.forbidden("caller lacks the required scope") from None
     except ManifestBindingError:
+        _bump(context, "catalog_binding_outcomes_total", outcome="rejected_binding")
         raise errors.manifest_binding_failed() from None
 
     command = _build_command(
@@ -184,6 +212,12 @@ async def submit_evaluation(
     except StorageError:
         raise errors.internal() from None
 
+    _bump(
+        context, "evaluation_admissions_total",
+        decision=outcome.decision, caller_class=caller.caller_class,
+    )
+    if outcome.decision == "replayed":
+        _bump(context, "idempotency_replays_total", caller_class=caller.caller_class)
     if outcome.decision == "conflict":
         raise errors.idempotency_conflict()
     if outcome.decision == "rate_limited":
@@ -247,3 +281,54 @@ async def get_evaluation(
         status_code=200,
         headers=headers,
     )
+
+
+@router.get("/livez")
+async def livez():
+    """Constant process liveness; touches no store, catalog, or worker state."""
+    return {"status": "ok"}
+
+
+@router.get("/readyz")
+async def readyz(context=Depends(get_context)):
+    ready = (
+        context.artifacts_verified
+        and context.store.probe_storage()
+        and context.store.has_fresh_compatible_worker(
+            type(
+                "Compatibility",
+                (),
+                {"evaluator_build": context.settings.evaluator_build,
+                 "algorithms": _algorithms(context)},
+            )()
+        )
+    )
+    if not ready:
+        # No component detail: readiness failures are uniform.
+        raise errors.not_ready()
+    return {"ready": True}
+
+
+@router.get("/internal/metrics")
+async def internal_metrics(request: Request, context=Depends(get_context)):
+    caller = _require_observer(request, context)
+    if caller is None:
+        raise errors.forbidden("metrics require observer scope")
+    metrics = context.metrics
+    if metrics is None:
+        raise errors.not_found()
+    from fastapi.responses import Response
+
+    return Response(
+        content=metrics.render_openmetrics(),
+        media_type="application/openmetrics-text; version=1.0.0; charset=utf-8",
+    )
+
+
+def _require_observer(request: Request, context):
+    from .auth import authenticate
+
+    caller = authenticate(request, context.registry)
+    if "observer:read" not in caller.scopes:
+        return None
+    return caller

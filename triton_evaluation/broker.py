@@ -37,6 +37,7 @@ running state, exact attempt ID, exact fencing token, expected public
 revision, and ``now < deadline_at``.
 """
 import json
+import logging
 import uuid
 from collections.abc import Callable
 from datetime import datetime, timedelta, timezone
@@ -73,6 +74,8 @@ _MINUTE_MS = 60_000
 # Retry-safe workload: a crashed attempt may be replaced twice before the
 # reaper commits WORKER_LOST.
 MAX_ATTEMPTS = 3
+
+logger = logging.getLogger(__name__)
 _CLAIM_SCAN_BATCH = 10
 _TERMINAL_STATES = ("completed", "failed", "timed_out")
 
@@ -108,12 +111,23 @@ class EvaluationStore:
         client: redis.Redis,
         settings: Settings,
         clock: Callable[[], int] | None = None,
+        metrics=None,
     ) -> None:
         if settings.retention_seconds < settings.max_recovery_age_seconds:
             raise ValueError("retention_seconds must cover max_recovery_age_seconds")
         self._r = client
         self._s = settings
         self._clock = clock or (lambda: _redis_time_ms(self._r))
+        self._metrics = metrics
+
+    def _bump(self, name: str, **labels) -> None:
+        """Best-effort bounded counter; never changes a transition result."""
+        if self._metrics is None:
+            return
+        try:
+            self._metrics.increment(name, labels)
+        except Exception as error:  # noqa: BLE001 — never change a transition
+            logger.warning("metrics write failed (%s)", type(error).__name__)
 
     def _key(self, suffix: str) -> str:
         return f"{self._s.redis_prefix}:{suffix}"
@@ -500,6 +514,7 @@ class EvaluationStore:
                 stored = pipeline.hgetall(resource_key)
                 if not stored or not self._fence_conditions_met(stored, lease, now_ms):
                     self.note_fenced_write()
+                    self._bump("terminal_commit_cas_total", outcome="lost")
                     return False
                 pipeline.multi()
                 mutate(pipeline, stored, now_ms)
@@ -558,6 +573,7 @@ class EvaluationStore:
                 stored = pipeline.hgetall(resource_key)
                 if not stored or not self._fence_conditions_met(stored, lease, now_ms):
                     self.note_fenced_write()
+                    self._bump("terminal_commit_cas_total", outcome="lost")
                     return False
                 resource = EvaluationResource.model_validate_json(stored[b"resource"])
                 requested = json.loads(stored[b"requested_checks"])
@@ -574,6 +590,24 @@ class EvaluationStore:
                     now_ms=now_ms,
                     bump_fence=False,
                 )
+                self._bump("terminal_commit_cas_total", outcome="won")
+                self._bump(
+                    "resource_terminal_transitions_total",
+                    state=state,
+                    caller_class="trusted"
+                    if stored.get(b"traffic_class", b"trial") == b"trusted"
+                    else "trial",
+                )
+                started_ms = stored.get(b"created_at_ms")
+                if started_ms is not None and self._metrics is not None:
+                    try:
+                        self._metrics.observe(
+                            "resource_terminal_duration_seconds",
+                            {"state": state},
+                            max(0.0, (now_ms - int(started_ms)) / 1000),
+                        )
+                    except ValueError:
+                        pass
                 return True
             except redis.WatchError:
                 continue
@@ -660,8 +694,10 @@ class EvaluationStore:
             outcome = self._recover_one_lease(member, now_ms)
             if outcome == "requeued":
                 requeued += 1
+                self._bump("reaped_leases_total", outcome="requeued")
             elif outcome == "failed":
                 failed += 1
+                self._bump("reaped_leases_total", outcome="failed")
         return RecoveryCounts(requeued=requeued, failed=failed)
 
     def _recover_one_lease(self, member: bytes, now_ms: int) -> str | None:
@@ -842,6 +878,7 @@ class EvaluationStore:
                 "profiler_algorithm": worker.algorithms.profiler,
             }
         )
+        self._bump("worker_heartbeats_total")
         pipeline = self._r.pipeline()
         pipeline.hset(self._key("worker-heartbeats"), worker.worker_id, payload)
         pipeline.zadd(
@@ -880,3 +917,4 @@ class EvaluationStore:
     def note_fenced_write(self) -> None:
         """Count a late, duplicate, or lease-losing attempt write."""
         self._r.incr(self._key("metrics:fenced-write-rejected"))
+        self._bump("fenced_write_rejections_total")

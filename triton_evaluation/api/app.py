@@ -20,6 +20,7 @@ _MAINTENANCE_BATCH = 100
 
 
 def _envelope_response(request: Request, error: errors.ApiError) -> JSONResponse:
+    _count_error_response(request, error)
     request_id = getattr(request.state, "request_id", None) or new_request_id()
     envelope = ErrorEnvelope(
         schema_version="2.0",
@@ -31,6 +32,20 @@ def _envelope_response(request: Request, error: errors.ApiError) -> JSONResponse
         content=envelope.model_dump(mode="json", exclude_none=False),
         headers=dict(error.headers),
     )
+
+
+def _count_error_response(request: Request, error: errors.ApiError) -> None:
+    """Best-effort bounded error counter; never affects the response."""
+    metrics = getattr(request.app.state, "context", None)
+    metrics = getattr(metrics, "metrics", None) if metrics is not None else None
+    if metrics is None:
+        return
+    try:
+        metrics.increment("api_error_responses_total", {"code": error.info.code})
+        if error.info.phase == "auth":
+            metrics.increment("auth_failures_total", {"code": error.info.code})
+    except Exception as error:  # noqa: BLE001 — never affect the response
+        logger.warning("metrics write failed (%s)", type(error).__name__)
 
 
 def create_app(context: AppContext) -> FastAPI:

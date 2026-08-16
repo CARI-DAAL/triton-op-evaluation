@@ -109,7 +109,10 @@ def build_app(tmp_path, catalog_files, clock=None, settings=None):
     server = fakeredis.FakeServer()
     client = fakeredis.FakeStrictRedis(server=server)
     clock = clock or FakeClock()
-    store = EvaluationStore(client, settings, clock=clock)
+    from triton_evaluation.metrics import RedisMetrics
+
+    metrics = RedisMetrics(client, settings.redis_prefix)
+    store = EvaluationStore(client, settings, clock=clock, metrics=metrics)
     registry = CapabilityRegistry.from_secret_file(Path(settings.capability_secret_path))
     catalog = ReleaseCatalog.load(catalog_files.root, catalog_files.manifest_path)
 
@@ -121,7 +124,7 @@ def build_app(tmp_path, catalog_files, clock=None, settings=None):
     context.store = store
     context.registry = registry
     context.catalog = catalog
-    context.metrics = None
+    context.metrics = metrics
     context.artifacts_verified = True
     app = create_app(context)
     transport = httpx.ASGITransport(app=app)

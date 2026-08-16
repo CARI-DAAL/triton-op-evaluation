@@ -98,15 +98,23 @@ class LeaseKeeper:
     def __exit__(self, exc_type, exc, tb) -> None:
         self.stop()
 
+    def _bump(self, name: str, **labels) -> None:
+        bump = getattr(self._store, "_bump", None)
+        if bump is not None:
+            bump(name, **labels)
+
     def _loop(self) -> None:
         while not self._stop.wait(self._interval):
             try:
                 if self._identity is not None:
                     self._store.heartbeat(self._identity)
                 if not self._store.renew_lease(self._lease):
+                    self._bump("lease_renewals_total", outcome="rejected")
                     self._invalid.set()
                     return
+                self._bump("lease_renewals_total", outcome="renewed")
             except redis.RedisError:
+                self._bump("lease_renewals_total", outcome="rejected")
                 self._invalid.set()
                 return
 
@@ -232,6 +240,11 @@ class Worker:
         if lease is None:
             self._maintenance()
             return False
+        if self.store._metrics is not None:
+            try:
+                self.store._metrics.increment("worker_attempts_total", {})
+            except ValueError:
+                pass
         self._run_attempt(lease, do_sleep)
         return True
 
