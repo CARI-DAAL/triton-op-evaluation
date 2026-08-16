@@ -27,7 +27,14 @@ from .base import (
 # forward is attributed long before the outer kill.
 _DECOY_CHECK_TIMEOUT_SECONDS = 60
 _PER_SUBJECT_BUDGET_CAP_SECONDS = 900
-_OUTER_GRACE_SECONDS = 30
+# The evaluator's outer kill must fire only after the engine's own outer kill
+# had its chance to run: the engine main mode waits budget +
+# engine/verify.py's OUTER_GRACE_SECONDS, so the evaluator waits that plus a
+# kill margin. An earlier evaluator kill would suppress the engine's
+# per-subject attribution machinery exactly when it matters. run_script kills
+# the whole process group, so the engine's subprocess-mode child is covered.
+_ENGINE_OUTER_GRACE_SECONDS = 60  # mirrors engine/verify.py OUTER_GRACE_SECONDS
+_KILL_MARGIN_SECONDS = 30
 
 _COUNT_SNIPPET = (
     "import importlib.util, json, sys\n"
@@ -178,9 +185,9 @@ class VerifyEvaluator:
             cmd,
             str(work_dir),
             device_id,
-            timeout=max(1, int(remaining)) + _OUTER_GRACE_SECONDS,
+            timeout=budget + _ENGINE_OUTER_GRACE_SECONDS + _KILL_MARGIN_SECONDS,
         )
-        if outcome.timed_out:
+        if outcome.timed_out or remaining_seconds(deadline_at) <= 0:
             # The outer kill is ambiguous: never a candidate execution timeout.
             return engine_timeout(
                 "correctness", "correctness exceeded the resource deadline"

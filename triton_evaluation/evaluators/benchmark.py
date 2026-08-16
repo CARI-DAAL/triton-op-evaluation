@@ -60,7 +60,7 @@ class BenchmarkEvaluator:
             device_id,
             timeout=max(1, min(BENCHMARK_TIMEOUT_SECONDS, int(remaining))),
         )
-        if outcome.timed_out:
+        if outcome.timed_out or remaining_seconds(deadline_at) <= 0:
             return engine_timeout(
                 "performance", "performance exceeded the resource deadline"
             )

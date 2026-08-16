@@ -451,3 +451,72 @@ def test_execution_environment_never_carries_host_or_card_identity():
         "triton_version",
         "toolchain_version",
     }
+
+
+# ---------------------------------------------------------------------------
+# Verify evaluator outer-kill ordering (review fix round 1)
+# ---------------------------------------------------------------------------
+
+
+def _request(checks=("correctness",)):
+    return EvaluationRequest.model_validate(
+        {
+            "schema_version": "2.0",
+            "op_name": "addmm",
+            "reference_code": "REF",
+            "kernel_code": "IMPL",
+            "checks": list(checks),
+        }
+    )
+
+
+def test_evaluator_outer_kill_fires_after_the_engine_grace(tmp_path, monkeypatch):
+    import triton_evaluation.evaluators.verify as verify_mod
+    from triton_evaluation.evaluators.base import ScriptOutcome
+
+    seen = {}
+
+    def fake_run_script(cmd, cwd, device_id, timeout):
+        seen["cmd"] = cmd
+        seen["timeout"] = timeout
+        # validate pre-check yields no JSON verdict -> proceed to verify
+        return ScriptOutcome(0, "", "", False)
+
+    monkeypatch.setattr(verify_mod, "run_script", fake_run_script)
+    monkeypatch.setattr(verify_mod, "read_json", lambda path: load("verify-correct.json"))
+
+    evaluator = verify_mod.VerifyEvaluator("unused")
+    deadline = datetime.now(timezone.utc) + timedelta(seconds=120)
+    result = evaluator.run(_request(), tmp_path, 0, deadline)
+
+    assert result.status == "succeeded"
+    budget = int(seen["cmd"][seen["cmd"].index("--timeout") + 1])
+    # The evaluator kill must come strictly after the engine's own outer kill
+    # (budget + engine grace), so the per-subject attribution wins the race.
+    assert seen["timeout"] > budget + verify_mod._ENGINE_OUTER_GRACE_SECONDS
+
+
+def test_ambiguous_exit_past_deadline_is_timeout_never_attributed(tmp_path, monkeypatch):
+    import triton_evaluation.evaluators.verify as verify_mod
+    from triton_evaluation.evaluators.base import ScriptOutcome
+
+    # run(), decoy pre-check, and _run_verify's start see budget; the
+    # post-run check observes the expired deadline.
+    remaining = iter([100.0, 100.0, 100.0, -1.0])
+    monkeypatch.setattr(
+        verify_mod, "remaining_seconds", lambda deadline: next(remaining, -1.0)
+    )
+    monkeypatch.setattr(
+        verify_mod,
+        "run_script",
+        lambda *args, **kwargs: ScriptOutcome(1, "", "", False),
+    )
+    monkeypatch.setattr(verify_mod, "read_json", lambda path: None)
+
+    evaluator = verify_mod.VerifyEvaluator("unused")
+    deadline = datetime.now(timezone.utc) + timedelta(seconds=100)
+    result = evaluator.run(_request(), tmp_path, 0, deadline)
+
+    assert result.status == "timeout"
+    assert result.error.code == "DEADLINE_EXCEEDED"
+    assert result.error.retryable is False
