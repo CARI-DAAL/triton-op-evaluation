@@ -5,7 +5,13 @@ import fakeredis
 import pytest
 
 from triton_evaluation.admission import admit
-from triton_evaluation.api.contract import EvaluationRequest
+from triton_evaluation.api.contract import (
+    CheckSucceeded,
+    CorrectnessResult,
+    EvaluationRequest,
+    EvaluationResult,
+    Provenance,
+)
 from triton_evaluation.api.contract_artifacts import sha256_hex
 from triton_evaluation.broker import EvaluationStore
 from triton_evaluation.catalog import ReleaseCatalog
@@ -13,7 +19,9 @@ from triton_evaluation.config import Settings
 from triton_evaluation.models import (
     AlgorithmVersions,
     CreateResourceCommand,
+    WorkerIdentity,
     new_evaluation_id,
+    new_worker_id,
 )
 from triton_evaluation.security import Caller
 
@@ -173,4 +181,64 @@ def release_catalog_files(tmp_path):
 def release_catalog(release_catalog_files):
     return ReleaseCatalog.load(
         release_catalog_files.root, release_catalog_files.manifest_path
+    )
+
+
+@pytest.fixture
+def make_worker(settings):
+    """Build a WorkerIdentity pinned to this deployment's build and algorithms."""
+
+    def _make(worker_id=None, *, evaluator_build=None, algorithms=None):
+        return WorkerIdentity(
+            worker_id=worker_id or new_worker_id(),
+            evaluator_build=evaluator_build or settings.evaluator_build,
+            algorithms=algorithms
+            or AlgorithmVersions(
+                correctness=settings.correctness_algorithm_version,
+                decoy=settings.decoy_algorithm_version,
+                benchmark=settings.benchmark_algorithm_version,
+                profiler=settings.profiler_algorithm_version,
+            ),
+        )
+
+    return _make
+
+
+def make_provenance(settings, **overrides):
+    payload = {
+        "schema_version": "2.0",
+        "evaluator_build": settings.evaluator_build,
+        "correctness_algorithm": settings.correctness_algorithm_version,
+        "decoy_algorithm": settings.decoy_algorithm_version,
+        "benchmark_algorithm": settings.benchmark_algorithm_version,
+        "profiler_algorithm": settings.profiler_algorithm_version,
+        "grade_eligible": False,
+        "manifest_id": None,
+        "problem_id": None,
+        "execution_environment": None,
+    }
+    payload.update(overrides)
+    return Provenance(**payload)
+
+
+def make_correctness_success(passed_cases=1, total_cases=1):
+    return CheckSucceeded[CorrectnessResult](
+        status="succeeded",
+        data=CorrectnessResult(
+            outcome="correct",
+            passed=True,
+            passed_cases=passed_cases,
+            total_cases=total_cases,
+            failures=[],
+        ),
+    )
+
+
+def make_completed_result(settings):
+    """A complete result for a correctness-only request."""
+    return EvaluationResult(
+        correctness=make_correctness_success(),
+        performance=None,
+        profile=None,
+        provenance=make_provenance(settings),
     )
