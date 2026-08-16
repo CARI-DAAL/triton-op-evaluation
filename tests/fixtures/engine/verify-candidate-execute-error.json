@@ -1,0 +1,59 @@
+{
+  "op_name": "addmm",
+  "total_cases": 4,
+  "passed_cases": 1,
+  "failed_cases": 3,
+  "failures": [
+    {
+      "case_idx": 1,
+      "input_desc": [
+        {"type": "tensor", "shape": [2], "dtype": "torch.float32"}
+      ],
+      "error_type": "AccuracyError",
+      "error_msg": "[用例 1/4] 验证失败 dtype=torch.float32: max_error_cap_violations=1/2",
+      "kind": "sign_flip",
+      "sample": [
+        {"idx": [0], "candidate": 2.5, "reference": 1.0, "diff": 1.5}
+      ],
+      "metrics": {
+        "category": "float_compute",
+        "dtype": "torch.float32",
+        "matched_ratio": 0.5,
+        "max_abs_diff": 1.5,
+        "MERE": 1.5,
+        "rel_threshold": 0.0001220703125,
+        "small_value_threshold": 0.00006103515625,
+        "small_value_error": 9.313225746154785e-10,
+        "atol": 0.001,
+        "rtol": 0.0001220703125,
+        "max_error_cap_violation_count": 1,
+        "required_matched_ratio": 0.9,
+        "total_finite": 2,
+        "matched_count": 1,
+        "small_count": 0,
+        "normal_count": 2,
+        "checks": {"max_error_cap": false, "required_matched_ratio": false, "MERE": false},
+        "divergence": {
+          "kind": "sign_flip",
+          "sample": [
+            {"idx": [0], "candidate": 2.5, "reference": 1.0, "diff": 1.5}
+          ]
+        }
+      }
+    },
+    {
+      "case_idx": 2,
+      "input_desc": [
+        {"type": "tensor", "shape": [4], "dtype": "torch.float32"}
+      ],
+      "error_type": "RuntimeError",
+      "error_msg": "Traceback (most recent call last): ... RuntimeError: device-side assert",
+      "kind": null,
+      "sample": [],
+      "candidate_error": {
+        "phase": "execute",
+        "message": "candidate execution raised RuntimeError"
+      }
+    }
+  ]
+}

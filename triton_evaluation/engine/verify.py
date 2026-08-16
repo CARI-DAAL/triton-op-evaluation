@@ -27,6 +27,7 @@ import json
 import logging
 import math
 import os
+import signal
 import sys
 import subprocess
 import traceback
@@ -34,6 +35,10 @@ from dataclasses import dataclass
 
 
 ERROR_MSG_LIMIT = 2000
+
+# 主进程模式外层 kill 相对 --timeout 的宽限秒数：让子进程内的 per-subject
+# 定时器有机会先把"候选执行超时"权威归因写入 verify_result.json。
+OUTER_GRACE_SECONDS = 60
 
 REQUIRED_MATCHED_RATIO = 0.9
 
@@ -57,10 +62,39 @@ class AccuracyError(AssertionError):
 class _CandidateImportError(Exception):
     """候选代码在加载模块契约时失败。"""
 
-    def __init__(self, torch_module, error_msg):
+    def __init__(self, torch_module, error_msg, cause_name):
         super().__init__("candidate module import failed")
         self.torch_module = torch_module
         self.error_msg = error_msg
+        self.cause_name = cause_name
+
+
+class _CandidateInitializeError(Exception):
+    """候选模型初始化失败（engine 可证明归因于 candidate）。"""
+
+
+class _CandidateExecuteError(Exception):
+    """候选 forward 执行抛错（engine 可证明归因于 candidate）。"""
+
+
+class _CandidateExecutionTimeout(Exception):
+    """候选单次执行超过 per-subject 预算（engine 可证明归因于 candidate）。"""
+
+
+# engine 私有归因对象允许的 phase 取值（仅 candidate compile / initialize /
+# execute / candidate execution timeout 四种）。
+CANDIDATE_PHASES = ("compile", "initialize", "execute", "execution_timeout")
+
+
+def _candidate_error(phase, message):
+    """engine 私有归因对象：仅在 harness 能证明 candidate 起源时附加。
+
+    message 必须单行且脱敏（不含源码、输入值、绝对路径或 traceback）。
+    reference 侧失败、外层 subprocess 超时、输出缺失或退出码含义不明时，
+    绝不附加该对象。
+    """
+    assert phase in CANDIDATE_PHASES
+    return {"phase": phase, "message": message}
 
 
 @dataclass
@@ -68,6 +102,8 @@ class CaseContext:
     """单个测试用例在整体序列中的定位（1-based）。"""
     case_idx: int
     total_cases: int
+    # 单次候选执行预算秒数（correctness_algorithm 的一部分）；None 表示不启用。
+    subject_budget_seconds: object = None
 
 
 @dataclass
@@ -963,6 +999,40 @@ def _check_accuracy_npu_benchmark(golden, actual, data_type):
     )
 
 
+def _subject_alarm_handler(signum, frame):
+    raise _CandidateExecutionTimeout(
+        "candidate execution exceeded the per-subject budget"
+    )
+
+
+def _run_candidate_forward(impl_model, inputs, subject_budget_seconds):
+    """执行候选 forward；可选 per-subject 预算（SIGALRM）内未完成即归因超时。
+
+    预算只包裹候选调用本身：harness 存活且候选未在预算内返回时，engine
+    可以权威地把超时归因给 candidate execute 阶段。
+    """
+    if not subject_budget_seconds:
+        try:
+            return impl_model(*inputs)
+        except Exception as exc:
+            raise _CandidateExecuteError(
+                f"candidate execution raised {type(exc).__name__}"
+            ) from exc
+    previous_handler = signal.signal(signal.SIGALRM, _subject_alarm_handler)
+    signal.setitimer(signal.ITIMER_REAL, subject_budget_seconds)
+    try:
+        return impl_model(*inputs)
+    except _CandidateExecutionTimeout:
+        raise
+    except Exception as exc:
+        raise _CandidateExecuteError(
+            f"candidate execution raised {type(exc).__name__}"
+        ) from exc
+    finally:
+        signal.setitimer(signal.ITIMER_REAL, 0)
+        signal.signal(signal.SIGALRM, previous_handler)
+
+
 def run_single_case(models: ModelPair, inputs, device, case_ctx: CaseContext, non_compute=False):
     """验证单组输入。失败时抛出 AssertionError / AccuracyError。"""
     import torch
@@ -984,7 +1054,9 @@ def run_single_case(models: ModelPair, inputs, device, case_ctx: CaseContext, no
     ]
 
     with torch.no_grad():
-        impl_output = models.impl(*inputs_for_impl)
+        impl_output = _run_candidate_forward(
+            models.impl, inputs_for_impl, case_ctx.subject_budget_seconds
+        )
         framework_output = models.framework(*inputs_for_framework)
 
     if not isinstance(framework_output, (list, tuple)):
@@ -1038,6 +1110,7 @@ def _load_verify_modules(op_name, verify_dir, triton_impl_name):
         raise _CandidateImportError(
             torch_module,
             truncate_error(traceback.format_exc()),
+            type(exc).__name__,
         ) from exc
     return {
         "torch_module": torch_module,
@@ -1056,8 +1129,34 @@ def _instantiate_models(framework_cls, impl_cls, get_init_inputs, device):
     framework_model = framework_cls(*init_params).to(device)
     torch.manual_seed(0)
     torch.npu.manual_seed(0)
-    impl_model = impl_cls(*init_params).to(device)
+    try:
+        impl_model = impl_cls(*init_params).to(device)
+    except Exception as exc:
+        raise _CandidateInitializeError(
+            f"candidate initialization failed: {type(exc).__name__}"
+        ) from exc
     return framework_model, impl_model
+
+
+def _candidate_failure(case_ctx, inputs, phase, error):
+    """构造可归因 candidate 失败的 failure dict（单行脱敏 message）。"""
+    return {
+        "case_idx": case_ctx.case_idx,
+        "input_desc": describe_input(inputs),
+        "error_type": type(error).__name__,
+        "error_msg": str(error),
+        "kind": None,
+        "sample": [],
+        "candidate_error": _candidate_error(phase, str(error)),
+    }
+
+
+_CANDIDATE_ERROR_PHASES = (
+    (_CandidateInitializeError, "initialize"),
+    (_CandidateExecuteError, "execute"),
+    (_CandidateExecutionTimeout, "execution_timeout"),
+)
+_CANDIDATE_ERROR_TYPES = tuple(cls for cls, _phase in _CANDIDATE_ERROR_PHASES)
 
 
 def _try_run_case(modules, case_ctx: CaseContext, inputs, device, non_compute=False):
@@ -1082,6 +1181,16 @@ def _try_run_case(modules, case_ctx: CaseContext, inputs, device, non_compute=Fa
         return False, _shape_mismatch_failure(
             case_ctx.case_idx, e.fw_shape, e.impl_shape,
         )
+    except _CANDIDATE_ERROR_TYPES as e:
+        # harness 可证明归因于 candidate：compile 之外的 initialize / execute /
+        # execution_timeout 在此落盘私有归因对象。
+        phase = dict(_CANDIDATE_ERROR_PHASES)[type(e)]
+        logger.error(
+            "  [用例 %d/%d] 候选 %s 失败: %s",
+            case_ctx.case_idx, case_ctx.total_cases, phase, e,
+        )
+        logger.error("%s", traceback.format_exc())
+        return False, _candidate_failure(case_ctx, inputs, phase, e)
     except Exception as e:
         err_detail = traceback.format_exc()
         logger.error(
@@ -1121,7 +1230,7 @@ def _write_verify_result(output_path, result):
 
 def verify_implementations(
     op_name, verify_dir, triton_impl_name="triton_ascend_impl",
-    output_path=None, non_compute=False,
+    output_path=None, non_compute=False, subject_budget_seconds=None,
 ):
     """验证框架实现和生成实现的结果一致性。
 
@@ -1129,6 +1238,8 @@ def verify_implementations(
 
     Args:
         non_compute: 若 True，所有 case 走"非计算类"二进制完全一致判定（搬移/Cast 等算子）
+        subject_budget_seconds: 单次候选执行预算（秒）；候选 forward 超过预算时
+            以 candidate execution timeout 归因并停止后续 case。None 表示不启用。
 
     Returns:
         (passed_cases, total_cases)
@@ -1140,7 +1251,7 @@ def verify_implementations(
     try:
         modules = _load_verify_modules(op_name, verify_dir, triton_impl_name)
     except _CandidateImportError as exc:
-        candidate_import_error = exc.error_msg
+        candidate_import_error = exc
         modules = {"torch_module": exc.torch_module}
 
     # 在获取输入之前设置种子，确保随机生成的输入可复现
@@ -1158,17 +1269,29 @@ def verify_implementations(
                 "case_idx": case_idx,
                 "input_desc": describe_input(inputs),
                 "error_type": "CompilationError",
-                "error_msg": candidate_import_error,
+                "error_msg": candidate_import_error.error_msg,
+                "candidate_error": _candidate_error(
+                    "compile",
+                    f"candidate module import failed: {candidate_import_error.cause_name}",
+                ),
             })
             continue
         ok, failure = _try_run_case(
-            modules, CaseContext(case_idx=case_idx, total_cases=total_cases),
+            modules,
+            CaseContext(
+                case_idx=case_idx,
+                total_cases=total_cases,
+                subject_budget_seconds=subject_budget_seconds,
+            ),
             inputs, device, non_compute=non_compute,
         )
         if ok:
             passed_cases += 1
         else:
             failures.append(failure)
+            if failure.get("candidate_error") is not None:
+                # 候选归因失败后继续跑剩余 case 不会改变 subject outcome。
+                break
 
     failed_cases = total_cases - passed_cases
 
@@ -1206,7 +1329,10 @@ if __name__ == "__main__":
         "--verify_dir", default=".",
         help="验证目录，包含 {op_name}_torch.py 和 {op_name}_triton_ascend_impl.py（默认当前目录）",
     )
-    parser.add_argument("--timeout", type=int, default=900, help="超时秒数（默认 900）")
+    parser.add_argument(
+        "--timeout", type=int, default=900,
+        help="单次候选执行预算秒数（per-subject budget，默认 900）；主进程外层超时另加宽限",
+    )
     parser.add_argument(
         "--triton_impl_name", default="triton_ascend_impl",
         help="Triton 实现模块名（不含 op_name 前缀，默认 triton_ascend_impl）",
@@ -1231,13 +1357,15 @@ if __name__ == "__main__":
         sys.exit(1)
 
     if args.subprocess:
-        # 子进程模式：直接执行验证逻辑
+        # 子进程模式：直接执行验证逻辑；--timeout 作为单次候选执行预算，
+        # 超预算的候选 forward 被子进程内定时器权威归因后落盘。
         # 先关闭 HF32 卷积并回读校验，避免低精度卷积污染精度比对
         _enforce_conv_fp32()
         try:
             passed, total = verify_implementations(
                 args.op_name, verify_dir, args.triton_impl_name, args.output,
                 non_compute=args.non_compute,
+                subject_budget_seconds=args.timeout,
             )
         except Exception as e:
             logger.error("%s", e)
@@ -1252,6 +1380,7 @@ if __name__ == "__main__":
             "--op_name", args.op_name,
             "--verify_dir", verify_dir,
             "--triton_impl_name", args.triton_impl_name,
+            "--timeout", str(args.timeout),
             "--subprocess",
         ]
         if args.output:
@@ -1264,7 +1393,9 @@ if __name__ == "__main__":
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
             )
-            stdout, stderr = proc.communicate(timeout=args.timeout)
+            # 外层 kill 预留宽限：让子进程的 per-subject 定时器先完成归因落盘；
+            # 只有宽限也用尽（归因不明）才杀死进程树。
+            stdout, stderr = proc.communicate(timeout=args.timeout + OUTER_GRACE_SECONDS)
 
             sys.stdout.buffer.write(stdout)
             sys.stdout.buffer.flush()
@@ -1275,5 +1406,7 @@ if __name__ == "__main__":
         except subprocess.TimeoutExpired:
             proc.kill()
             proc.wait()
-            logger.error("验证超时（%d秒），已终止子进程", args.timeout)
+            logger.error(
+                "验证超时（%d秒），已终止子进程", args.timeout + OUTER_GRACE_SECONDS
+            )
             sys.exit(1)

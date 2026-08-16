@@ -1,53 +1,114 @@
-"""Orchestrator for v2 ``/evaluations`` jobs.
+"""Fixed-order v2 check orchestration with fenced progress and provenance.
 
-Sequences the requested ``checks`` using the existing v1 sub-evaluators and
-shapes the aggregate into one ``EvaluationPayload`` via the shaping layer.
-Combination rule (spec §7):
-  * correctness runs independently (VerifyEvaluator already does the decoy
-    pre-check and returns result={"decoy": True, ...} — we reuse that verdict);
-  * performance runs only when correctness was requested AND passed;
-  * profile runs independently (a wrong kernel can still be profiled).
+Order and dependency rules (design section 5):
 
-Sub-evaluators are obtained via overridable factories so tests inject stubs
-without touching the real (torch-dependent) engine.
+* correctness always runs first when requested;
+* performance runs only when the correctness check ``status == "succeeded"``
+  *and* the subject ``data.outcome == "correct"`` — the derived ``passed``
+  flag is never consulted; any other subject outcome skips performance with
+  ``DEPENDENCY_NOT_PASSED``, and a failed/timeout correctness skips it with
+  ``PRIOR_CHECK_FAILED``;
+* profile is independent of the subject verdict (a wrong or decoy kernel is
+  still profiled) and is skipped with ``PRIOR_CHECK_FAILED`` only when an
+  earlier infrastructure failure made the worker environment untrustworthy;
+* every requested check — including synthesized skips — is fenced through
+  ``ProgressSink.begin``/``save``; a rejected write or a lost lease aborts the
+  attempt via ``LeaseLostError`` and nothing further is produced;
+* every requested slot is filled on every return path, and provenance is
+  built from admission-pinned build/algorithm versions plus the actual
+  worker environment. ``grade_eligible`` is the only service-side grade
+  decision: a completed, manifest-bound, trusted grade run with complete
+  reward-relevant provenance. It is never a score.
 """
-from ..models import JobSpec, TaskStatus
-from .base import EvaluatorResult, materialize
+from collections.abc import Callable
+from datetime import datetime
+from pathlib import Path
+
+from ..api.contract import (
+    Check,
+    CheckFailed,
+    CheckSkipped,
+    CheckSucceeded,
+    CheckTimedOut,
+    CorrectnessResult,
+    ErrorInfo,
+    EvaluationRequest,
+    EvaluationResult,
+    ExecutionEnvironment,
+    PerformanceResult,
+    ProfileResult,
+    Provenance,
+    SkipInfo,
+)
+from .base import (
+    EngineCheckResult,
+    LeaseLostError,
+    PinnedProvenance,
+    ProgressSink,
+)
 from .benchmark import BenchmarkEvaluator
 from .profile import ProfileEvaluator
-from .shaping import ShapingError, shape_correctness, shape_performance, shape_profile
+from .shaping import (
+    ShapingError,
+    shape_correctness,
+    shape_performance,
+    shape_profile,
+)
 from .verify import VerifyEvaluator
 
-_STATUS_PRIORITY = {
-    TaskStatus.SUCCEEDED.value: 0,
-    TaskStatus.REJECTED.value: 1,
-    TaskStatus.FAILED.value: 2,
-    TaskStatus.TIMEOUT.value: 3,
+_DEPENDENCY_MESSAGE = "correctness did not pass"
+_PRIOR_FAILED_MESSAGE = "a prior requested check did not complete"
+
+_CHECK_DATA_MODELS = {
+    "correctness": CorrectnessResult,
+    "performance": PerformanceResult,
+    "profile": ProfileResult,
 }
 
 
-def _worst_status(statuses: list[str]) -> str:
-    return max(
-        statuses or [TaskStatus.SUCCEEDED.value],
-        key=_STATUS_PRIORITY.__getitem__,
-    )
+def _is_decoy(raw: object) -> bool:
+    return isinstance(raw, dict) and raw.get("decoy") is True
 
 
-def _run_subcheck(name, evaluator, spec, verify_dir, device_id, statuses, errors):
+def _engine_outcome(check: Check, engine: EngineCheckResult, shape):
+    """Map one engine invocation to a check outcome; subject verdicts come
+    only from the shaping layer, never from process-level signals."""
+    if engine.status == "timeout":
+        return CheckTimedOut(status="timeout", error=engine.error)
+    if engine.status == "failed":
+        return CheckFailed(status="failed", error=engine.error)
+    if engine.raw is None:
+        return CheckFailed(
+            status="failed",
+            error=ErrorInfo(
+                code="EVALUATOR_EXECUTION_FAILED",
+                phase="execution",
+                check=check,
+                retryable=True,
+                message="engine produced no usable result",
+            ),
+        )
     try:
-        result = evaluator.run(spec, verify_dir, device_id)
-    except Exception as exc:
-        statuses.append(TaskStatus.FAILED.value)
-        errors.append(f"{name} failed: {type(exc).__name__}: {exc}")
-        return None
-    if not isinstance(result, EvaluatorResult) or result.status not in _STATUS_PRIORITY:
-        statuses.append(TaskStatus.FAILED.value)
-        errors.append(f"{name} returned an invalid evaluator result")
-        return None
-    statuses.append(result.status)
-    if result.error:
-        errors.append(result.error)
-    return result
+        data = shape(engine.raw)
+    except ShapingError:
+        return CheckFailed(
+            status="failed",
+            error=ErrorInfo(
+                code="INVALID_ENGINE_OUTPUT",
+                phase="shaping",
+                check=check,
+                retryable=False,
+                message="engine output did not match the private protocol",
+            ),
+        )
+    return CheckSucceeded[_CHECK_DATA_MODELS[check]](status="succeeded", data=data)
+
+
+def _skipped(check: Check, code: str, depends_on: Check | None, message: str):
+    return CheckSkipped(
+        status="skipped",
+        reason=SkipInfo(code=code, depends_on=depends_on, message=message),
+    )
 
 
 class EvaluationEvaluator:
@@ -63,104 +124,150 @@ class EvaluationEvaluator:
     def _profile_evaluator(self) -> ProfileEvaluator:
         return ProfileEvaluator(self.engine_dir)
 
-    def run(self, spec: JobSpec, verify_dir: str, device_id: int) -> EvaluatorResult:
-        checks = spec.checks or ["correctness"]
-        materialize(spec, verify_dir)
-        statuses: list[str] = []
-        errors: list[str] = []
+    @staticmethod
+    def _slot(check: Check, produce, lease_valid, progress: ProgressSink):
+        if not progress.begin(check):
+            raise LeaseLostError(f"begin({check}) was rejected by the fenced sink")
+        if not lease_valid():
+            raise LeaseLostError(f"lease lost before {check} execution")
+        outcome = produce()
+        if not lease_valid():
+            raise LeaseLostError(f"lease lost during {check} execution")
+        if not progress.save(check, outcome):
+            raise LeaseLostError(f"save({check}) was rejected by the fenced sink")
+        return outcome
 
-        verify_json = None
-        decoy = False
-        if "correctness" in checks:
-            verify_result = _run_subcheck(
+    def run(
+        self,
+        request: EvaluationRequest,
+        work_dir: Path,
+        device_id: int,
+        deadline_at: datetime,
+        lease_valid: Callable[[], bool],
+        execution_environment: ExecutionEnvironment,
+        pinned: PinnedProvenance,
+        progress: ProgressSink,
+    ) -> EvaluationResult:
+        """Run correctness, conditional performance, then independent profile."""
+        requested = list(request.checks)
+        outcomes: dict[str, object] = {}
+        infra_broken = False
+
+        if "correctness" in requested:
+            correctness = self._slot(
                 "correctness",
-                self._verify_evaluator(),
-                spec,
-                verify_dir,
-                device_id,
-                statuses,
-                errors,
+                lambda: _engine_outcome(
+                    "correctness",
+                    self._verify_evaluator().run(
+                        request, work_dir, device_id, deadline_at
+                    ),
+                    lambda raw: shape_correctness(raw, decoy=_is_decoy(raw)),
+                ),
+                lease_valid,
+                progress,
             )
-            if verify_result is not None and verify_result.status == TaskStatus.SUCCEEDED.value:
-                if verify_result.result is None:
-                    statuses.append(TaskStatus.FAILED.value)
-                    errors.append("correctness result is missing")
-                elif not isinstance(verify_result.result, dict):
-                    statuses.append(TaskStatus.FAILED.value)
-                    errors.append("correctness result is invalid")
-                else:
-                    raw_decoy = verify_result.result.get("decoy", False)
-                    if not isinstance(raw_decoy, bool):
-                        statuses.append(TaskStatus.FAILED.value)
-                        errors.append("correctness result has an invalid decoy flag")
-                    else:
-                        decoy = raw_decoy
-                        verify_json = None if decoy else verify_result.result
+            outcomes["correctness"] = correctness
+            infra_broken = correctness.status in ("failed", "timeout")
 
-        correctness = None
-        if "correctness" in checks:
-            try:
-                correctness = shape_correctness(verify_json, decoy=decoy)
-            except Exception as exc:
-                statuses.append(TaskStatus.FAILED.value)
-                errors.append(f"correctness result is invalid: {exc}")
-        correctness_passed = bool(correctness and correctness.get("passed"))
-
-        performance = None
-        if "performance" in checks and not decoy and correctness_passed:
-            benchmark_result = _run_subcheck(
-                "performance",
-                self._benchmark_evaluator(),
-                spec,
-                verify_dir,
-                device_id,
-                statuses,
-                errors,
-            )
+        if "performance" in requested:
+            correctness = outcomes["correctness"]
             if (
-                benchmark_result is not None
-                and benchmark_result.status == TaskStatus.SUCCEEDED.value
+                not infra_broken
+                and correctness.status == "succeeded"
+                and correctness.data.outcome == "correct"
             ):
-                try:
-                    if benchmark_result.result is None:
-                        raise ShapingError("benchmark result is missing")
-                    performance = shape_performance(benchmark_result.result)
-                except Exception as exc:
-                    statuses.append(TaskStatus.FAILED.value)
-                    errors.append(str(exc))
+                performance = self._slot(
+                    "performance",
+                    lambda: _engine_outcome(
+                        "performance",
+                        self._benchmark_evaluator().run(
+                            request, work_dir, device_id, deadline_at
+                        ),
+                        shape_performance,
+                    ),
+                    lease_valid,
+                    progress,
+                )
+                infra_broken = performance.status in ("failed", "timeout")
+            else:
+                performance = self._slot(
+                    "performance",
+                    lambda: _skipped(
+                        "performance",
+                        "PRIOR_CHECK_FAILED" if infra_broken else "DEPENDENCY_NOT_PASSED",
+                        "correctness",
+                        _PRIOR_FAILED_MESSAGE if infra_broken else _DEPENDENCY_MESSAGE,
+                    ),
+                    lease_valid,
+                    progress,
+                )
+            outcomes["performance"] = performance
 
-        profile = None
-        if "profile" in checks:
-            profile_result = _run_subcheck(
-                "profile",
-                self._profile_evaluator(),
-                spec,
-                verify_dir,
-                device_id,
-                statuses,
-                errors,
-            )
-            if (
-                profile_result is not None
-                and profile_result.status == TaskStatus.SUCCEEDED.value
-                and profile_result.result is None
-            ):
-                statuses.append(TaskStatus.FAILED.value)
-                errors.append("profile result is missing")
-            elif profile_result is not None and profile_result.result is not None:
-                try:
-                    profile = shape_profile(profile_result.result)
-                except Exception as exc:
-                    statuses.append(TaskStatus.FAILED.value)
-                    errors.append(str(exc))
+        if "profile" in requested:
+            if infra_broken:
+                profile = self._slot(
+                    "profile",
+                    lambda: _skipped(
+                        "profile", "PRIOR_CHECK_FAILED", None, _PRIOR_FAILED_MESSAGE
+                    ),
+                    lease_valid,
+                    progress,
+                )
+            else:
+                profile = self._slot(
+                    "profile",
+                    lambda: _engine_outcome(
+                        "profile",
+                        self._profile_evaluator().run(
+                            request, work_dir, device_id, deadline_at
+                        ),
+                        shape_profile,
+                    ),
+                    lease_valid,
+                    progress,
+                )
+            outcomes["profile"] = profile
 
-        payload = {
-            "correctness": correctness,
-            "performance": performance,
-            "profile": profile,
-        }
-        return EvaluatorResult(
-            _worst_status(statuses),
-            result=payload,
-            error="; ".join(errors) or None,
+        return EvaluationResult.model_validate(
+            {
+                "correctness": outcomes.get("correctness"),
+                "performance": outcomes.get("performance"),
+                "profile": outcomes.get("profile"),
+                "provenance": _provenance(
+                    pinned, execution_environment, outcomes, requested
+                ),
+            },
+            context={"requested_checks": requested},
         )
+
+
+def _provenance(
+    pinned: PinnedProvenance,
+    environment: ExecutionEnvironment,
+    outcomes: dict[str, object],
+    requested: list[str],
+) -> Provenance:
+    # ``completed`` means orchestration obtained an outcome for every requested
+    # check without an infrastructure failure; subject failures still count.
+    completed = all(
+        outcomes[check].status not in ("failed", "timeout") for check in requested
+    )
+    grade_eligible = (
+        pinned.purpose == "grade"
+        and pinned.manifest_id is not None
+        and pinned.problem_id is not None
+        and completed
+        and environment is not None
+    )
+    return Provenance(
+        schema_version="2.0",
+        evaluator_build=pinned.evaluator_build,
+        correctness_algorithm=pinned.algorithms.correctness,
+        decoy_algorithm=pinned.algorithms.decoy,
+        benchmark_algorithm=pinned.algorithms.benchmark,
+        profiler_algorithm=pinned.algorithms.profiler,
+        grade_eligible=grade_eligible,
+        manifest_id=pinned.manifest_id,
+        problem_id=pinned.problem_id,
+        execution_environment=environment,
+    )

@@ -1,55 +1,76 @@
+"""Performance check runner: engine benchmark in the correctness work dir.
+
+benchmark.py's L1 gate reads the verify_result.json written by the
+correctness check, so the orchestrator only invokes this after a succeeded
+and correct subject outcome. A gate rejection (exit 2), a timeout, or missing
+output is an infrastructure failure, never a subject verdict.
+"""
 import sys
 from pathlib import Path
 
+from ..api.contract import EvaluationRequest, PerformanceParams
 from ..config import BENCHMARK_TIMEOUT_SECONDS
-from ..models import JobSpec, TaskStatus
-from .base import EvaluatorResult, materialize, read_json, run_script, tail
+from .base import (
+    EngineCheckResult,
+    engine_failure,
+    engine_timeout,
+    read_json,
+    remaining_seconds,
+    run_script,
+)
 
 
 class BenchmarkEvaluator:
-    """Runs benchmark.py in a verify_dir. Used internally by VerifyEvaluator once
-    verify has passed and written verify_result.json — benchmark.py's L1 gate reads
-    that file in-place, so no seeding is needed."""
-
     def __init__(self, engine_dir: str):
         self.engine_dir = engine_dir
 
-    def _script_path(self) -> str:
-        return str(Path(self.engine_dir) / "benchmark.py")
-
-    def run(self, spec: JobSpec, verify_dir: str, device_id: int) -> EvaluatorResult:
-        materialize(spec, verify_dir)
-
-        out_path = str(Path(verify_dir) / "perf_result.json")
+    def run(
+        self,
+        request: EvaluationRequest,
+        work_dir: Path,
+        device_id: int,
+        deadline_at,
+    ) -> EngineCheckResult:
+        remaining = remaining_seconds(deadline_at)
+        if remaining <= 0:
+            return engine_timeout(
+                "performance", "resource deadline expired before performance ran"
+            )
+        params = request.performance or PerformanceParams()
+        out_path = Path(work_dir) / "perf_result.json"
         cmd = [
             sys.executable,
-            self._script_path(),
+            str(Path(self.engine_dir) / "benchmark.py"),
             "--op_name",
-            spec.op_name,
+            request.op_name,
             "--verify_dir",
-            verify_dir,
+            str(work_dir),
             "--triton_impl_name",
-            spec.triton_impl_name,
+            request.triton_impl_name,
             "--warmup",
-            str(spec.warmup),
+            str(params.warmup),
             "--repeats",
-            str(spec.repeats),
+            str(params.repeats),
             "--output",
-            out_path,
+            str(out_path),
         ]
-
         outcome = run_script(
             cmd,
-            verify_dir,
+            str(work_dir),
             device_id,
-            timeout=BENCHMARK_TIMEOUT_SECONDS,
+            timeout=max(1, min(BENCHMARK_TIMEOUT_SECONDS, int(remaining))),
         )
         if outcome.timed_out:
-            return EvaluatorResult(TaskStatus.TIMEOUT.value, error="benchmark timed out")
+            return engine_timeout(
+                "performance", "performance exceeded the resource deadline"
+            )
         if outcome.exit_code == 2:
-            return EvaluatorResult(TaskStatus.REJECTED.value, error=tail(outcome.stderr))
-
-        result = read_json(out_path)
-        if outcome.exit_code == 0 and result is not None:
-            return EvaluatorResult(TaskStatus.SUCCEEDED.value, result=result)
-        return EvaluatorResult(TaskStatus.FAILED.value, error=tail(outcome.stderr))
+            return engine_failure(
+                "performance", "benchmark verify gate rejected the run"
+            )
+        result = read_json(str(out_path))
+        if outcome.exit_code == 0 and isinstance(result, dict):
+            return EngineCheckResult(status="succeeded", raw=result, error=None)
+        return engine_failure(
+            "performance", "benchmark engine produced no usable result"
+        )

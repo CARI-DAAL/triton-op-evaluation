@@ -1,0 +1,15 @@
+{
+  "op_name": "addmm",
+  "total_cases": 1,
+  "passed_cases": 0,
+  "failed_cases": 1,
+  "failures": [
+    {
+      "case_idx": 1,
+      "kind": "shape_mismatch",
+      "sample": [],
+      "error_type": "_ShapeMismatchError",
+      "error_msg": "输出形状不一致 (shape mismatch): framework=(2, 3), impl=(2, 4)"
+    }
+  ]
+}

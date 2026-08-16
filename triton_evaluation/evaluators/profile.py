@@ -1,88 +1,145 @@
-import os
-import shutil
+"""Profile check runner: engine profile_runner for op/deep case profiles.
+
+Profile is independent of the correctness verdict. The engine profiles one
+explicit ``--case-idx`` per run, so a multi-index selection is executed as
+sequential engine runs in case order and merged back into one envelope; any
+timeout or failure aborts the whole check as an infrastructure outcome.
+"""
 import sys
 from pathlib import Path
 
-from ..models import JobSpec, TaskStatus
-from .base import EvaluatorResult, materialize, read_json, run_script, tail
+from ..api.contract import EvaluationRequest, ProfileParams
+from .base import (
+    EngineCheckResult,
+    engine_failure,
+    engine_timeout,
+    materialize,
+    read_json,
+    remaining_seconds,
+    run_script,
+)
+
+# The engine requires --timeout within [10, 86400].
+_MIN_ENGINE_TIMEOUT_SECONDS = 10
+_MAX_ENGINE_TIMEOUT_SECONDS = 86400
+
+
+def _merge_profile_envelopes(envelopes: list[dict]) -> dict:
+    """Merge sequential single-case engine envelopes into one protocol envelope."""
+    merged = dict(envelopes[0])
+    cases = []
+    warnings = []
+    wallclock = 0.0
+    for envelope in envelopes:
+        cases.extend(envelope["per_case_results"])
+        warnings.extend(envelope["warnings"])
+        wallclock += envelope["wallclock_sec"]
+    completed = sum(case["status"] == "complete" for case in cases)
+    partial = sum(case["status"] == "partial" for case in cases)
+    failed = sum(case["status"] == "failed" for case in cases)
+    merged.update(
+        {
+            "requested_case_idx": None,
+            "selected_cases": len(cases),
+            "completed_cases": completed,
+            "partial_cases": partial,
+            "failed_cases": failed,
+            "remaining_case_indices": [],
+            "timed_out": False,
+            "summary_text": (
+                f"profile mode={merged['profile_mode']}: complete={completed}, "
+                f"partial={partial}, failed={failed}, remaining=0"
+            ),
+            "warnings": warnings,
+            "wallclock_sec": wallclock,
+            "per_case_results": cases,
+        }
+    )
+    return merged
 
 
 class ProfileEvaluator:
     def __init__(self, engine_dir: str):
         self.engine_dir = engine_dir
 
-    def _script_path(self) -> str:
-        return str(Path(self.engine_dir) / "profile_runner.py")
+    def run(
+        self,
+        request: EvaluationRequest,
+        work_dir: Path,
+        device_id: int,
+        deadline_at,
+    ) -> EngineCheckResult:
+        materialize(request, work_dir)
+        params = request.profile or ProfileParams()
+        indices = params.case_indices
+        if indices is not None and not indices:
+            return engine_failure("profile", "profile case selection is empty")
+        if indices is None:
+            result = self._run_once(request, params, work_dir, device_id, deadline_at, None)
+            if result.status != "succeeded":
+                return result
+            raw = result.raw
+        else:
+            envelopes = []
+            for index in indices:
+                result = self._run_once(
+                    request, params, work_dir, device_id, deadline_at, index
+                )
+                if result.status != "succeeded":
+                    return result
+                envelopes.append(result.raw)
+            raw = _merge_profile_envelopes(envelopes)
+        if not params.include_recommendations:
+            for case in raw["per_case_results"]:
+                case["recommendations"] = []
+        return EngineCheckResult(status="succeeded", raw=raw, error=None)
 
-    @staticmethod
-    def _msprof_bin() -> str:
-        return os.environ.get("MSPROF_BIN", "msprof")
-
-    @staticmethod
-    def _validate_pass_timeout() -> None:
-        raw = os.environ.get("MSPROF_TIMEOUT_SEC", "300")
-        try:
-            value = int(raw)
-        except ValueError as exc:
-            raise ValueError("MSPROF_TIMEOUT_SEC must be a positive integer") from exc
-        if value <= 0:
-            raise ValueError("MSPROF_TIMEOUT_SEC must be a positive integer")
-
-    def run(self, spec: JobSpec, verify_dir: str, device_id: int) -> EvaluatorResult:
-        msprof_bin = self._msprof_bin()
-        if shutil.which(msprof_bin) is None:
-            return EvaluatorResult(
-                TaskStatus.FAILED.value,
-                error=f"MSPROF_BIN is not executable: {msprof_bin!r}",
+    def _run_once(
+        self,
+        request: EvaluationRequest,
+        params: ProfileParams,
+        work_dir: Path,
+        device_id: int,
+        deadline_at,
+        case_idx: int | None,
+    ) -> EngineCheckResult:
+        remaining = remaining_seconds(deadline_at)
+        if remaining <= 0:
+            return engine_timeout(
+                "profile", "resource deadline expired before profile ran"
             )
-
-        try:
-            self._validate_pass_timeout()
-        except ValueError as exc:
-            return EvaluatorResult(TaskStatus.FAILED.value, error=str(exc))
-
-        materialize(spec, verify_dir)
-        output = str(Path(verify_dir) / "profile_result.json")
-        command = [
+        budget = max(
+            _MIN_ENGINE_TIMEOUT_SECONDS,
+            min(int(remaining), _MAX_ENGINE_TIMEOUT_SECONDS),
+        )
+        suffix = "profile_result.json" if case_idx is None else (
+            f"profile_result_{case_idx}.json"
+        )
+        out_path = Path(work_dir) / suffix
+        cmd = [
             sys.executable,
-            self._script_path(),
+            str(Path(self.engine_dir) / "profile_runner.py"),
             "--op_name",
-            spec.op_name,
+            request.op_name,
             "--verify_dir",
-            verify_dir,
+            str(work_dir),
             "--triton_impl_name",
-            spec.triton_impl_name,
+            request.triton_impl_name,
             "--profile-mode",
-            spec.profile_mode,
+            params.mode,
             "--timeout",
-            str(spec.timeout),
+            str(budget),
             "--output",
-            output,
+            str(out_path),
         ]
-        if spec.case_idx is not None:
-            command.extend(["--case-idx", str(spec.case_idx)])
-        if spec.profile_launch_count is not None:
-            command.extend(["--launch-count", str(spec.profile_launch_count)])
-
-        outcome = run_script(
-            command,
-            verify_dir,
-            device_id,
-            timeout=spec.timeout + 60,
-        )
-        result = read_json(output)
+        if case_idx is not None:
+            cmd.extend(["--case-idx", str(case_idx)])
+        outcome = run_script(cmd, str(work_dir), device_id, timeout=budget + 60)
         if outcome.timed_out or outcome.exit_code == 124:
-            if result is not None:
-                result["timed_out"] = True
-            return EvaluatorResult(
-                TaskStatus.TIMEOUT.value,
-                result=result,
-                error="profile timed out",
-            )
-        if outcome.exit_code == 0 and result is not None:
-            return EvaluatorResult(TaskStatus.SUCCEEDED.value, result=result)
-        return EvaluatorResult(
-            TaskStatus.FAILED.value,
-            result=result,
-            error=tail(outcome.stderr) or "profile engine failed without stderr",
-        )
+            return engine_timeout("profile", "profile exceeded the resource deadline")
+        if remaining_seconds(deadline_at) <= 0:
+            return engine_timeout("profile", "profile exceeded the resource deadline")
+        result = read_json(str(out_path))
+        if outcome.exit_code == 0 and isinstance(result, dict):
+            return EngineCheckResult(status="succeeded", raw=result, error=None)
+        return engine_failure("profile", "profile engine produced no usable result")

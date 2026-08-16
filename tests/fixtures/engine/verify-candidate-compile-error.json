@@ -1,0 +1,44 @@
+{
+  "op_name": "addmm",
+  "total_cases": 3,
+  "passed_cases": 0,
+  "failed_cases": 3,
+  "failures": [
+    {
+      "case_idx": 1,
+      "input_desc": [
+        {"type": "tensor", "shape": [4], "dtype": "torch.float32"}
+      ],
+      "error_type": "CompilationError",
+      "error_msg": "Traceback (most recent call last): ... SyntaxError: invalid syntax",
+      "candidate_error": {
+        "phase": "compile",
+        "message": "candidate module import failed: SyntaxError"
+      }
+    },
+    {
+      "case_idx": 2,
+      "input_desc": [
+        {"type": "tensor", "shape": [8], "dtype": "torch.float32"}
+      ],
+      "error_type": "CompilationError",
+      "error_msg": "Traceback (most recent call last): ... SyntaxError: invalid syntax",
+      "candidate_error": {
+        "phase": "compile",
+        "message": "candidate module import failed: SyntaxError"
+      }
+    },
+    {
+      "case_idx": 3,
+      "input_desc": [
+        {"type": "tensor", "shape": [16], "dtype": "torch.float32"}
+      ],
+      "error_type": "CompilationError",
+      "error_msg": "Traceback (most recent call last): ... SyntaxError: invalid syntax",
+      "candidate_error": {
+        "phase": "compile",
+        "message": "candidate module import failed: SyntaxError"
+      }
+    }
+  ]
+}

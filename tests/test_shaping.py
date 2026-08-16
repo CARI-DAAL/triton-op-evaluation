@@ -1,337 +1,584 @@
+"""Shaping boundary tests: private engine JSON -> stable v2 domain models.
+
+Every fixture under tests/fixtures/engine mirrors the engine's private output
+protocol byte-shape (1-based case indices for verify/benchmark, 0-based for
+profile, engine divergence names, sentinel strings for non-finite samples).
+The shaping layer is the only boundary allowed to read that protocol, and it
+must fail closed on anything outside it.
+"""
+import copy
+import json
+import math
+from pathlib import Path
+
 import pytest
 
+from triton_evaluation.api.contract import (
+    DeepProfileResult,
+    OpProfileResult,
+)
 from triton_evaluation.evaluators.shaping import (
     ShapingError,
-    shape_payload,
+    shape_correctness,
     shape_performance,
     shape_profile,
 )
 
-
-def _verify_json(passed=1, total=2, failures=None):
-    return {
-        "op_name": "addmm",
-        "total_cases": total,
-        "passed_cases": passed,
-        "failed_cases": total - passed,
-        "failures": failures or [],
-    }
+FIXTURES = Path(__file__).parent / "fixtures" / "engine"
 
 
-def _failure(kind="constant_offset"):
-    return {
-        "case_idx": 2,
-        "error_type": "AccuracyError",
-        "error_msg": "boom",
-        "kind": kind,
-        "sample": [{"idx": [0], "candidate": 6.0, "reference": 1.0, "diff": 5.0}],
-        "metrics": {
-            "max_abs_diff": 5.0,
-            "matched_ratio": 0.0,
-            "MERE": 1.0,
-            "small_count": 0,
-            "normal_count": 4,
-            "atol": 1e-3,
-            "rtol": 1.2e-4,
-        },
-    }
+def load(name):
+    return json.loads((FIXTURES / name).read_text(encoding="utf-8"))
 
 
-def _complete_perf_json():
-    return {
-        "speedup_vs_torch": 2.5,
-        "failed_cases": 0,
-        "per_shape_results": [
-            {
-                "case_idx": 1,
-                "input_desc": [
-                    {"type": "tensor", "shape": [20120, 512], "dtype": "torch.float32"}
-                ],
-                "status": "pass",
-                "framework": {"avg_latency_ms": 1.0, "peak_memory_mb": 2.0},
-                "implementation": {"avg_latency_ms": 0.4, "peak_memory_mb": 1.0},
-                "speedup_vs_torch": 2.5,
-                "error_type": None,
-                "error_msg": None,
-            }
-        ],
-    }
+def mutated(name, *path, value):
+    """Return a fixture copy with ``value`` written at ``path`` (keys/indices)."""
+    raw = load(name)
+    node = raw
+    for key in path[:-1]:
+        node = node[key]
+    node[path[-1]] = value
+    return raw
 
 
-def test_correctness_maps_classified_failure_without_error_text():
-    payload = shape_payload(
-        _verify_json(passed=1, failures=[_failure()]),
-        perf_json=None,
-        profile_json=None,
-        checks=["correctness"],
+def without(name, *path):
+    raw = load(name)
+    node = raw
+    for key in path[:-1]:
+        node = node[key]
+    del node[path[-1]]
+    return raw
+
+
+def _walk_strings(value):
+    if isinstance(value, dict):
+        for key, item in value.items():
+            yield key
+            yield from _walk_strings(item)
+    elif isinstance(value, list):
+        for item in value:
+            yield from _walk_strings(item)
+    elif isinstance(value, str):
+        yield value
+
+
+# ---------------------------------------------------------------------------
+# Correctness: the private verify protocol shapes into CorrectnessResult
+# ---------------------------------------------------------------------------
+
+
+def test_correct_fixture_is_correct():
+    result = shape_correctness(load("verify-correct.json"), decoy=False)
+    assert result.outcome == "correct"
+    assert result.passed is True
+    assert result.decoy is False
+    assert result.passed_cases == 2
+    assert result.total_cases == 2
+    assert result.failures == []
+    assert result.domain_failure is None
+
+
+def test_wrong_value_fixture_maps_experimental_kind_to_coarse_value_mismatch():
+    result = shape_correctness(load("verify-wrong-value.json"), decoy=False)
+    assert result.outcome == "wrong"
+    assert result.passed is False
+    assert result.passed_cases == 1
+    (failure,) = result.failures
+    # engine case_idx is 1-based; the stable contract is 0-based.
+    assert failure.case_idx == 1
+    assert failure.kind == "value_mismatch"
+    assert failure.metrics.max_abs_diff == 2.5
+    assert failure.metrics.matched_ratio == 0.75
+    assert failure.metrics.mere == 0.5
+    assert failure.metrics.small_count == 0
+    assert failure.metrics.normal_count == 4
+    assert failure.metrics.atol == pytest.approx(0.001)
+    assert failure.metrics.rtol == pytest.approx(0.0001220703125)
+    assert [point.diff for point in failure.sample] == [2.5, 0.25]
+    dumped = result.model_dump()
+    assert "mean_abs_err" not in dumped["failures"][0]["metrics"]
+
+
+def test_shape_mismatch_fixture_has_empty_sample():
+    result = shape_correctness(load("verify-shape-mismatch.json"), decoy=False)
+    assert result.outcome == "wrong"
+    (failure,) = result.failures
+    assert failure.kind == "shape_mismatch"
+    assert failure.case_idx == 0
+    assert failure.sample == []
+
+
+def test_non_finite_fixture_maps_to_sentinels_and_contract_order():
+    result = shape_correctness(load("verify-non-finite-mismatch.json"), decoy=False)
+    assert result.outcome == "wrong"
+    (failure,) = result.failures
+    assert failure.kind == "non_finite_mismatch"
+    # The engine ranks non-finite diffs first; the stable contract ranks finite
+    # abs(diff) descending first, then sentinels lexically.
+    assert [point.diff for point in failure.sample] == [1.5, "inf"]
+    assert failure.sample[0].candidate == 2.5
+    assert failure.sample[1].candidate == "inf"
+
+
+def test_decoy_fixture_shapes_wrong_with_full_credit_counts():
+    result = shape_correctness(load("verify-decoy.json"), decoy=True)
+    assert result.outcome == "wrong"
+    assert result.passed is False
+    assert result.decoy is True
+    assert result.passed_cases == 4
+    assert result.total_cases == 4
+    assert result.failures == []
+    assert result.domain_failure is None
+
+
+def test_candidate_compile_error_fixture():
+    result = shape_correctness(load("verify-candidate-compile-error.json"), decoy=False)
+    assert result.outcome == "compile_error"
+    assert result.passed is False
+    assert result.failures == []
+    assert result.domain_failure is not None
+    assert result.domain_failure.code == "SUBJECT_COMPILE_ERROR"
+    assert result.domain_failure.phase == "compile"
+    assert result.domain_failure.case_idx is None
+    assert result.domain_failure.message == "candidate module import failed: SyntaxError"
+
+
+def test_candidate_initialize_error_fixture():
+    result = shape_correctness(load("verify-candidate-initialize-error.json"), decoy=False)
+    assert result.outcome == "runtime_error"
+    assert result.passed_cases == 1
+    assert result.failures == []
+    failure = result.domain_failure
+    assert failure is not None
+    assert failure.code == "SUBJECT_RUNTIME_ERROR"
+    assert failure.phase == "initialize"
+    assert failure.case_idx is None
+
+
+def test_candidate_execute_error_fixture_keeps_earlier_mismatch():
+    result = shape_correctness(load("verify-candidate-execute-error.json"), decoy=False)
+    assert result.outcome == "runtime_error"
+    assert result.passed_cases == 1
+    assert result.total_cases == 4
+    failure = result.domain_failure
+    assert failure is not None
+    assert failure.code == "SUBJECT_RUNTIME_ERROR"
+    assert failure.phase == "execute"
+    assert failure.case_idx == 1
+    (mismatch,) = result.failures
+    assert mismatch.case_idx == 0
+    assert mismatch.kind == "value_mismatch"
+
+
+def test_candidate_execution_timeout_fixture():
+    result = shape_correctness(
+        load("verify-candidate-execution-timeout.json"), decoy=False
     )
+    assert result.outcome == "execution_timeout"
+    assert result.passed is False
+    failure = result.domain_failure
+    assert failure is not None
+    assert failure.code == "SUBJECT_EXECUTION_TIMEOUT"
+    assert failure.phase == "execute"
+    assert failure.case_idx == 0
 
-    failure = payload["correctness"]["failures"][0]
-    assert failure["kind"] == "constant_offset"
-    assert failure["sample"][0]["diff"] == 5.0
-    assert failure["metrics"]["mean_abs_err"] is None
-    assert failure["metrics"]["mere"] == 1.0
-    assert failure["error"] is None
+
+def test_ambiguous_process_timeout_is_never_a_subject_timeout():
+    with pytest.raises(ShapingError):
+        shape_correctness(load("verify-ambiguous-timeout.json"), decoy=False)
 
 
-def test_correctness_keeps_compile_error_and_sets_compiled_false():
-    raw = _failure(kind=None)
-    raw["error_type"] = "CompilationError"
-    raw["sample"] = []
-    payload = shape_payload(
-        _verify_json(passed=0, total=1, failures=[raw]),
-        None,
-        None,
-        checks=["correctness"],
+def test_non_bool_decoy_flag_is_rejected():
+    with pytest.raises(ShapingError):
+        shape_correctness(load("verify-correct.json"), decoy="false")
+
+
+def test_decoy_raw_requires_trusted_count():
+    with pytest.raises(ShapingError):
+        shape_correctness({"decoy": True}, decoy=True)
+    with pytest.raises(ShapingError):
+        shape_correctness({"decoy": True, "total_cases": 0}, decoy=True)
+
+
+# ---------------------------------------------------------------------------
+# Correctness rejection tests: the private parser fails closed
+# ---------------------------------------------------------------------------
+
+
+def test_correctness_rejects_extra_top_level_key():
+    raw = mutated("verify-correct.json", "unexpected", value=True)
+    with pytest.raises(ShapingError):
+        shape_correctness(raw, decoy=False)
+
+
+def test_correctness_rejects_extra_failure_key():
+    raw = mutated("verify-wrong-value.json", "failures", 0, "extra", value=1)
+    with pytest.raises(ShapingError):
+        shape_correctness(raw, decoy=False)
+
+
+def test_correctness_rejects_missing_case_identity():
+    raw = without("verify-wrong-value.json", "failures", 0, "case_idx")
+    with pytest.raises(ShapingError):
+        shape_correctness(raw, decoy=False)
+
+
+def test_correctness_rejects_duplicate_case():
+    raw = load("verify-wrong-value.json")
+    raw["failures"].append(copy.deepcopy(raw["failures"][0]))
+    raw["failed_cases"] = 2
+    raw["total_cases"] = 3
+    with pytest.raises(ShapingError):
+        shape_correctness(raw, decoy=False)
+
+
+def test_correctness_rejects_contradictory_counts():
+    raw = mutated("verify-correct.json", "failed_cases", value=1)
+    with pytest.raises(ShapingError):
+        shape_correctness(raw, decoy=False)
+
+
+def test_correctness_rejects_ordinary_nan_and_inf_in_samples():
+    raw = mutated(
+        "verify-wrong-value.json", "failures", 0, "sample", 0, "diff", value=float("nan")
     )
-
-    assert payload["correctness"]["compiled"] is False
-    assert payload["correctness"]["failures"][0]["error"] == "boom"
-
-
-@pytest.mark.parametrize(
-    "raw",
-    [
-        {},
-        {"total_cases": 1, "passed_cases": 2, "failures": []},
-        {"total_cases": 1, "passed_cases": 0, "failures": "not-a-list"},
-    ],
-)
-def test_correctness_rejects_malformed_engine_result(raw):
-    with pytest.raises(ShapingError, match="correctness"):
-        shape_payload(raw, None, None, checks=["correctness"])
+    with pytest.raises(ShapingError):
+        shape_correctness(raw, decoy=False)
+    raw = mutated(
+        "verify-wrong-value.json", "failures", 0, "sample", 0, "reference",
+        value=float("inf"),
+    )
+    with pytest.raises(ShapingError):
+        shape_correctness(raw, decoy=False)
 
 
-def test_correctness_rejects_malformed_nested_failure():
-    with pytest.raises(ShapingError, match="correctness"):
-        shape_payload(
-            _verify_json(passed=0, total=1, failures=[{}]),
-            None,
-            None,
-            checks=["correctness"],
-        )
+def test_correctness_rejects_more_than_eight_samples():
+    raw = load("verify-wrong-value.json")
+    base = raw["failures"][0]["sample"][0]
+    raw["failures"][0]["sample"] = [
+        {**base, "idx": [0, 8 - i], "diff": 10.0 - i} for i in range(9)
+    ]
+    with pytest.raises(ShapingError):
+        shape_correctness(raw, decoy=False)
 
 
-def test_performance_projects_only_stable_per_shape_fields():
-    assert shape_performance(_complete_perf_json()) == {
-        "speedup_vs_torch": 2.5,
-        "per_shape": [
-            {
-                "shape": "[20120,512]",
-                "latency_ms": 0.4,
-                "throughput": None,
-                "speedup_vs_torch": 2.5,
-            }
-        ],
-    }
+def test_correctness_rejects_unsorted_samples():
+    raw = load("verify-wrong-value.json")
+    sample = raw["failures"][0]["sample"]
+    sample[0], sample[1] = sample[1], sample[0]
+    with pytest.raises(ShapingError):
+        shape_correctness(raw, decoy=False)
 
 
-@pytest.mark.parametrize(
-    "mutation",
-    [
-        {"failed_cases": 1},
-        {"speedup_vs_torch": None},
-        {"per_shape_results": []},
-    ],
-)
-def test_performance_rejects_incomplete_engine_result(mutation):
-    raw = _complete_perf_json()
-    raw.update(mutation)
+def test_correctness_rejects_unknown_divergence_kind():
+    raw = mutated("verify-wrong-value.json", "failures", 0, "kind", value="per_axis_v9")
+    with pytest.raises(ShapingError):
+        shape_correctness(raw, decoy=False)
 
+
+def test_correctness_rejects_traceback_in_attribution_message():
+    raw = mutated(
+        "verify-candidate-execute-error.json",
+        "failures", 1, "candidate_error", "message",
+        value='Traceback (most recent call last):\n  File "/tmp/x.py", line 1',
+    )
+    with pytest.raises(ShapingError):
+        shape_correctness(raw, decoy=False)
+
+
+def test_correctness_rejects_absolute_path_in_attribution_message():
+    raw = mutated(
+        "verify-candidate-execute-error.json",
+        "failures", 1, "candidate_error", "message",
+        value="candidate failed at /tmp/eval/work/addmm_triton_ascend_impl.py",
+    )
+    with pytest.raises(ShapingError):
+        shape_correctness(raw, decoy=False)
+
+
+def test_correctness_rejects_unknown_attribution_phase():
+    raw = mutated(
+        "verify-candidate-execute-error.json",
+        "failures", 1, "candidate_error", "phase",
+        value="reference",
+    )
+    with pytest.raises(ShapingError):
+        shape_correctness(raw, decoy=False)
+
+
+# ---------------------------------------------------------------------------
+# Performance: per-case measurements -> geometric_mean_v1 aggregate
+# ---------------------------------------------------------------------------
+
+
+def test_benchmark_mixed_coverage_computes_per_case_geometric_mean():
+    result = shape_performance(load("benchmark-mixed-coverage.json"))
+    assert result.aggregation == "geometric_mean_v1"
+    assert result.selected_cases == 3
+    assert result.measured_cases == 2
+    assert result.coverage == pytest.approx(2 / 3)
+    # speedups 2.0 and 0.5 -> geometric mean exactly 1.0; the engine aggregate
+    # (0.8) must never be trusted.
+    assert result.overall_speedup_vs_reference == pytest.approx(1.0)
+    first, second = result.per_case
+    assert first.case_idx == 0
+    assert first.reference_latency_ms == 1.0
+    assert first.implementation_latency_ms == 0.5
+    assert first.speedup_vs_reference == pytest.approx(2.0)
+    assert first.input_shapes[0].dimensions == [1024, 512]
+    assert first.input_shapes[0].dtype == "torch.float16"
+    assert first.input_shapes[0].input_index == 0
+    assert second.speedup_vs_reference == pytest.approx(0.5)
+    (unmeasured,) = result.unmeasured_cases
+    assert unmeasured.case_idx == 2
+    assert unmeasured.reason_code == "NO_STABLE_MEASUREMENT"
+    assert "throughput" not in result.model_dump()
+
+
+def test_benchmark_rejects_invalid_measurement():
+    with pytest.raises(ShapingError):
+        shape_performance(load("benchmark-invalid-measurement.json"))
+
+
+def test_benchmark_rejects_extra_key():
+    raw = mutated("benchmark-mixed-coverage.json", "surprise", value=1)
     with pytest.raises(ShapingError):
         shape_performance(raw)
 
 
-def test_performance_present_only_when_correctness_passed_and_run():
-    payload = shape_payload(
-        _verify_json(passed=2, total=2),
-        perf_json=_complete_perf_json(),
-        profile_json=None,
-        checks=["correctness", "performance"],
+def test_benchmark_rejects_compressed_string_input_shape():
+    raw = mutated(
+        "benchmark-mixed-coverage.json",
+        "per_shape_results", 0, "input_desc", 0, "shape",
+        value="[1024,512]",
     )
-    assert payload["performance"]["speedup_vs_torch"] == 2.5
+    with pytest.raises(ShapingError):
+        shape_performance(raw)
 
-    payload_fail = shape_payload(
-        _verify_json(passed=1, failures=[_failure()]),
-        perf_json=_complete_perf_json(),
-        profile_json=None,
-        checks=["correctness", "performance"],
+
+def test_benchmark_rejects_missing_case_identity():
+    raw = without("benchmark-mixed-coverage.json", "per_shape_results", 0, "case_idx")
+    with pytest.raises(ShapingError):
+        shape_performance(raw)
+
+
+def test_benchmark_rejects_duplicate_case():
+    raw = load("benchmark-mixed-coverage.json")
+    raw["per_shape_results"][1]["case_idx"] = 1
+    with pytest.raises(ShapingError):
+        shape_performance(raw)
+
+
+def test_benchmark_rejects_contradictory_counts():
+    raw = mutated("benchmark-mixed-coverage.json", "passed_cases", value=3)
+    with pytest.raises(ShapingError):
+        shape_performance(raw)
+
+
+def test_benchmark_rejects_non_finite_latency():
+    raw = mutated(
+        "benchmark-mixed-coverage.json",
+        "per_shape_results", 0, "framework", "avg_latency_ms",
+        value=float("inf"),
     )
-    assert payload_fail["performance"] is None
+    with pytest.raises(ShapingError):
+        shape_performance(raw)
 
 
-def test_op_profile_maps_kernel_durations_and_percentages():
-    raw = {
-        "profile_mode": "op",
-        "selected_cases": 1,
-        "completed_cases": 1,
-        "partial_cases": 0,
-        "failed_cases": 0,
-        "timed_out": False,
-        "per_case_results": [
-            {
-                "case_idx": 0,
-                "status": "complete",
-                "kernels": [
-                    {"name": "slow", "duration_us": 400.0, "metrics": {"private": 1}},
-                    {"name": "fast", "duration_us": 100.0, "metrics": {"private": 2}},
-                ],
-                "raw_metrics": {"must_not_leak": 1},
-            }
-        ],
-    }
-
-    profile = shape_profile(raw)
-
-    assert profile == {
-        "profile_state": "complete",
-        "data": {
-            "mode": "op",
-            "selected_cases": 1,
-            "completed_cases": 1,
-            "partial_cases": 0,
-            "failed_cases": 0,
-            "timed_out": False,
-            "ops": [
-                {"case_idx": 0, "op_name": "slow", "time_ms": 0.4, "percentage": 80.0},
-                {"case_idx": 0, "op_name": "fast", "time_ms": 0.1, "percentage": 20.0},
-            ],
-            "summaries": None,
-        },
-    }
+def test_benchmark_rejects_no_valid_measurement():
+    raw = load("benchmark-mixed-coverage.json")
+    for case in raw["per_shape_results"]:
+        case["status"] = "fail"
+        case["framework"] = None
+        case["implementation"] = None
+        case["speedup_vs_torch"] = None
+        case["error_type"] = "RuntimeError"
+        case["error_msg"] = "crashed"
+    raw["passed_cases"] = 0
+    raw["failed_cases"] = 3
+    with pytest.raises(ShapingError):
+        shape_performance(raw)
 
 
-def test_deep_profile_maps_fixed_diagnostics_without_raw_evidence():
-    raw = {
-        "profile_mode": "deep",
-        "selected_cases": 1,
-        "completed_cases": 0,
-        "partial_cases": 1,
-        "failed_cases": 0,
-        "timed_out": False,
-        "per_case_results": [
-            {
-                "case_idx": 3,
-                "status": "partial",
-                "target_kernel": "kernel_a",
-                "bound": {
-                    "name": "MTE2 BOUND",
-                    "rule": "MTE2 > 0.80",
-                    "ratios": {
-                        "MTE2": 0.9,
-                        "CUBE": 0.1,
-                        "PUSHQ": 0.2,
-                        "FIXP": 0.3,
-                        "MTE3": 0.4,
-                        "SCALAR": 0.05,
-                        "SCALARLDST": 0.07,
-                    },
-                    "evidence": {"must_not_leak": "raw"},
-                },
-                "per_core": {"spread_ratio": 0.25, "verdict": "warning"},
-                "recommendations": [
-                    {"recommendation": "reduce loads", "evidence": {"private": 1}}
-                ],
-                "missing_metrics": ["Memory"],
-                "warnings": ["partial capture"],
-                "error": None,
-                "raw_metrics": {"must_not_leak": 1},
-            }
-        ],
-    }
-
-    summary = shape_profile(raw)["data"]["summaries"][0]
-
-    assert summary == {
-        "case_idx": 3,
-        "status": "partial",
-        "target_kernel": "kernel_a",
-        "bound": "MTE2 BOUND",
-        "rule": "MTE2 > 0.80",
-        "mte2_ratio": 0.9,
-        "cube_ratio": 0.1,
-        "vec_ratio": 0.2,
-        "fixp_ratio": 0.3,
-        "mte3_ratio": 0.4,
-        "scalar_ratio": 0.07,
-        "per_core_spread_ratio": 0.25,
-        "per_core_verdict": "warning",
-        "recommendations": ["reduce loads"],
-        "missing_metrics": ["Memory"],
-        "warnings": ["partial capture"],
-        "error": None,
-    }
+# ---------------------------------------------------------------------------
+# Profile: mode-discriminated union with count invariants
+# ---------------------------------------------------------------------------
 
 
-def test_profile_partial_when_failures_remain():
-    raw = {
-        "profile_mode": "op",
-        "selected_cases": 2,
-        "completed_cases": 1,
-        "failed_cases": 1,
-        "partial_cases": 0,
-        "timed_out": False,
-        "per_case_results": [],
-    }
-    assert shape_profile(raw)["profile_state"] == "partial"
+def test_profile_op_complete_shapes_kernels_and_counts():
+    result = shape_profile(load("profile-op-complete.json"))
+    assert isinstance(result, OpProfileResult)
+    assert result.counts.selected == 1
+    assert result.counts.complete == 1
+    (case,) = result.cases
+    assert case.status == "complete"
+    assert case.error is None
+    assert [kernel.op_name for kernel in case.kernels] == ["addmm_kernel", "bias_add"]
+    assert case.kernels[0].time_ms == pytest.approx(0.4)
+    assert case.kernels[0].percentage == pytest.approx(80.0)
+    assert case.kernels[1].percentage == pytest.approx(20.0)
 
 
-def test_profile_rejects_missing_summary_counts():
-    with pytest.raises(ShapingError, match="profile"):
-        shape_profile({"profile_mode": "op", "per_case_results": []})
+def test_profile_op_partial_and_failed_cases_carry_typed_errors():
+    result = shape_profile(load("profile-op-partial.json"))
+    assert isinstance(result, OpProfileResult)
+    assert result.counts.partial == 1
+    assert result.counts.failed == 1
+    partial, failed = result.cases
+    assert partial.status == "partial"
+    assert partial.error is not None
+    assert partial.error.check == "profile"
+    assert partial.kernels[0].op_name == "addmm_kernel"
+    assert failed.status == "failed"
+    assert failed.error is not None
+    assert failed.error.code == "PROFILE_CASE_FAILED"
 
 
-def test_op_profile_rejects_kernel_without_name():
-    raw = {
-        "profile_mode": "op",
-        "selected_cases": 1,
-        "completed_cases": 1,
-        "partial_cases": 0,
-        "failed_cases": 0,
-        "timed_out": False,
-        "per_case_results": [
-            {
-                "case_idx": 0,
-                "status": "complete",
-                "kernels": [{"name": None, "duration_us": 400.0}],
-            }
-        ],
-    }
+def test_profile_deep_partial_normalizes_ratios_and_bound():
+    result = shape_profile(load("profile-deep-partial.json"))
+    assert isinstance(result, DeepProfileResult)
+    complete, partial = result.cases
+    assert complete.status == "complete"
+    assert complete.bound == "CUBE"
+    assert complete.ratios.cube == 0.75
+    assert complete.ratios.vec == 0.05  # PUSHQ is the vector-issue ratio
+    assert complete.ratios.scalar == 0.03  # max(SCALAR, SCALARLDST)
+    assert complete.per_core_spread_ratio == pytest.approx(1 / 3)
+    assert complete.recommendations == [
+        "Increase useful Cube work per launch and validate tiling with measured latency."
+    ]
+    assert partial.status == "partial"
+    assert partial.bound is None
+    assert partial.ratios.mte2 is None
+    assert partial.missing_metrics == ["PipeUtilization.CUBE"]
 
-    with pytest.raises(ShapingError, match="profile"):
+
+def test_profile_rejects_invalid_counts():
+    with pytest.raises(ShapingError):
+        shape_profile(load("profile-invalid-counts.json"))
+
+
+def test_profile_rejects_extra_key():
+    raw = mutated("profile-op-complete.json", "debug", value={})
+    with pytest.raises(ShapingError):
         shape_profile(raw)
 
 
-@pytest.mark.parametrize(
-    ("field", "value"),
-    [("status", "unknown"), ("bound", {"name": "UNKNOWN BOUND"})],
-)
-def test_deep_profile_rejects_invalid_nested_summary(field, value):
-    case = {
-        "case_idx": 0,
-        "status": "complete",
-        "target_kernel": "kernel_a",
-        "bound": {"name": "NO BOUND"},
-    }
-    case[field] = value
-    raw = {
-        "profile_mode": "deep",
-        "selected_cases": 1,
-        "completed_cases": 1,
-        "partial_cases": 0,
-        "failed_cases": 0,
-        "timed_out": False,
-        "per_case_results": [case],
-    }
-
-    with pytest.raises(ShapingError, match="profile"):
+def test_profile_rejects_duplicate_case():
+    raw = load("profile-op-partial.json")
+    raw["per_case_results"][1]["case_idx"] = 0
+    with pytest.raises(ShapingError):
         shape_profile(raw)
 
 
-def test_decoy_correctness_result():
-    payload = shape_payload(None, None, None, checks=["correctness"], decoy=True)
-    correctness = payload["correctness"]
-    assert correctness["decoy"] is True
-    assert correctness["passed"] is False
-    assert correctness["compiled"] is False
-    assert correctness["failures"] == []
+def test_profile_rejects_invalid_ratio():
+    raw = mutated(
+        "profile-deep-partial.json",
+        "per_case_results", 0, "bound", "ratios", "CUBE",
+        value=1.5,
+    )
+    with pytest.raises(ShapingError):
+        shape_profile(raw)
+    raw = mutated(
+        "profile-deep-partial.json",
+        "per_case_results", 0, "bound", "ratios", "CUBE",
+        value=float("nan"),
+    )
+    with pytest.raises(ShapingError):
+        shape_profile(raw)
+
+
+def test_profile_rejects_unknown_bound_name():
+    raw = mutated(
+        "profile-deep-partial.json",
+        "per_case_results", 0, "bound", "name",
+        value="HBM BOUND",
+    )
+    with pytest.raises(ShapingError):
+        shape_profile(raw)
+
+
+def test_profile_rejects_invalid_kernel_percentage_basis():
+    raw = mutated(
+        "profile-op-complete.json",
+        "per_case_results", 0, "kernels", 0, "duration_us",
+        value=0.0,
+    )
+    raw["per_case_results"][0]["kernels"][1]["duration_us"] = 0.0
+    with pytest.raises(ShapingError):
+        shape_profile(raw)
+
+
+def test_profile_rejects_negative_kernel_duration():
+    raw = mutated(
+        "profile-op-complete.json",
+        "per_case_results", 0, "kernels", 0, "duration_us",
+        value=-1.0,
+    )
+    with pytest.raises(ShapingError):
+        shape_profile(raw)
+
+
+def test_profile_rejects_engine_timeout_envelope():
+    raw = mutated("profile-op-complete.json", "timed_out", value=True)
+    with pytest.raises(ShapingError):
+        shape_profile(raw)
+
+
+def test_profile_rejects_unknown_mode():
+    raw = mutated("profile-op-complete.json", "profile_mode", value="flamegraph")
+    with pytest.raises(ShapingError):
+        shape_profile(raw)
+
+
+# ---------------------------------------------------------------------------
+# Stable outputs never carry engine-private content
+# ---------------------------------------------------------------------------
+
+
+def test_stable_outputs_never_leak_engine_private_content():
+    results = [
+        shape_correctness(load("verify-wrong-value.json"), decoy=False),
+        shape_correctness(load("verify-candidate-execute-error.json"), decoy=False),
+        shape_correctness(load("verify-non-finite-mismatch.json"), decoy=False),
+        shape_performance(load("benchmark-mixed-coverage.json")),
+        shape_profile(load("profile-op-partial.json")),
+        shape_profile(load("profile-deep-partial.json")),
+    ]
+    forbidden_keys = {
+        "mean_abs_err",
+        "throughput",
+        "error_msg",
+        "error_type",
+        "input_desc",
+        "raw_metrics",
+        "evidence",
+        "divergence",
+    }
+    forbidden_kinds = {
+        "sign_flip",
+        "value_clamp",
+        "constant_offset",
+        "per_axis",
+        "precision_loss",
+        "scattered",
+    }
+    for result in results:
+        dumped = result.model_dump(mode="json")
+        strings = set(_walk_strings(dumped))
+        assert not (strings & forbidden_keys)
+        assert not (strings & forbidden_kinds)
+        for text in strings:
+            assert "Traceback" not in text
+
+
+def test_finite_metric_values_stay_finite():
+    # A non-finite MERE/max_abs_diff from the engine becomes null, never an
+    # ordinary non-finite float in the stable contract.
+    raw = mutated(
+        "verify-wrong-value.json", "failures", 0, "metrics", "MERE", value=float("nan")
+    )
+    result = shape_correctness(raw, decoy=False)
+    assert result.failures[0].metrics.mere is None
+    for value in result.failures[0].metrics.model_dump().values():
+        assert not (isinstance(value, float) and not math.isfinite(value))

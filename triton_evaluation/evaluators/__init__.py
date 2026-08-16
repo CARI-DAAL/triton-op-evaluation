@@ -1,11 +1,21 @@
+from .base import (
+    EngineCheckResult,
+    LeaseLostError,
+    PinnedProvenance,
+    ProgressSink,
+)
+from .benchmark import BenchmarkEvaluator
 from .evaluation import EvaluationEvaluator
 from .profile import ProfileEvaluator
 from .verify import VerifyEvaluator
 
-
-def build_registry(engine_dir: str) -> dict:
-    return {
-        "verify": VerifyEvaluator(engine_dir),
-        "profile": ProfileEvaluator(engine_dir),
-        "evaluation": EvaluationEvaluator(engine_dir),
-    }
+__all__ = [
+    "BenchmarkEvaluator",
+    "EngineCheckResult",
+    "EvaluationEvaluator",
+    "LeaseLostError",
+    "PinnedProvenance",
+    "ProfileEvaluator",
+    "ProgressSink",
+    "VerifyEvaluator",
+]
