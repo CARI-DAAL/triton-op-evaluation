@@ -1,0 +1,30 @@
+name: evaluation-api-v2
+
+# Deterministic CPU gate for the evaluation API v2 durable core. Target-NPU
+# calibration and crash/fencing soak run separately on the Ascend host via
+# scripts/npu_release_gate.py and never gate CPU merges.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  cpu-gate:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+      - run: python -m venv .venv
+      - run: .venv/bin/python -m pip install -e '.[test,dev]'
+      - run: .venv/bin/python -c 'from importlib.metadata import version; expected={"fastapi":"0.139.2","uvicorn":"0.51.0","redis":"8.0.1","pydantic":"2.13.4","pydantic-settings":"2.14.2","rfc8785":"0.1.4","pytest":"9.1.1","fakeredis":"2.37.0","httpx":"0.28.1","jsonschema":"4.26.0","ruff":"0.16.0"}; actual={name:version(name) for name in expected}; assert actual == expected, (actual, expected)'
+      - run: .venv/bin/python scripts/generate_contract_artifacts.py --check
+      - run: .venv/bin/python -m ruff check .
+      - run: .venv/bin/python -m pytest -m 'not npu' -q
+      - run: .venv/bin/python -m compileall -q triton_evaluation scripts
+      - run: git diff --exit-code -- contracts/evaluation-api/2.0

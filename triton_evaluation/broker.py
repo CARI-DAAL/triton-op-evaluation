@@ -80,6 +80,21 @@ _CLAIM_SCAN_BATCH = 10
 _TERMINAL_STATES = ("completed", "failed", "timed_out")
 
 
+def _no_op_failpoint(evaluation_id: str) -> None:
+    """Production failpoint: an immutable no-op.
+
+    Tests inject callables (``broker._create_pre_exec = ...``) around the
+    transaction boundaries; they can never be configured from requests or
+    the environment.
+    """
+
+
+_create_pre_exec = _no_op_failpoint
+_create_post_exec = _no_op_failpoint
+_commit_pre_exec = _no_op_failpoint
+_commit_post_exec = _no_op_failpoint
+
+
 class StorageError(Exception):
     """Durable storage is internally inconsistent; never a caller-facing detail."""
 
@@ -209,7 +224,9 @@ class EvaluationStore:
                 pipeline.incr(inflight_session_key)
                 pipeline.incr(rate_key)
                 pipeline.expire(rate_key, _RATE_WINDOW_EXPIRY_SECONDS)
+                _create_pre_exec(command.evaluation_id)
                 pipeline.execute()
+                _create_post_exec(command.evaluation_id)
                 return CreateResourceResult("created", resource)
             except redis.WatchError:
                 continue
@@ -518,7 +535,9 @@ class EvaluationStore:
                     return False
                 pipeline.multi()
                 mutate(pipeline, stored, now_ms)
+                _commit_pre_exec(lease.evaluation_id)
                 pipeline.execute()
+                _commit_post_exec(lease.evaluation_id)
                 return True
             except redis.WatchError:
                 continue
@@ -581,6 +600,7 @@ class EvaluationStore:
                     result.model_dump(mode="json", exclude_none=False),
                     context={"requested_checks": requested},
                 )
+                _commit_pre_exec(lease.evaluation_id)
                 self._commit_terminal_locked(
                     pipeline,
                     stored=stored,
@@ -590,6 +610,7 @@ class EvaluationStore:
                     now_ms=now_ms,
                     bump_fence=False,
                 )
+                _commit_post_exec(lease.evaluation_id)
                 self._bump("terminal_commit_cas_total", outcome="won")
                 self._bump(
                     "resource_terminal_transitions_total",
