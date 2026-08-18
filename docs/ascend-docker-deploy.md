@@ -1,12 +1,19 @@
 # triton-evaluation on Ascend — docker deploy + repo sync guide
 
+> [!CAUTION]
+> **PARTIALLY SUPERSEDED.** Keep this guide only for its host-specific Ascend/CANN/Python
+> environment and device-mount knowledge. Its Redis durability, API authentication, bind/health
+> endpoints, and synchronous smoke examples predate Evaluation API v2 and MUST NOT be copied.
+> Those parts are governed by `docs/specs/2026-08-06-evaluation-api-v2-design.md` and must be
+> replaced during the Phase 0 contract/deployment freeze.
+
 This host runs the triton-evaluation service in **docker**, but using the **host's own Python
 environment** (bind-mounted), not the image's conda env (which diverged and is missing the
 CANN-TBE / triton-ascend runtime deps). This doc contains the **exact repo file contents** to
 sync to another machine, plus the per-host setup that lives outside the repo.
 
-Production: docker compose, 1 eval + 1 redis, cards 8-15, port **11907**, redis db7,
-`restart: unless-stopped`. Smoke test (correctness **and** speed benchmark) passes.
+Historical deployment snapshot: docker compose, 1 eval + 1 redis, cards 8-15, loopback port
+**11907**, redis db7, `restart: unless-stopped`. The old smoke below is not a v2 acceptance test.
 
 > Host-specific paths below (`/home/n84449292/miniconda3`, `/home/n84449292/.local`,
 > `/home/canada_group_folder/CANN/9.0.0.0430`, card ids 8-15) are for THIS host. On another
@@ -72,7 +79,7 @@ services:
       PYTHONUSERBASE: ${PYTHONUSERBASE:-/home/n84449292/.local}
       HOME: /tmp
       TRITON_EVAL_REDIS_URL: ${TRITON_EVAL_REDIS_URL:-redis://127.0.0.1:6379/7}
-      TRITON_EVAL_API_HOST: 0.0.0.0
+      TRITON_EVAL_API_HOST: 127.0.0.1
       TRITON_EVAL_API_PORT: ${TRITON_EVAL_API_PORT:-11907}
       TRITON_EVAL_CARDS: ${TRITON_EVAL_CARDS:-8,9,10,11,12,13,14,15}
       CANN_SET_ENV_PATH: ${CANN_SET_ENV_PATH:-/home/canada_group_folder/CANN/9.0.0.0430/ascend-toolkit/set_env.sh}
@@ -174,7 +181,7 @@ cd /opt/triton-eval
 
 run_api() {
   exec "${PYTHON_BIN}" -m uvicorn run_api:app \
-    --host "${TRITON_EVAL_API_HOST:-0.0.0.0}" \
+    --host "${TRITON_EVAL_API_HOST:-127.0.0.1}" \
     --port "${TRITON_EVAL_API_PORT:-10907}"
 }
 
@@ -204,7 +211,7 @@ case "${1:-all}" in
     ;;
   all)
     "${PYTHON_BIN}" -m uvicorn run_api:app \
-      --host "${TRITON_EVAL_API_HOST:-0.0.0.0}" \
+      --host "${TRITON_EVAL_API_HOST:-127.0.0.1}" \
       --port "${TRITON_EVAL_API_PORT:-10907}" &
     api_pid=$!
     run_workers "${api_pid}"
@@ -257,7 +264,7 @@ services:
       PYTHONUSERBASE: /home/n84449292/.local
       HOME: /tmp
       TRITON_EVAL_REDIS_URL: redis://127.0.0.1:6379/8
-      TRITON_EVAL_API_HOST: 0.0.0.0
+      TRITON_EVAL_API_HOST: 127.0.0.1
       TRITON_EVAL_API_PORT: "11908"
       TRITON_EVAL_CARDS: "0"
       CANN_SET_ENV_PATH: /home/canada_group_folder/CANN/9.0.0.0430/ascend-toolkit/set_env.sh
@@ -305,6 +312,9 @@ PYTHON_BIN=/home/n84449292/miniconda3/envs/kernelgym/bin/python3
 Plus the usual: `TRITON_EVAL_API_PORT=11907`, `TRITON_EVAL_CARDS=8,9,...,15`,
 `TRITON_EVAL_REDIS_URL=redis://localhost:6379/7`,
 `CANN_SET_ENV_PATH=/home/canada_group_folder/CANN/9.0.0.0430/ascend-toolkit/set_env.sh`.
+
+Keep `TRITON_EVAL_API_HOST=127.0.0.1`. The v2 API intentionally has no token and must not
+be exposed directly; sandbox consumers reach it through the kernel-harness gateway/relay.
 
 > The repo templates `.env.example` and `docker.env.example` now document `PYTHON_BIN` as a
 > commented line (with the why), so deployers know to set it.
@@ -359,11 +369,38 @@ docker compose --env-file docker.env build       # one-time
 
 ## 4. Operate
 ```
-docker compose --env-file docker.env up -d        # start eval + redis
-docker compose --env-file docker.env logs -f
-docker compose --env-file docker.env down
-python3 scripts/test_eval_service.py --url http://127.0.0.1:11907   # smoke (correctness + speed)
+scripts/compose.sh up -d      # deployment preflight, then compose up (eval + redis)
+scripts/compose.sh logs -f
+scripts/compose.sh down       # keeps the triton-eval-redis-v2 volume — never down -v
+python3 scripts/test_eval_service.py --url http://172.18.0.1:11907 --token <trial-capability>
 ```
+
+`scripts/compose.sh up|start|restart` runs `scripts/deployment_preflight.py` first and
+refuses to touch Compose when any check fails: the API must bind the one IPv4 gateway of
+Docker network `kernel-agent-sandbox-net` (byte-equal to `TRITON_EVAL_API_HOST`,
+`PROXY_HOST`, and `EVALUATION_URL=http://{gateway}:11907`, with the gateway a complete
+`NO_PROXY` entry), the Redis and eval images must resolve to their pinned digests
+(`TRITON_EVAL_IMAGE` is a required sha256 reference with no tag-only default, and
+`TRITON_EVAL_EVALUATOR_BUILD` must equal it), the secret file must be mode 0600, and the
+catalog must pass the production loaders. The wrapper exports the validated gateway and
+never prints secret values.
+
+Durability: Redis runs the pinned `redis:7.4.10-alpine3.21` index digest with
+`--appendonly yes --appendfsync always` and the named `triton-eval-redis-v2:/data`
+volume. EXEC acknowledgement under appendfsync always is the first-2xx durability
+boundary — an accepted evaluation survives a container crash. Rollback rule: keep the
+volume; a prior compatible build reads the same `triton-eval:v2` keyspace.
+
+The smoke client authenticates with a caller capability, sends the mandatory session
+and idempotency headers, persists the returned `evaluation_id`, and recovers through
+`GET /evaluations/{id}` with bounded backoff; it replays the original POST only when
+no response was obtained. Client HTTP timeouts cover only `wait_seconds` plus transport
+margin — they never cancel or terminalize the evaluation.
+
+Legacy compatibility routes (`/verify`, `/profile`, `/tasks/{task_id}`) are time-boxed
+to the published removal date `2026-10-15T00:00:00Z`: enabling requires
+`legacy_routes_enabled=true` plus exactly that instant, at most 90 days ahead, and
+fails startup otherwise.
 
 ## 5. Notes / future work
 - Container depends on the host `kernelgym` env + `~/.local` (less portable than a

@@ -8,20 +8,23 @@
 # CANN-TBE + triton-ascend runtime deps (decorator/scipy/attrs/psutil/pybind11/...). Replicating
 # the host env is the only reliable way to make the Ascend triton path work in-container today.
 #
-# Configured for THIS host: cards 8-15, port 11907, redis db7.
-# To change the card set, edit TWO places together: the `devices:` davinci list AND
-# TRITON_EVAL_CARDS (here or in docker.env).
+# DURABILITY (evaluation API v2): Redis runs `--appendonly yes --appendfsync always`;
+# EXEC acknowledgement under appendfsync always is the first-2xx durability boundary —
+# an accepted evaluation survives a container crash. Data lives in the named volume
+# triton-eval-redis-v2; NEVER use `docker compose down -v` on this deployment.
+# scripts/compose.sh up|start|restart runs scripts/deployment_preflight.py first and
+# refuses to start when any check fails (gateway bind, image digests, secret/catalog,
+# AOF flags). There is no weaker in-memory development fallback in this file.
 #
-#   docker compose --env-file docker.env build     # one-time (base + source only)
-#   docker compose --env-file docker.env up -d
-#   docker compose --env-file docker.env logs -f
-#   python3 scripts/test_eval_service.py --url http://127.0.0.1:11907
-#   docker compose --env-file docker.env down
+# The API binds the one IPv4 gateway of Docker network kernel-agent-sandbox-net (exported
+# by the wrapper as TRITON_EVAL_API_HOST), never loopback or wildcard. The eval image is
+# a required digest reference (TRITON_EVAL_IMAGE) with no mutable default; the evaluator
+# build recorded in Provenance equals that same immutable reference.
 #
-# Runs as root: NPU device access (rtSetDefaultDeviceId / get-device-count) fails for non-root
-# in the container even with privileged + group_add, but works as root. The bind-mounted
-# kernelgym env / ~/.local / CANN are owned by host uid 1001; root reads them fine (torch_npu
-# emits an owner-mismatch WARNING, harmless).
+#   scripts/compose.sh up -d        # preflight, then compose up
+#   scripts/compose.sh logs -f
+#   python3 scripts/test_eval_service.py --url http://172.18.0.1:11907
+#   scripts/compose.sh down         # keeps the redis volume
 
 services:
   triton-eval:
@@ -37,11 +40,13 @@ services:
         TRITON_SPEC: ${TRITON_SPEC:-triton==3.5.0}
         TRITON_ASCEND_SPEC: ${TRITON_ASCEND_SPEC:-triton-ascend==3.2.0}
         PIP_EXTRA_INDEX_URL: ${PIP_EXTRA_INDEX_URL:-}
-    image: triton-evaluation:latest
+    # Immutable digest reference required at deploy time; preflight rejects tag-only
+    # references and RepoDigest mismatches. No :latest fallback exists on purpose.
+    image: ${TRITON_EVAL_IMAGE:?TRITON_EVAL_IMAGE must be a sha256 digest reference}
     command: ["all"]
     restart: unless-stopped
     depends_on: [redis]          # start redis first (host network; eval tolerates a brief gap)
-    network_mode: host           # reach Redis at 127.0.0.1:6379
+    network_mode: host           # bind the API to the sandbox bridge gateway
     privileged: true             # required for NPU device access in-container (see note above)
     shm_size: "32gb"             # torch_npu needs a large /dev/shm
     environment:
@@ -52,9 +57,17 @@ services:
       PYTHONUSERBASE: ${PYTHONUSERBASE:-/home/n84449292/.local}
       HOME: /tmp
       TRITON_EVAL_REDIS_URL: ${TRITON_EVAL_REDIS_URL:-redis://127.0.0.1:6379/7}
-      TRITON_EVAL_API_HOST: 0.0.0.0
-      TRITON_EVAL_API_PORT: ${TRITON_EVAL_API_PORT:-11907}
+      # The wrapper exports the preflight-validated gateway here; preflight rejects any
+      # loopback/wildcard/multiple-gateway configuration before Compose runs.
+      TRITON_EVAL_API_HOST: ${TRITON_EVAL_API_HOST:?preflight must export the validated gateway}
+      TRITON_EVAL_API_PORT: "11907"
       TRITON_EVAL_CARDS: ${TRITON_EVAL_CARDS:-8,9,10,11,12,13,14,15}
+      # Sole evaluator_build used at admission and in Provenance; equals TRITON_EVAL_IMAGE
+      # (or an explicitly reviewed git:<40-hex> dev build).
+      TRITON_EVAL_EVALUATOR_BUILD: ${TRITON_EVAL_EVALUATOR_BUILD:?must equal the immutable image}
+      TRITON_EVAL_CAPABILITY_FILE: /run/secrets/triton-eval
+      TRITON_EVAL_CATALOG_ROOT: /srv/triton-eval-release
+      TRITON_EVAL_CATALOG_MANIFEST: /srv/triton-eval-release/catalog.json
       CANN_SET_ENV_PATH: ${CANN_SET_ENV_PATH:-/home/canada_group_folder/CANN/9.0.0.0430/ascend-toolkit/set_env.sh}
       ASCEND_DRIVER_PATH: /usr/local/Ascend/driver                     # mounted from host
     devices:
@@ -87,13 +100,39 @@ services:
       # (A future image rebuild that COPYs this entrypoint would let you drop this mount.)
       - ./docker/entrypoint.sh:/usr/local/bin/entrypoint.sh
       - ./logs:/opt/triton-eval/logs
+      # Caller-scoped opaque capabilities: mounted read-only, container sees only the path.
+      - ${TRITON_EVAL_CAPABILITY_FILE:-/run/secrets/triton-eval}:/run/secrets/triton-eval:ro
+      # Trusted release catalog (manifest + references): read-only, no dynamic registration.
+      - ${TRITON_EVAL_CATALOG_ROOT:-/srv/triton-eval-release}:/srv/triton-eval-release:ro
 
-  # Redis: the eval service's task queue + result store. Compose-managed so it comes up with
-  # the service and survives reboot (restart: unless-stopped). Data is ephemeral (task queue
-  # with TTL), so no AOF/RDB persistence. Binds 127.0.0.1:6379 on the host network — the same
-  # address TRITON_EVAL_REDIS_URL points at.
+  # Redis: the durable source of truth for evaluation API v2. Compose-managed so it
+  # comes up with the service and survives reboot (restart: unless-stopped). AOF with
+  # appendfsync always makes EXEC acknowledgement the durability boundary for accepted
+  # evaluations; the named /data volume preserves them across container replacement.
+  # Binds 127.0.0.1:6379 on the host network — the same address TRITON_EVAL_REDIS_URL
+  # points at. The image is the pinned multi-platform index resolved 2026-08-13 with
+  # `docker buildx imagetools inspect`; a Redis update requires recording a new exact
+  # tag+index digest and rerunning the deployment/AOF tests.
   redis:
-    image: redis:7-alpine
+    image: docker.io/library/redis:7.4.10-alpine3.21@sha256:e7723ff73d963f5cc6d9c4643ea3d989527a402a319239054e9472a7fb9219a2
     restart: unless-stopped
     network_mode: host
-    command: ["redis-server", "--bind", "127.0.0.1", "--port", "6379", "--save", "", "--appendonly", "no"]
+    command:
+      - redis-server
+      - --bind
+      - 127.0.0.1
+      - --port
+      - "6379"
+      - --save
+      - ""
+      - --appendonly
+      - "yes"
+      - --appendfsync
+      - always
+      - --aof-use-rdb-preamble
+      - "yes"
+    volumes:
+      - triton-eval-redis-v2:/data
+
+volumes:
+  triton-eval-redis-v2:

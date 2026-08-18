@@ -1,13 +1,17 @@
 # Plan A — isolated single-card smoke test. Bind-mount host kernelgym env + ~/.local + host
 # CANN, run as root, point PYTHON_BIN at the kernelgym python. card 0 / port 11908 / redis db8.
 #
-#   docker compose -f docker-compose.npu0-test.yml up -d
+# Same durable Redis contract as production: pinned multi-platform image, AOF with
+# appendfsync always, named /data volume. The smoke-test service keeps its isolated
+# port/db but uses the same immutable image input as production.
+#
+#   scripts/compose.sh -f docker-compose.npu0-test.yml up -d
 #   python3 scripts/test_eval_service.py --url http://127.0.0.1:11908
-#   docker compose -f docker-compose.npu0-test.yml down
+#   scripts/compose.sh -f docker-compose.npu0-test.yml down
 
 services:
   triton-eval-npu0:
-    image: triton-evaluation:latest
+    image: ${TRITON_EVAL_IMAGE:?TRITON_EVAL_IMAGE must be a sha256 digest reference}
     command: ["all"]
     network_mode: host
     privileged: true
@@ -17,9 +21,13 @@ services:
       PYTHONUSERBASE: /home/n84449292/.local
       HOME: /tmp
       TRITON_EVAL_REDIS_URL: redis://127.0.0.1:6379/8
-      TRITON_EVAL_API_HOST: 0.0.0.0
+      TRITON_EVAL_API_HOST: 127.0.0.1
       TRITON_EVAL_API_PORT: "11908"
       TRITON_EVAL_CARDS: "0"
+      TRITON_EVAL_EVALUATOR_BUILD: ${TRITON_EVAL_EVALUATOR_BUILD:?must equal the immutable image}
+      TRITON_EVAL_CAPABILITY_FILE: /run/secrets/triton-eval
+      TRITON_EVAL_CATALOG_ROOT: /srv/triton-eval-release
+      TRITON_EVAL_CATALOG_MANIFEST: /srv/triton-eval-release/catalog.json
       CANN_SET_ENV_PATH: /home/canada_group_folder/CANN/9.0.0.0430/ascend-toolkit/set_env.sh
       ASCEND_DRIVER_PATH: /usr/local/Ascend/driver
     devices:
@@ -37,3 +45,30 @@ services:
       - /etc/ascend_install.info:/etc/ascend_install.info
       - ./docker/entrypoint.sh:/usr/local/bin/entrypoint.sh
       - ./logs:/opt/triton-eval/logs
+      - ${TRITON_EVAL_CAPABILITY_FILE:-/run/secrets/triton-eval}:/run/secrets/triton-eval:ro
+      - ${TRITON_EVAL_CATALOG_ROOT:-/srv/triton-eval-release}:/srv/triton-eval-release:ro
+
+  # Durable Redis for the isolated stack (same pinned image + AOF contract).
+  redis:
+    image: docker.io/library/redis:7.4.10-alpine3.21@sha256:e7723ff73d963f5cc6d9c4643ea3d989527a402a319239054e9472a7fb9219a2
+    restart: unless-stopped
+    network_mode: host
+    command:
+      - redis-server
+      - --bind
+      - 127.0.0.1
+      - --port
+      - "6379"
+      - --save
+      - ""
+      - --appendonly
+      - "yes"
+      - --appendfsync
+      - always
+      - --aof-use-rdb-preamble
+      - "yes"
+    volumes:
+      - triton-eval-redis-v2:/data
+
+volumes:
+  triton-eval-redis-v2:

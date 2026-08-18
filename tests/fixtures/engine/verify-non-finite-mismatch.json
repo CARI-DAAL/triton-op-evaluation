@@ -1,0 +1,34 @@
+{
+  "op_name": "addmm",
+  "total_cases": 2,
+  "passed_cases": 1,
+  "failed_cases": 1,
+  "failures": [
+    {
+      "case_idx": 2,
+      "input_desc": [
+        {"type": "tensor", "shape": [3], "dtype": "torch.float32"}
+      ],
+      "error_type": "AccuracyError",
+      "error_msg": "验证失败，Inf 位置不匹配: Framework=0/3, Implementation=1/3",
+      "kind": "scattered",
+      "sample": [
+        {"idx": [2], "candidate": "inf", "reference": 1.0, "diff": "inf"},
+        {"idx": [0], "candidate": 2.5, "reference": 1.0, "diff": 1.5}
+      ],
+      "metrics": {
+        "category": "inf_position_mismatch",
+        "framework_inf_count": 0,
+        "implementation_inf_count": 1,
+        "total_elements": 3,
+        "divergence": {
+          "kind": "scattered",
+          "sample": [
+            {"idx": [2], "candidate": "inf", "reference": 1.0, "diff": "inf"},
+            {"idx": [0], "candidate": 2.5, "reference": 1.0, "diff": 1.5}
+          ]
+        }
+      }
+    }
+  ]
+}

@@ -1,5 +1,10 @@
 # Profile Endpoint（msprof）Implementation Plan v2
 
+> [!NOTE]
+> **COMPLETED / HISTORICAL — DO NOT RE-EXECUTE.** The engine/capture details still explain
+> the existing msprof implementation, but its public endpoint tasks are not an Evaluation API v2
+> plan. Current wire behavior comes from `docs/specs/2026-08-06-evaluation-api-v2-design.md`.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Add a standalone asynchronous `POST /profile` endpoint that profiles every input case by default, optionally profiles one zero-based `case_idx`, and returns trustworthy `msprof op` or raw `msprof` diagnostics without changing verify or benchmark semantics.

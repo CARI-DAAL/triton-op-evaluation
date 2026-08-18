@@ -1,0 +1,42 @@
+{
+  "profile_mode": "op",
+  "requested_case_idx": null,
+  "total_cases": 2,
+  "selected_cases": 2,
+  "completed_cases": 1,
+  "partial_cases": 0,
+  "failed_cases": 0,
+  "remaining_case_indices": [],
+  "timed_out": false,
+  "summary_text": "profile mode=op: complete=1, partial=0, failed=0, remaining=0",
+  "warnings": [],
+  "wallclock_sec": 12.5,
+  "per_case_results": [
+    {
+      "status": "complete",
+      "target_kernel": "addmm_kernel",
+      "target_selection_metric": "OpBasicInfo",
+      "kernels": [
+        {
+          "name": "addmm_kernel",
+          "op_type": "vector",
+          "duration_us": 400.0,
+          "metrics": {"task_duration_us": 400.0},
+          "missing_metrics": []
+        }
+      ],
+      "raw_metrics": {},
+      "bound": null,
+      "per_core": null,
+      "recommendations": [],
+      "missing_metrics": [],
+      "warnings": [],
+      "error": null,
+      "case_idx": 0,
+      "input_desc": [
+        {"type": "tensor", "shape": [16], "dtype": "torch.float32"}
+      ],
+      "msprof_wallclock_sec": 12.5
+    }
+  ]
+}

@@ -1,5 +1,10 @@
 # triton-evaluation 设计文档
 
+> [!NOTE]
+> **HISTORICAL V1 BASELINE.** 本文仍用于解释现有 broker/worker/evaluator 的来源，但其
+> `/verify`、`/profile`、`/tasks`、鉴权和结果 wire contract 不得用于 v2。v2 唯一规范是
+> `docs/specs/2026-08-06-evaluation-api-v2-design.md`。
+
 - 日期：2026-07-23
 - 状态：设计已确认，待 spec 审阅 → 实现计划
 - 位置：`e84381970/projects/triton-evaluation/`

@@ -44,7 +44,7 @@ if [[ -n "${CANN_SET_ENV_PATH:-}" ]]; then
 fi
 
 PYTHON_BIN="${PYTHON_BIN:-python3}"
-API_HOST="${TRITON_EVAL_API_HOST:-0.0.0.0}"
+API_HOST="${TRITON_EVAL_API_HOST:-127.0.0.1}"
 API_PORT="${TRITON_EVAL_API_PORT:-10907}"
 CARDS="${TRITON_EVAL_CARDS:-0}"
 LOG_DIR="${LOG_DIR:-${ROOT_DIR}/logs}"
@@ -54,6 +54,21 @@ PID_FILE="${LOG_DIR}/triton-eval.pids"
 if [[ -n "${TRITON_EVAL_ENGINE_DIR:-}" && ! -d "${TRITON_EVAL_ENGINE_DIR}" ]]; then
   echo "TRITON_EVAL_ENGINE_DIR is set but not a directory: '${TRITON_EVAL_ENGINE_DIR}'" >&2
   echo "Unset it to use the bundled engine (triton_evaluation/engine)." >&2
+  exit 2
+fi
+
+# Fail closed before launching: the published contract artifacts must verify and,
+# when a capability secret / catalog are configured, they must load.
+if ! "${PYTHON_BIN}" - <<'PYSTART'
+import sys
+
+from triton_evaluation.api.contract_artifacts import CONTRACT_ROOT, verify_artifacts
+
+if verify_artifacts(CONTRACT_ROOT):
+    sys.exit("contract artifacts failed verification")
+PYSTART
+then
+  echo "artifact verification failed; refusing to start" >&2
   exit 2
 fi
 

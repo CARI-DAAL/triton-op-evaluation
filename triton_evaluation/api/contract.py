@@ -1,79 +1,242 @@
 """Stable v2 wire contract for the evaluation service.
 
 This module is the public API surface: the request shapes a consumer sends and
-the typed response they get back. It depends only on pydantic — no app internals
-— so it can be imported by clients and tests in isolation.
+the typed resource they get back. It depends only on pydantic — no app
+internals — so it can be imported by clients and tests in isolation. Every
+model is strict: unknown fields, scalar coercion, and non-finite ordinary
+floats are rejected; NaN/Inf exist only as explicit string sentinels inside
+correctness samples.
+
+The canonical design authority is
+``docs/specs/2026-08-06-evaluation-api-v2-design.md`` sections 3.4 and 4.
 """
-from typing import Literal
+import math
+from collections.abc import Callable
+from datetime import datetime
+from typing import Annotated, Generic, Literal, TypeVar
 
-from pydantic import BaseModel, Field, model_validator
-
-CONTRACT_REVISION = "v2"
+from pydantic import (
+    AfterValidator,
+    BaseModel,
+    ConfigDict,
+    Field,
+    ValidationInfo,
+    model_validator,
+)
 
 Check = Literal["correctness", "performance", "profile"]
+Purpose = Literal["trial", "grade"]
+ResourceState = Literal["queued", "running", "completed", "failed", "timed_out"]
 
-DivergenceKind = Literal[
-    "constant_offset",
-    "per_axis",
-    "precision_loss",
-    "sign_flip",
-    "value_clamp",
-    "shape_mismatch",
-    "scattered",
+Digest = Annotated[str, Field(pattern=r"^[0-9a-f]{64}$")]
+
+FiniteOrSentinel = float | Literal["inf", "-inf", "nan"]
+DivergenceKind = Literal["shape_mismatch", "value_mismatch", "non_finite_mismatch"]
+CorrectnessDomainOutcome = Literal[
+    "correct", "wrong", "compile_error", "runtime_error", "execution_timeout"
 ]
+ProfileCaseStatus = Literal["complete", "partial", "failed"]
 
-FiniteValue = float | Literal["inf", "-inf", "nan"]
+MAX_SOURCE_BYTES = 2 * 1024 * 1024
+MAX_ERROR_MESSAGE_BYTES = 512
+MAX_SKIP_MESSAGE_BYTES = 256
 
-TaskState = Literal["QUEUED", "RUNNING", "SUCCEEDED", "FAILED", "TIMEOUT", "REJECTED"]
+_CHECK_ORDER = {"correctness": 0, "performance": 1, "profile": 2}
+
+T = TypeVar("T")
 
 
-class PerformanceParams(BaseModel):
+class StrictModel(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+        strict=True,
+        validate_default=True,
+        allow_inf_nan=False,
+    )
+
+
+def utf8_len(max_bytes: int) -> Callable[[str], str]:
+    """Return a validator enforcing a UTF-8 byte (not code-point) limit."""
+
+    def _check(value: str) -> str:
+        if len(value.encode("utf-8")) > max_bytes:
+            raise ValueError(f"must be at most {max_bytes} UTF-8 bytes")
+        return value
+
+    return _check
+
+
+def redacted_text(max_bytes: int) -> Callable[[str], str]:
+    """Return a validator for single-line redacted text bounded in UTF-8 bytes."""
+
+    def _check(value: str) -> str:
+        if "\r" in value or "\n" in value:
+            raise ValueError("must be a single line without CR/LF")
+        size = len(value.encode("utf-8"))
+        if not 1 <= size <= max_bytes:
+            raise ValueError(f"must be 1..{max_bytes} UTF-8 bytes")
+        return value
+
+    return _check
+
+
+# ---------------------------------------------------------------------------
+# Request parameters and purpose context
+# ---------------------------------------------------------------------------
+
+
+class PerformanceParams(StrictModel):
     warmup: int = Field(default=5, ge=0, le=100)
     repeats: int = Field(default=50, ge=1, le=1000)
 
 
-class ProfileParams(BaseModel):
+class ProfileParams(StrictModel):
     mode: Literal["op", "deep"] = "op"
-    case_idx: int | None = Field(default=None, ge=0)
-    launch_count: int | None = Field(default=None, ge=1, le=100)
+    case_indices: list[Annotated[int, Field(ge=0)]] | None = Field(
+        default=None, max_length=128
+    )
+    max_kernels_per_case: int = Field(default=200, ge=1, le=1000)
+    include_recommendations: bool = True
 
     @model_validator(mode="after")
-    def _launch_count_only_in_op_mode(self):
-        if self.mode == "deep" and self.launch_count is not None:
-            raise ValueError("launch_count is only valid in op mode")
+    def _case_indices_unique_then_sorted(self):
+        if self.case_indices is not None:
+            if len(set(self.case_indices)) != len(self.case_indices):
+                raise ValueError("case_indices must not contain duplicates")
+            self.case_indices = sorted(self.case_indices)
         return self
 
 
-class EvaluationRequest(BaseModel):
-    op_name: str
-    reference_code: str
-    kernel_code: str
-    triton_impl_name: str = "triton_ascend_impl"
-    checks: list[Check] = Field(min_length=1)
+class GradeContext(StrictModel):
+    manifest_id: str = Field(min_length=1, max_length=128)
+    problem_id: str = Field(min_length=1, max_length=128)
+    reference_digest: Digest
+
+
+class EvaluationRequest(StrictModel):
+    schema_version: Literal["2.0"]
+    purpose: Purpose = "trial"
+    op_name: str = Field(min_length=1, max_length=128)
+    reference_code: Annotated[str, AfterValidator(utf8_len(MAX_SOURCE_BYTES))]
+    kernel_code: Annotated[str, AfterValidator(utf8_len(MAX_SOURCE_BYTES))]
+    triton_impl_name: str = Field(
+        default="triton_ascend_impl", min_length=1, max_length=128
+    )
+    checks: list[Check] = Field(min_length=1, max_length=3)
     non_compute: bool = False
-    timeout: int = Field(default=900, ge=10, le=3600)
+    deadline_seconds: int = Field(default=900, ge=10, le=3600)
     performance: PerformanceParams | None = None
     profile: ProfileParams | None = None
+    grade_context: GradeContext | None = None
 
     @model_validator(mode="after")
-    def _params_only_with_matching_check(self):
-        if "performance" not in self.checks:
-            self.performance = None
-        if "profile" not in self.checks:
-            self.profile = None
+    def _normalize_and_couple(self):
+        if len(set(self.checks)) != len(self.checks):
+            raise ValueError("checks must not contain duplicates")
+        self.checks = sorted(self.checks, key=_CHECK_ORDER.__getitem__)
+        if "performance" in self.checks and "correctness" not in self.checks:
+            raise ValueError("the performance check requires the correctness check")
+        if "performance" in self.checks:
+            if self.performance is None:
+                self.performance = PerformanceParams()
+        elif self.performance is not None:
+            raise ValueError("performance params require the performance check")
+        if "profile" in self.checks:
+            if self.profile is None:
+                self.profile = ProfileParams()
+        elif self.profile is not None:
+            raise ValueError("profile params require the profile check")
+        if self.purpose == "trial" and self.grade_context is not None:
+            raise ValueError("trial requests must not carry grade_context")
+        if self.purpose == "grade" and self.grade_context is None:
+            raise ValueError("grade requests require grade_context")
         return self
 
 
-class SampleElement(BaseModel):
-    idx: list[int]
-    candidate: FiniteValue
-    reference: FiniteValue
-    diff: FiniteValue
+# ---------------------------------------------------------------------------
+# Error envelope (design section 3.4)
+# ---------------------------------------------------------------------------
 
 
-class CaseMetrics(BaseModel):
+class ErrorInfo(StrictModel):
+    code: str = Field(pattern=r"^[A-Z][A-Z0-9_]{0,63}$")
+    phase: Literal[
+        "request",
+        "auth",
+        "admission",
+        "queue",
+        "execution",
+        "shaping",
+        "storage",
+        "deadline",
+    ]
+    check: Check | None
+    retryable: bool
+    message: Annotated[str, AfterValidator(redacted_text(MAX_ERROR_MESSAGE_BYTES))]
+
+
+class ErrorEnvelope(StrictModel):
+    schema_version: Literal["2.0"]
+    request_id: str
+    error: ErrorInfo
+
+
+# ---------------------------------------------------------------------------
+# Check outcomes (design section 4.1)
+# ---------------------------------------------------------------------------
+
+
+class SkipInfo(StrictModel):
+    code: Literal["DEPENDENCY_NOT_PASSED", "PRIOR_CHECK_FAILED", "RESOURCE_DEADLINE"]
+    depends_on: Check | None = None
+    message: Annotated[str, AfterValidator(redacted_text(MAX_SKIP_MESSAGE_BYTES))]
+
+
+class CheckSucceeded(StrictModel, Generic[T]):
+    status: Literal["succeeded"]
+    data: T
+    error: None = None
+    reason: None = None
+
+
+class CheckFailed(StrictModel):
+    status: Literal["failed"]
+    data: None = None
+    error: ErrorInfo
+    reason: None = None
+
+
+class CheckSkipped(StrictModel):
+    status: Literal["skipped"]
+    data: None = None
+    error: None = None
+    reason: SkipInfo
+
+
+class CheckTimedOut(StrictModel):
+    status: Literal["timeout"]
+    data: None = None
+    error: ErrorInfo
+    reason: None = None
+
+
+# typing.Generic (not PEP 695 syntax) keeps Python 3.10 support. Pydantic
+# parametrizes CheckSucceeded[T] eagerly, so a generic alias like
+# ``Annotated[CheckSucceeded[T] | ..., Field(discriminator=...)]`` cannot be
+# subscripted later; the per-check concrete aliases below are the field types.
+CheckOutcome = Annotated[
+    CheckSucceeded[T] | CheckFailed | CheckSkipped | CheckTimedOut,
+    Field(discriminator="status"),
+]
+
+
+# ---------------------------------------------------------------------------
+# Correctness (design section 4.2)
+# ---------------------------------------------------------------------------
+
+
+class CaseMetrics(StrictModel):
     max_abs_diff: float | None = None
-    mean_abs_err: float | None = None
     matched_ratio: float | None = None
     mere: float | None = None
     small_count: int | None = None
@@ -82,42 +245,398 @@ class CaseMetrics(BaseModel):
     rtol: float | None = None
 
 
-class CaseFailure(BaseModel):
-    case_idx: int
-    kind: DivergenceKind | None = None
-    metrics: CaseMetrics = Field(default_factory=CaseMetrics)
-    sample: list[SampleElement] = Field(default_factory=list)
-    error: str = ""
+class SampleElement(StrictModel):
+    idx: list[int]
+    candidate: FiniteOrSentinel
+    reference: FiniteOrSentinel
+    diff: FiniteOrSentinel
 
 
-class CorrectnessResult(BaseModel):
+def _sample_order_key(point: SampleElement) -> tuple:
+    """Finite diffs first by descending abs value, then sentinels lexically."""
+    if isinstance(point.diff, str):
+        return (1, point.diff, point.idx)
+    return (0, -abs(point.diff), point.idx)
+
+
+class CaseFailure(StrictModel):
+    case_idx: Annotated[int, Field(ge=0)]
+    kind: DivergenceKind
+    metrics: CaseMetrics
+    sample: list[SampleElement] = Field(default_factory=list, max_length=8)
+
+    @model_validator(mode="after")
+    def _sample_rules(self):
+        if self.kind == "shape_mismatch" and self.sample:
+            raise ValueError("shape_mismatch must have an empty sample")
+        keys = [_sample_order_key(point) for point in self.sample]
+        if keys != sorted(keys):
+            raise ValueError(
+                "sample must rank finite abs(diff) descending, then sentinels "
+                "lexically, breaking ties by row-major index"
+            )
+        return self
+
+
+class DomainFailure(StrictModel):
+    code: Literal[
+        "SUBJECT_COMPILE_ERROR", "SUBJECT_RUNTIME_ERROR", "SUBJECT_EXECUTION_TIMEOUT"
+    ]
+    phase: Literal["compile", "initialize", "execute"]
+    case_idx: int | None = Field(default=None, ge=0)
+    message: Annotated[str, AfterValidator(redacted_text(MAX_ERROR_MESSAGE_BYTES))]
+
+
+_OUTCOME_TO_DOMAIN_CODE = {
+    "compile_error": "SUBJECT_COMPILE_ERROR",
+    "runtime_error": "SUBJECT_RUNTIME_ERROR",
+    "execution_timeout": "SUBJECT_EXECUTION_TIMEOUT",
+}
+
+
+class CorrectnessResult(StrictModel):
+    outcome: CorrectnessDomainOutcome
     passed: bool
-    compiled: bool
     decoy: bool = False
-    passed_cases: int
-    total_cases: int
-    failures: list[CaseFailure] = Field(default_factory=list)
+    passed_cases: Annotated[int, Field(ge=0)]
+    total_cases: Annotated[int, Field(ge=1)]
+    failures: list[CaseFailure]
+    domain_failure: DomainFailure | None = None
+
+    @model_validator(mode="after")
+    def _domain_rules(self):
+        if self.passed_cases > self.total_cases:
+            raise ValueError("passed_cases must not exceed total_cases")
+        indices = [failure.case_idx for failure in self.failures]
+        if len(set(indices)) != len(indices):
+            raise ValueError("failures must have unique case_idx values")
+        if any(index >= self.total_cases for index in indices):
+            raise ValueError("failure case_idx out of range")
+        if self.passed_cases + len(self.failures) > self.total_cases:
+            raise ValueError("passed_cases plus failures must not exceed total_cases")
+        if self.passed != (self.outcome == "correct"):
+            raise ValueError("passed is true iff outcome is correct")
+        if self.outcome == "correct":
+            if self.passed_cases != self.total_cases or self.failures:
+                raise ValueError("correct requires every case passing")
+            if self.domain_failure is not None or self.decoy:
+                raise ValueError("correct forbids domain_failure and decoy")
+        elif self.outcome == "wrong":
+            if self.domain_failure is not None:
+                raise ValueError("wrong forbids domain_failure")
+            if not self.failures and not self.decoy:
+                raise ValueError("wrong requires a mismatch failure or decoy")
+            if self.passed_cases + len(self.failures) != self.total_cases:
+                raise ValueError("wrong requires every case accounted for")
+        else:
+            failure = self.domain_failure
+            if failure is None or failure.code != _OUTCOME_TO_DOMAIN_CODE[self.outcome]:
+                raise ValueError("domain_failure code must match the outcome")
+            if self.decoy:
+                raise ValueError("subject failures forbid decoy")
+            if self.outcome == "compile_error" and failure.phase != "compile":
+                raise ValueError("compile_error is always attributed to compile")
+            if self.outcome == "runtime_error" and failure.phase == "compile":
+                raise ValueError("runtime_error is initialize or execute only")
+            if failure.phase in ("compile", "initialize"):
+                if failure.case_idx is not None:
+                    raise ValueError("compile/initialize failures have no case_idx")
+            elif failure.case_idx is None or failure.case_idx >= self.total_cases:
+                raise ValueError("execute failures require an in-range case_idx")
+        return self
 
 
-class PerformanceResult(BaseModel):
-    speedup_vs_torch: float | None = None
-    per_shape: list[dict] = Field(default_factory=list)
+# ---------------------------------------------------------------------------
+# Performance (design section 4.3)
+# ---------------------------------------------------------------------------
 
 
-class ProfileResult(BaseModel):
-    profile_state: Literal["complete", "partial"]
-    data: dict = Field(default_factory=dict)
+class InputShape(StrictModel):
+    input_index: Annotated[int, Field(ge=0)]
+    dimensions: list[Annotated[int, Field(ge=0)]]
+    dtype: str | None = None
 
 
-class EvaluationPayload(BaseModel):
-    correctness: CorrectnessResult | None = None
-    performance: PerformanceResult | None = None
-    profile: ProfileResult | None = None
+class PerformanceCase(StrictModel):
+    case_idx: Annotated[int, Field(ge=0)]
+    input_shapes: list[InputShape]
+    implementation_latency_ms: Annotated[float, Field(gt=0)]
+    reference_latency_ms: Annotated[float, Field(gt=0)]
+    speedup_vs_reference: Annotated[float, Field(gt=0)]
 
 
-class EvaluationResult(BaseModel):
-    task_id: str
-    status: TaskState
-    revision: str = CONTRACT_REVISION
-    error: str | None = None
-    result: EvaluationPayload = Field(default_factory=EvaluationPayload)
+class UnmeasuredPerformanceCase(StrictModel):
+    case_idx: Annotated[int, Field(ge=0)]
+    input_shapes: list[InputShape]
+    reason_code: Literal["UNSUPPORTED_CASE", "NO_STABLE_MEASUREMENT"]
+
+
+class PerformanceResult(StrictModel):
+    aggregation: Literal["geometric_mean_v1"]
+    overall_speedup_vs_reference: Annotated[float, Field(gt=0)]
+    selected_cases: Annotated[int, Field(ge=1)]
+    measured_cases: Annotated[int, Field(ge=1)]
+    coverage: Annotated[float, Field(ge=0, le=1)]
+    per_case: list[PerformanceCase]
+    unmeasured_cases: list[UnmeasuredPerformanceCase]
+
+    @model_validator(mode="after")
+    def _aggregation_arithmetic(self):
+        measured = len(self.per_case)
+        if self.measured_cases != measured:
+            raise ValueError("measured_cases must equal len(per_case)")
+        if self.selected_cases != measured + len(self.unmeasured_cases):
+            raise ValueError("selected_cases must equal measured plus unmeasured")
+        indices = [case.case_idx for case in self.per_case]
+        indices += [case.case_idx for case in self.unmeasured_cases]
+        if len(set(indices)) != len(indices):
+            raise ValueError("case_idx must be unique across both case lists")
+        expected_coverage = measured / self.selected_cases
+        if not math.isclose(self.coverage, expected_coverage, rel_tol=1e-9):
+            raise ValueError("coverage must equal measured_cases / selected_cases")
+        expected = math.exp(
+            sum(math.log(case.speedup_vs_reference) for case in self.per_case) / measured
+        )
+        if not math.isclose(self.overall_speedup_vs_reference, expected, rel_tol=1e-9):
+            raise ValueError("overall speedup must be the geometric mean of per_case")
+        return self
+
+
+# ---------------------------------------------------------------------------
+# Profile (design section 4.4)
+# ---------------------------------------------------------------------------
+
+
+class ProfileCounts(StrictModel):
+    selected: Annotated[int, Field(ge=0)]
+    complete: Annotated[int, Field(ge=0)]
+    partial: Annotated[int, Field(ge=0)]
+    failed: Annotated[int, Field(ge=0)]
+
+    @model_validator(mode="after")
+    def _selected_is_component_sum(self):
+        if self.selected != self.complete + self.partial + self.failed:
+            raise ValueError("selected must equal complete + partial + failed")
+        return self
+
+
+class OpKernel(StrictModel):
+    op_name: str
+    time_ms: Annotated[float, Field(ge=0)]
+    percentage: Annotated[float, Field(ge=0)]
+
+
+class OpProfileCase(StrictModel):
+    case_idx: Annotated[int, Field(ge=0)]
+    status: ProfileCaseStatus
+    kernels: list[OpKernel]
+    error: ErrorInfo | None = None
+
+    @model_validator(mode="after")
+    def _status_rules(self):
+        if self.status == "complete" and self.error is not None:
+            raise ValueError("complete cases must not carry an error")
+        if self.status == "failed" and self.error is None:
+            raise ValueError("failed cases must carry an error")
+        if self.status == "partial":
+            if self.error is None:
+                raise ValueError("partial op cases must explain the gap via error")
+            if not self.kernels:
+                raise ValueError("partial cases must carry locally available data")
+        if self.kernels:
+            total = sum(kernel.percentage for kernel in self.kernels)
+            if not 99.0 <= total <= 101.0:
+                raise ValueError("kernel percentages must sum within [99.0, 101.0]")
+        return self
+
+
+class DeepRatios(StrictModel):
+    mte2: float | None = Field(default=None, ge=0, le=1)
+    cube: float | None = Field(default=None, ge=0, le=1)
+    vec: float | None = Field(default=None, ge=0, le=1)
+    fixp: float | None = Field(default=None, ge=0, le=1)
+    mte3: float | None = Field(default=None, ge=0, le=1)
+    scalar: float | None = Field(default=None, ge=0, le=1)
+
+
+class DeepProfileCase(StrictModel):
+    case_idx: Annotated[int, Field(ge=0)]
+    status: ProfileCaseStatus
+    target_kernel: str | None
+    bound: Literal["MTE2", "CUBE", "VEC", "FIXP", "MTE3", "SCALAR", "NONE"] | None
+    ratios: DeepRatios
+    per_core_spread_ratio: float | None
+    recommendations: list[str]
+    missing_metrics: list[str]
+    warnings: list[str]
+    error: ErrorInfo | None = None
+
+    @model_validator(mode="after")
+    def _status_rules(self):
+        if self.status == "complete" and self.error is not None:
+            raise ValueError("complete cases must not carry an error")
+        if self.status == "failed" and self.error is None:
+            raise ValueError("failed cases must carry an error")
+        if self.status == "partial" and not (
+            self.missing_metrics or self.warnings or self.error is not None
+        ):
+            raise ValueError("partial cases must explain the gap")
+        return self
+
+
+def _check_profile_tallies(counts: ProfileCounts, cases: list) -> None:
+    if counts.selected != len(cases):
+        raise ValueError("counts.selected must equal len(cases)")
+    for status in ("complete", "partial", "failed"):
+        if getattr(counts, status) != sum(case.status == status for case in cases):
+            raise ValueError(f"counts.{status} must tally case statuses")
+    indices = [case.case_idx for case in cases]
+    if len(set(indices)) != len(indices):
+        raise ValueError("case_idx must be unique")
+
+
+class OpProfileResult(StrictModel):
+    mode: Literal["op"]
+    counts: ProfileCounts
+    cases: list[OpProfileCase]
+
+    @model_validator(mode="after")
+    def _tallies(self):
+        _check_profile_tallies(self.counts, self.cases)
+        return self
+
+
+class DeepProfileResult(StrictModel):
+    mode: Literal["deep"]
+    counts: ProfileCounts
+    cases: list[DeepProfileCase]
+
+    @model_validator(mode="after")
+    def _tallies(self):
+        _check_profile_tallies(self.counts, self.cases)
+        return self
+
+
+ProfileResult = Annotated[
+    OpProfileResult | DeepProfileResult, Field(discriminator="mode")
+]
+
+
+CorrectnessOutcome = Annotated[
+    CheckSucceeded[CorrectnessResult] | CheckFailed | CheckSkipped | CheckTimedOut,
+    Field(discriminator="status"),
+]
+PerformanceOutcome = Annotated[
+    CheckSucceeded[PerformanceResult] | CheckFailed | CheckSkipped | CheckTimedOut,
+    Field(discriminator="status"),
+]
+ProfileOutcome = Annotated[
+    CheckSucceeded[ProfileResult] | CheckFailed | CheckSkipped | CheckTimedOut,
+    Field(discriminator="status"),
+]
+
+
+# ---------------------------------------------------------------------------
+# Provenance, result, and resource (design sections 4.1 and 4.5)
+# ---------------------------------------------------------------------------
+
+
+class ExecutionEnvironment(StrictModel):
+    hardware_model: str
+    hardware_count: int
+    driver_version: str
+    runtime_version: str
+    torch_version: str | None
+    torch_npu_version: str | None
+    triton_version: str | None
+    toolchain_version: str
+
+
+class Provenance(StrictModel):
+    schema_version: Literal["2.0"]
+    evaluator_build: str
+    correctness_algorithm: str
+    decoy_algorithm: str
+    benchmark_algorithm: str
+    profiler_algorithm: str
+    grade_eligible: bool
+    manifest_id: str | None
+    problem_id: str | None
+    execution_environment: ExecutionEnvironment | None
+
+    @model_validator(mode="after")
+    def _grade_eligibility(self):
+        if (self.manifest_id is None) != (self.problem_id is None):
+            raise ValueError("manifest_id and problem_id must move together")
+        if self.grade_eligible and self.manifest_id is None:
+            raise ValueError("grade_eligible requires manifest identity")
+        return self
+
+
+class EvaluationResult(StrictModel):
+    correctness: CorrectnessOutcome | None
+    performance: PerformanceOutcome | None
+    profile: ProfileOutcome | None
+    provenance: Provenance
+
+    @model_validator(mode="after")
+    def _requested_checks_filled(self, info: ValidationInfo):
+        context = info.context
+        if isinstance(context, dict) and context.get("requested_checks") is not None:
+            requested = context["requested_checks"]
+            for check in Check.__args__:
+                value = getattr(self, check)
+                if check in requested and value is None:
+                    raise ValueError(f"requested check {check} must have an outcome")
+                if check not in requested and value is not None:
+                    raise ValueError(f"unrequested check {check} must be null")
+        return self
+
+
+_TERMINAL_STATES = ("completed", "failed", "timed_out")
+
+
+class EvaluationResource(StrictModel):
+    schema_version: Literal["2.0"]
+    evaluation_id: str = Field(min_length=1)
+    revision: Annotated[int, Field(ge=1)]
+    state: ResourceState
+    created_at: datetime
+    updated_at: datetime
+    started_at: datetime | None
+    finished_at: datetime | None
+    deadline_at: datetime
+    request_digest: Digest
+    reference_digest: Digest
+    result: EvaluationResult | None
+
+    @model_validator(mode="after")
+    def _lifecycle_shape(self):
+        if self.state in _TERMINAL_STATES:
+            if self.result is None or self.finished_at is None:
+                raise ValueError("terminal resources carry result and finished_at")
+        else:
+            if self.result is not None or self.finished_at is not None:
+                raise ValueError("nonterminal resources carry neither result nor finished_at")
+        if self.state == "queued":
+            if self.started_at is not None:
+                raise ValueError("queued resources have no started_at")
+        elif self.state in ("running", "completed", "failed"):
+            if self.started_at is None:
+                raise ValueError("started resources require started_at")
+        # timed_out may lack started_at: a queued deadline fires before any attempt.
+        try:
+            if self.updated_at < self.created_at:
+                raise ValueError("updated_at must not precede created_at")
+            if self.started_at is not None and self.started_at < self.created_at:
+                raise ValueError("started_at must not precede created_at")
+            if self.finished_at is not None:
+                if self.finished_at < self.created_at:
+                    raise ValueError("finished_at must not precede created_at")
+                if self.started_at is not None and self.finished_at < self.started_at:
+                    raise ValueError("finished_at must not precede started_at")
+            if self.deadline_at <= self.created_at:
+                raise ValueError("deadline_at must follow created_at")
+        except TypeError as exc:
+            raise ValueError("timestamps must share timezone awareness") from exc
+        return self

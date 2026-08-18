@@ -1,0 +1,88 @@
+{
+  "profile_mode": "deep",
+  "requested_case_idx": null,
+  "total_cases": 3,
+  "selected_cases": 2,
+  "completed_cases": 1,
+  "partial_cases": 1,
+  "failed_cases": 0,
+  "remaining_case_indices": [],
+  "timed_out": false,
+  "summary_text": "profile mode=deep: complete=1, partial=1, failed=0, remaining=0",
+  "warnings": ["insufficient canonical pipe fields for Bound classification"],
+  "wallclock_sec": 61.0,
+  "per_case_results": [
+    {
+      "status": "complete",
+      "target_kernel": "addmm_kernel",
+      "target_selection_metric": "PipeUtilization",
+      "kernels": [],
+      "raw_metrics": {"aic_cube_ratio": "0.75", "_merge_evidence": {}},
+      "bound": {
+        "name": "CUBE BOUND",
+        "ratios": {
+          "MTE2": 0.1,
+          "CUBE": 0.75,
+          "PUSHQ": 0.05,
+          "FIXP": 0.0,
+          "MTE3": 0.07,
+          "SCALAR": 0.02,
+          "SCALARLDST": 0.03
+        },
+        "rule": "CUBE is largest and > 0.70",
+        "evidence": {"aic_cube_ratio": "0.75"}
+      },
+      "per_core": {
+        "scope": "profile_run",
+        "warning": "SQLite rows are run-wide and are not claimed as target-only.",
+        "core_ids": [0, 1],
+        "active_cores": 2,
+        "frequency_ghz": 1.5,
+        "min_us": 8.0,
+        "avg_us": 10.0,
+        "max_us": 12.0,
+        "spread_ratio": 0.3333333333333333,
+        "balanced_under_10pct": false,
+        "verdict": "severely_imbalanced",
+        "per_core": [
+          {"core_id": 0, "time_us": 8.0},
+          {"core_id": 1, "time_us": 12.0}
+        ]
+      },
+      "recommendations": [
+        {
+          "bound": "CUBE BOUND",
+          "evidence": {"ratios": {"CUBE": 0.75}, "rule": "CUBE is largest and > 0.70"},
+          "recommendation": "Increase useful Cube work per launch and validate tiling with measured latency.",
+          "source": "ops-profiling/references/optimization_quickref.md"
+        }
+      ],
+      "missing_metrics": [],
+      "warnings": [],
+      "error": null,
+      "case_idx": 0,
+      "input_desc": [
+        {"type": "tensor", "shape": [16], "dtype": "torch.float32"}
+      ],
+      "msprof_wallclock_sec": 30.0
+    },
+    {
+      "status": "partial",
+      "target_kernel": "addmm_kernel",
+      "target_selection_metric": "PipeUtilization",
+      "kernels": [],
+      "raw_metrics": {"aiv_mte2_ratio": "0.2", "_merge_evidence": {}},
+      "bound": null,
+      "per_core": null,
+      "recommendations": [],
+      "missing_metrics": ["PipeUtilization.CUBE"],
+      "warnings": ["insufficient canonical pipe fields for Bound classification"],
+      "error": null,
+      "case_idx": 2,
+      "input_desc": [
+        {"type": "tensor", "shape": [64], "dtype": "torch.float32"}
+      ],
+      "msprof_wallclock_sec": 31.0
+    }
+  ]
+}

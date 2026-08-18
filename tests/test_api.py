@@ -1,146 +1,286 @@
+"""Durable HTTP endpoint tests (POST/GET semantics).
+
+Shared helpers build a complete test application over fakeredis with a fake
+clock, a real capability secret file, and a real release catalog. The other
+HTTP suites import these helpers.
+"""
+import json
+from pathlib import Path
+
 import fakeredis
-from fastapi.testclient import TestClient
+import httpx
+import pytest
+from conftest import FakeClock, make_completed_result
 
 from triton_evaluation.api import create_app
-from triton_evaluation.broker import Broker
+from triton_evaluation.api.contract import ErrorEnvelope, EvaluationResource
+from triton_evaluation.broker import EvaluationStore
+from triton_evaluation.catalog import ReleaseCatalog
+from triton_evaluation.config import Settings
+from triton_evaluation.models import AlgorithmVersions, WorkerIdentity, new_worker_id
+from triton_evaluation.security import CapabilityRegistry
+
+pytestmark = pytest.mark.anyio
+
+TRIAL_TOKEN = "trial-token-1"
+TRIAL_TOKEN_2 = "trial-token-2"
+GRADE_TOKEN = "grade-token-1"
+OBSERVER_TOKEN = "observer-token-1"
 
 
-def _client(settings):
-    client = fakeredis.FakeStrictRedis(decode_responses=True)
-    broker = Broker(client, settings)
-    return TestClient(create_app(broker)), broker
+def make_test_settings(tmp_path):
+    return Settings(
+        engine_dir=str(tmp_path),
+        dequeue_block_seconds=1,
+        heartbeat_interval_seconds=0.05,
+        queue_poll_interval_seconds=0.05,
+        api_poll_interval_seconds=0.05,
+        maintenance_interval_seconds=5.0,
+        capability_secret_path=str(tmp_path / "capabilities.json"),
+        catalog_root=str(tmp_path / "catalog"),
+        catalog_manifest_path=str(tmp_path / "catalog" / "catalog.json"),
+    )
 
 
-def test_post_verify_enqueues(settings):
-    client, broker = _client(settings)
-    r = client.post("/verify", json={"op_name": "s", "reference_code": "R", "kernel_code": "K"})
-    assert r.status_code == 200
-    task_id = r.json()["task_id"]
-    rec = broker.get_task(task_id)
-    assert rec["status"] == "QUEUED"
-    assert rec["type"] == "verify"
-    job = broker.dequeue()
-    assert job.task_id == task_id
-    assert job.spec.measure_speed is False
+def write_secret(path, capabilities, mode=0o600):
+    path.write_text(json.dumps({"capabilities": capabilities}), encoding="utf-8")
+    path.chmod(mode)
+    return path
 
 
-def test_post_verify_measure_speed_sets_spec(settings):
-    client, broker = _client(settings)
-    r = client.post(
-        "/verify",
-        json={
-            "op_name": "s",
-            "reference_code": "R",
-            "kernel_code": "K",
-            "measure_speed": True,
-            "warmup": 2,
-            "repeats": 20,
+def default_capabilities():
+    return [
+        {
+            "token": TRIAL_TOKEN,
+            "caller_id": "trial-caller",
+            "caller_class": "trial",
+            "scopes": ["trial:submit", "trial:read"],
         },
-    )
-    assert r.status_code == 200
-    job = broker.dequeue()
-    assert job.type == "verify"
-    assert job.spec.measure_speed is True
-    assert job.spec.warmup == 2
-    assert job.spec.repeats == 20
+        {
+            "token": TRIAL_TOKEN_2,
+            "caller_id": "trial-caller-2",
+            "caller_class": "trial",
+            "scopes": ["trial:submit", "trial:read"],
+        },
+        {
+            "token": GRADE_TOKEN,
+            "caller_id": "grade-caller",
+            "caller_class": "trusted",
+            "scopes": ["grade:submit", "grade:read", "observer:read"],
+        },
+        {
+            "token": OBSERVER_TOKEN,
+            "caller_id": "observer-caller",
+            "caller_class": "observer",
+            "scopes": ["observer:read"],
+        },
+    ]
 
 
-def test_post_profile_defaults_to_all_cases(settings):
-    client, broker = _client(settings)
-    response = client.post(
-        "/profile",
-        json={"op_name": "softmax", "reference_code": "R", "kernel_code": "K"},
+def algorithms(settings):
+    return AlgorithmVersions(
+        correctness=settings.correctness_algorithm_version,
+        decoy=settings.decoy_algorithm_version,
+        benchmark=settings.benchmark_algorithm_version,
+        profiler=settings.profiler_algorithm_version,
     )
+
+
+def seed_worker(app):
+    """Heartbeat one compatible worker so new admissions pass readiness."""
+    app.store.heartbeat(
+        WorkerIdentity(new_worker_id(), app.settings.evaluator_build,
+                       algorithms(app.settings))
+    )
+
+
+class BuiltApp:
+    def __init__(self, app, store, clock, http, settings):
+        self.app = app
+        self.store = store
+        self.clock = clock
+        self.http = http
+        self.settings = settings
+
+
+def build_app(tmp_path, catalog_files, clock=None, settings=None):
+    settings = settings or make_test_settings(tmp_path)
+    write_secret(Path(settings.capability_secret_path), default_capabilities())
+    server = fakeredis.FakeServer()
+    client = fakeredis.FakeStrictRedis(server=server)
+    clock = clock or FakeClock()
+    from triton_evaluation.metrics import RedisMetrics
+
+    metrics = RedisMetrics(client, settings.redis_prefix)
+    store = EvaluationStore(client, settings, clock=clock, metrics=metrics)
+    registry = CapabilityRegistry.from_secret_file(Path(settings.capability_secret_path))
+    catalog = ReleaseCatalog.load(catalog_files.root, catalog_files.manifest_path)
+
+    class AppContext:
+        pass
+
+    context = AppContext()
+    context.settings = settings
+    context.store = store
+    context.registry = registry
+    context.catalog = catalog
+    context.metrics = metrics
+    context.artifacts_verified = True
+    app = create_app(context)
+    transport = httpx.ASGITransport(app=app)
+    http = httpx.AsyncClient(transport=transport, base_url="http://test")
+    return BuiltApp(app, store, clock, http, settings)
+
+
+def trial_headers(session="session-1", key="key-1", request_id=None):
+    headers = {
+        "Authorization": f"Bearer {TRIAL_TOKEN}",
+        "X-Session-ID": session,
+        "Idempotency-Key": key,
+        "Content-Type": "application/json",
+    }
+    if request_id is not None:
+        headers["X-Request-ID"] = request_id
+    return headers
+
+
+def grade_headers(session="session-g", key="key-g"):
+    return {
+        "Authorization": f"Bearer {GRADE_TOKEN}",
+        "X-Session-ID": session,
+        "Idempotency-Key": key,
+        "Content-Type": "application/json",
+    }
+
+
+def request_payload(**overrides):
+    payload = {
+        "schema_version": "2.0",
+        "op_name": "addmm",
+        "reference_code": "REF",
+        "kernel_code": "IMPL",
+        "checks": ["correctness"],
+    }
+    payload.update(overrides)
+    return payload
+
+
+def raw_json(payload):
+    return json.dumps(payload).encode()
+
+
+@pytest.fixture
+def anyio_backend():
+    return "asyncio"
+
+
+@pytest.fixture
+def app(tmp_path, release_catalog_files):
+    return build_app(tmp_path, release_catalog_files)
+
+
+async def post(client, payload=None, headers=None, **kwargs):
+    return await client.post(
+        "/evaluations",
+        content=raw_json(payload if payload is not None else request_payload()),
+        headers=headers if headers is not None else trial_headers(),
+        **kwargs,
+    )
+
+
+# ---------------------------------------------------------------------------
+# POST semantics
+# ---------------------------------------------------------------------------
+
+
+async def test_post_creates_queued_resource_with_location(app):
+    seed_worker(app)
+    async with app.http as client:
+        response = await post(client)
+    assert response.status_code == 202
+    resource = EvaluationResource.model_validate_json(response.content)
+    assert resource.state == "queued"
+    assert response.headers["Location"] == f"/evaluations/{resource.evaluation_id}"
+    assert resource.evaluation_id.startswith("ev_")
+
+
+async def test_post_replay_same_key_returns_same_resource(app):
+    seed_worker(app)
+    async with app.http as client:
+        first = await post(client)
+        second = await post(client)
+    assert first.status_code == second.status_code == 202
+    assert first.json()["evaluation_id"] == second.json()["evaluation_id"]
+
+
+async def test_terminal_replay_returns_200(app, make_command):
+    from conftest import make_caller
+
+    seed_worker(app)
+    command = make_command(
+        caller=make_caller("trial-caller", "trial", ("trial:submit", "trial:read"))
+    )
+    created = app.store.create_or_replay(command)
+    lease = app.store.claim_next(
+        WorkerIdentity(new_worker_id(), app.settings.evaluator_build,
+                       algorithms(app.settings))
+    )
+    app.store.commit_terminal(lease, "completed", make_completed_result(app.settings))
+
+    async with app.http as client:
+        response = await post(client)
     assert response.status_code == 200
-    job = broker.dequeue()
-    assert job.type == "profile"
-    assert job.spec.profile_mode == "op"
-    assert job.spec.case_idx is None
-    assert job.spec.timeout == 3600
+    assert response.json()["evaluation_id"] == created.resource.evaluation_id
+    assert response.json()["state"] == "completed"
 
 
-def test_post_profile_accepts_one_deep_case(settings):
-    client, broker = _client(settings)
-    response = client.post(
-        "/profile",
-        json={
-            "op_name": "softmax",
-            "reference_code": "R",
-            "kernel_code": "K",
-            "profile_mode": "deep",
-            "case_idx": 3,
-            "timeout": 7200,
-        },
-    )
+# ---------------------------------------------------------------------------
+# GET semantics
+# ---------------------------------------------------------------------------
+
+
+async def test_get_returns_queued_resource_and_retry_after(app):
+    seed_worker(app)
+    async with app.http as client:
+        created = await post(client)
+        evaluation_id = created.json()["evaluation_id"]
+        response = await client.get(
+            f"/evaluations/{evaluation_id}", headers=trial_headers()
+        )
     assert response.status_code == 200
-    job = broker.dequeue()
-    assert job.spec.profile_mode == "deep"
-    assert job.spec.case_idx == 3
-    assert job.spec.timeout == 7200
+    assert response.headers.get("Retry-After") == "1"
+    assert response.json()["state"] == "queued"
 
 
-def test_post_profile_rejects_deep_launch_count(settings):
-    client, broker = _client(settings)
-    response = client.post(
-        "/profile",
-        json={
-            "op_name": "softmax",
-            "reference_code": "R",
-            "kernel_code": "K",
-            "profile_mode": "deep",
-            "profile_launch_count": 2,
-        },
+async def test_get_terminal_resource_has_no_retry_after(app, make_command):
+    from conftest import make_caller
+
+    command = make_command(
+        caller=make_caller("trial-caller", "trial", ("trial:submit", "trial:read"))
     )
-    assert response.status_code == 422
-    assert broker.dequeue() is None
+    created = app.store.create_or_replay(command)
+    lease = app.store.claim_next(
+        WorkerIdentity(new_worker_id(), app.settings.evaluator_build,
+                       algorithms(app.settings))
+    )
+    app.store.commit_terminal(lease, "completed", make_completed_result(app.settings))
+    async with app.http as client:
+        response = await client.get(
+            f"/evaluations/{created.resource.evaluation_id}",
+            headers=trial_headers(),
+        )
+    assert response.status_code == 200
+    assert "Retry-After" not in response.headers
+    assert response.json()["state"] == "completed"
 
 
-def test_benchmark_route_is_gone(settings):
-    client, _ = _client(settings)
-    r = client.post("/benchmark", json={"op_name": "s", "reference_code": "R", "kernel_code": "K"})
-    assert r.status_code == 404
-
-
-def test_get_task_unknown_is_404(settings):
-    client, _ = _client(settings)
-    assert client.get("/tasks/nope").status_code == 404
-
-
-def test_get_task_returns_record(settings):
-    client, broker = _client(settings)
-    task_id = client.post(
-        "/verify", json={"op_name": "s", "reference_code": "R", "kernel_code": "K"}
-    ).json()["task_id"]
-    r = client.get(f"/tasks/{task_id}")
-    assert r.status_code == 200
-    assert r.json()["status"] == "QUEUED"
-
-
-def test_healthz(settings):
-    client, _ = _client(settings)
-    r = client.get("/healthz")
-    assert r.status_code == 200
-    assert r.json()["redis"] == "ok"
-
-
-class _RecordingBroker:
-    """Minimal broker double to observe lifespan startup/shutdown hooks."""
-
-    def __init__(self):
-        self.pinged = 0
-        self.closed = 0
-
-    def ping(self):
-        self.pinged += 1
-
-    def close(self):
-        self.closed += 1
-
-
-def test_lifespan_pings_on_startup_and_closes_on_shutdown():
-    b = _RecordingBroker()
-    app = create_app(b)
-    assert b.pinged == 0 and b.closed == 0
-    with TestClient(app):  # entering the context runs the lifespan startup
-        assert b.pinged == 1  # fail-fast Redis ping on startup
-    assert b.closed == 1  # pool released on shutdown
+async def test_unknown_id_returns_404_envelope(app):
+    async with app.http as client:
+        response = await client.get(
+            f"/evaluations/ev_{'0' * 32}", headers=trial_headers()
+        )
+    assert response.status_code == 404
+    envelope = ErrorEnvelope.model_validate_json(response.content)
+    assert envelope.error.code == "NOT_FOUND"
+    assert envelope.error.phase == "request"
+    assert envelope.error.retryable is False
