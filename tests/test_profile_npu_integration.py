@@ -11,10 +11,13 @@ TESTS_DIR = Path(__file__).parent
 sys.path.insert(0, str(TESTS_DIR))
 from msprof_smoke_kernels import KERNEL_CODE, REFERENCE_CODE  # noqa: E402
 
-pytestmark = pytest.mark.skipif(
-    os.environ.get("TRITON_EVAL_RUN_NPU_PROFILE_TESTS") != "1",
-    reason="set TRITON_EVAL_RUN_NPU_PROFILE_TESTS=1 on an NPU host",
-)
+pytestmark = [
+    pytest.mark.npu,
+    pytest.mark.skipif(
+        os.environ.get("TRITON_EVAL_RUN_NPU_PROFILE_TESTS") != "1",
+        reason="set TRITON_EVAL_RUN_NPU_PROFILE_TESTS=1 on an NPU host",
+    ),
+]
 
 
 def _materialize(tmp_path):
