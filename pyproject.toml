@@ -18,12 +18,6 @@ dev = ["ruff==0.16.0"]
 [tool.setuptools.packages.find]
 include = ["triton_evaluation*"]
 
-[tool.pytest.ini_options]
-markers = [
-    "npu: requires a real Ascend NPU and a deployed service (production release gate)",
-    "release_gate: orchestrated by scripts/npu_release_gate.py, never run standalone in CI",
-]
-
 [tool.ruff]
 line-length = 100
 target-version = "py310"
