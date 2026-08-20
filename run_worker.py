@@ -20,7 +20,7 @@ def build_worker(card: int, settings: Settings | None = None) -> Worker:
     settings = settings or Settings.from_env()
     os.environ["ASCEND_RT_VISIBLE_DEVICES"] = str(card)
     store = build_store(settings)
-    evaluator = EvaluationEvaluator(settings.engine_dir)
+    evaluator = EvaluationEvaluator(settings.engine_dir, settings=settings)
     return Worker(
         store, evaluator, device_id=card, settings=settings
     )

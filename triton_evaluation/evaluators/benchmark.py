@@ -9,12 +9,12 @@ import sys
 from pathlib import Path
 
 from ..api.contract import EvaluationRequest, PerformanceParams
-from ..config import BENCHMARK_TIMEOUT_SECONDS
 from .base import (
     EngineCheckResult,
     LeaseLostError,
     engine_failure,
     engine_timeout,
+    log_engine_crash,
     read_json,
     remaining_seconds,
     run_script,
@@ -23,8 +23,9 @@ from .base import (
 
 
 class BenchmarkEvaluator:
-    def __init__(self, engine_dir: str):
+    def __init__(self, engine_dir: str, timeout_seconds: int = 600):
         self.engine_dir = engine_dir
+        self.timeout_seconds = timeout_seconds
 
     def run(
         self,
@@ -63,7 +64,7 @@ class BenchmarkEvaluator:
             device_id,
             deadline_at,
             lease_valid,
-            budget_seconds=max(1, min(BENCHMARK_TIMEOUT_SECONDS, int(remaining))),
+            budget_seconds=max(1, min(self.timeout_seconds, int(remaining))),
         )
         if outcome.outcome == "fenced":
             raise LeaseLostError("benchmark engine lost its lease")
@@ -78,6 +79,11 @@ class BenchmarkEvaluator:
         result = read_json(str(out_path))
         if outcome.exit_code == 0 and isinstance(result, dict):
             return EngineCheckResult(status="succeeded", raw=result, error=None)
+        log_engine_crash(
+            "benchmark", outcome, result_file_exists=isinstance(result, dict)
+        )
         return engine_failure(
-            "performance", "benchmark engine produced no usable result"
+            "performance",
+            f"benchmark engine produced no usable result (engine exit="
+            f"{outcome.exit_code})",
         )

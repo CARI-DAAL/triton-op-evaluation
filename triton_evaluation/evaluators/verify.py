@@ -18,6 +18,7 @@ from .base import (
     LeaseLostError,
     engine_failure,
     engine_timeout,
+    log_engine_crash,
     materialize,
     read_json,
     remaining_seconds,
@@ -26,11 +27,13 @@ from .base import (
 )
 
 # The decoy pre-check and reference case counting are short fixed budgets; the
-# verify run itself is bounded by the resource deadline. The per-subject
-# execution budget forwarded to the engine is capped so a hanging candidate
-# forward is attributed long before the outer kill.
+# verify run itself is bounded by the resource deadline. The budget forwarded
+# to the engine caps the WHOLE run (all cases), capped by the deployment-
+# tunable Settings.verify_budget_cap_seconds.
 _DECOY_CHECK_TIMEOUT_SECONDS = 60
-_PER_SUBJECT_BUDGET_CAP_SECONDS = 900
+# engine/verify.py exits 3 when its whole-run watchdog fires — a deliberate,
+# identifiable death, distinct from 0 (normal) and 1 (generic engine error).
+_ENGINE_WATCHDOG_EXIT_CODE = 3
 # The evaluator's outer kill must fire only after the engine's own outer kill
 # had its chance to run: the engine main mode waits budget +
 # engine/verify.py's OUTER_GRACE_SECONDS, so the evaluator waits that plus a
@@ -70,8 +73,9 @@ def _extract_validate_json(text: str) -> dict | None:
 
 
 class VerifyEvaluator:
-    def __init__(self, engine_dir: str):
+    def __init__(self, engine_dir: str, budget_cap_seconds: int = 1500):
         self.engine_dir = engine_dir
+        self.budget_cap_seconds = budget_cap_seconds
 
     def run(
         self,
@@ -212,7 +216,7 @@ class VerifyEvaluator:
             return engine_timeout(
                 "correctness", "resource deadline expired before correctness ran"
             )
-        budget = max(1, min(int(remaining), _PER_SUBJECT_BUDGET_CAP_SECONDS))
+        budget = max(1, min(int(remaining), self.budget_cap_seconds))
         out_path = Path(work_dir) / "verify_result.json"
         cmd = [
             sys.executable,
@@ -248,8 +252,24 @@ class VerifyEvaluator:
                 "correctness", "correctness exceeded the resource deadline"
             )
         result = read_json(str(out_path))
+        if outcome.exit_code == _ENGINE_WATCHDOG_EXIT_CODE:
+            # Whole-run watchdog: the legitimate workload outgrew the budget.
+            # Not a crash, never retryable — raise the budget cap or deadline.
+            log_engine_crash(
+                "verify", outcome, result_file_exists=isinstance(result, dict)
+            )
+            return engine_timeout(
+                "correctness",
+                "verify engine whole-run watchdog expired "
+                "(raise deadline or verify budget cap, or trim cases)",
+            )
         if not isinstance(result, dict):
+            log_engine_crash(
+                "verify", outcome, result_file_exists=False
+            )
             return engine_failure(
-                "correctness", "verify engine produced no usable result"
+                "correctness",
+                f"verify engine produced no usable result (engine exit="
+                f"{outcome.exit_code})",
             )
         return EngineCheckResult(status="succeeded", raw=result, error=None)

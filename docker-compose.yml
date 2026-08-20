@@ -65,6 +65,9 @@ services:
       # Sole evaluator_build used at admission and in Provenance; equals TRITON_EVAL_IMAGE
       # (or an explicitly reviewed git:<40-hex> dev build).
       TRITON_EVAL_EVALUATOR_BUILD: ${TRITON_EVAL_EVALUATOR_BUILD:?must equal the immutable image}
+      # Whole-run engine budgets (deployment-tunable; see the K3 watchdog report).
+      TRITON_EVAL_VERIFY_BUDGET_CAP_SECONDS: ${TRITON_EVAL_VERIFY_BUDGET_CAP_SECONDS:-1500}
+      TRITON_EVAL_BENCHMARK_TIMEOUT_SECONDS: ${TRITON_EVAL_BENCHMARK_TIMEOUT_SECONDS:-600}
       TRITON_EVAL_CAPABILITY_FILE: /run/secrets/triton-eval
       TRITON_EVAL_CATALOG_ROOT: /srv/triton-eval-release
       TRITON_EVAL_CATALOG_MANIFEST: /srv/triton-eval-release/catalog.json
