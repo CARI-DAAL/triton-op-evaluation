@@ -10,7 +10,13 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 # defaults to the bundled engine; the env override exists only to point at a
 # different engine build.
 _DEFAULT_ENGINE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "engine")
-BENCHMARK_TIMEOUT_SECONDS = 300
+
+# Whole-run engine budgets. The verify cap bounds the ENTIRE verify run (all
+# cases), not one subject — 900s was too tight for multi-case/large-kernel
+# workloads (see the K3 intermittent-failure report). The benchmark constant
+# doubles as the Settings default; both are deployment-tunable via env.
+VERIFY_BUDGET_CAP_SECONDS = 1500
+BENCHMARK_TIMEOUT_SECONDS = 600
 
 # The one published legacy compatibility removal instant; the docs publish the
 # same value. Removal of the routes is a separate reviewed change.
@@ -50,6 +56,14 @@ class Settings(BaseSettings):
     heartbeat_interval_seconds: float = Field(default=10.0, gt=0)
     maintenance_interval_seconds: float = Field(default=1.0, ge=0.05, le=5)
     queue_poll_interval_seconds: float = Field(default=1.0, ge=0.05, le=5)
+
+    # --- engine whole-run budgets (deployment-tunable) ---
+    verify_budget_cap_seconds: int = Field(
+        default=VERIFY_BUDGET_CAP_SECONDS, gt=60
+    )
+    benchmark_timeout_seconds: int = Field(
+        default=BENCHMARK_TIMEOUT_SECONDS, ge=10
+    )
 
     # --- admission quotas; trial and trusted buckets stay independent ---
     trial_rate_limit_per_minute: int = Field(default=60, gt=0)

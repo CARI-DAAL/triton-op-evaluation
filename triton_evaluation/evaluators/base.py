@@ -8,6 +8,7 @@ fenced durable-progress boundary: every requested check is begun and saved
 through it, and a rejected call must abort the attempt via ``LeaseLostError``.
 """
 import json
+import logging
 import os
 import signal
 import subprocess
@@ -21,6 +22,8 @@ from typing import Literal, Protocol
 from ..api.contract import Check, CheckOutcome, ErrorInfo, EvaluationRequest, Purpose
 from ..api.contract_artifacts import canonical_json_bytes, sha256_hex
 from ..models import AlgorithmVersions
+
+logger = logging.getLogger(__name__)
 
 
 class LeaseLostError(RuntimeError):
@@ -217,6 +220,36 @@ def _collected(proc, out_file, err_file, outcome: str) -> ScriptOutcome:
         timed_out=outcome != "exited",
         outcome=outcome,
     )
+
+
+def log_engine_crash(
+    check: str,
+    outcome: "ScriptOutcome",
+    *,
+    result_file_exists: bool,
+    log_path: Path | None = None,
+) -> None:
+    """Retain first-failure evidence: one appended record per engine death.
+
+    Captures the exit code, run outcome, result-file presence, and the tail of
+    engine stdout/stderr so an intermittent failure is diagnosable after the
+    fact (the per-attempt work dir is cleaned up by the worker). Best-effort:
+    a logging failure never changes the evaluation outcome.
+    """
+    destination = log_path or Path("logs") / "engine_crashes.log"
+    try:
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        with open(destination, "a", encoding="utf-8") as handle:
+            handle.write(
+                f"===== {datetime.now(timezone.utc).isoformat()} "
+                f"{check} crash exit={outcome.exit_code} "
+                f"outcome={outcome.outcome} "
+                f"result_file_exists={result_file_exists}\n"
+            )
+            handle.write(f"--- stderr tail ---\n{outcome.stderr[-6000:]}\n")
+            handle.write(f"--- stdout tail ---\n{outcome.stdout[-6000:]}\n")
+    except OSError:
+        logger.warning("failed to retain engine crash evidence")
 
 
 def read_json(path: str) -> dict | None:

@@ -40,6 +40,7 @@ from ..api.contract import (
     Provenance,
     SkipInfo,
 )
+from ..config import BENCHMARK_TIMEOUT_SECONDS, VERIFY_BUDGET_CAP_SECONDS
 from .base import (
     EngineCheckResult,
     LeaseLostError,
@@ -112,14 +113,25 @@ def _skipped(check: Check, code: str, depends_on: Check | None, message: str):
 
 
 class EvaluationEvaluator:
-    def __init__(self, engine_dir: str):
+    def __init__(self, engine_dir: str, settings=None):
         self.engine_dir = engine_dir
+        self.settings = settings
 
     def _verify_evaluator(self) -> VerifyEvaluator:
-        return VerifyEvaluator(self.engine_dir)
+        cap = (
+            self.settings.verify_budget_cap_seconds
+            if self.settings is not None
+            else VERIFY_BUDGET_CAP_SECONDS
+        )
+        return VerifyEvaluator(self.engine_dir, budget_cap_seconds=cap)
 
     def _benchmark_evaluator(self) -> BenchmarkEvaluator:
-        return BenchmarkEvaluator(self.engine_dir)
+        timeout = (
+            self.settings.benchmark_timeout_seconds
+            if self.settings is not None
+            else BENCHMARK_TIMEOUT_SECONDS
+        )
+        return BenchmarkEvaluator(self.engine_dir, timeout_seconds=timeout)
 
     def _profile_evaluator(self) -> ProfileEvaluator:
         return ProfileEvaluator(self.engine_dir)

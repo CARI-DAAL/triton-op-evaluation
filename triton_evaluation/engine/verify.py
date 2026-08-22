@@ -1320,6 +1320,20 @@ def verify_implementations(
     return passed_cases, total_cases
 
 
+def _terminate_expired_subprocess(proc, waited_seconds: int) -> None:
+    """Whole-run watchdog exit: kill the tree and die as exit code 3.
+
+    Exit 3 is a deliberate, identifiable death — distinct from 0 (normal) and
+    1 (generic engine error) — so the evaluator can classify an over-budget
+    but otherwise healthy run as a deadline/budget problem instead of a
+    retryable crash.
+    """
+    proc.kill()
+    proc.wait()
+    logger.error("验证超时（%d秒），已终止子进程", waited_seconds)
+    sys.exit(3)
+
+
 if __name__ == "__main__":
     _set_process_title("TritonEvalWork")
     _setup_logger()
@@ -1404,9 +1418,4 @@ if __name__ == "__main__":
             sys.exit(proc.returncode)
 
         except subprocess.TimeoutExpired:
-            proc.kill()
-            proc.wait()
-            logger.error(
-                "验证超时（%d秒），已终止子进程", args.timeout + OUTER_GRACE_SECONDS
-            )
-            sys.exit(1)
+            _terminate_expired_subprocess(proc, args.timeout + OUTER_GRACE_SECONDS)
