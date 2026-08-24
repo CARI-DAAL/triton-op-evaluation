@@ -62,6 +62,8 @@ services:
       TRITON_EVAL_API_HOST: ${TRITON_EVAL_API_HOST:?preflight must export the validated gateway}
       TRITON_EVAL_API_PORT: "11907"
       TRITON_EVAL_CARDS: ${TRITON_EVAL_CARDS:-8,9,10,11,12,13,14,15}
+      # Device memory each worker holds from startup so npu-smi shows it while idle.
+      TRITON_EVAL_DEVICE_HOLD_MB: ${TRITON_EVAL_DEVICE_HOLD_MB:-64}
       # Sole evaluator_build used at admission and in Provenance; equals TRITON_EVAL_IMAGE
       # (or an explicitly reviewed git:<40-hex> dev build).
       TRITON_EVAL_EVALUATOR_BUILD: ${TRITON_EVAL_EVALUATOR_BUILD:?must equal the immutable image}

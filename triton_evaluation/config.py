@@ -65,6 +65,13 @@ class Settings(BaseSettings):
         default=BENCHMARK_TIMEOUT_SECONDS, ge=10
     )
 
+    # --- NPU visibility hold ---
+    # Megabytes of device memory each worker allocates at startup and keeps
+    # for its lifetime so `npu-smi info` shows the worker even while idle
+    # (without this, only the per-job engine subprocesses briefly appear).
+    # 0 disables the hold.
+    device_hold_mb: int = Field(default=64, ge=0)
+
     # --- admission quotas; trial and trusted buckets stay independent ---
     trial_rate_limit_per_minute: int = Field(default=60, gt=0)
     trusted_rate_limit_per_minute: int = Field(default=60, gt=0)
