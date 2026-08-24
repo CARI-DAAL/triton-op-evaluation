@@ -1,5 +1,6 @@
 """Durable evaluation worker entrypoint: one process per NPU card."""
 import argparse
+import logging
 import os
 import signal
 
@@ -9,6 +10,25 @@ from triton_evaluation.broker import EvaluationStore
 from triton_evaluation.config import Settings
 from triton_evaluation.evaluators.evaluation import EvaluationEvaluator
 from triton_evaluation.worker import Worker
+
+logger = logging.getLogger(__name__)
+
+# Process title shown in `npu-smi info` / ps; 15-char /proc/<pid>/comm limit.
+_PROCESS_TITLE = "TritonEval"
+
+# Keeps the startup device-hold tensor alive for the process lifetime.
+_DEVICE_HOLD = None
+
+
+def set_process_title() -> None:
+    """Rename the worker so npu-smi shows `TritonEval` instead of `python`.
+    Best effort: missing setproctitle only keeps the default name."""
+    try:
+        from setproctitle import setproctitle
+
+        setproctitle(_PROCESS_TITLE)
+    except ImportError:
+        logger.info("setproctitle not installed; process keeps the default name")
 
 
 def build_store(settings: Settings) -> EvaluationStore:
@@ -26,13 +46,52 @@ def build_worker(card: int, settings: Settings | None = None) -> Worker:
     )
 
 
+def hold_device(settings: Settings, card: int) -> None:
+    """Open the pinned NPU and keep a small allocation alive so `npu-smi info`
+    shows this worker continuously, not only while a job's engine subprocess
+    is running. Best effort: a failure is logged and serving continues.
+    """
+    global _DEVICE_HOLD
+    if settings.device_hold_mb <= 0:
+        return
+    try:
+        import torch
+        import torch_npu  # noqa: F401 — registers the NPU backend on import
+
+        # ASCEND_RT_VISIBLE_DEVICES pins this process to one physical card,
+        # which becomes logical device 0.
+        torch.npu.set_device(0)
+        _DEVICE_HOLD = torch.empty(
+            settings.device_hold_mb * 1024 * 256,  # MB → uint8 elements
+            dtype=torch.uint8,
+            device="npu",
+        )
+        logger.info(
+            "holding %d MB on card %d for npu-smi visibility",
+            settings.device_hold_mb, card,
+        )
+    except Exception as error:  # noqa: BLE001 — visibility is best effort
+        _DEVICE_HOLD = None
+        logger.warning(
+            "device hold failed (%s); worker serves but npu-smi may not "
+            "show it while idle",
+            type(error).__name__,
+        )
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--card", type=int, required=True, help="Physical NPU card id to pin this worker to"
     )
     args = parser.parse_args()
+    set_process_title()
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s %(name)s %(message)s",
+    )
     worker = build_worker(args.card)
+    hold_device(worker.settings, args.card)
     stop = _install_signal_handlers()
     worker.serve_forever(stop_event=stop)
 
