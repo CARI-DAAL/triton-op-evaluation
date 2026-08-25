@@ -32,13 +32,8 @@ services:
       context: .
       dockerfile: Dockerfile
       args:
-        # Only relevant if you rebuild AND stop using the host env below. The host-env
-        # bind-mount bypasses the image's conda env at runtime regardless of these.
+        # Same declared build as `docker build .`; versions live in pyproject [npu].
         BASE_IMAGE: ${BASE_IMAGE:-quay.io/ascend/vllm-ascend:v0.22.1rc1-a3}
-        TORCH_SPEC: ${TORCH_SPEC:-torch==2.9.0}
-        TORCH_NPU_SPEC: ${TORCH_NPU_SPEC:-torch_npu==2.9.0}
-        TRITON_SPEC: ${TRITON_SPEC:-triton==3.5.0}
-        TRITON_ASCEND_SPEC: ${TRITON_ASCEND_SPEC:-triton-ascend==3.2.0}
         PIP_EXTRA_INDEX_URL: ${PIP_EXTRA_INDEX_URL:-}
     # Immutable digest reference required at deploy time; preflight rejects tag-only
     # references and RepoDigest mismatches. No :latest fallback exists on purpose.
