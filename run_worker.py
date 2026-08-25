@@ -62,7 +62,7 @@ def hold_device(settings: Settings, card: int) -> None:
         # which becomes logical device 0.
         torch.npu.set_device(0)
         _DEVICE_HOLD = torch.empty(
-            settings.device_hold_mb * 1024 * 256,  # MB → uint8 elements
+            settings.device_hold_mb * 1024 * 1024,  # MB → bytes (uint8 elements)
             dtype=torch.uint8,
             device="npu",
         )

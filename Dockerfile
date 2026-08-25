@@ -1,42 +1,61 @@
-# triton-evaluation service image — host-coupled NPU deployment.
+# triton-evaluation on Ascend — declared-dependency build.
 #
-# First-principles layout: the image owns exactly what the service is.
-#   * the service source (/opt/triton-eval) + entrypoint
-#   * a snapshot of the validated NPU Python stack (torch 2.9.0 / torch_npu 2.9.0 /
-#     triton 3.5.0 / triton-ascend 3.2.1) staged from the host conda env this
-#     deployment was validated against — no pip downloads at build time, no
-#     version drift between build and validation, no 18GB inference-stack base.
-# Host-coupled pieces are bind-mounted at runtime BY DESIGN, because they must
-# match the host's NPU driver: the CANN toolkit, driver libs, /dev/davinci*,
-# npu-smi. No image can be self-contained there.
+# The Python stack is fully declared: `pip install ".[npu]"` installs the
+# torch / torch_npu / triton / triton-ascend versions pinned in
+# pyproject.toml [project.optional-dependencies].npu — the SAME declaration the
+# non-Docker path (scripts/start.sh) uses. Network access is required at build
+# time and is the operator's concern; torch_npu / triton-ascend are not on
+# PyPI, so point PIP_EXTRA_INDEX_URL at the Ascend wheel index when building:
 #
-# Build context is prepared by scripts/build_local_image.sh (stages env/ and
-# app/ from this repo + the host env), then:
-#   bash scripts/build_local_image.sh [tag]     # default tag: 1.0
-# BASE_IMAGE: any local aarch64 glibc base (>= 2.17) with bash; overridden when
-# this host's default base is absent elsewhere.
-ARG BASE_IMAGE=openeuler22.03_arm:autotest
+#   docker build -t triton-eval:1.0 .
+#   docker build --build-arg PIP_EXTRA_INDEX_URL=https://<ascend-index>/simple \
+#                -t triton-eval:1.0 .
+#
+# Host-coupled pieces (CANN toolkit, NPU driver, /dev/davinci*) are NOT in the
+# image on purpose: they must match the host's driver and are bind-mounted at
+# runtime — see scripts/docker_run.sh. Run with `bash scripts/docker_run.sh`
+# or docker compose; both mount the same host paths.
+#
+# BASE_IMAGE: any aarch64 glibc (>= 2.17) base with bash + apt. The default
+# carries a CANN-matching userspace; override with --build-arg if you prefer
+# a smaller base.
+ARG BASE_IMAGE=quay.io/ascend/vllm-ascend:v0.22.1rc1-a3
 FROM ${BASE_IMAGE}
 
-# The validated NPU Python stack, relocated to /opt/env/verl-base.
-# (bin/ console scripts keep host shebangs and are unused; invoke python3 -m.)
-COPY env/verl-base /opt/env/verl-base
+ARG PIP_EXTRA_INDEX_URL=""
 
-# The service itself.
-COPY app /opt/triton-eval
+ENV DEBIAN_FRONTEND=noninteractive \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1
 
-# Import the service package from source (replaces the host's editable install)
-# and strip the host-path editable-install artifacts from the staged env.
-RUN echo "/opt/triton-eval" > /opt/env/verl-base/lib/python3.11/site-packages/triton-eval.pth \
- && rm -f /opt/env/verl-base/lib/python3.11/site-packages/__editable__* \
-          /opt/env/verl-base/lib/python3.11/site-packages/easy-install.pth \
-          /opt/env/verl-base/lib/python3.11/site-packages/triton_evaluation.egg-link \
- ; true
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        wget bzip2 git ca-certificates && rm -rf /var/lib/apt/lists/*
 
-ENV PATH=/opt/env/verl-base/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
-    PYTHON_BIN=/opt/env/verl-base/bin/python3 \
-    HOME=/root
+# py3.11 conda env — the validated triton-ascend stack is py3.11.
+# NOTE: recent Miniconda gates `conda create` on accepting the Anaconda channel
+# Terms of Service; accept them non-interactively first or the build aborts with
+# CondaToSNonInteractiveError.
+RUN wget -q https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-aarch64.sh -O /m.sh \
+ && bash /m.sh -bfp /opt/conda && rm /m.sh \
+ && /opt/conda/bin/conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/main \
+ && /opt/conda/bin/conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/r \
+ && /opt/conda/bin/conda create -y -n triton-eval python=3.11 \
+ && /opt/conda clean -afy
+# Put the env first so python3 / pip / uvicorn — and the engine's sys.executable — are py3.11.
+ENV PATH=/opt/conda/envs/triton-eval/bin:$PATH
 
-# driver libs + host CANN wiring + API/workers; see docker/entrypoint.sh
-ENTRYPOINT ["bash", "/opt/triton-eval/docker/entrypoint.sh"]
+# The service: light deps + the declared NPU stack, all from pyproject.
+WORKDIR /opt/triton-eval
+COPY pyproject.toml README.md ./
+COPY triton_evaluation ./triton_evaluation
+COPY contracts ./contracts
+RUN pip install --retries 10 --timeout 120 \
+      ${PIP_EXTRA_INDEX_URL:+--extra-index-url ${PIP_EXTRA_INDEX_URL}} \
+      ".[npu]"
+
+COPY run_api.py run_worker.py ./
+COPY docker/entrypoint.sh /usr/local/bin/entrypoint.sh
+RUN chmod +x /usr/local/bin/entrypoint.sh
+
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
 CMD ["all"]
