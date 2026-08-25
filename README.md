@@ -18,9 +18,9 @@ the versions are declared once in `pyproject.toml` (`[project.optional-dependenc
 ```bash
 conda create -n triton-eval python=3.11 && conda activate triton-eval
 pip install -e ".[npu]" --extra-index-url https://<ascend-wheel-index>/simple
-#   (the [npu] extra pins torch 2.9.0 / torch_npu 2.9.0 / triton 3.5.0 /
-#    triton-ascend 3.2.1 + pandas + setproctitle; the extra index is only
-#    needed because torch_npu / triton-ascend are not on PyPI)
+#   (the [npu] extra carries the pinned Ascend stack — see pyproject.toml;
+#    the extra index is only needed because torch_npu / triton-ascend are
+#    not on PyPI)
 redis-server --daemonize yes       # or point TRITON_EVAL_REDIS_URL at an existing Redis
 ```
 
@@ -56,10 +56,11 @@ See `.env.example` for all environment variables.
 
 ## Run in Docker (Ascend NPU host)
 
-The image is **self-contained for the Python stack**: it builds a py3.11 conda env and
-installs the SAME declared versions the host path uses (`pip install ".[npu]"` — see
-`pyproject.toml`). Network access is needed at build time; when torch_npu / triton-ascend
-are not reachable from PyPI, pass `--build-arg PIP_EXTRA_INDEX_URL=https://<ascend-wheel-index>/simple`.
+The image is **self-contained for the Python stack**: on the official `python:3.11`
+(aarch64) base it installs the SAME declared versions the host path uses
+(`pip install ".[npu]"` — see `pyproject.toml`). Network access is needed at build time;
+when torch_npu / triton-ascend are not reachable from PyPI, pass
+`--build-arg PIP_EXTRA_INDEX_URL=https://<ascend-wheel-index>/simple`.
 
 Host-coupled pieces — the **CANN toolkit, NPU driver, and `/dev/davinci*` devices** — are
 NOT baked into the image; they are bind-mounted at runtime because they must match the
