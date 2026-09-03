@@ -180,6 +180,8 @@ infra 可疑死亡时在 evaluation 记 `last_failed_card`;worker 认领时同�
 
 - 预算 `min(剩余 deadline, 上限默认 300s)`;watchdog 复用 PR #12 的 exit-3 可辨识死亡模式,归因 `DEADLINE_EXCEEDED`,不误判为可重试崩溃
 
+**Spike 裁决(2026-09-04,Plan A Task 5)**:`compile_stage = on_card`。完整证据:`docs/superpowers/spikes/2026-09-04-cardless-compile-report.md`。判据 1 ✅(纯编译可无卡完成,但需三处 triton-ascend 3.2.1 workaround:backend driver 是类需实例化、ASTSource kwarg 改名为 `constants`、编译管线从设备取 SoC arch 需 shim `NPUUtils.get_arch`);判据 2 ❌(**决定性**):JIT 路径缓存键携带 launch 特化/attrs,与 ASTSource 产物键不互通,生产形态路径下卡上命中 0%(对齐 ast_source 形态时 100%);判据 3 3/4 一致(fail_backend 为语料缺陷);判据 4 p50 ≈ 2.17 s / p95 ≈ 2.46 s。**重访 `cpu_lane` 的触发条件**:上游把 `TRITON_ASCEND_ARCH` 接入 `NPUUtils.get_arch`(约 2 行),且 JIT/ast_source 缓存键收敛——或 Plan D 卡上改用 ast_source 形态编译。
+
 ## 9. 性能测量轻量化
 
 ### 引擎改动(`engine/benchmark.py`)
