@@ -13,7 +13,9 @@ Fixed keyspace under ``settings.redis_prefix`` (default ``triton-eval:v2``)::
     resource:{evaluation_id}                     hash (canonical request, public
                                                  resource JSON, owner, quotas metadata)
     idempotency:{sha256(caller_id NUL key)}      hash: evaluation_id, request_digest
-    ready                                        zset, score = queue sequence
+    ready:exec:interactive                       zset, score = queue sequence
+    ready:exec:bulk                              zset, score = queue sequence (rollout class)
+    ready                                        legacy zset, drain-only (pre-dual-queue deploys)
     queue-sequence                               integer
     deadlines                                    zset, score = deadline epoch ms
     running-leases                               zset, score = lease expiry epoch ms
@@ -154,6 +156,12 @@ class EvaluationStore:
             return self._s.rollout_rate_limit_per_minute, self._s.rollout_max_inflight
         return self._s.trusted_rate_limit_per_minute, self._s.trusted_max_inflight
 
+    def _ready_key(self, traffic_class: str) -> str:
+        """Strict-priority dispatch: rollout drains from bulk, everything else
+        from interactive; workers always scan interactive first."""
+        suffix = "bulk" if traffic_class == "rollout" else "interactive"
+        return self._key(f"ready:exec:{suffix}")
+
     def create_or_replay(self, command: CreateResourceCommand) -> CreateResourceResult:
         """Atomically write idempotency, resource, FIFO entry, deadline, and quotas.
 
@@ -217,7 +225,10 @@ class EvaluationStore:
                         "request_digest": command.admission.request_digest,
                     },
                 )
-                pipeline.zadd(self._key("ready"), {command.evaluation_id: successor})
+                pipeline.zadd(
+                    self._ready_key(command.traffic_class),
+                    {command.evaluation_id: successor},
+                )
                 pipeline.zadd(self._key("deadlines"), {command.evaluation_id: deadline_ms})
                 pipeline.zadd(
                     self._key("state:queued"), {command.evaluation_id: deadline_ms}
@@ -369,18 +380,35 @@ class EvaluationStore:
     # ------------------------------------------------------------------
 
     def claim_next(self, worker: WorkerIdentity) -> AttemptLease | None:
-        """Atomically claim the head of the ready queue for ``worker``.
+        """Atomically claim the head of the dispatch queues for ``worker``.
 
-        A queued claim removes the ready member, flips the public resource to
-        running with a bumped revision and the first ``started_at``, installs
-        attempt/lease fields, and moves the state indexes. A
-        replacement-pending running resource keeps its public state, revision,
-        and started time and consumes the higher token the reaper reserved.
-        Past-deadline members never start; duplicate members for claimed
+        Strict priority: the interactive queue (trial/trusted) scans first, the
+        bulk queue (rollout class) only when interactive is empty, and the legacy
+        ``ready`` zset (pre-dual-queue deploys) drains last. Interactive callers
+        are quota-capped, so priority cannot starve bulk traffic; bulk floods
+        cannot head-of-line block interactive latency. A queued claim removes the
+        ready member, flips the public resource to running with a bumped revision
+        and the first ``started_at``, installs attempt/lease fields, and moves the
+        state indexes. A replacement-pending running resource keeps its public
+        state, revision, and started time and consumes the higher token the reaper
+        reserved. Past-deadline members never start; duplicate members for claimed
         resources are removed.
         """
-        ready_key = self._key("ready")
         leases_key = self._key("running-leases")
+        for ready_key in (
+            self._key("ready:exec:interactive"),
+            self._key("ready:exec:bulk"),
+            self._key("ready"),  # legacy, drain-only
+        ):
+            lease = self._claim_from_queue(worker, ready_key, leases_key)
+            if lease is not None:
+                return lease
+        return None
+
+    def _claim_from_queue(
+        self, worker: WorkerIdentity, ready_key: str, leases_key: str
+    ) -> AttemptLease | None:
+        """Single-queue claim scan; fencing and replacement semantics unchanged."""
         while True:
             now_ms = self._clock()
             pipeline = self._r.pipeline()
@@ -683,7 +711,9 @@ class EvaluationStore:
         pipeline.expire(
             stored[b"idempotency_key"].decode("utf-8"), self._s.retention_seconds
         )
-        pipeline.zrem(self._key("ready"), evaluation_id)
+        pipeline.zrem(self._key("ready:exec:interactive"), evaluation_id)
+        pipeline.zrem(self._key("ready:exec:bulk"), evaluation_id)
+        pipeline.zrem(self._key("ready"), evaluation_id)  # legacy drain-only queue
         pipeline.zrem(self._key("deadlines"), evaluation_id)
         pipeline.zrem(self._key("running-leases"), evaluation_id)
         pipeline.zrem(self._key("state:queued"), evaluation_id)
@@ -735,7 +765,6 @@ class EvaluationStore:
         evaluation_id = member.decode("utf-8")
         resource_key = self._key(f"resource:{evaluation_id}")
         leases_key = self._key("running-leases")
-        ready_key = self._key("ready")
         sequence_key = self._key("queue-sequence")
         while True:
             pipeline = self._r.pipeline()
@@ -760,6 +789,7 @@ class EvaluationStore:
                 if now_ms >= int(stored[b"deadline_ms"]):
                     return None  # the deadline watchdog owns this resource
                 if int(stored[b"attempt_count"]) < MAX_ATTEMPTS:
+                    ready_key = self._ready_key(self._stored_traffic_class(stored))
                     pipeline.watch(ready_key, sequence_key)
                     successor = int(pipeline.get(sequence_key) or 0) + 1
                     pipeline.multi()

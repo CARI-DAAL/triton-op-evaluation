@@ -35,7 +35,7 @@ def test_same_key_same_request_replays_without_new_writes(
     assert replay.resource == first.resource
     assert replay.resource.evaluation_id == first.resource.evaluation_id
     assert redis_client.get(_key(settings, "queue-sequence")) == b"1"
-    assert redis_client.zcard(_key(settings, "ready")) == 1
+    assert redis_client.zcard(_key(settings, "ready:exec:interactive")) == 1
     caller_digest = sha256_hex(b"caller-1")
     session_digest = sha256_hex(b"caller-1\0session-1")
     assert redis_client.get(_key(settings, f"inflight:caller:trial:{caller_digest}")) == b"1"
@@ -74,7 +74,7 @@ def test_same_key_across_callers_creates_independent_resources(
     assert first.decision == "created"
     assert second.decision == "created"
     assert first.resource.evaluation_id != second.resource.evaluation_id
-    assert redis_client.zcard(_key(settings, "ready")) == 2
+    assert redis_client.zcard(_key(settings, "ready:exec:interactive")) == 2
 
 
 def test_replay_compares_exact_canonical_bytes_not_digest_alone(
@@ -276,7 +276,7 @@ def test_sixteen_concurrent_identical_creates_create_exactly_one_resource(
 
     client = fakeredis.FakeStrictRedis(server=redis_server)
     assert client.get(_key(settings, "queue-sequence")) == b"1"
-    assert client.zcard(_key(settings, "ready")) == 1
+    assert client.zcard(_key(settings, "ready:exec:interactive")) == 1
     caller_digest = sha256_hex(b"caller-1")
     session_digest = sha256_hex(b"caller-1\0session-1")
     assert client.get(_key(settings, f"inflight:caller:trial:{caller_digest}")) == b"1"
