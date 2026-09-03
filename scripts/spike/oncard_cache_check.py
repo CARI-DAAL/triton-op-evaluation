@@ -74,9 +74,13 @@ def main() -> int:
         for label, cdir in (("warm", args.cache_dir), ("cold", args.cold_cache_dir)):
             env = dict(os.environ, TRITON_CACHE_DIR=cdir)
             Path(cdir).mkdir(parents=True, exist_ok=True)
-            proc = subprocess.run(
-                [sys.executable, __file__, "--child", "--module", name],
-                env=env, capture_output=True, text=True, timeout=900)
+            try:
+                proc = subprocess.run(
+                    [sys.executable, __file__, "--child", "--module", name],
+                    env=env, capture_output=True, text=True, timeout=900)
+            except subprocess.TimeoutExpired:
+                row[label] = {"error": "child timed out after 900s"}
+                continue
             line = next((ln for ln in proc.stdout.splitlines()
                          if ln.startswith("RESULT ")), None)
             if proc.returncode != 0 or line is None:

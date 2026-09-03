@@ -9,11 +9,11 @@ mkdir -p spike-cache spike-cold-cache spike-report
 export TRITON_EVAL_IMAGE=<pinned sha256 digest>
 
 # 1. cardless compile probe (criteria 1, 4; half of 3)
-docker compose -f docker-compose.spike-cardless.yml up --abort-on-container-exit
+docker compose -f docker-compose.spike-cardless.yml up --abort-on-container-exit --exit-code-from spike-cardless
 echo "exit=$?"   # 0 = all corpus expectations met cardless
 
 # 2. on-card cache reuse (criterion 2)
-docker compose -f docker-compose.spike-oncard.yml up --abort-on-container-exit
+docker compose -f docker-compose.spike-oncard.yml up --abort-on-container-exit --exit-code-from spike-oncard
 
 # 3. on-card failure classification via the npu0 smoke service (other half of 3)
 python3 scripts/spike/oncard_classify.py \

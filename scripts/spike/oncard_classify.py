@@ -15,15 +15,41 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from corpus import MODULES  # noqa: E402
 
-REFERENCE = """import torch
+# Reference contract (engine/verify.py requires get_init_inputs). Arity must
+# match the candidate kernel's forward: fail_backend is 2-arg, the other
+# failure modules are 1-arg.
+REFERENCE_2ARG = """import torch
 
 class Model(torch.nn.Module):
     def forward(self, x, y):
         return x + y
 
+def get_init_inputs():
+    return []
+
 def get_input_groups():
     return [[torch.randn(4096), torch.randn(4096)]]
 """
+
+REFERENCE_1ARG = """import torch
+
+class Model(torch.nn.Module):
+    def forward(self, x):
+        return x
+
+def get_init_inputs():
+    return []
+
+def get_input_groups():
+    return [[torch.randn(4096)]]
+"""
+
+REFERENCES = {
+    "fail_backend": REFERENCE_2ARG,
+    "fail_syntax": REFERENCE_1ARG,
+    "fail_import_dep": REFERENCE_1ARG,
+    "fail_frontend": REFERENCE_1ARG,
+}
 
 
 def http_json(method, url, body, headers, timeout=15.0):
@@ -35,12 +61,12 @@ def http_json(method, url, body, headers, timeout=15.0):
         return json.loads(resp.read().decode())
 
 
-def classify_one(base, headers, name, source, deadline=600) -> dict:
+def classify_one(base, headers, name, source, reference, deadline=600) -> dict:
     body = {
         "schema_version": "2.0",
         "purpose": "trial",
         "op_name": f"spike_{name}",
-        "reference_code": REFERENCE,
+        "reference_code": reference,
         "kernel_code": source,
         "checks": ["correctness"],
         "deadline_seconds": deadline,
@@ -79,7 +105,11 @@ def main() -> int:
     for name, entry in MODULES.items():
         if entry["expect"] == "ok":
             continue
-        row = classify_one(args.url, headers, name, entry["source"])
+        reference = REFERENCES.get(name, REFERENCE_1ARG)
+        try:
+            row = classify_one(args.url, headers, name, entry["source"], reference)
+        except Exception as exc:  # one transient HTTP error must not kill the sweep
+            row = {"oncard_outcome": "client_error", "error": str(exc)[:500]}
         row["cardless_stage"] = prior.get(name, "unknown")
         # consistent := service agrees the kernel is not runnable; the exact
         # outcome→stage mapping is documented in the spike report (spec §8

@@ -9,6 +9,7 @@ services:
     environment:
       TRITON_EVAL_SKIP_READINESS: "1"
       HOME: /tmp
+      PYTHONUSERBASE: /home/n84449292/.local
       CANN_SET_ENV_PATH: /home/canada_group_folder/CANN/9.0.0.0430/ascend-toolkit/set_env.sh
       ASCEND_DRIVER_PATH: /usr/local/Ascend/driver
     command:
@@ -23,6 +24,7 @@ services:
       - /home/n84449292/.local:/home/n84449292/.local:ro
       - /home/canada_group_folder/CANN/9.0.0.0430:/home/canada_group_folder/CANN/9.0.0.0430
       - /usr/local/Ascend/driver:/usr/local/Ascend/driver:ro
+      - ./docker/entrypoint.sh:/usr/local/bin/entrypoint.sh:ro
       - ./scripts/spike:/spike:ro
       - ./spike-cache:/spike-cache
       - ./spike-report:/spike-report

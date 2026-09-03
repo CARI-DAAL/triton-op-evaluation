@@ -198,15 +198,15 @@ def main() -> int:
         import selftest
         return selftest.main()
 
+    cache_dir = Path(args.cache_dir)
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    os.environ["TRITON_CACHE_DIR"] = str(cache_dir)  # before env_facts(): triton may import there
+
     facts = env_facts()
     print(json.dumps({"env_facts": facts}, indent=2))
     if facts["davinci_nodes"] or facts["npu_available"] is True:
         print("ENV VIOLATION: an NPU device is visible; cardless result would be void")
         return 2
-
-    cache_dir = Path(args.cache_dir)
-    cache_dir.mkdir(parents=True, exist_ok=True)
-    os.environ["TRITON_CACHE_DIR"] = str(cache_dir)  # before triton compile paths run
 
     report = {"env_facts": facts, "modules": {}}
     with tempfile.TemporaryDirectory(prefix="spike_") as work:
