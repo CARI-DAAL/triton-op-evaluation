@@ -129,11 +129,18 @@ def _require_ready(context: AppContext, caller: Caller) -> None:
 def _build_command(context, caller, session_id, idempotency_key, admission, purpose):
     from ..models import new_evaluation_id
 
+    is_rollout = (
+        purpose == "trial" and caller.caller_id in context.settings.rollout_caller_ids
+    )
     return CreateResourceCommand(
         evaluation_id=new_evaluation_id(),
         caller_id=caller.caller_id,
         caller_class=caller.caller_class,
-        traffic_class="trial" if purpose == "trial" else "trusted",
+        traffic_class=(
+            "rollout"
+            if is_rollout
+            else ("trial" if purpose == "trial" else "trusted")
+        ),
         session_id=session_id,
         idempotency_key=idempotency_key,
         admission=admission,
