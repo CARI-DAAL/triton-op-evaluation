@@ -26,7 +26,7 @@ _ERROR_CODES = (
 )
 
 LABEL_VALUES = {
-    "caller_class": ("trial", "trusted", "observer"),
+    "caller_class": ("trial", "trusted", "observer", "rollout"),
     "decision": ("created", "replayed", "conflict", "rate_limited", "limit_exceeded"),
     "state": ("queued", "running", "completed", "failed", "timed_out"),
     "check": ("correctness", "performance", "profile"),

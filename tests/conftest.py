@@ -119,6 +119,7 @@ def make_command(settings, release_catalog):
         session_id="session-1",
         idempotency_key="key-1",
         evaluation_id=None,
+        traffic_class=None,
     ):
         caller = caller or make_caller()
         request = request or make_request()
@@ -128,7 +129,8 @@ def make_command(settings, release_catalog):
             evaluation_id=evaluation_id or new_evaluation_id(),
             caller_id=caller.caller_id,
             caller_class=caller.caller_class,
-            traffic_class="trial" if request.purpose == "trial" else "trusted",
+            traffic_class=traffic_class
+            or ("trial" if request.purpose == "trial" else "trusted"),
             session_id=session_id,
             idempotency_key=idempotency_key,
             admission=admission,

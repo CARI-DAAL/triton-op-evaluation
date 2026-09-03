@@ -78,6 +78,11 @@ class Settings(BaseSettings):
     trial_max_inflight: int = Field(default=4, gt=0)
     trusted_max_inflight: int = Field(default=4, gt=0)
     session_max_inflight: int = Field(default=2, gt=0)
+    # Rollout bucket: server-declared RL traffic (routes._build_command maps
+    # declared callers here). Contract-invisible; grade never lands here.
+    rollout_rate_limit_per_minute: int = Field(default=600, gt=0)
+    rollout_max_inflight: int = Field(default=256, gt=0)
+    rollout_caller_ids: list[str] = Field(default_factory=list)
 
     # --- deployment-attested worker environment ---
     worker_hardware_model: str = Field(default="Ascend910B3", min_length=1)

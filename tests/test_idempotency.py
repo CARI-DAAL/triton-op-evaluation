@@ -6,7 +6,7 @@ import fakeredis
 from conftest import make_caller, make_grade_caller, make_grade_request, make_request
 
 from triton_evaluation.api.contract_artifacts import sha256_hex
-from triton_evaluation.broker import EvaluationStore
+from triton_evaluation.broker import EvaluationStore, _digest_text
 from triton_evaluation.config import Settings
 
 
@@ -284,3 +284,35 @@ def test_sixteen_concurrent_identical_creates_create_exactly_one_resource(
     rate_keys = list(client.scan_iter(match=f"*:rate:trial:{caller_digest}:*"))
     assert len(rate_keys) == 1
     assert client.get(rate_keys[0]) == b"1"
+
+
+def test_rollout_inflight_limit_is_independent(redis_client, clock, make_command):
+    store = _store_with(redis_client, clock, rollout_max_inflight=1)
+    rollout_caller = make_caller(caller_id="rl-runner-1")
+
+    first = make_command(caller=rollout_caller, session_id="s-rl-1",
+                         idempotency_key="k-rl-1", traffic_class="rollout")
+    assert store.create_or_replay(first).decision == "created"
+
+    blocked = make_command(caller=rollout_caller, session_id="s-rl-2",
+                           idempotency_key="k-rl-2", traffic_class="rollout")
+    assert store.create_or_replay(blocked).decision == "limit_exceeded"
+
+    trial = make_command()  # separate bucket, unaffected
+    assert store.create_or_replay(trial).decision == "created"
+
+    rollout_key = "triton-eval:v2:inflight:caller:rollout:" + _digest_text("rl-runner-1")
+    assert int(redis_client.get(rollout_key)) == 1
+    trial_key = "triton-eval:v2:inflight:caller:trial:" + _digest_text("caller-1")
+    assert int(redis_client.get(trial_key)) == 1
+
+
+def test_rollout_rate_limit_uses_rollout_bucket(redis_client, clock, make_command):
+    store = _store_with(redis_client, clock, rollout_rate_limit_per_minute=1)
+    caller = make_caller(caller_id="rl-runner-1")
+    first = make_command(caller=caller, session_id="s1", idempotency_key="k1",
+                         traffic_class="rollout")
+    assert store.create_or_replay(first).decision == "created"
+    second = make_command(caller=caller, session_id="s2", idempotency_key="k2",
+                          traffic_class="rollout")
+    assert store.create_or_replay(second).decision == "rate_limited"

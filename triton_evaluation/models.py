@@ -14,9 +14,11 @@ from triton_evaluation.admission import CanonicalAdmission
 from triton_evaluation.api.contract import EvaluationResource
 from triton_evaluation.security import CallerClass
 
-# Quota buckets exist only for trial and trusted traffic; an observer granted
-# grade:submit consumes trusted capacity, never an observer bucket.
-TrafficClass = Literal["trial", "trusted"]
+# Quota buckets: trial and trusted derive from purpose; rollout is a
+# server-declared class for RL traffic (settings.rollout_caller_ids). An
+# observer granted grade:submit consumes trusted capacity, never an observer
+# bucket.
+TrafficClass = Literal["trial", "trusted", "rollout"]
 CreateDecision = Literal["created", "replayed", "conflict", "rate_limited", "limit_exceeded"]
 TerminalState = Literal["completed", "failed", "timed_out"]
 

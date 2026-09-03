@@ -150,6 +150,8 @@ class EvaluationStore:
     def _quota_limits(self, traffic_class: str) -> tuple[int, int]:
         if traffic_class == "trial":
             return self._s.trial_rate_limit_per_minute, self._s.trial_max_inflight
+        if traffic_class == "rollout":
+            return self._s.rollout_rate_limit_per_minute, self._s.rollout_max_inflight
         return self._s.trusted_rate_limit_per_minute, self._s.trusted_max_inflight
 
     def create_or_replay(self, command: CreateResourceCommand) -> CreateResourceResult:
