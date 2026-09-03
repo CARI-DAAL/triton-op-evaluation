@@ -281,6 +281,7 @@ class EvaluationStore:
         mapping = {
             "owner": command.caller_id,
             "purpose": payload["purpose"],
+            "traffic_class": command.traffic_class,
             "session_digest": session_digest,
             "idempotency_key": idempotency_key,
             "canonical_request": command.admission.canonical_request,
@@ -617,9 +618,7 @@ class EvaluationStore:
                 self._bump(
                     "resource_terminal_transitions_total",
                     state=state,
-                    caller_class="trusted"
-                    if stored.get(b"traffic_class", b"trial") == b"trusted"
-                    else "trial",
+                    caller_class=self._stored_traffic_class(stored),
                 )
                 started_ms = stored.get(b"created_at_ms")
                 if started_ms is not None and self._metrics is not None:
@@ -694,10 +693,19 @@ class EvaluationStore:
         pipeline.set(session_key, max(0, session_inflight - 1))
         pipeline.execute()
 
+    @staticmethod
+    def _stored_traffic_class(stored: dict) -> str:
+        """Class persisted since the rollout-class deploy; older resources on the
+        durable volume derive it from purpose."""
+        raw = stored.get(b"traffic_class")
+        if raw is not None:
+            return raw.decode("utf-8")
+        purpose = stored[b"purpose"].decode("utf-8")
+        return "trial" if purpose == "trial" else "trusted"
+
     def _inflight_keys(self, stored: dict) -> tuple[str, str]:
         owner = stored[b"owner"].decode("utf-8")
-        purpose = stored[b"purpose"].decode("utf-8")
-        traffic_class = "trial" if purpose == "trial" else "trusted"
+        traffic_class = self._stored_traffic_class(stored)
         caller_key = self._key(f"inflight:caller:{traffic_class}:{_digest_text(owner)}")
         session_digest = stored[b"session_digest"].decode("utf-8")
         return caller_key, self._key(f"inflight:session:{session_digest}")

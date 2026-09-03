@@ -3,11 +3,11 @@ import re
 from datetime import datetime, timedelta, timezone
 
 import pytest
-from conftest import make_request
+from conftest import make_caller, make_completed_result, make_request
 
 from triton_evaluation.api.contract import EvaluationResource
 from triton_evaluation.api.contract_artifacts import sha256_hex
-from triton_evaluation.broker import EvaluationStore, StorageError
+from triton_evaluation.broker import EvaluationStore, StorageError, _digest_text
 from triton_evaluation.config import Settings
 from triton_evaluation.models import new_evaluation_id
 
@@ -161,3 +161,37 @@ def test_default_clock_comes_from_redis_time(redis_client, settings, make_comman
     # The store clock truncates to epoch milliseconds; allow that rounding.
     assert before - timedelta(milliseconds=1) <= result.resource.created_at <= after
     assert result.resource.deadline_at - result.resource.created_at == timedelta(seconds=900)
+
+
+def test_terminal_commit_releases_rollout_inflight(
+    store, redis_client, make_command, make_worker, settings,
+):
+    cmd = make_command(
+        caller=make_caller(caller_id="rl-1"),
+        session_id="s1",
+        idempotency_key="k1",
+        traffic_class="rollout",
+    )
+    store.create_or_replay(cmd)
+    rollout_key = _key(settings, f"inflight:caller:rollout:{_digest_text('rl-1')}")
+    assert int(redis_client.get(rollout_key)) == 1
+
+    lease = store.claim_next(make_worker())
+    assert lease is not None
+    assert store.commit_terminal(lease, "completed", make_completed_result(settings))
+    assert int(redis_client.get(rollout_key)) == 0
+
+
+def test_terminal_release_derives_class_when_field_missing(
+    store, redis_client, make_command, make_worker, settings,
+):
+    """Pre-deploy resources lack traffic_class; purpose-derived fallback releases
+    the right bucket (durable Redis volume outlives the deploy)."""
+    cmd = make_command()  # trial caller-1
+    store.create_or_replay(cmd)
+    redis_client.hdel(_key(settings, f"resource:{cmd.evaluation_id}"), "traffic_class")
+
+    lease = store.claim_next(make_worker())
+    assert store.commit_terminal(lease, "completed", make_completed_result(settings))
+    trial_key = _key(settings, f"inflight:caller:trial:{_digest_text('caller-1')}")
+    assert int(redis_client.get(trial_key)) == 0
