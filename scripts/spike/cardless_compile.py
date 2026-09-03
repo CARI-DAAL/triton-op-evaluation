@@ -159,6 +159,7 @@ def run_module(name, entry, workdir: Path, cache_dir: Path) -> dict:
             continue
         before = count_cache_files(cache_dir)
         compiled = False
+        fn_attempts = []
         for strat_name, strat in STRATEGIES:
             attempt = {"fn": fn_name, "strategy": strat_name}
             try:
@@ -169,10 +170,10 @@ def run_module(name, entry, workdir: Path, cache_dir: Path) -> dict:
             except Exception:
                 attempt["ok"] = False
                 attempt["error"] = traceback.format_exc(limit=5)
-            result["attempts"].append(attempt)
-        result.setdefault("compile_wall_ms", 0.0)
-        result["compile_wall_ms"] += sum(
-            a.get("wall_ms", 0.0) for a in result["attempts"] if a.get("ok"))
+            fn_attempts.append(attempt)
+        result["attempts"].extend(fn_attempts)
+        result["compile_wall_ms"] = result.get("compile_wall_ms", 0.0) + sum(
+            a.get("wall_ms", 0.0) for a in fn_attempts if a.get("ok"))
         result["cache_files_delta"] = count_cache_files(cache_dir) - before
         if entry["expect"] == "ok" and not compiled:
             all_ok = False
