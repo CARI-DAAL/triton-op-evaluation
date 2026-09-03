@@ -90,7 +90,11 @@ def strategy_ast_source(jit_fn, spec, extra):
                   if n.lower() not in ("cuda", "nvidia", "hip", "amd", "cpu")]
     if not candidates:
         raise RuntimeError("no non-CUDA triton backend registered")
-    target = triton.backends.backends[candidates[0]].driver.get_current_target()
+    # `.driver` is the CLASS — instantiate it (its __init__ touches no device).
+    # The arch must come from TRITON_ASCEND_ARCH: get_current_target() would
+    # otherwise query the device, which cardless runs do not have.
+    driver = triton.backends.backends[candidates[0]].driver()
+    target = driver.get_current_target()
     signature, constexprs = {}, {}
     for _i, (name, kind) in enumerate(spec):
         family, _, value = kind.partition(":")
@@ -101,7 +105,8 @@ def strategy_ast_source(jit_fn, spec, extra):
         else:
             signature[name] = "constexpr"
             constexprs[name] = int(value)
-    src = ASTSource(fn=jit_fn, signature=signature, constexprs=constexprs)
+    # triton 3.5 renamed the kwarg: constexprs -> constants.
+    src = ASTSource(fn=jit_fn, signature=signature, constants=constexprs)
     t0 = time.perf_counter()
     triton.compile(src, target=target, options=dict(extra or {}))
     return time.perf_counter() - t0
@@ -200,7 +205,19 @@ def main() -> int:
 
     cache_dir = Path(args.cache_dir)
     cache_dir.mkdir(parents=True, exist_ok=True)
-    os.environ["TRITON_CACHE_DIR"] = str(cache_dir)  # before env_facts(): triton may import there
+    os.environ["TRITON_CACHE_DIR"] = str(cache_dir)  # before env_facts(): triton may import here
+
+    # DISCOVERED WORKAROUND (spike purpose): triton-ascend 3.2.1's compile
+    # pipeline fetches the SoC arch via the device driver
+    # (NPUUtils().get_arch() -> rtGetSocVersion) even for pure compilation.
+    # NPUUtils.__init__ reads TRITON_ASCEND_ARCH but never uses it. Shim the
+    # class method so an explicitly supplied arch makes compilation cardless;
+    # the bisheng compile subprocesses themselves need no device.
+    _env_arch = os.getenv("TRITON_ASCEND_ARCH", "")
+    if _env_arch:
+        from triton.backends.ascend.driver import NPUUtils
+
+        NPUUtils.get_arch = lambda self, _a=_env_arch: _a
 
     facts = env_facts()
     print(json.dumps({"env_facts": facts}, indent=2))
