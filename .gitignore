@@ -7,3 +7,6 @@ __pycache__/
 .venv/
 .env
 logs/
+/spike-cache/
+/spike-cold-cache/
+/spike-report/
