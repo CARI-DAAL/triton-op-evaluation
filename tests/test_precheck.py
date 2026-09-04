@@ -1,5 +1,8 @@
 """Admission pre-check: syntax/import classification, cache integration."""
+import importlib.util
 from unittest import mock
+
+import pytest
 
 from triton_evaluation import precheck
 
@@ -25,6 +28,8 @@ def test_good_module_passes(tmp_path):
     assert verdict["stage"] is None
 
 
+@pytest.mark.skipif(importlib.util.find_spec("torch") is not None,
+                    reason="torch-equipped host: import torch succeeds")
 def test_torch_import_is_inconclusive_on_torchless_host(tmp_path, store):
     # This host has no torch: a candidate that imports it must classify as
     # inconclusive (fail-open), never as compile_error.

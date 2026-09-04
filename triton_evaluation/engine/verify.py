@@ -90,7 +90,7 @@ def _is_compile_error(exc: BaseException) -> bool:
     raised lazily inside the first kernel launch. Duck-typed by name/module so
     the engine stays importable without triton (engine runs on CPU workers too)."""
     cls = type(exc)
-    return cls.__name__ == "CompilationError" and cls.__module__.startswith("triton")
+    return cls.__name__ == "CompilationError" and cls.__module__.startswith("triton.")
 
 
 # engine 私有归因对象允许的 phase 取值（仅 candidate compile / initialize /
@@ -1203,8 +1203,8 @@ def _try_run_case(modules, case_ctx: CaseContext, inputs, device, non_compute=Fa
             case_ctx.case_idx, e.fw_shape, e.impl_shape,
         )
     except _CANDIDATE_ERROR_TYPES as e:
-        # harness 可证明归因于 candidate：compile 之外的 initialize / execute /
-        # execution_timeout 在此落盘私有归因对象。
+        # harness 可证明归因于 candidate：import 与首 launch 两阶段的 compile 失败
+        # 及 initialize / execute / execution_timeout 均在此落盘私有归因对象。
         phase = dict(_CANDIDATE_ERROR_PHASES)[type(e)]
         logger.error(
             "  [用例 %d/%d] 候选 %s 失败: %s",

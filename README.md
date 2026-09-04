@@ -106,7 +106,9 @@ worker-observed engine outcomes) are cached by a toolchain-scoped digest for
 `TRITON_EVAL_VERDICT_CACHE_TTL_SECONDS` (default 7 d) and short-circuited at
 admission into a terminal identical in shape to an on-card compile failure —
 no queue slot, no card time. Set `TRITON_EVAL_CANN_FINGERPRINT` to your CANN
-version so toolchain upgrades invalidate stale verdicts.
+version so toolchain upgrades invalidate stale verdicts. The precheck runs in
+the API process environment, so API and worker must share one image/conda env
+or import-class verdicts diverge from on-card reality.
 
 ## Endpoints (evaluation API v2 — durable)
 

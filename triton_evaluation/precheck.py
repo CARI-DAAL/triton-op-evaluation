@@ -86,5 +86,8 @@ def run_precheck(store: EvaluationStore, settings: Settings,
                               settings.verdict_cache_ttl_seconds)
         return "compile_error"
     if settings.verdict_cache_enabled:
-        verdict_cache.put(store, digest, "compiled", settings.verdict_cache_ttl_seconds)
+        # 负向结论优先：不覆盖已有 compile_error（避免与 worker 观测打架）。
+        if verdict_cache.get(store, digest) != "compile_error":
+            verdict_cache.put(store, digest, "compiled",
+                              settings.verdict_cache_ttl_seconds)
     return None

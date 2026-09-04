@@ -44,7 +44,9 @@ def get(store: EvaluationStore, digest: str) -> str | None:
 def put(store: EvaluationStore, digest: str, verdict: str, ttl_seconds: int) -> None:
     try:
         key = store._key(f"verdict:{digest}")
-        store._r.hset(key, mapping={"verdict": verdict})
-        store._r.expire(key, ttl_seconds)
+        pipe = store._r.pipeline()
+        pipe.hset(key, mapping={"verdict": verdict})
+        pipe.expire(key, ttl_seconds)
+        pipe.execute()
     except Exception as error:  # noqa: BLE001 — advisory; never block a commit
         logger.warning("verdict cache write failed (%s)", type(error).__name__)
