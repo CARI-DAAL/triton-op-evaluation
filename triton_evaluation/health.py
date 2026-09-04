@@ -57,7 +57,12 @@ def run_canary(*, device_id: int, budget_seconds: int) -> bool:
 
     A hang raises via SIGALRM and is reported as unhealthy; the bisheng
     subprocesses launched by the kernel never outlive the budget because the
-    same timer fires during their sync window.
+    same timer fires during their sync window. Caveat: SIGALRM cannot fire its
+    Python handler while the main thread is inside an uninterruptible driver
+    C call, so a fully wedged driver may outlive the budget — the system
+    backstop is lease expiry -> reaper -> suspicious-death counting -> poison
+    quarantine. device_id is provenance/logging only: device selection happens
+    via ASCEND_RT_VISIBLE_DEVICES pinning, so the code sets device 0.
     """
     import torch  # noqa: F401
     import torch_npu  # noqa: F401

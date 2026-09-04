@@ -840,7 +840,12 @@ class EvaluationStore:
                         now_ms=now_ms,
                         bump_fence=True,
                     )
-                    self._r.hset(resource_key, mapping=metadata)
+                    try:
+                        self._r.hset(resource_key, mapping=metadata)
+                    except redis.RedisError:
+                        logger.warning(
+                            "poison-path advisory write failed for %s", evaluation_id
+                        )
                     return "failed"
                 if int(stored[b"attempt_count"]) < MAX_ATTEMPTS:
                     ready_key = self._ready_key(self._stored_traffic_class(stored))

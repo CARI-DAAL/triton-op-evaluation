@@ -342,7 +342,6 @@ def test_second_suspicious_death_quarantines_as_worker_lost(store, clock, settin
             break
         # re-arm the replacement claim for the next death
         clock.advance_ms(1)
-    resource = store.get_visible(cmd.evaluation_id, make_caller()) if False else None
     stored = redis_client_hgetall(store, cmd.evaluation_id)
     assert stored[b"suspicious_deaths"] == b"2"
     resource = EvaluationResource.model_validate_json(stored[b"resource"])
@@ -350,3 +349,20 @@ def test_second_suspicious_death_quarantines_as_worker_lost(store, clock, settin
     assert resource.result.correctness.status == "failed"
     assert resource.result.correctness.error.code == "WORKER_LOST"
     assert "poison" in resource.result.correctness.error.message
+
+
+def test_clean_failure_does_not_count_suspicious_death(store, redis_client, clock,
+                                                       settings, make_command,
+                                                       make_worker):
+    """A committed terminal before lease expiry removes the lease — the reaper
+    never sees the attempt, so no suspicious death is counted (spec §11)."""
+    cmd = make_command()
+    store.create_or_replay(cmd)
+    lease = store.claim_next(make_worker())
+    store.note_claimed_card(lease.evaluation_id, card=7)
+    assert store.commit_terminal(lease, "completed", make_completed_result(settings))
+    clock.advance_ms(settings.lease_seconds * 1000 + 1)
+    store.recover_expired_leases()
+    key = f"triton-eval:v2:resource:{cmd.evaluation_id}"
+    assert redis_client.hget(key, "suspicious_deaths") == b"0"
+    assert redis_client.hget(key, "last_failed_card") is None
