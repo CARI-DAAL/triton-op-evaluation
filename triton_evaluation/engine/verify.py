@@ -73,12 +73,24 @@ class _CandidateInitializeError(Exception):
     """候选模型初始化失败（engine 可证明归因于 candidate）。"""
 
 
+class _CandidateCompileError(Exception):
+    """Candidate JIT compilation failed at first launch (phase compile)."""
+
+
 class _CandidateExecuteError(Exception):
     """候选 forward 执行抛错（engine 可证明归因于 candidate）。"""
 
 
 class _CandidateExecutionTimeout(Exception):
     """候选单次执行超过 per-subject 预算（engine 可证明归因于 candidate）。"""
+
+
+def _is_compile_error(exc: BaseException) -> bool:
+    """First-launch JIT compile failures surface as triton's CompilationError,
+    raised lazily inside the first kernel launch. Duck-typed by name/module so
+    the engine stays importable without triton (engine runs on CPU workers too)."""
+    cls = type(exc)
+    return cls.__name__ == "CompilationError" and cls.__module__.startswith("triton")
 
 
 # engine 私有归因对象允许的 phase 取值（仅 candidate compile / initialize /
@@ -1015,6 +1027,10 @@ def _run_candidate_forward(impl_model, inputs, subject_budget_seconds):
         try:
             return impl_model(*inputs)
         except Exception as exc:
+            if _is_compile_error(exc):
+                raise _CandidateCompileError(
+                    f"candidate compilation raised {type(exc).__name__}"
+                ) from exc
             raise _CandidateExecuteError(
                 f"candidate execution raised {type(exc).__name__}"
             ) from exc
@@ -1025,6 +1041,10 @@ def _run_candidate_forward(impl_model, inputs, subject_budget_seconds):
     except _CandidateExecutionTimeout:
         raise
     except Exception as exc:
+        if _is_compile_error(exc):
+            raise _CandidateCompileError(
+                f"candidate compilation raised {type(exc).__name__}"
+            ) from exc
         raise _CandidateExecuteError(
             f"candidate execution raised {type(exc).__name__}"
         ) from exc
@@ -1152,6 +1172,7 @@ def _candidate_failure(case_ctx, inputs, phase, error):
 
 
 _CANDIDATE_ERROR_PHASES = (
+    (_CandidateCompileError, "compile"),
     (_CandidateInitializeError, "initialize"),
     (_CandidateExecuteError, "execute"),
     (_CandidateExecutionTimeout, "execution_timeout"),
