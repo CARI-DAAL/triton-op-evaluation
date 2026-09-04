@@ -28,7 +28,13 @@ from triton_evaluation.security import Caller
 
 @pytest.fixture
 def settings(tmp_path):
-    return Settings(engine_dir=str(tmp_path), dequeue_block_seconds=1)
+    # Startup canary off: protocol tests predate card health and keep their
+    # exact pre-feature code path; card-health tests opt in explicitly.
+    return Settings(
+        engine_dir=str(tmp_path),
+        dequeue_block_seconds=1,
+        card_canary_on_startup=False,
+    )
 
 
 class FakeClock:

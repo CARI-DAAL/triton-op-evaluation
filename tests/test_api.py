@@ -39,6 +39,8 @@ def make_test_settings(tmp_path):
         capability_secret_path=str(tmp_path / "capabilities.json"),
         catalog_root=str(tmp_path / "catalog"),
         catalog_manifest_path=str(tmp_path / "catalog" / "catalog.json"),
+        # Startup canary off: e2e protocol tests predate card health.
+        card_canary_on_startup=False,
     )
 
 
