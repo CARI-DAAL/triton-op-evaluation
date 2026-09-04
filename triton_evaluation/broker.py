@@ -657,11 +657,6 @@ class EvaluationStore:
                 )
                 _commit_post_exec(lease.evaluation_id)
                 self._bump("terminal_commit_cas_total", outcome="won")
-                self._bump(
-                    "resource_terminal_transitions_total",
-                    state=state,
-                    caller_class=self._stored_traffic_class(stored),
-                )
                 started_ms = stored.get(b"created_at_ms")
                 if started_ms is not None and self._metrics is not None:
                     try:
@@ -736,6 +731,15 @@ class EvaluationStore:
         pipeline.set(caller_key, max(0, caller_inflight - 1))
         pipeline.set(session_key, max(0, session_inflight - 1))
         pipeline.execute()
+        # Post-EXEC: caller may still hold WATCHes on the main connection, so any
+        # main-connection write here would abort the transaction — bump only after
+        # EXEC, and only via ``_bump`` (swallows exceptions, never touches the
+        # pipeline).
+        self._bump(
+            "resource_terminal_transitions_total",
+            state=state,
+            traffic_class=self._stored_traffic_class(stored),
+        )
 
     @staticmethod
     def _stored_traffic_class(stored: dict) -> str:
