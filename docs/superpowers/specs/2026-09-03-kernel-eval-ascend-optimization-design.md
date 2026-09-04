@@ -182,6 +182,8 @@ infra 可疑死亡时在 evaluation 记 `last_failed_card`;worker 认领时同�
 
 - 预算 `min(剩余 deadline, 上限默认 300s)`;watchdog 复用 PR #12 的 exit-3 可辨识死亡模式,归因 `DEADLINE_EXCEEDED`,不误判为可重试崩溃
 
+**Plan D-on_card 实现注记(2026-09-04)**:v1 落地三项——①verdict cache(digest = kernel + impl + triton-ascend 版本 + CANN 指纹 + target;worker 引擎反馈 + 准入预检双写;负判定短路为准入期终态,正判定只免复检);②准入静态预检(子进程 ast.parse + import,~100ms,覆盖 syntax/import 两类;frontend/backend 类由引擎反馈环覆盖,ASTSource 前端编译预检阶段刻意不做——首现收益小,重复样本已由反馈环兜住);③引擎归因拓宽(首次 launch 的 triton CompilationError 按名/模块 duck-type 识别,归因 compile 期而非 execute 期)。请求含 profile check 时不短路(引擎真实运行 profile,合成形状无法逐字节对齐)。
+
 ## 9. 性能测量轻量化
 
 ### 引擎改动(`engine/benchmark.py`)

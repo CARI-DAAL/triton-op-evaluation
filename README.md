@@ -100,6 +100,14 @@ drives a recovery ladder: in-process cleanup → `TRITON_EVAL_CARD_RESET_COMMAND
 evaluation whose attempts die suspiciously twice is quarantined (terminal
 `WORKER_LOST` with a poison message; never retried by the service).
 
+Compile verdict cache (spec §8): deterministic compile failures (syntax/import
+class via an admission-time precheck subprocess; all compile-class via
+worker-observed engine outcomes) are cached by a toolchain-scoped digest for
+`TRITON_EVAL_VERDICT_CACHE_TTL_SECONDS` (default 7 d) and short-circuited at
+admission into a terminal identical in shape to an on-card compile failure —
+no queue slot, no card time. Set `TRITON_EVAL_CANN_FINGERPRINT` to your CANN
+version so toolchain upgrades invalidate stale verdicts.
+
 ## Endpoints (evaluation API v2 — durable)
 
 - `POST /evaluations?wait_seconds=0..60` — authenticate with a caller-scoped opaque
