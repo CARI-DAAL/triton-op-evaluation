@@ -25,6 +25,24 @@ def test_good_module_passes(tmp_path):
     assert verdict["stage"] is None
 
 
+def test_torch_import_is_inconclusive_on_torchless_host(tmp_path, store):
+    # This host has no torch: a candidate that imports it must classify as
+    # inconclusive (fail-open), never as compile_error.
+    from triton_evaluation.config import Settings
+
+    module = tmp_path / "uses_torch.py"
+    module.write_text("import torch\n")
+    verdict = precheck._classify_module(str(module))
+    assert verdict.get("inconclusive") is True
+    assert verdict["stage"] is None
+    settings = Settings(
+        engine_dir=str(tmp_path), compile_precheck_enabled=True,
+        verdict_cache_enabled=True,
+    )
+    assert precheck.run_precheck(store, settings, "import torch\n",
+                                 "triton_ascend_impl") is None
+
+
 def test_run_precheck_caches_pass_verdict(store, settings, redis_client):
     settings = settings.model_copy(update={
         "verdict_cache_enabled": True, "compile_precheck_enabled": True,

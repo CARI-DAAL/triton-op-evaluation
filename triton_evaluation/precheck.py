@@ -6,6 +6,7 @@ a budget and caches definitive verdicts. Advisory and fail-open throughout.
 """
 import json
 import logging
+import re
 import subprocess
 import sys
 import tempfile
@@ -57,7 +58,8 @@ def run_precheck(store: EvaluationStore, settings: Settings,
     if not settings.compile_precheck_enabled:
         return None
     with tempfile.TemporaryDirectory(prefix="precheck_") as work:
-        module_path = Path(work) / f"candidate_{impl_name}.py"
+        safe_name = re.sub(r"[^A-Za-z0-9_.-]", "_", impl_name)
+        module_path = Path(work) / f"candidate_{safe_name}.py"
         module_path.write_text(kernel_code)
         try:
             proc = subprocess.run(

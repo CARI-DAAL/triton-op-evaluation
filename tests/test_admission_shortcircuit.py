@@ -1,11 +1,14 @@
 """Admission-time terminal synthesis for cached compile_error verdicts."""
 from types import SimpleNamespace
 
+import pytest
 from conftest import make_caller, make_request
 
 from triton_evaluation import terminal_results, verdict_cache
 from triton_evaluation.api import routes
 from triton_evaluation.api.contract import EvaluationResult
+
+pytestmark = pytest.mark.anyio
 
 
 def _command_for(settings, kernel_code="import torch\n"):
@@ -101,3 +104,53 @@ def test_shortcircuit_wiring_skips_queue(store, settings, clock, make_command):
                               request.get("triton_impl_name", "triton_ascend_impl"))
         == "compile_error"
     )
+
+
+# ---------------------------------------------------------------------------
+# Routes composition: flag gate + profile guard on the live HTTP path
+# ---------------------------------------------------------------------------
+
+
+async def _post_with_cached_verdict(tmp_path, release_catalog_files, payload):
+    from test_api import build_app, make_test_settings, post, seed_worker, trial_headers
+
+    settings = make_test_settings(tmp_path)
+    app = build_app(tmp_path, release_catalog_files, settings=settings)
+    seed_worker(app)  # readiness
+    digest = verdict_cache.digest_for(
+        payload["kernel_code"],
+        payload.get("triton_impl_name", "triton_ascend_impl"),
+        settings.cann_fingerprint,
+    )
+    verdict_cache.put(app.store, digest, "compile_error",
+                      settings.verdict_cache_ttl_seconds)
+    response = await post(app.http, payload, trial_headers())
+    return app, response
+
+
+async def test_routes_shortcircuit_cached_verdict(tmp_path, release_catalog_files):
+    app, response = await _post_with_cached_verdict(
+        tmp_path, release_catalog_files,
+        {"schema_version": "2.0", "op_name": "addmm", "reference_code": "REF",
+         "kernel_code": "def broken(:\n", "checks": ["correctness"]},
+    )
+    assert response.status_code == 200, response.text
+    resource = response.json()
+    assert resource["state"] == "completed"
+    assert resource["result"]["correctness"]["data"]["outcome"] == "compile_error"
+    # never queued: no ready membership anywhere
+    assert app.store._r.zcard("triton-eval:v2:ready:exec:interactive") == 0
+    assert app.store._r.zcard("triton-eval:v2:ready:exec:bulk") == 0
+
+
+async def test_routes_profile_guard_queues_normally(tmp_path, release_catalog_files):
+    app, response = await _post_with_cached_verdict(
+        tmp_path, release_catalog_files,
+        {"schema_version": "2.0", "op_name": "addmm", "reference_code": "REF",
+         "kernel_code": "def broken(:\n", "checks": ["correctness", "profile"]},
+    )
+    # profile guard: a cached compile verdict must not short-circuit a
+    # profile request — it queues normally.
+    assert response.status_code == 202, response.text
+    assert response.json()["state"] == "queued"
+    assert app.store._r.zcard("triton-eval:v2:state:completed") == 0
