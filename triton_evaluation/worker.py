@@ -17,6 +17,7 @@ from datetime import datetime, timezone
 
 import redis
 
+from . import health
 from .api.contract import Check, CheckOutcome, EvaluationRequest, EvaluationResult
 from .api.contract_artifacts import canonical_json_bytes, sha256_hex
 from .broker import EvaluationStore
@@ -45,6 +46,18 @@ def _algorithms(settings: Settings) -> AlgorithmVersions:
         benchmark=settings.benchmark_algorithm_version,
         profiler=settings.profiler_algorithm_version,
     )
+
+
+def _default_canary(*, device_id: int, budget_seconds: int) -> bool:
+    """Canary infra failures (e.g. a lazy device import) read as unhealthy —
+    a canary that cannot run is never evidence the card is claim-worthy."""
+    try:
+        return health.run_canary(device_id=device_id, budget_seconds=budget_seconds)
+    except Exception as error:  # noqa: BLE001 — probe failure, not a crash
+        logger.warning(
+            "card %s canary failed (%s)", device_id, type(error).__name__
+        )
+        return False
 
 
 class LeaseKeeper:
@@ -220,6 +233,8 @@ class Worker:
         identity: WorkerIdentity | None = None,
         clock: Callable[[], int] | None = None,
         sleep=None,
+        canary=None,
+        recovery_step=None,
     ):
         self.store = store
         self.evaluator = evaluator
@@ -230,22 +245,39 @@ class Worker:
         )
         self._clock = clock or (lambda: int(time.time() * 1000))
         self._sleep = sleep or time.sleep
+        self._canary = canary or _default_canary
+        self._recovery_step = recovery_step or health.run_recovery_step
+        self._suspicion = bool(settings.card_canary_on_startup)
+        self._drained = False
+        self._last_recovery_ms = 0
+        self._last_probe_ms = 0
 
     def run_once(self, *, sleep=None) -> bool:
         """Claim one attempt, lease it, evaluate, fenced-commit it."""
         do_sleep = sleep if sleep is not None else self._sleep
+        if self._drained:
+            self._drain_loop()
+            return False
         # Idle workers heartbeat too, so readiness means claim-capable workers.
         self.store.heartbeat(self.identity)
-        lease = self.store.claim_next(self.identity)
+        if self._suspicion and not self._probe_card():
+            return False
+        avoid_card = self.device_id if self.settings.card_affinity_avoidance else None
+        lease = self.store.claim_next(self.identity, avoid_card=avoid_card)
         if lease is None:
             self._maintenance()
             return False
+        self.store.note_claimed_card(lease.evaluation_id, self.device_id)
         if self.store._metrics is not None:
             try:
                 self.store._metrics.increment("worker_attempts_total", {})
             except ValueError:
                 pass
         self._run_attempt(lease, do_sleep)
+        if self._suspicion:
+            # A suspicious attempt ending re-arms suspicion; re-probe the card
+            # now so a failure drains before the next claim.
+            self._probe_card()
         return True
 
     def serve_forever(self, stop_event=None, *, sleep=None) -> None:
@@ -280,6 +312,86 @@ class Worker:
         self.store.expire_due_resources(limit=_MAINTENANCE_BATCH)
         self.store.recover_expired_leases(limit=_MAINTENANCE_BATCH)
         self.store.purge_expired_terminal_indexes(limit=_MAINTENANCE_BATCH)
+
+    def _probe_card(self) -> bool:
+        """Canary-gated suspicion: probe the card; on failure drain it and run
+        the recovery ladder. Returns True when the card is claim-worthy."""
+        self._last_probe_ms = self._clock()
+        healthy = self._canary(
+            device_id=self.device_id,
+            budget_seconds=self.settings.canary_budget_seconds,
+        )
+        self._bump_metric("card_canary_total", outcome="pass" if healthy else "fail")
+        if healthy:
+            self._suspicion = False
+            self.store.clear_card_unhealthy(self.device_id)
+            self._bump_metric("card_health_state", card=str(self.device_id),
+                              amount=-1)
+            return True
+        self.store.set_card_unhealthy(self.device_id)
+        self._bump_metric("card_health_state", card=str(self.device_id))
+        self._run_ladder()
+        self._suspicion = False  # ladder already probed; drain loop owns re-probes
+        return False
+
+    def _run_ladder(self) -> None:
+        now_ms = self._clock()
+        if now_ms - self._last_recovery_ms < (
+            self.settings.card_recovery_retry_seconds * 1000
+        ):
+            self._drained = True
+            return
+        self._last_recovery_ms = now_ms
+        for step in range(1, self.settings.card_recovery_max_step + 1):
+            try:
+                name = self._recovery_step(
+                    step, card=self.device_id,
+                    reset_command=self.settings.card_reset_command,
+                )
+            except Exception as error:  # noqa: BLE001 — a failed rung escalates
+                logger.warning(
+                    "card %s recovery step %s failed (%s)",
+                    self.device_id, step, type(error).__name__,
+                )
+                name = None
+            if name is not None:
+                self._bump_metric("card_recovery_total", step=name)
+            if self._canary(device_id=self.device_id,
+                            budget_seconds=self.settings.canary_budget_seconds):
+                self._bump_metric("card_canary_total", outcome="pass")
+                self.store.clear_card_unhealthy(self.device_id)
+                self._bump_metric("card_health_state", card=str(self.device_id),
+                                  amount=-1)
+                return
+            self._bump_metric("card_canary_total", outcome="fail")
+        self._drained = True
+
+    def _drain_loop(self) -> None:
+        """Drained: no heartbeat (readiness drops), no claims. Re-probe the
+        canary on canary_interval_seconds; a pass resumes heartbeats/claims."""
+        if self._clock() - self._last_probe_ms < (
+            self.settings.canary_interval_seconds * 1000
+        ):
+            return
+        self._last_probe_ms = self._clock()
+        if self._canary(device_id=self.device_id,
+                        budget_seconds=self.settings.canary_budget_seconds):
+            self._bump_metric("card_canary_total", outcome="pass")
+            self.store.clear_card_unhealthy(self.device_id)
+            self._bump_metric("card_health_state", card=str(self.device_id),
+                              amount=-1)
+            self._drained = False
+            return
+        self._bump_metric("card_canary_total", outcome="fail")
+        self._run_ladder()  # retry budget permitting; stays drained otherwise
+
+    def _bump_metric(self, name: str, amount: int = 1, **labels) -> None:
+        if self.store._metrics is None:
+            return
+        try:
+            self.store._metrics.increment(name, labels, amount=amount)
+        except ValueError:
+            pass
 
     def _run_attempt(self, lease: AttemptLease, do_sleep) -> None:
         work_dir: str | None = None
@@ -330,6 +442,7 @@ class Worker:
                 except LeaseLostError:
                     # Fenced work is discarded; the reaper owns recovery.
                     self.store.note_fenced_write()
+                    self._suspicion = True
                     return
                 except Exception as error:  # noqa: BLE001 — redacted, never a crash
                     logger.warning(
@@ -344,9 +457,11 @@ class Worker:
                         phase="execution",
                         message="evaluator failed before a subject outcome",
                     )
+                    self._suspicion = True
                     return
                 if not keeper.is_valid():
                     self.store.note_fenced_write()
+                    self._suspicion = True
                     return
 
             if self._clock() >= lease.deadline_at_ms:

@@ -70,7 +70,7 @@ def test_claim_transitions_queued_to_running(
     assert visible.finished_at is None
 
     member = command.evaluation_id.encode()
-    assert redis_client.zrange(_key(settings, "ready"), 0, -1) == []
+    assert redis_client.zrange(_key(settings, "ready:exec:interactive"), 0, -1) == []
     assert redis_client.zscore(_key(settings, "state:queued"), member) is None
     assert redis_client.zscore(_key(settings, "state:running"), member) == float(
         lease.deadline_at_ms
@@ -159,7 +159,7 @@ def test_commit_completed_is_one_atomic_terminal_transition(
     assert redis_client.zscore(_key(settings, "state:running"), member) is None
     assert redis_client.zscore(_key(settings, "deadlines"), member) is None
     assert redis_client.zscore(_key(settings, "running-leases"), member) is None
-    assert redis_client.zrange(_key(settings, "ready"), 0, -1) == []
+    assert redis_client.zrange(_key(settings, "ready:exec:interactive"), 0, -1) == []
 
     retention = settings.retention_seconds
     resource_key = _key(settings, f"resource:{command.evaluation_id}")
