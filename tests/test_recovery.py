@@ -7,6 +7,7 @@ from conftest import (
     make_request,
 )
 
+from triton_evaluation.api.contract import EvaluationResource
 from triton_evaluation.api.contract_artifacts import sha256_hex
 from triton_evaluation.broker import MAX_ATTEMPTS, EvaluationStore
 from triton_evaluation.models import AlgorithmVersions, WorkerCompatibility
@@ -26,6 +27,10 @@ def _compatibility(worker):
     return WorkerCompatibility(
         evaluator_build=worker.evaluator_build, algorithms=worker.algorithms
     )
+
+
+def redis_client_hgetall(store, evaluation_id):
+    return store._r.hgetall(f"triton-eval:v2:resource:{evaluation_id}")
 
 
 def test_queued_deadline_times_out_without_an_attempt(
@@ -304,3 +309,44 @@ def test_terminal_index_purge_never_deletes_a_live_resources_index(
     assert store.purge_expired_terminal_indexes() == 0
     member = command.evaluation_id.encode()
     assert redis_client.zscore(_key(settings, "state:completed"), member) is not None
+
+
+def test_reap_counts_suspicious_death_and_records_failed_card(store, redis_client,
+                                                              clock, settings,
+                                                              make_command, make_worker):
+    cmd = make_command()
+    store.create_or_replay(cmd)
+    worker = make_worker()
+    lease = store.claim_next(worker)
+    store.note_claimed_card(lease.evaluation_id, card=7)
+    clock.advance_ms(settings.lease_seconds * 1000 + 1)
+
+    counts = store.recover_expired_leases()
+    assert counts.requeued == 1
+    key = f"triton-eval:v2:resource:{cmd.evaluation_id}"
+    assert redis_client.hget(key, "suspicious_deaths") == b"1"
+    assert redis_client.hget(key, "last_failed_card") == b"7"
+
+
+def test_second_suspicious_death_quarantines_as_worker_lost(store, clock, settings,
+                                                            make_command, make_worker):
+    cmd = make_command()
+    store.create_or_replay(cmd)
+    worker = make_worker()
+    for _ in range(2):
+        lease = store.claim_next(worker)
+        store.note_claimed_card(lease.evaluation_id, card=7)
+        clock.advance_ms(settings.lease_seconds * 1000 + 1)
+        counts = store.recover_expired_leases()
+        if counts.failed:
+            break
+        # re-arm the replacement claim for the next death
+        clock.advance_ms(1)
+    resource = store.get_visible(cmd.evaluation_id, make_caller()) if False else None
+    stored = redis_client_hgetall(store, cmd.evaluation_id)
+    assert stored[b"suspicious_deaths"] == b"2"
+    resource = EvaluationResource.model_validate_json(stored[b"resource"])
+    assert resource.state == "failed"
+    assert resource.result.correctness.status == "failed"
+    assert resource.result.correctness.error.code == "WORKER_LOST"
+    assert "poison" in resource.result.correctness.error.message

@@ -310,6 +310,7 @@ class EvaluationStore:
             "benchmark_algorithm": command.algorithms.benchmark,
             "profiler_algorithm": command.algorithms.profiler,
             "attempt_count": "0",
+            "suspicious_deaths": "0",
             "attempt_id": "",
             "fencing_token": "0",
             "active_check": "",
@@ -379,7 +380,9 @@ class EvaluationStore:
     # Claims and leases (design section 6)
     # ------------------------------------------------------------------
 
-    def claim_next(self, worker: WorkerIdentity) -> AttemptLease | None:
+    def claim_next(
+        self, worker: WorkerIdentity, avoid_card: int | None = None
+    ) -> AttemptLease | None:
         """Atomically claim the head of the dispatch queues for ``worker``.
 
         Strict priority: the interactive queue (trial/trusted) scans first, the
@@ -392,7 +395,9 @@ class EvaluationStore:
         state indexes. A replacement-pending running resource keeps its public
         state, revision, and started time and consumes the higher token the reaper
         reserved. Past-deadline members never start; duplicate members for claimed
-        resources are removed.
+        resources are removed. ``avoid_card`` skips members whose stored
+        ``last_failed_card`` matches (affinity avoidance): the member stays in the
+        queue for a worker on another card.
         """
         leases_key = self._key("running-leases")
         for ready_key in (
@@ -400,13 +405,17 @@ class EvaluationStore:
             self._key("ready:exec:bulk"),
             self._key("ready"),  # legacy, drain-only
         ):
-            lease = self._claim_from_queue(worker, ready_key, leases_key)
+            lease = self._claim_from_queue(worker, ready_key, leases_key, avoid_card)
             if lease is not None:
                 return lease
         return None
 
     def _claim_from_queue(
-        self, worker: WorkerIdentity, ready_key: str, leases_key: str
+        self,
+        worker: WorkerIdentity,
+        ready_key: str,
+        leases_key: str,
+        avoid_card: int | None = None,
     ) -> AttemptLease | None:
         """Single-queue claim scan; fencing and replacement semantics unchanged."""
         while True:
@@ -427,6 +436,11 @@ class EvaluationStore:
                     if not stored:
                         stale.append(member)
                         continue
+                    if (
+                        avoid_card is not None
+                        and stored.get(b"last_failed_card") == str(avoid_card).encode()
+                    ):
+                        continue  # affinity avoidance: another card may claim it
                     resource = EvaluationResource.model_validate_json(stored[b"resource"])
                     if now_ms >= int(stored[b"deadline_ms"]):
                         continue  # the deadline watchdog owns this resource
@@ -788,6 +802,46 @@ class EvaluationStore:
                     return None  # committed, renewed, or already replaced
                 if now_ms >= int(stored[b"deadline_ms"]):
                     return None  # the deadline watchdog owns this resource
+                # Suspicious deaths are counted only when card provenance exists:
+                # without it there is no card to attribute the death to, and
+                # card-unaware traffic keeps the exact Plan B retry semantics.
+                failed_card = stored.get(b"claimed_card")
+                if failed_card is not None:
+                    deaths = int(stored.get(b"suspicious_deaths", b"0")) + 1
+                    metadata = {
+                        "suspicious_deaths": str(deaths),
+                        "last_failed_card": failed_card.decode("utf-8"),
+                    }
+                else:
+                    deaths = 0
+                    metadata = {}
+                if deaths >= self._s.poison_death_threshold:
+                    # Poison quarantine (spec §10): too many suspicious deaths —
+                    # terminate instead of requeueing. 2.0 contract-invisible shape:
+                    # the existing synthesized WORKER_LOST result with a
+                    # quarantine message (retryable stays True; that flag is frozen).
+                    # Mirrors the attempt-limit path: `_commit_terminal_locked`
+                    # issues its own MULTI/EXEC, so the advisory metadata write
+                    # must not touch the watched hash before EXEC (a self-write
+                    # dirtying the watch would abort the transaction).
+                    result = self._synthesized_result(
+                        stored,
+                        "worker_lost",
+                        "worker lease expired before a subject outcome was committed; "
+                        "repeated suspicious deaths — candidate quarantined as "
+                        "suspected poison",
+                    )
+                    self._commit_terminal_locked(
+                        pipeline,
+                        stored=stored,
+                        resource=resource,
+                        state="failed",
+                        result=result,
+                        now_ms=now_ms,
+                        bump_fence=True,
+                    )
+                    self._r.hset(resource_key, mapping=metadata)
+                    return "failed"
                 if int(stored[b"attempt_count"]) < MAX_ATTEMPTS:
                     ready_key = self._ready_key(self._stored_traffic_class(stored))
                     pipeline.watch(ready_key, sequence_key)
@@ -802,6 +856,7 @@ class EvaluationStore:
                             "replacement_pending": "1",
                             "active_check": "",
                             "lease_deadline_ms": "0",
+                            **metadata,
                         },
                     )
                     pipeline.zrem(leases_key, member)
@@ -926,6 +981,28 @@ class EvaluationStore:
     # ------------------------------------------------------------------
     # Worker heartbeats and fencing metric
     # ------------------------------------------------------------------
+
+    def note_claimed_card(self, evaluation_id: str, card: int) -> None:
+        """Advisory provenance: which card ran this attempt. Never fenced — affinity
+        avoidance degrades gracefully if the write is lost."""
+        try:
+            self._r.hset(
+                self._key(f"resource:{evaluation_id}"), "claimed_card", str(card)
+            )
+        except redis.RedisError:
+            logger.warning("note_claimed_card failed for %s", evaluation_id)
+
+    def set_card_unhealthy(self, card: int) -> None:
+        self._r.hset(self._key(f"card-health:{card}"), "state", "unhealthy")
+
+    def clear_card_unhealthy(self, card: int) -> None:
+        self._r.hset(self._key(f"card-health:{card}"), "state", "ok")
+
+    def is_card_unhealthy(self, card: int) -> bool:
+        try:
+            return self._r.hget(self._key(f"card-health:{card}"), "state") == b"unhealthy"
+        except redis.RedisError:
+            return False
 
     def heartbeat(self, worker: WorkerIdentity) -> None:
         """Record a worker heartbeat; fresh means within one lease window."""

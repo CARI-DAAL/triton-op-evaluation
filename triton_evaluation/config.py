@@ -84,6 +84,10 @@ class Settings(BaseSettings):
     rollout_max_inflight: int = Field(default=256, gt=0)
     rollout_caller_ids: list[str] = Field(default_factory=list)
 
+    # Card health loop (spec §10): poison quarantine + canary/drain/recovery.
+    poison_death_threshold: int = Field(default=2, ge=2)
+    card_affinity_avoidance: bool = Field(default=True)
+
     # --- deployment-attested worker environment ---
     worker_hardware_model: str = Field(default="Ascend910B3", min_length=1)
     worker_driver_version: str = Field(default="24.1.0", min_length=1)

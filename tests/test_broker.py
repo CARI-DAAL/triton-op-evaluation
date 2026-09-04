@@ -276,3 +276,31 @@ def test_legacy_ready_zset_still_drains(store, redis_client, make_command,
     redis_client.zadd("triton-eval:v2:ready", {member: 1})
     lease = store.claim_next(make_worker())
     assert lease is not None and lease.evaluation_id == cmd.evaluation_id
+
+
+def test_claim_avoid_card_skips_last_failed_card(store, redis_client, clock, settings,
+                                                 make_command, make_worker):
+    poisoned = make_command(session_id="s-1", idempotency_key="k-1")
+    store.create_or_replay(poisoned)
+    fine = make_command(session_id="s-2", idempotency_key="k-2")
+    store.create_or_replay(fine)
+    # Only poisoned carries last_failed_card=3; fine died on another card, so
+    # an avoid_card=3 claim skips poisoned and takes fine.
+    for _cmd, card in ((poisoned, 3), (fine, 4)):
+        lease = store.claim_next(make_worker())
+        store.note_claimed_card(lease.evaluation_id, card=card)
+        clock.advance_ms(settings.lease_seconds * 1000 + 1)
+        store.recover_expired_leases()
+        clock.advance_ms(1)
+    lease = store.claim_next(make_worker(), avoid_card=3)
+    assert lease.evaluation_id == fine.evaluation_id
+
+
+def test_note_claimed_card_and_card_health_roundtrip(store, redis_client):
+    store.note_claimed_card("ev_x", card=7)
+    assert redis_client.hget("triton-eval:v2:resource:ev_x", "claimed_card") == b"7"
+    assert not store.is_card_unhealthy(7)
+    store.set_card_unhealthy(7)
+    assert store.is_card_unhealthy(7)
+    store.clear_card_unhealthy(7)
+    assert not store.is_card_unhealthy(7)

@@ -35,3 +35,17 @@ def test_rollout_settings_env_override(monkeypatch):
     s = Settings.from_env()
     assert s.rollout_caller_ids == ["rl-1", "rl-2"]
     assert s.rollout_max_inflight == 512
+
+
+def test_plan_c_health_defaults():
+    s = Settings()
+    assert s.poison_death_threshold == 2
+    assert s.card_affinity_avoidance is True
+
+
+def test_plan_c_health_env_override(monkeypatch):
+    monkeypatch.setenv("TRITON_EVAL_POISON_DEATH_THRESHOLD", "3")
+    monkeypatch.setenv("TRITON_EVAL_CARD_AFFINITY_AVOIDANCE", "false")
+    s = Settings.from_env()
+    assert s.poison_death_threshold == 3
+    assert s.card_affinity_avoidance is False
