@@ -96,6 +96,12 @@ class Settings(BaseSettings):
     card_recovery_retry_seconds: float = Field(default=300.0, gt=0)
     card_canary_on_startup: bool = Field(default=True)
 
+    # Compile verdict cache (spec §8, Plan D-on_card): digest-keyed dedup of
+    # deterministic compile failures; fed by engine outcomes + admission precheck.
+    verdict_cache_enabled: bool = Field(default=True)
+    verdict_cache_ttl_seconds: int = Field(default=7 * 24 * 3600, gt=0)
+    cann_fingerprint: str = Field(default="", pattern=r"^[A-Za-z0-9._:-]{0,128}$")
+
     # --- deployment-attested worker environment ---
     worker_hardware_model: str = Field(default="Ascend910B3", min_length=1)
     worker_driver_version: str = Field(default="24.1.0", min_length=1)

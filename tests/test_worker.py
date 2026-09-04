@@ -15,6 +15,7 @@ from conftest import make_completed_result, make_provenance
 from triton_evaluation.api.contract import (
     CheckSucceeded,
     CorrectnessResult,
+    DomainFailure,
     EvaluationResource,
     EvaluationResult,
 )
@@ -512,3 +513,43 @@ def test_avoid_card_passed_to_claim(store, canary_settings, clock, make_command)
     with mock.patch.object(store, "claim_next", wraps=store.claim_next) as spy:
         worker.run_once()
     assert spy.call_args.kwargs.get("avoid_card") == 0
+
+
+def test_compile_error_terminal_feeds_verdict_cache(store, settings, clock,
+                                                    make_command):
+    from triton_evaluation import verdict_cache
+
+    result = make_completed_result(settings)
+    result.correctness.data.outcome = "compile_error"
+    result.correctness.data.passed = False
+    result.correctness.data.domain_failure = DomainFailure(
+        code="SUBJECT_COMPILE_ERROR", phase="compile",
+        message="candidate compilation failed",
+    )
+    worker = build_worker(store, settings, StubEvaluator(settings, result=result), clock)
+    cmd = make_command()
+    store.create_or_replay(cmd)
+    assert worker.run_once() is True
+    request = json.loads(cmd.admission.canonical_request)
+    digest = verdict_cache.digest_for(
+        request["kernel_code"], request.get("triton_impl_name", "triton_ascend_impl"),
+        settings.cann_fingerprint,
+    )
+    assert verdict_cache.get(store, digest) == "compile_error"
+
+
+def test_correct_terminal_does_not_feed_cache(store, settings, clock, make_command):
+    from triton_evaluation import verdict_cache
+
+    worker = build_worker(store, settings,
+                          StubEvaluator(settings, result=make_completed_result(settings)),
+                          clock)
+    cmd = make_command()
+    store.create_or_replay(cmd)
+    assert worker.run_once() is True
+    request = json.loads(cmd.admission.canonical_request)
+    digest = verdict_cache.digest_for(
+        request["kernel_code"], request.get("triton_impl_name", "triton_ascend_impl"),
+        settings.cann_fingerprint,
+    )
+    assert verdict_cache.get(store, digest) is None

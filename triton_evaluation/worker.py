@@ -7,6 +7,7 @@ that loses its lease commits nothing — the reaper and a replacement attempt
 own recovery. Logs carry IDs and error codes only: never source, credentials,
 session values, absolute work paths, or tracebacks.
 """
+import json
 import logging
 import shutil
 import tempfile
@@ -472,10 +473,36 @@ class Worker:
                 context={"requested_checks": request.checks},
             )
             # False means another winner already terminalized the resource.
-            self.store.commit_terminal(lease, "completed", validated)
+            committed = self.store.commit_terminal(lease, "completed", validated)
+            if committed and self.settings.verdict_cache_enabled:
+                self._record_compile_verdict(lease, validated)
         finally:
             if work_dir is not None:
                 shutil.rmtree(work_dir, ignore_errors=True)
+
+    def _record_compile_verdict(self, lease, validated) -> None:
+        """Engine-authoritative compile verdicts feed the admission cache."""
+        from triton_evaluation import verdict_cache
+
+        correctness = validated.correctness
+        if correctness is None or correctness.status != "succeeded":
+            return
+        data = correctness.data
+        if data is None or getattr(data, "outcome", None) != "compile_error":
+            return
+        try:
+            payload = json.loads(lease.canonical_request)
+            digest = verdict_cache.digest_for(
+                payload["kernel_code"],
+                payload.get("triton_impl_name", "triton_ascend_impl"),
+                self.settings.cann_fingerprint,
+            )
+            verdict_cache.put(
+                self.store, digest, "compile_error",
+                self.settings.verdict_cache_ttl_seconds,
+            )
+        except (KeyError, ValueError):
+            logger.warning("compile verdict feedback skipped (unparseable request)")
 
     @staticmethod
     def _parse_and_verify(lease: AttemptLease) -> EvaluationRequest:
