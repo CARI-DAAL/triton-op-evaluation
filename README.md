@@ -92,6 +92,14 @@ docker compose --env-file docker.env logs -f
 
 For multiple chips, list one `- /dev/davinciN` per card under `devices:` in the compose file.
 
+Card health (spec §10): workers run a canary kernel before claiming after any
+suspicious attempt death and at startup. A failed canary drains the worker (no
+heartbeats — readiness drops to 503 once no claim-capable worker remains) and
+drives a recovery ladder: in-process cleanup → `TRITON_EVAL_CARD_RESET_COMMAND`
+("{card}" substituted) → process restart. Host reboot is never automatic. An
+evaluation whose attempts die suspiciously twice is quarantined (terminal
+`WORKER_LOST` with a poison message; never retried by the service).
+
 ## Endpoints (evaluation API v2 — durable)
 
 - `POST /evaluations?wait_seconds=0..60` — authenticate with a caller-scoped opaque
