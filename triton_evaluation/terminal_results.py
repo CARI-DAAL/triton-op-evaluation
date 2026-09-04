@@ -135,3 +135,68 @@ def synthesize_orchestration_result(
         },
         context={"requested_checks": requested},
     )
+
+
+def synthesize_compile_error_result(
+    *, requested_checks, failure_message, total_cases,
+    evaluator_build, algorithms, manifest_id, problem_id,
+) -> EvaluationResult:
+    """Admission-time compile failure, byte-shaped like the engine's own
+    compile_error terminal (contracts .../resource-completed-compile-error.json):
+    correctness succeeds as a carrier with outcome compile_error; dependent
+    checks skip DEPENDENCY_NOT_PASSED."""
+    requested = [check for check in _CHECK_ORDER if check in requested_checks]
+    correctness = {
+        "status": "succeeded",
+        "data": {
+            "decoy": False,
+            "domain_failure": {
+                "case_idx": None,
+                "code": "SUBJECT_COMPILE_ERROR",
+                "message": failure_message,
+                "phase": "compile",
+            },
+            "failures": [],
+            "outcome": "compile_error",
+            "passed": False,
+            "passed_cases": 0,
+            "total_cases": int(total_cases),
+        },
+        "error": None,
+        "reason": None,
+    }
+    checks = {}
+    for check in requested:
+        if check == "correctness":
+            checks[check] = correctness
+        else:
+            checks[check] = {
+                "status": "skipped",
+                "data": None,
+                "error": None,
+                "reason": {
+                    "code": "DEPENDENCY_NOT_PASSED",
+                    "depends_on": _SKIP_DEPENDS_ON[check],
+                    "message": "correctness did not pass",
+                },
+            }
+    return EvaluationResult.model_validate(
+        {
+            "correctness": checks.get("correctness"),
+            "performance": checks.get("performance"),
+            "profile": checks.get("profile"),
+            "provenance": {
+                "schema_version": "2.0",
+                "evaluator_build": evaluator_build,
+                "correctness_algorithm": algorithms.correctness,
+                "decoy_algorithm": algorithms.decoy,
+                "benchmark_algorithm": algorithms.benchmark,
+                "profiler_algorithm": algorithms.profiler,
+                "execution_environment": None,
+                "grade_eligible": False,
+                "manifest_id": manifest_id,
+                "problem_id": problem_id,
+            },
+        },
+        context={"requested_checks": requested},
+    )

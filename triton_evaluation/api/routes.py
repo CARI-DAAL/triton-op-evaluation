@@ -17,7 +17,9 @@ from ..admission import ForbiddenError, admit
 from ..broker import StorageError
 from ..catalog import ManifestBindingError
 from ..models import CreateResourceCommand
+from ..precheck import run_precheck
 from ..security import Caller
+from ..terminal_results import synthesize_compile_error_result
 from . import errors
 from .auth import require_read_caller, require_submit_caller
 from .contract import EvaluationRequest, EvaluationResource
@@ -215,7 +217,31 @@ async def submit_evaluation(
         _require_ready(context, caller)
 
     try:
-        outcome = await asyncio.to_thread(context.store.create_or_replay, command)
+        if (context.settings.compile_precheck_enabled
+                or context.settings.verdict_cache_enabled):
+            payload = json.loads(command.admission.canonical_request)
+            verdict = await asyncio.to_thread(
+                run_precheck, context.store, context.settings,
+                payload["kernel_code"],
+                payload.get("triton_impl_name", "triton_ascend_impl"),
+            )
+            if verdict == "compile_error" and "profile" not in admission.requested_checks:
+                result = synthesize_compile_error_result(
+                    requested_checks=list(admission.requested_checks),
+                    failure_message="candidate compilation failed (admission precheck)",
+                    total_cases=1,
+                    evaluator_build=command.evaluator_build,
+                    algorithms=command.algorithms,
+                    manifest_id=(payload.get("grade_context") or {}).get("manifest_id"),
+                    problem_id=(payload.get("grade_context") or {}).get("problem_id"),
+                )
+                outcome = await asyncio.to_thread(
+                    context.store.create_terminal_at_admission, command, result
+                )
+            else:
+                outcome = await asyncio.to_thread(context.store.create_or_replay, command)
+        else:
+            outcome = await asyncio.to_thread(context.store.create_or_replay, command)
     except StorageError:
         raise errors.internal() from None
 

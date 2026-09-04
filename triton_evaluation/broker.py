@@ -28,9 +28,12 @@ Fixed keyspace under ``settings.redis_prefix`` (default ``triton-eval:v2``)::
     inflight:caller:{traffic_class}:{sha256(caller_id)}        integer
     inflight:session:{sha256(caller_id NUL session_id)}        integer
     rate:{traffic_class}:{sha256(caller_id)}:{minute}          integer, 120s expiry
+    verdict:{sha256}                             hash {verdict}, TTL =
+                                                 verdict_cache_ttl_seconds
 
-Only the rate-window key expires; nonterminal records never carry a TTL, and
-terminal resource/idempotency records share the retention TTL. Persisted
+Only the rate-window and verdict-cache keys expire; nonterminal records never
+carry a TTL, and terminal resource/idempotency records share the retention
+TTL. Persisted
 timestamps come from the store clock — Redis ``TIME`` in production, an
 injected deterministic clock in tests. The state machine accepts only
 ``queued -> running``, ``queued -> failed|timed_out``, and
@@ -241,6 +244,84 @@ class EvaluationStore:
                 pipeline.execute()
                 _create_post_exec(command.evaluation_id)
                 return CreateResourceResult("created", resource)
+            except redis.WatchError:
+                continue
+            finally:
+                pipeline.reset()
+
+    def create_terminal_at_admission(
+        self, command: CreateResourceCommand, result: EvaluationResult
+    ) -> CreateResourceResult:
+        """Admission-time terminal for a definitive compile verdict: durable and
+        idempotent like create_or_replay, but never queued — no ready/deadlines
+        entries, no inflight held, state completed at revision 1."""
+        caller_digest = _digest_text(command.caller_id)
+        idempotency_key = self._key(
+            f"idempotency:{_scoped_digest(command.caller_id, command.idempotency_key)}"
+        )
+        sequence_key = self._key("queue-sequence")
+        rate_limit, _ = self._quota_limits(command.traffic_class)
+        while True:
+            now_ms = self._clock()
+            rate_key = self._key(
+                f"rate:{command.traffic_class}:{caller_digest}:{now_ms // _MINUTE_MS}"
+            )
+            pipeline = self._r.pipeline()
+            try:
+                pipeline.watch(idempotency_key, rate_key, sequence_key)
+                record = pipeline.hgetall(idempotency_key)
+                if record:
+                    return self._replay(record, command, pipeline)
+                if int(pipeline.get(rate_key) or 0) >= rate_limit:
+                    return CreateResourceResult("rate_limited", None)
+                resource, mapping, _deadline = self._new_queued_resource(
+                    command, idempotency_key,
+                    _scoped_digest(command.caller_id, command.session_id), now_ms,
+                )
+                finished = datetime.fromtimestamp(now_ms / 1000, tz=timezone.utc)
+                terminal = EvaluationResource.model_validate(
+                    {
+                        **resource.model_dump(exclude_none=False),
+                        "revision": 1,
+                        "state": "completed",
+                        "started_at": finished,
+                        "updated_at": finished,
+                        "finished_at": finished,
+                        "result": result.model_dump(mode="json", exclude_none=False),
+                    }
+                )
+                expiry_ms = now_ms + self._s.retention_seconds * 1000
+                mapping = {
+                    **mapping,
+                    "resource": canonical_json_bytes(
+                        terminal.model_dump(mode="json", exclude_none=False)
+                    ),
+                    "updated_at_ms": str(now_ms),
+                }
+                pipeline.multi()
+                pipeline.hset(
+                    self._key(f"resource:{command.evaluation_id}"), mapping=mapping
+                )
+                pipeline.expire(
+                    self._key(f"resource:{command.evaluation_id}"),
+                    self._s.retention_seconds,
+                )
+                pipeline.hset(
+                    idempotency_key,
+                    mapping={
+                        "evaluation_id": command.evaluation_id,
+                        "request_digest": command.admission.request_digest,
+                    },
+                )
+                pipeline.expire(idempotency_key, self._s.retention_seconds)
+                pipeline.zadd(
+                    self._key("state:completed"),
+                    {command.evaluation_id: expiry_ms},
+                )
+                pipeline.incr(rate_key)
+                pipeline.expire(rate_key, _RATE_WINDOW_EXPIRY_SECONDS)
+                pipeline.execute()
+                return CreateResourceResult("created", terminal)
             except redis.WatchError:
                 continue
             finally:

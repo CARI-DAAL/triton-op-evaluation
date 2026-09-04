@@ -41,6 +41,9 @@ def make_test_settings(tmp_path):
         catalog_manifest_path=str(tmp_path / "catalog" / "catalog.json"),
         # Startup canary off: e2e protocol tests predate card health.
         card_canary_on_startup=False,
+        # Admission precheck off: e2e protocol tests predate the compile
+        # short-circuit; short-circuit tests opt in explicitly.
+        compile_precheck_enabled=False,
     )
 
 

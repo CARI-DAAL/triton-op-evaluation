@@ -100,6 +100,9 @@ class Settings(BaseSettings):
     # deterministic compile failures; fed by engine outcomes + admission precheck.
     verdict_cache_enabled: bool = Field(default=True)
     verdict_cache_ttl_seconds: int = Field(default=7 * 24 * 3600, gt=0)
+    # Admission pre-check: subprocess syntax/import classification (spec §8).
+    compile_precheck_enabled: bool = Field(default=True)
+    precheck_budget_seconds: int = Field(default=60, gt=0)
     cann_fingerprint: str = Field(default="", pattern=r"^[A-Za-z0-9._:-]{0,128}$")
 
     # --- deployment-attested worker environment ---
