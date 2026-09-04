@@ -88,6 +88,14 @@ class Settings(BaseSettings):
     poison_death_threshold: int = Field(default=2, ge=2)
     card_affinity_avoidance: bool = Field(default=True)
 
+    # Canary + recovery ladder (spec §10).
+    canary_budget_seconds: int = Field(default=120, gt=0)
+    canary_interval_seconds: float = Field(default=60.0, gt=0)
+    card_reset_command: str = Field(default="", max_length=500)  # "{card}" substituted
+    card_recovery_max_step: int = Field(default=2, ge=1, le=3)  # 1 cleanup, 2 reset, 3 restart
+    card_recovery_retry_seconds: float = Field(default=300.0, gt=0)
+    card_canary_on_startup: bool = Field(default=True)
+
     # --- deployment-attested worker environment ---
     worker_hardware_model: str = Field(default="Ascend910B3", min_length=1)
     worker_driver_version: str = Field(default="24.1.0", min_length=1)

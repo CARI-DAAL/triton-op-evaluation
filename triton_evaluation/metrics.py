@@ -39,12 +39,14 @@ LABEL_VALUES = {
     "reason": ("UNSUPPORTED_CASE", "NO_STABLE_MEASUREMENT"),
     "outcome": (
         "renewed", "rejected", "won", "lost", "requeued", "failed", "bound",
-        "rejected_binding", "compatible", "incompatible",
+        "rejected_binding", "compatible", "incompatible", "pass", "fail",
     ),
     "route": ("evaluations_post", "evaluations_get", "verify", "profile", "tasks"),
     "purpose": ("trial", "grade"),
     "eligible": ("true", "false"),
     "decoy": ("true", "false"),
+    "step": ("cleanup", "reset", "restart"),
+    "card": tuple(str(i) for i in range(16)),
 }
 
 ALLOWED_METRICS = {
@@ -79,13 +81,17 @@ ALLOWED_METRICS = {
     # Shaping/catalog
     "shaping_failures_total": ("check",),
     "catalog_binding_outcomes_total": ("outcome",),
+    # Card health (spec §10)
+    "card_canary_total": ("outcome",),
+    "card_recovery_total": ("step",),
+    "card_health_state": ("card",),
 }
 
 _HISTOGRAMS = {
     "resource_terminal_duration_seconds": DURATION_BUCKETS,
     "performance_coverage": COVERAGE_BUCKETS,
 }
-_GAUGE_NAMES = ("resource_state_gauge",)
+_GAUGE_NAMES = ("resource_state_gauge", "card_health_state")
 
 _METRIC_NAME_RE = re.compile(r"^[a-z][a-z0-9_]*$")
 
