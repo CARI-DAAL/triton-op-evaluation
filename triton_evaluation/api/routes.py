@@ -22,7 +22,7 @@ from ..security import Caller
 from ..terminal_results import synthesize_compile_error_result
 from . import errors
 from .auth import require_read_caller, require_submit_caller
-from .contract import EvaluationRequest, EvaluationResource
+from .contract import EvaluationRequest, EvaluationResource, dump_for_version
 from .dependencies import AppContext, get_context
 
 router = APIRouter()
@@ -131,7 +131,7 @@ def _require_ready(context: AppContext, caller: Caller) -> None:
 def _build_command(context, caller, session_id, idempotency_key, admission, purpose):
     from ..models import new_evaluation_id
 
-    is_rollout = (
+    is_rollout = purpose == "rollout" or (
         purpose == "trial" and caller.caller_id in context.settings.rollout_caller_ids
     )
     return CreateResourceCommand(
@@ -216,15 +216,22 @@ async def submit_evaluation(
     if replayed is None:
         _require_ready(context, caller)
 
+    precheck_verdict: str | None = None
+    precheck_duration_ms = 0
     try:
         if (context.settings.compile_precheck_enabled
                 or context.settings.verdict_cache_enabled):
             payload = json.loads(command.admission.canonical_request)
+            precheck_started = time.monotonic()
             verdict = await asyncio.to_thread(
                 run_precheck, context.store, context.settings,
                 payload["kernel_code"],
                 payload.get("triton_impl_name", "triton_ascend_impl"),
             )
+            precheck_duration_ms = round(
+                (time.monotonic() - precheck_started) * 1000
+            )
+            precheck_verdict = verdict or ""
             if verdict == "compile_error" and "profile" not in admission.requested_checks:
                 result = synthesize_compile_error_result(
                     requested_checks=list(admission.requested_checks),
@@ -234,6 +241,8 @@ async def submit_evaluation(
                     algorithms=command.algorithms,
                     manifest_id=(payload.get("grade_context") or {}).get("manifest_id"),
                     problem_id=(payload.get("grade_context") or {}).get("problem_id"),
+                    version=evaluation_request.schema_version,
+                    precheck_duration_ms=precheck_duration_ms,
                 )
                 outcome = await asyncio.to_thread(
                     context.store.create_terminal_at_admission, command, result
@@ -259,6 +268,13 @@ async def submit_evaluation(
         raise errors.limit_exceeded("caller inflight limit exceeded")
     resource = outcome.resource
     assert resource is not None
+
+    if precheck_verdict is not None and outcome.decision == "created":
+        # Advisory provenance only: never for replays, never response-affecting.
+        await asyncio.to_thread(
+            context.store.note_precheck_result,
+            resource.evaluation_id, precheck_verdict, "", precheck_duration_ms,
+        )
 
     if resource.state in TERMINAL_STATES:
         # A replayed terminal resource answers 200 immediately.
@@ -286,7 +302,7 @@ def _resource_response(resource: EvaluationResource, accepted: bool = False):
     if accepted:
         headers["Location"] = f"/evaluations/{resource.evaluation_id}"
     return JSONResponse(
-        content=resource.model_dump(mode="json", exclude_none=False),
+        content=json.loads(dump_for_version(resource, resource.schema_version)),
         status_code=202 if accepted else 200,
         headers=headers,
     )
@@ -310,7 +326,7 @@ async def get_evaluation(
     from fastapi.responses import JSONResponse
 
     return JSONResponse(
-        content=resource.model_dump(mode="json", exclude_none=False),
+        content=json.loads(dump_for_version(resource, resource.schema_version)),
         status_code=200,
         headers=headers,
     )

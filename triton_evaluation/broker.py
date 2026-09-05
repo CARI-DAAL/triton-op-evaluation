@@ -54,6 +54,7 @@ from triton_evaluation.api.contract import (
     CheckOutcome,
     EvaluationResource,
     EvaluationResult,
+    dump_for_version,
 )
 from triton_evaluation.api.contract_artifacts import canonical_json_bytes, sha256_hex
 from triton_evaluation.config import Settings
@@ -72,6 +73,7 @@ from triton_evaluation.security import Caller
 from triton_evaluation.terminal_results import (
     persisted_check_outcomes,
     synthesize_orchestration_result,
+    synthesize_poison_result,
 )
 
 _RATE_WINDOW_EXPIRY_SECONDS = 120
@@ -293,9 +295,7 @@ class EvaluationStore:
                 expiry_ms = now_ms + self._s.retention_seconds * 1000
                 mapping = {
                     **mapping,
-                    "resource": canonical_json_bytes(
-                        terminal.model_dump(mode="json", exclude_none=False)
-                    ),
+                    "resource": dump_for_version(terminal, terminal.schema_version),
                     "updated_at_ms": str(now_ms),
                 }
                 pipeline.multi()
@@ -357,7 +357,7 @@ class EvaluationStore:
         deadline_ms = accepted_ms + deadline_seconds * 1000
         accepted_at = datetime.fromtimestamp(accepted_ms / 1000, tz=timezone.utc)
         resource = EvaluationResource(
-            schema_version="2.0",
+            schema_version=payload.get("schema_version", "2.0"),
             evaluation_id=command.evaluation_id,
             revision=1,
             state="queued",
@@ -382,9 +382,7 @@ class EvaluationStore:
             "requested_checks": canonical_json_bytes(
                 list(command.admission.requested_checks)
             ),
-            "resource": canonical_json_bytes(
-                resource.model_dump(mode="json", exclude_none=False)
-            ),
+            "resource": dump_for_version(resource, resource.schema_version),
             "evaluator_build": command.evaluator_build,
             "correctness_algorithm": command.algorithms.correctness,
             "decoy_algorithm": command.algorithms.decoy,
@@ -396,6 +394,9 @@ class EvaluationStore:
             "fencing_token": "0",
             "active_check": "",
             "check_outcomes": "{}",
+            "precheck_verdict": "",
+            "precheck_excerpt": "",
+            "precheck_duration_ms": "",
             "lease_deadline_ms": "0",
             "replacement_pending": "0",
             "created_at_ms": str(accepted_ms),
@@ -418,7 +419,7 @@ class EvaluationStore:
         owner = stored[b"owner"].decode("utf-8")
         purpose = stored[b"purpose"].decode("utf-8")
         if caller.caller_id == owner:
-            required = "trial:read" if purpose == "trial" else "grade:read"
+            required = "trial:read" if purpose in ("trial", "rollout") else "grade:read"
             if required not in caller.scopes:
                 return None
         elif "observer:read" not in caller.scopes:
@@ -598,9 +599,7 @@ class EvaluationStore:
             pipeline.hset(
                 resource_key,
                 mapping={
-                    "resource": canonical_json_bytes(
-                        updated.model_dump(mode="json", exclude_none=False)
-                    ),
+                    "resource": dump_for_version(updated, updated.schema_version),
                     "updated_at_ms": str(now_ms),
                 },
             )
@@ -681,6 +680,25 @@ class EvaluationStore:
             pipeline.zadd(leases_key, {lease.evaluation_id: expiry_ms})
 
         return self._fenced_write(lease, mutate)
+
+    def note_precheck_result(
+        self, evaluation_id: str, verdict: str, excerpt: str, duration_ms: int
+    ) -> None:
+        """Advisory admission-precheck provenance on the resource hash.
+
+        Empty verdict means the precheck passed (or was inconclusive). Never
+        fenced: it must not disturb the resource's transition protocol."""
+        try:
+            self._r.hset(
+                self._key(f"resource:{evaluation_id}"),
+                mapping={
+                    "precheck_verdict": verdict,
+                    "precheck_excerpt": excerpt,
+                    "precheck_duration_ms": str(duration_ms),
+                },
+            )
+        except redis.RedisError:
+            logger.warning("note_precheck_result failed for %s", evaluation_id)
 
     def set_active_check(self, lease: AttemptLease, check: Check) -> bool:
         resource_key = self._key(f"resource:{lease.evaluation_id}")
@@ -786,9 +804,7 @@ class EvaluationStore:
         )
         expiry_ms = now_ms + self._s.retention_seconds * 1000
         hash_updates = {
-            "resource": canonical_json_bytes(
-                updated.model_dump(mode="json", exclude_none=False)
-            ),
+            "resource": dump_for_version(updated, updated.schema_version),
             "updated_at_ms": str(now_ms),
             "attempt_id": "",
             "replacement_pending": "0",
@@ -902,20 +918,28 @@ class EvaluationStore:
                     metadata = {}
                 if deaths >= self._s.poison_death_threshold:
                     # Poison quarantine (spec §10): too many suspicious deaths —
-                    # terminate instead of requeueing. 2.0 contract-invisible shape:
-                    # the existing synthesized WORKER_LOST result with a
-                    # quarantine message (retryable stays True; that flag is frozen).
+                    # terminate instead of requeueing. Version-aware surface: a
+                    # 2.1 request gets the typed SUSPECTED_POISON_CANDIDATE code
+                    # (retryable False); a 2.0 request keeps the frozen
+                    # contract-invisible WORKER_LOST shape (retryable stays
+                    # True; that flag is frozen).
                     # Mirrors the attempt-limit path: `_commit_terminal_locked`
                     # issues its own MULTI/EXEC, so the advisory metadata write
                     # must not touch the watched hash before EXEC (a self-write
                     # dirtying the watch would abort the transaction).
-                    result = self._synthesized_result(
-                        stored,
-                        "worker_lost",
+                    message = (
                         "worker lease expired before a subject outcome was committed; "
                         "repeated suspicious deaths — candidate quarantined as "
-                        "suspected poison",
+                        "suspected poison"
                     )
+                    if json.loads(stored[b"canonical_request"]).get(
+                        "schema_version", "2.0"
+                    ) == "2.1":
+                        result = self._synthesized_poison_result(stored, message)
+                    else:
+                        result = self._synthesized_result(
+                            stored, "worker_lost", message
+                        )
                     self._commit_terminal_locked(
                         pipeline,
                         stored=stored,
@@ -1066,6 +1090,30 @@ class EvaluationStore:
             ),
             manifest_id=grade_context.get("manifest_id"),
             problem_id=grade_context.get("problem_id"),
+            version=payload.get("schema_version", "2.0"),
+        )
+
+    def _synthesized_poison_result(
+        self, stored: dict, message: str
+    ) -> EvaluationResult:
+        payload = json.loads(stored[b"canonical_request"])
+        grade_context = payload.get("grade_context") or {}
+        return synthesize_poison_result(
+            requested_checks=json.loads(stored[b"requested_checks"]),
+            persisted_outcomes=persisted_check_outcomes(stored[b"check_outcomes"]),
+            code="SUSPECTED_POISON_CANDIDATE",
+            retryable=False,
+            message=message,
+            evaluator_build=stored[b"evaluator_build"].decode("utf-8"),
+            algorithms=AlgorithmVersions(
+                correctness=stored[b"correctness_algorithm"].decode("utf-8"),
+                decoy=stored[b"decoy_algorithm"].decode("utf-8"),
+                benchmark=stored[b"benchmark_algorithm"].decode("utf-8"),
+                profiler=stored[b"profiler_algorithm"].decode("utf-8"),
+            ),
+            manifest_id=grade_context.get("manifest_id"),
+            problem_id=grade_context.get("problem_id"),
+            version=payload.get("schema_version", "2.0"),
         )
 
     # ------------------------------------------------------------------

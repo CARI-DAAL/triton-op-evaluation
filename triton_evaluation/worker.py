@@ -167,7 +167,7 @@ def _protocol_failure_result(
 ) -> EvaluationResult:
     """A redacted failed result when no trusted subject outcome exists."""
     requested = [
-        check for check in ("correctness", "performance", "profile")
+        check for check in ("compile", "correctness", "performance", "profile")
         if check in requested_checks
     ]
     outcomes: dict[str, dict] = {}
@@ -201,6 +201,7 @@ def _protocol_failure_result(
             }
     return EvaluationResult.model_validate(
         {
+            "compile": outcomes.get("compile"),
             "correctness": outcomes.get("correctness"),
             "performance": outcomes.get("performance"),
             "profile": outcomes.get("profile"),

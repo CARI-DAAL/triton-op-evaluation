@@ -1,9 +1,34 @@
 """Contract v2.1: additive extensions, per-version purity, serialization stripping."""
 
-import pytest
+import json
+from types import SimpleNamespace
 
-from triton_evaluation.api import _frozen_v20
+import pytest
+from conftest import make_caller, make_completed_result, make_request
+
+from triton_evaluation.admission import ForbiddenError, admit
+from triton_evaluation.api import _frozen_v20, routes
 from triton_evaluation.api.contract import EvaluationRequest, EvaluationResult
+from triton_evaluation.catalog import ReleaseCatalog
+
+
+def published_v20_resource_validator():
+    """jsonschema validator for the published 2.0 EvaluationResource $def.
+
+    Uses the pre-``referencing`` jsonschema API (``RefResolver``): the portable
+    probe's ``referencing``-based approach needs a dependency that torchless
+    CI hosts do not carry.
+    """
+    from pathlib import Path
+
+    import jsonschema
+
+    root = Path(__file__).resolve().parent.parent / "contracts" / "evaluation-api" / "2.0"
+    schema = json.loads((root / "schema.json").read_text(encoding="utf-8"))
+    resolver = jsonschema.RefResolver.from_schema(schema)
+    return jsonschema.Draft202012Validator(
+        schema["$defs"]["EvaluationResource"], resolver=resolver
+    )
 
 
 def _request(**overrides):
@@ -199,3 +224,83 @@ def test_strip_v21_fields_handles_resource_dump():
     assert "compile" not in dumped["result"]
     assert "measurement_method" not in dumped["result"]["performance"]
     assert "measurement_method" not in dumped["result"]["performance"]["per_case"][0]
+
+
+# ---------------------------------------------------------------------------
+# Task 3 erratum E-1: 2.0 wire bytes must validate against the published schema
+# ---------------------------------------------------------------------------
+
+
+def test_v20_terminal_resource_bytes_validate_against_published_schema(
+    store, settings, make_command, make_worker,
+):
+    """A 2.0 terminal resource's stored bytes are the same JSON a consumer
+    sees on GET/POST-replay; they must carry no v2.1-only keys."""
+    cmd = make_command()
+    store.create_or_replay(cmd)
+    lease = store.claim_next(make_worker())
+    assert store.commit_terminal(lease, "completed", make_completed_result(settings))
+    raw = store._r.hget(
+        f"triton-eval:v2:resource:{cmd.evaluation_id}", b"resource"
+    )
+    published_v20_resource_validator().validate(json.loads(raw))
+
+
+# ---------------------------------------------------------------------------
+# Task 3 erratum E-2: the queued resource echoes the canonical request version
+# ---------------------------------------------------------------------------
+
+
+def test_queued_resource_echoes_canonical_schema_version(store, make_command):
+    cmd = make_command(
+        request=make_request(schema_version="2.1", checks=["compile", "correctness"])
+    )
+    outcome = store.create_or_replay(cmd)
+    assert outcome.decision == "created"
+    assert outcome.resource.schema_version == "2.1"
+
+    cmd20 = make_command(idempotency_key="key-20")
+    outcome20 = store.create_or_replay(cmd20)
+    assert outcome20.resource.schema_version == "2.0"
+
+
+# ---------------------------------------------------------------------------
+# Task 3 erratum E-3: rollout is admitted like a trial (scope, no catalog bind)
+# ---------------------------------------------------------------------------
+
+
+def test_rollout_admission_treated_as_trial(release_catalog):
+    caller = make_caller(scopes=("trial:submit", "trial:read"))
+    request = make_request(schema_version="2.1", purpose="rollout")
+    admission = admit(request, caller, release_catalog)
+    assert admission.catalog_binding is None
+    assert admission.requested_checks == ("correctness",)
+
+
+def test_rollout_admission_forbidden_without_trial_submit(release_catalog):
+    caller = make_caller("grader-1", "trusted", ("grade:submit", "grade:read"))
+    request = make_request(schema_version="2.1", purpose="rollout")
+    with pytest.raises(ForbiddenError):
+        admit(request, caller, release_catalog)
+
+
+def test_rollout_purpose_resolves_rollout_traffic_class(settings):
+    context = SimpleNamespace(
+        settings=settings.model_copy(update={"rollout_caller_ids": []})
+    )
+    caller = make_caller()
+    request = make_request(schema_version="2.1", purpose="rollout")
+    admission = admit(request, caller, ReleaseCatalog({}))
+    command = routes._build_command(context, caller, "s1", "k1", admission, "rollout")
+    assert command.traffic_class == "rollout"
+
+
+def test_rollout_owner_reads_with_trial_scope(store, make_command):
+    cmd = make_command(
+        request=make_request(schema_version="2.1", purpose="rollout"),
+        traffic_class="rollout",
+    )
+    store.create_or_replay(cmd)
+    visible = store.get_visible(cmd.evaluation_id, make_caller())
+    assert visible is not None
+    assert visible.evaluation_id == cmd.evaluation_id
