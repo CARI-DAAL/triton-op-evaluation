@@ -393,12 +393,26 @@ Create `tests/test_event_timing_npu.py` (pytestmark npu; skipif no torch_npu): r
 
 ### Task 3: compile check semantics + poison version-awareness
 
+> **Erratum(2026-09-05,Task 1 评审裁决,执行原 Step 2 之前必须完成)**:
+>
+> **E-1 序列化改造(2.0 线合规,部署级阻断项)**:Task 1 后原始 `canonical_json_bytes(model_dump(...))` 站点在 2.0 响应上发出 `compile: null` / `measurement_method: null`,**违反已发布 2.0 schema**(additionalProperties: false)。把以下站点改为 `dump_for_version(model, model.schema_version)`(EvaluationResult 自身无 schema_version 字段,剥离开关一律跟随外层资源版本):
+> - `triton_evaluation/broker.py` 四处资源/结果字节(~296-297、~385-386、~601-602、~789-790)
+> - `triton_evaluation/api/routes.py:289、313`(GET 响应)
+> - `triton_evaluation/worker.py:~472`(committed result 字节;~150 saved outcomes 是 per-check 载荷,核实其 dump 形状——per-check outcome 的 `data` 若含 v21 键则需同改,否则不动)
+> 新增测试:构造 2.0 版终态资源,其响应 JSON 通过 `contracts/evaluation-api/2.0/schema.json` 的 jsonschema 校验(test deps 已含 jsonschema;参考 tests/contract_consumers/portable_schema_probe.py);同构 2.1 断言待到 Task 4 生成 2.1 树后补。
+>
+> **E-2 schema-version 回显**:`broker._new_queued_resource` 的 `schema_version="2.0"` 硬编码改为 `payload.get("schema_version", "2.0")`;`terminal_results` 两个合成函数加 `version: str = "2.0"` 参数(调用方传存储/请求版本;毒丸路径传解析出的 canonical 请求版本)。否则 2.1 响应被按 2.0 剥掉 v21 字段。
+>
+> **E-3 rollout 准入门语义(500 隐患)**:2.1 `purpose="rollout"` 请求过模型校验但 `admit()` 当 grade 调 `catalog.bind(None, ...)` → AttributeError → 未捕获 500。最小修法:`admission.py admit()` 中 rollout 与 trial 同待遇——要求 `trial:submit` scope、**不做 catalog 绑定**;routes 的 `catalog_binding_outcomes_total` bump 保持仅 grade;`broker.get_visible` owner 读权限 purpose rollout → `trial:read`;`routes._build_command` 的 is_rollout 扩展为 `purpose == "rollout" or caller.caller_id in settings.rollout_caller_ids`(spec §7:2.1 purpose=rollout 默认解析 rollout class;2.0 在模型层已拒绝 rollout)。测试:2.1 rollout 请求经 admit() 不绑定 catalog;无 trial:submit 的 caller 403;有 scope 时 traffic_class == "rollout"。
+
 **Files:**
-- Modify: `triton_evaluation/broker.py` (precheck verdict stored on resource; version-aware poison synthesis; `result.compile` assembly helpers)
-- Modify: `triton_evaluation/api/routes.py` (compile-only terminal at admission; precheck result travels)
-- Modify: `triton_evaluation/terminal_results.py` (compile slot in syntheses)
+- Modify: `triton_evaluation/broker.py` (E-1 序列化改造;E-2 回显;原:precheck verdict stored on resource; version-aware poison synthesis; `result.compile` assembly helpers)
+- Modify: `triton_evaluation/api/routes.py` (E-1 序列化改造;E-3 rollout 解析;原:compile-only terminal at admission; precheck result travels)
+- Modify: `triton_evaluation/worker.py` (E-1 committed-result 序列化)
+- Modify: `triton_evaluation/admission.py` (E-3 rollout scope/绑定语义)
+- Modify: `triton_evaluation/terminal_results.py` (E-2 version 参数;原:compile slot in syntheses)
 - Modify: `triton_evaluation/evaluators/evaluation.py` (on-card assembly of result.compile)
-- Test: `tests/test_compile_check.py` (create)
+- Test: `tests/test_compile_check.py` (create);`tests/test_contract_v21.py` 追加 E-1 jsonschema 测试与 E-3 测试
 
 **Interfaces:**
 - Consumes: Tasks 1-2; Plan D precheck/verdict cache.
