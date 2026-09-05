@@ -125,7 +125,7 @@ class EvaluationRequest(StrictModel):
     triton_impl_name: str = Field(
         default="triton_ascend_impl", min_length=1, max_length=128
     )
-    checks: list[Check] = Field(min_length=1, max_length=3)
+    checks: list[Check] = Field(min_length=1, max_length=4)
     non_compute: bool = False
     deadline_seconds: int = Field(default=900, ge=10, le=3600)
     performance: PerformanceParams | None = None
@@ -154,6 +154,8 @@ class EvaluationRequest(StrictModel):
         if self.purpose == "grade" and self.grade_context is None:
             raise ValueError("grade requests require grade_context")
         if self.schema_version == "2.0":
+            if len(self.checks) > 3:
+                raise ValueError("schema_version 2.0 allows at most 3 checks")
             if "compile" in self.checks:
                 raise ValueError("schema_version 2.0 does not support the compile check")
             if self.purpose == "rollout":

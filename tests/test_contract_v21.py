@@ -47,6 +47,25 @@ def test_v20_rejects_performance_method():
         )
 
 
+def test_v21_allows_four_checks():
+    request = EvaluationRequest.model_validate(
+        _request(checks=["compile", "correctness", "performance", "profile"])
+    )
+    assert request.checks == ["compile", "correctness", "performance", "profile"]
+
+
+def test_v20_rejects_four_checks():
+    # A 2.0 request with four checks always includes "compile", so either the
+    # length rule or the compile rule fires; both are 2.0 rejections.
+    with pytest.raises(ValueError, match="2.0"):
+        EvaluationRequest.model_validate(
+            _request(
+                schema_version="2.0",
+                checks=["correctness", "performance", "profile", "compile"],
+            )
+        )
+
+
 def test_v21_defaults_method_and_accepts_profiler():
     request = EvaluationRequest.model_validate(_request(checks=["correctness", "performance"]))
     assert request.performance.method is None  # effective default resolved later
