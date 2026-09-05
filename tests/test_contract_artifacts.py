@@ -1,7 +1,7 @@
-"""Contract artifact generation and pinning tests (schema 2.0).
+"""Contract artifact generation and pinning tests (schemas 2.0 and 2.1).
 
 These tests pin the Phase 0 publication: RFC 8785 canonical bytes, the exact
-four publication path groups, recomputable digests, the sorted fixture
+publication path groups, recomputable digests, the sorted fixture
 inventory, strict-model round trips, and jsonschema consumer entrypoints.
 """
 import json
@@ -11,8 +11,10 @@ from pathlib import PurePosixPath
 import pytest
 
 from triton_evaluation.api import _frozen_v20
+from triton_evaluation.api import contract as live_contract
 from triton_evaluation.api.contract_artifacts import (
-    build_artifacts,
+    build_v20_artifacts,
+    build_v21_artifacts,
     canonical_json_bytes,
     sha256_hex,
     verify_artifacts,
@@ -57,6 +59,19 @@ ENTRYPOINT_MODELS = {
     "request": _frozen_v20.EvaluationRequest,
     "resource": _frozen_v20.EvaluationResource,
     "error": _frozen_v20.ErrorEnvelope,
+}
+
+EXPECTED_FIXTURES_V21 = [
+    "request-trial-compile-only.json",
+    "request-trial-rollout.json",
+    "resource-completed-compile-check.json",
+    "resource-failed-poison.json",
+]
+
+# The 2.1 tree generates from the live models.
+ENTRYPOINT_MODELS_V21 = {
+    "request": live_contract.EvaluationRequest,
+    "resource": live_contract.EvaluationResource,
 }
 
 
@@ -109,14 +124,14 @@ def test_json_dumps_sort_keys_is_not_the_canonicalizer():
 
 
 def test_artifact_paths_are_exactly_the_publication_set():
-    paths = {path.as_posix() for path in build_artifacts()}
+    paths = {path.as_posix() for path in build_v20_artifacts()}
     expected = {"schema.json", "contract.json", "fixtures/index.json"}
     expected |= {f"fixtures/{name}" for name in EXPECTED_FIXTURES}
     assert paths == expected
 
 
 def test_contract_json_has_exact_keys_and_recomputable_digests():
-    artifacts = build_artifacts()
+    artifacts = build_v20_artifacts()
     contract = json.loads(artifacts[PurePosixPath("contract.json")])
     assert set(contract) == {
         "evaluation_api_schema_version",
@@ -137,7 +152,7 @@ def test_contract_json_has_exact_keys_and_recomputable_digests():
 
 
 def test_fixture_index_is_sorted_unique_and_pins_every_fixture():
-    artifacts = build_artifacts()
+    artifacts = build_v20_artifacts()
     index = json.loads(artifacts[PurePosixPath("fixtures/index.json")])
     assert index["schema_version"] == "2.0"
     entries = index["fixtures"]
@@ -153,12 +168,12 @@ def test_fixture_index_is_sorted_unique_and_pins_every_fixture():
 
 
 def test_artifacts_have_no_trailing_newline():
-    for path, data in build_artifacts().items():
+    for path, data in build_v20_artifacts().items():
         assert not data.endswith(b"\n"), path
 
 
 def test_every_fixture_round_trips_through_its_strict_model():
-    artifacts = build_artifacts()
+    artifacts = build_v20_artifacts()
     for name in EXPECTED_FIXTURES:
         raw = artifacts[PurePosixPath(f"fixtures/{name}")]
         model = ENTRYPOINT_MODELS[name.split("-", maxsplit=1)[0]]
@@ -174,7 +189,7 @@ def _entrypoint_validator(def_name):
     import jsonschema
     from referencing import Registry, Resource
 
-    schema = json.loads(build_artifacts()[PurePosixPath("schema.json")])
+    schema = json.loads(build_v20_artifacts()[PurePosixPath("schema.json")])
     registry = Registry().with_resource(schema["$id"], Resource.from_contents(schema))
     return jsonschema.Draft202012Validator(
         {"$ref": f"{schema['$id']}#/$defs/{def_name}"}, registry=registry
@@ -184,7 +199,7 @@ def _entrypoint_validator(def_name):
 def test_consumer_entrypoints_resolve_and_validate_independently():
     import jsonschema
 
-    artifacts = build_artifacts()
+    artifacts = build_v20_artifacts()
     cases = {
         "EvaluationRequest": "fixtures/request-trial-minimal.json",
         "EvaluationResource": "fixtures/resource-completed-correct.json",
@@ -205,19 +220,126 @@ def test_consumer_entrypoints_resolve_and_validate_independently():
 
 
 def test_write_then_verify_is_clean(tmp_path):
-    write_artifacts(tmp_path)
-    assert verify_artifacts(tmp_path) == []
+    write_artifacts(tmp_path, build_v20_artifacts())
+    assert verify_artifacts(tmp_path, build_v20_artifacts()) == []
+
+
+def test_write_then_verify_is_clean_v21(tmp_path):
+    write_artifacts(tmp_path, build_v21_artifacts())
+    assert verify_artifacts(tmp_path, build_v21_artifacts()) == []
 
 
 def test_verify_artifacts_detects_drift(tmp_path):
-    write_artifacts(tmp_path)
+    write_artifacts(tmp_path, build_v20_artifacts())
     target = tmp_path / "fixtures" / "error-internal.json"
     data = target.read_bytes()
     target.write_bytes(data[:-1] + (b"0" if data[-1:] != b"0" else b"1"))
     (tmp_path / "fixtures" / "unexpected.json").write_bytes(b"{}")
     (tmp_path / "schema.json").unlink()
-    assert verify_artifacts(tmp_path) == [
+    assert verify_artifacts(tmp_path, build_v20_artifacts()) == [
         "fixtures/error-internal.json",
         "fixtures/unexpected.json",
         "schema.json",
     ]
+
+
+# ---------------------------------------------------------------------------
+# v2.1 publication path set, digest self-consistency, consumer entrypoints
+# ---------------------------------------------------------------------------
+
+
+def test_v21_artifact_paths_are_exactly_the_publication_set():
+    paths = {path.as_posix() for path in build_v21_artifacts()}
+    expected = {"schema.json", "contract.json", "fixtures/index.json"}
+    expected |= {f"fixtures/{name}" for name in EXPECTED_FIXTURES_V21}
+    assert paths == expected
+
+
+def test_v21_contract_json_has_exact_keys_and_recomputable_digests():
+    artifacts = build_v21_artifacts()
+    contract = json.loads(artifacts[PurePosixPath("contract.json")])
+    assert set(contract) == {
+        "evaluation_api_schema_version",
+        "evaluation_api_schema_digest",
+        "evaluation_api_golden_fixture_digest",
+        "json_schema_path",
+        "golden_fixture_index_path",
+    }
+    assert contract["evaluation_api_schema_version"] == "2.1"
+    assert contract["json_schema_path"] == "schema.json"
+    assert contract["golden_fixture_index_path"] == "fixtures/index.json"
+    assert contract["evaluation_api_schema_digest"] == sha256_hex(
+        artifacts[PurePosixPath("schema.json")]
+    )
+    assert contract["evaluation_api_golden_fixture_digest"] == sha256_hex(
+        artifacts[PurePosixPath("fixtures/index.json")]
+    )
+
+
+def test_v21_fixture_index_is_sorted_unique_and_pins_every_fixture():
+    artifacts = build_v21_artifacts()
+    index = json.loads(artifacts[PurePosixPath("fixtures/index.json")])
+    assert index["schema_version"] == "2.1"
+    entries = index["fixtures"]
+    names = [entry["name"] for entry in entries]
+    assert names == sorted(EXPECTED_FIXTURES_V21)
+    assert len(set(names)) == len(names)
+    for entry in entries:
+        assert set(entry) == {"name", "path", "sha256"}
+        path = PurePosixPath(entry["path"])
+        assert path.as_posix() == f"fixtures/{entry['name']}"
+        assert not path.is_absolute()
+        assert entry["sha256"] == sha256_hex(artifacts[path])
+
+
+def test_v21_every_fixture_round_trips_through_its_strict_model():
+    artifacts = build_v21_artifacts()
+    for name in EXPECTED_FIXTURES_V21:
+        raw = artifacts[PurePosixPath(f"fixtures/{name}")]
+        model = ENTRYPOINT_MODELS_V21[name.split("-", maxsplit=1)[0]]
+        assert model.model_validate_json(raw).model_dump(mode="json") == json.loads(raw)
+
+
+def test_v21_schema_carries_the_compile_slot_and_measurement_method():
+    schema = json.loads(build_v21_artifacts()[PurePosixPath("schema.json")])
+    assert schema["$id"] == "urn:triton-evaluation:evaluation-api:2.1:schema"
+    result = schema["$defs"]["EvaluationResult"]["properties"]
+    assert "compile" in result
+    performance = schema["$defs"]["PerformanceResult"]["properties"]
+    assert "measurement_method" in performance
+    case = schema["$defs"]["PerformanceCase"]["properties"]
+    assert "measurement_method" in case
+    # The frozen 2.0 schema must NOT carry the v2.1-only fields.
+    frozen = json.loads(build_v20_artifacts()[PurePosixPath("schema.json")])
+    assert "compile" not in frozen["$defs"]["EvaluationResult"]["properties"]
+    assert "measurement_method" not in frozen["$defs"]["PerformanceCase"]["properties"]
+
+
+def _v21_entrypoint_validator(def_name):
+    import jsonschema
+
+    schema = json.loads(build_v21_artifacts()[PurePosixPath("schema.json")])
+    # RefResolver (not `referencing`): torchless CI hosts carry jsonschema
+    # without the referencing package (same pattern as test_contract_v21).
+    resolver = jsonschema.RefResolver.from_schema(schema)
+    return jsonschema.Draft202012Validator(schema["$defs"][def_name], resolver=resolver)
+
+
+def test_v21_consumer_entrypoints_resolve_and_validate_independently():
+    import jsonschema
+
+    artifacts = build_v21_artifacts()
+    cases = {
+        "EvaluationRequest": "fixtures/request-trial-rollout.json",
+        "EvaluationResource": "fixtures/resource-completed-compile-check.json",
+        "EvaluationResource (poison)": "fixtures/resource-failed-poison.json",
+    }
+    for def_name, fixture in cases.items():
+        _v21_entrypoint_validator(def_name.split(" ")[0]).validate(
+            json.loads(artifacts[PurePosixPath(fixture)])
+        )
+
+    request = json.loads(artifacts[PurePosixPath("fixtures/request-trial-rollout.json")])
+    request["checks"] = []
+    with pytest.raises(jsonschema.ValidationError):
+        _v21_entrypoint_validator("EvaluationRequest").validate(request)

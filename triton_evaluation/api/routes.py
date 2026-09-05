@@ -13,9 +13,11 @@ import time
 from fastapi import APIRouter, Depends, Query, Request
 from pydantic import ValidationError
 
+from .. import config as config_module
 from ..admission import ForbiddenError, admit
 from ..broker import StorageError
 from ..catalog import ManifestBindingError
+from ..config import V20_SUNSET_AT
 from ..models import CreateResourceCommand
 from ..precheck import run_precheck
 from ..security import Caller
@@ -192,6 +194,16 @@ async def submit_evaluation(
     idempotency_key = _validate_idempotency_key(request.headers.get("Idempotency-Key"))
 
     evaluation_request = await _decode_and_validate(request)
+
+    if (
+        evaluation_request.schema_version == "2.0"
+        and context.settings.v20_sunset_at is not None
+        and config_module._utcnow() > context.settings.v20_sunset_at
+    ):
+        raise errors.invalid_request(
+            "schema_version 2.0 was sunset at "
+            f"{V20_SUNSET_AT.isoformat()}; use schema_version 2.1"
+        )
 
     try:
         admission = admit(evaluation_request, caller, context.catalog)

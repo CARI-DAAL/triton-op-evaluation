@@ -56,11 +56,18 @@ verify_readiness() {
   "${PYTHON_BIN}" - <<'PYREADINESS'
 import sys
 
-from triton_evaluation.api.contract_artifacts import CONTRACT_ROOT, verify_artifacts
+from triton_evaluation.api.contract_artifacts import (
+    CONTRACT_ROOT,
+    CONTRACT_ROOT_V21,
+    build_v20_artifacts,
+    build_v21_artifacts,
+    verify_artifacts,
+)
 from triton_evaluation.catalog import ReleaseCatalog
 from triton_evaluation.security import CapabilityRegistry
 
-problems = verify_artifacts(CONTRACT_ROOT)
+problems = verify_artifacts(CONTRACT_ROOT, build_v20_artifacts())
+problems += verify_artifacts(CONTRACT_ROOT_V21, build_v21_artifacts())
 if problems:
     sys.exit(f"contract artifacts failed verification: {len(problems)} file(s)")
 import os

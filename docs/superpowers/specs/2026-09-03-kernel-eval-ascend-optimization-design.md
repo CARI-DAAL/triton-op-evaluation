@@ -116,6 +116,8 @@ Release 1 的全部内容**契约不可见**(纯内部优化);只有下表右列
 - 双版本窗口:2.0 与 2.1 并行接受;2.0 沿用 legacy routes 同款 time-box 机制(发布 sunset instant、窗口有上限)
 - `checks:["compile"]` 不返回编译产物本身(产物只留缓存服务后续执行)
 
+**Plan E 实现注记(2026-09-05,Task 4)**:双 artifact 树已发布——2.0 树由冻结快照模块 `_frozen_v20` 生成(字节/digests 永不移动),2.1 树由 live models 生成;启动 fail-closed 校验两处根目录(API lifespan、entrypoint、start.sh 三处同验)。2.0 sunset 发布常量为 `2027-03-31T00:00:00Z`(`config.V20_SUNSET_AT`),部署以 `TRITON_EVAL_V20_SUNSET_AT` 精确对时武装;armed 后请求时钟越过 instant 即对 2.0 请求返回 400 INVALID_REQUEST(带 sunset 信息),2.1 不受影响;窗口校验同 legacy(精确 instant、≤90 天、不能晚于 instant 武装,否则启动失败),未设置 = 未武装。2.1 golden fixtures 实落四个:rollout 请求、compile-only 请求、compile+measurement_method 完成终态、毒丸 `SUSPECTED_POISON_CANDIDATE` 终态。Task 3 评审裁决(erratum E-1/E-2/E-3)已同批落地:全部 canonical 字节出口按版本剥离 v21 字段、资源版本回显跟随 canonical 请求、rollout 准入门与 trial 同待遇(不做 catalog 绑定)。
+
 ## 7. 调度与配额
 
 ### 配额(quota class 机制)
@@ -198,6 +200,8 @@ infra 可疑死亡时在 evaluation 记 `last_failed_card`;worker 认领时同�
 - **2.0 默认保持 profiler**(绝对数值口径冻结)
 - **2.1(含全部 rollout 流量)默认 event**;`measurement_method` 字段保证跨方法数据不被无声混比
 - 验收做 **event vs profiler 秩一致研究**(同批 kernel 双方法):目标是加速比判定秩一致(same speedup>1 verdict),不是数值相等(语义上 event ≥ kernel-sum)
+
+**Plan E 实现注记(2026-09-05,Task 2/4)**:event 路径已落地——每迭代 `torch.npu.Event` 时间戳样本,每 case 延迟 = 样本中位数,`CV > 0.3` 或有效样本不足 → `NO_STABLE_MEASUREMENT`;`measurement_method` 投影进 2.1 的 overall + 每 case,模型层校验同评测内方法一致;2.0 线经 `dump_for_version` 剥离保持冻结口径。跨方法绝对值不可比已写入 README(消费者侧警示)。
 
 ## 10. 卡健康闭环
 

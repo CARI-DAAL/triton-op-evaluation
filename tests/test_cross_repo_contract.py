@@ -9,6 +9,7 @@ import pytest
 
 from triton_evaluation.api.contract_artifacts import (
     CONTRACT_ROOT,
+    CONTRACT_ROOT_V21,
     canonical_json_bytes,
     sha256_hex,
 )
@@ -18,6 +19,10 @@ pytestmark = pytest.mark.anyio
 
 def _load(relative: str) -> bytes:
     return (CONTRACT_ROOT / relative).read_bytes()
+
+
+def _load_v21(relative: str) -> bytes:
+    return (CONTRACT_ROOT_V21 / relative).read_bytes()
 
 
 def test_contract_json_pins_both_digests():
@@ -33,6 +38,44 @@ def test_index_pins_every_named_fixture_byte():
     for entry in index["fixtures"]:
         fixture = _load(entry["path"])
         assert entry["sha256"] == sha256_hex(fixture)
+
+
+# ---------------------------------------------------------------------------
+# v2.1 on-disk pinning (same consumer invariants as the 2.0 tree)
+# ---------------------------------------------------------------------------
+
+
+def test_v21_contract_json_pins_both_digests():
+    contract = json.loads(_load_v21("contract.json"))
+    assert contract["evaluation_api_schema_version"] == "2.1"
+    assert contract["evaluation_api_schema_digest"] == sha256_hex(
+        _load_v21("schema.json")
+    )
+    assert contract["evaluation_api_golden_fixture_digest"] == sha256_hex(
+        _load_v21("fixtures/index.json")
+    )
+
+
+def test_v21_index_pins_every_named_fixture_byte():
+    index = json.loads(_load_v21("fixtures/index.json"))
+    assert index["schema_version"] == "2.1"
+    for entry in index["fixtures"]:
+        fixture = _load_v21(entry["path"])
+        assert entry["sha256"] == sha256_hex(fixture)
+
+
+def test_v21_fixtures_carry_the_new_surface():
+    compile_check = json.loads(_load_v21("fixtures/resource-completed-compile-check.json"))
+    assert compile_check["schema_version"] == "2.1"
+    assert compile_check["result"]["compile"]["data"]["outcome"] == "compiled"
+    performance = compile_check["result"]["performance"]["data"]
+    assert performance["measurement_method"] == "npu_event_v1"
+    for case in performance["per_case"]:
+        assert case["measurement_method"] == "npu_event_v1"
+    poison = json.loads(_load_v21("fixtures/resource-failed-poison.json"))
+    error = poison["result"]["correctness"]["error"]
+    assert error["code"] == "SUSPECTED_POISON_CANDIDATE"
+    assert error["retryable"] is False
 
 
 @pytest.mark.parametrize(

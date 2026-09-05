@@ -304,3 +304,124 @@ def test_rollout_owner_reads_with_trial_scope(store, make_command):
     visible = store.get_visible(cmd.evaluation_id, make_caller())
     assert visible is not None
     assert visible.evaluation_id == cmd.evaluation_id
+
+
+# ---------------------------------------------------------------------------
+# Task 4: 2.0 sunset time-box (published instant; armed per deployment)
+# ---------------------------------------------------------------------------
+
+V20_SUNSET = "2027-03-31T00:00:00Z"
+
+
+def _patch_clock(monkeypatch, iso_dt):
+    import datetime as dt
+
+    import triton_evaluation.config as config_module
+
+    monkeypatch.setattr(
+        config_module,
+        "_utcnow",
+        lambda: dt.datetime.fromisoformat(iso_dt.replace("Z", "+00:00")),
+    )
+
+
+def test_v20_sunset_requires_published_instant(tmp_path):
+    from triton_evaluation.config import Settings
+
+    with pytest.raises(ValueError, match="published"):
+        Settings(engine_dir=str(tmp_path), v20_sunset_at="2027-01-01T00:00:00Z")
+
+
+def test_v20_sunset_unarmed_by_default(tmp_path):
+    from triton_evaluation.config import Settings
+
+    assert Settings(engine_dir=str(tmp_path)).v20_sunset_at is None
+
+
+def test_v20_sunset_arming_after_instant_fails(tmp_path, monkeypatch):
+    from triton_evaluation.config import Settings
+
+    _patch_clock(monkeypatch, "2027-04-01T00:00:00Z")
+    with pytest.raises(ValueError, match="past"):
+        Settings(engine_dir=str(tmp_path), v20_sunset_at=V20_SUNSET)
+
+
+def test_v20_sunset_window_over_90_days_fails(tmp_path, monkeypatch):
+    from triton_evaluation.config import Settings
+
+    _patch_clock(monkeypatch, "2026-09-05T00:00:00Z")
+    with pytest.raises(ValueError, match="90 days"):
+        Settings(engine_dir=str(tmp_path), v20_sunset_at=V20_SUNSET)
+
+
+def test_v20_sunset_arms_within_window(tmp_path, monkeypatch):
+    import triton_evaluation.config as config_module
+    from triton_evaluation.config import Settings
+
+    _patch_clock(monkeypatch, "2027-03-01T00:00:00Z")
+    settings = Settings(engine_dir=str(tmp_path), v20_sunset_at=V20_SUNSET)
+    assert settings.v20_sunset_at == config_module.V20_SUNSET_AT
+
+
+def test_v20_sunset_default_trial_settings_stay_unarmed(settings):
+    assert settings.v20_sunset_at is None
+
+
+@pytest.mark.anyio
+async def test_post_sunset_20_request_rejected_21_accepted(
+    tmp_path, release_catalog_files, monkeypatch
+):
+    """An armed deployment rejects 2.0 requests once the request-time clock
+    passes the published instant; 2.1 requests are unaffected."""
+    import datetime as dt
+
+    from test_api import build_app, make_test_settings, seed_worker, trial_headers
+
+    armed = make_test_settings(tmp_path).model_copy(
+        update={"v20_sunset_at": dt.datetime(2027, 3, 31, tzinfo=dt.timezone.utc)}
+    )
+    app = build_app(tmp_path, release_catalog_files, settings=armed)
+    seed_worker(app)
+    async with app.http as client:
+        _patch_clock(monkeypatch, "2027-03-01T00:00:00Z")
+        pre = await client.post(
+            "/evaluations",
+            json=_request(schema_version="2.0"),
+            headers=trial_headers(key="pre-key"),
+        )
+        _patch_clock(monkeypatch, "2027-04-01T00:00:00Z")
+        rejected = await client.post(
+            "/evaluations",
+            json=_request(schema_version="2.0"),
+            headers=trial_headers(key="post-key"),
+        )
+        accepted = await client.post(
+            "/evaluations",
+            json=_request(schema_version="2.1"),
+            headers=trial_headers(key="v21-key"),
+        )
+    assert pre.status_code == 202
+    assert rejected.status_code == 400
+    body = rejected.json()
+    assert body["error"]["code"] == "INVALID_REQUEST"
+    assert "2.1" in body["error"]["message"]
+    assert accepted.status_code == 202
+
+
+@pytest.mark.anyio
+async def test_unarmed_deployment_keeps_accepting_20(
+    tmp_path, release_catalog_files, monkeypatch
+):
+    from test_api import build_app, make_test_settings, seed_worker, trial_headers
+
+    app = build_app(tmp_path, release_catalog_files,
+                    settings=make_test_settings(tmp_path))
+    seed_worker(app)
+    _patch_clock(monkeypatch, "2027-04-01T00:00:00Z")
+    async with app.http as client:
+        response = await client.post(
+            "/evaluations",
+            json=_request(schema_version="2.0"),
+            headers=trial_headers(key="unarmed-key"),
+        )
+    assert response.status_code == 202
