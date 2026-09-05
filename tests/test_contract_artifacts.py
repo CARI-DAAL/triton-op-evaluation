@@ -10,11 +10,7 @@ from pathlib import PurePosixPath
 
 import pytest
 
-from triton_evaluation.api.contract import (
-    ErrorEnvelope,
-    EvaluationRequest,
-    EvaluationResource,
-)
+from triton_evaluation.api import _frozen_v20
 from triton_evaluation.api.contract_artifacts import (
     build_artifacts,
     canonical_json_bytes,
@@ -55,10 +51,12 @@ EXPECTED_FIXTURES = [
     "resource-timed-out.json",
 ]
 
+# The published 2.0 bytes correspond to the frozen snapshot models; the live
+# models have since gained v2.1 fields that must not appear in the tree.
 ENTRYPOINT_MODELS = {
-    "request": EvaluationRequest,
-    "resource": EvaluationResource,
-    "error": ErrorEnvelope,
+    "request": _frozen_v20.EvaluationRequest,
+    "resource": _frozen_v20.EvaluationResource,
+    "error": _frozen_v20.ErrorEnvelope,
 }
 
 

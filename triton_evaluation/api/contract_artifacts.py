@@ -17,7 +17,10 @@ from pathlib import Path, PurePosixPath
 import rfc8785
 from pydantic.json_schema import models_json_schema
 
-from .contract import (
+# The published 2.0 tree is byte-frozen: its bytes are generated from the
+# frozen snapshot, never from the live models, so v2.1 runtime extensions
+# cannot move the digest-pinned artifacts.
+from ._frozen_v20 import (
     CaseFailure,
     CaseMetrics,
     CorrectnessResult,

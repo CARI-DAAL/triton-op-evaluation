@@ -24,8 +24,10 @@ from pydantic import (
     model_validator,
 )
 
-Check = Literal["correctness", "performance", "profile"]
-Purpose = Literal["trial", "grade"]
+SchemaVersion = Literal["2.0", "2.1"]
+Purpose = Literal["trial", "grade", "rollout"]
+Check = Literal["correctness", "performance", "profile", "compile"]
+MeasurementMethod = Literal["npu_event_v1", "profiler_kernel_sum_v1"]
 ResourceState = Literal["queued", "running", "completed", "failed", "timed_out"]
 
 Digest = Annotated[str, Field(pattern=r"^[0-9a-f]{64}$")]
@@ -41,7 +43,7 @@ MAX_SOURCE_BYTES = 2 * 1024 * 1024
 MAX_ERROR_MESSAGE_BYTES = 512
 MAX_SKIP_MESSAGE_BYTES = 256
 
-_CHECK_ORDER = {"correctness": 0, "performance": 1, "profile": 2}
+_CHECK_ORDER = ("compile", "correctness", "performance", "profile")
 
 T = TypeVar("T")
 
@@ -88,6 +90,7 @@ def redacted_text(max_bytes: int) -> Callable[[str], str]:
 class PerformanceParams(StrictModel):
     warmup: int = Field(default=5, ge=0, le=100)
     repeats: int = Field(default=50, ge=1, le=1000)
+    method: Literal["event", "profiler"] | None = None
 
 
 class ProfileParams(StrictModel):
@@ -114,7 +117,7 @@ class GradeContext(StrictModel):
 
 
 class EvaluationRequest(StrictModel):
-    schema_version: Literal["2.0"]
+    schema_version: SchemaVersion
     purpose: Purpose = "trial"
     op_name: str = Field(min_length=1, max_length=128)
     reference_code: Annotated[str, AfterValidator(utf8_len(MAX_SOURCE_BYTES))]
@@ -133,7 +136,7 @@ class EvaluationRequest(StrictModel):
     def _normalize_and_couple(self):
         if len(set(self.checks)) != len(self.checks):
             raise ValueError("checks must not contain duplicates")
-        self.checks = sorted(self.checks, key=_CHECK_ORDER.__getitem__)
+        self.checks = sorted(self.checks, key=_CHECK_ORDER.index)
         if "performance" in self.checks and "correctness" not in self.checks:
             raise ValueError("the performance check requires the correctness check")
         if "performance" in self.checks:
@@ -150,6 +153,13 @@ class EvaluationRequest(StrictModel):
             raise ValueError("trial requests must not carry grade_context")
         if self.purpose == "grade" and self.grade_context is None:
             raise ValueError("grade requests require grade_context")
+        if self.schema_version == "2.0":
+            if "compile" in self.checks:
+                raise ValueError("schema_version 2.0 does not support the compile check")
+            if self.purpose == "rollout":
+                raise ValueError("schema_version 2.0 does not support purpose rollout")
+            if self.performance is not None and self.performance.method is not None:
+                raise ValueError("schema_version 2.0 does not support performance.method")
         return self
 
 
@@ -347,6 +357,20 @@ class CorrectnessResult(StrictModel):
 
 
 # ---------------------------------------------------------------------------
+# Compile (spec section 6, v2.1)
+# ---------------------------------------------------------------------------
+
+
+class CompileOutcome(StrictModel):
+    """Result of the v2.1 compile check (spec §6)."""
+
+    outcome: Literal["compiled", "compile_error"]
+    compiler_stage: Literal["frontend", "backend"] | None = None
+    error_excerpt: Annotated[str, AfterValidator(utf8_len(400))] | None = None
+    duration_ms: float | None = Field(default=None, ge=0)
+
+
+# ---------------------------------------------------------------------------
 # Performance (design section 4.3)
 # ---------------------------------------------------------------------------
 
@@ -363,6 +387,7 @@ class PerformanceCase(StrictModel):
     implementation_latency_ms: Annotated[float, Field(gt=0)]
     reference_latency_ms: Annotated[float, Field(gt=0)]
     speedup_vs_reference: Annotated[float, Field(gt=0)]
+    measurement_method: MeasurementMethod | None = None
 
 
 class UnmeasuredPerformanceCase(StrictModel):
@@ -377,8 +402,19 @@ class PerformanceResult(StrictModel):
     selected_cases: Annotated[int, Field(ge=1)]
     measured_cases: Annotated[int, Field(ge=1)]
     coverage: Annotated[float, Field(ge=0, le=1)]
+    measurement_method: MeasurementMethod | None = None
     per_case: list[PerformanceCase]
     unmeasured_cases: list[UnmeasuredPerformanceCase]
+
+    @model_validator(mode="after")
+    def _measurement_method_consistent(self):
+        if self.measurement_method is not None:
+            for case in self.per_case:
+                if case.measurement_method != self.measurement_method:
+                    raise ValueError(
+                        "every measured case must share the overall measurement_method"
+                    )
+        return self
 
     @model_validator(mode="after")
     def _aggregation_arithmetic(self):
@@ -534,6 +570,10 @@ ProfileOutcome = Annotated[
     CheckSucceeded[ProfileResult] | CheckFailed | CheckSkipped | CheckTimedOut,
     Field(discriminator="status"),
 ]
+CompileCheckOutcome = Annotated[
+    CheckSucceeded[CompileOutcome] | CheckFailed | CheckSkipped | CheckTimedOut,
+    Field(discriminator="status"),
+]
 
 
 # ---------------------------------------------------------------------------
@@ -553,6 +593,8 @@ class ExecutionEnvironment(StrictModel):
 
 
 class Provenance(StrictModel):
+    # v2.1 resources still carry provenance schema_version "2.0"; the literal
+    # widens with the 2.1 artifact tree (Task 4).
     schema_version: Literal["2.0"]
     evaluator_build: str
     correctness_algorithm: str
@@ -577,6 +619,7 @@ class EvaluationResult(StrictModel):
     correctness: CorrectnessOutcome | None
     performance: PerformanceOutcome | None
     profile: ProfileOutcome | None
+    compile: CompileCheckOutcome | None = None
     provenance: Provenance
 
     @model_validator(mode="after")
@@ -593,11 +636,55 @@ class EvaluationResult(StrictModel):
         return self
 
 
+_V21_ONLY_RESULT_KEYS = ("compile",)
+
+
+def _strip_result_v21_fields(result: dict) -> None:
+    for key in _V21_ONLY_RESULT_KEYS:
+        result.pop(key, None)
+    performance = result.get("performance")
+    if isinstance(performance, dict):
+        performance.pop("measurement_method", None)
+        for case in performance.get("per_case") or []:
+            if isinstance(case, dict):
+                case.pop("measurement_method", None)
+
+
+def strip_v21_fields(dumped: dict) -> dict:
+    """Remove v2.1-only keys for a 2.0 canonical serialization.
+
+    Accepts a dump of ``EvaluationResource`` (keys are stripped inside its
+    ``result``) or of ``EvaluationResult`` directly (a result dump carries
+    ``provenance`` at the top level). Mutates the dumped dict — callers must
+    pass a fresh ``model_dump()``.
+    """
+    nested = dumped.get("result")
+    if isinstance(nested, dict):
+        _strip_result_v21_fields(nested)
+    if "provenance" in dumped:
+        _strip_result_v21_fields(dumped)
+    return dumped
+
+
+def dump_for_version(model, version: str) -> bytes:
+    """Canonical serialization of ``model`` with only ``version``'s fields.
+
+    A 2.0 dump strips v2.1-only keys so 2.0 consumers never see them on the
+    wire. Never mutates ``model`` itself: the strip runs on a fresh dump.
+    """
+    from .contract_artifacts import canonical_json_bytes
+
+    dumped = model.model_dump(mode="json", exclude_none=False)
+    if version == "2.0":
+        dumped = strip_v21_fields(dumped)
+    return canonical_json_bytes(dumped)
+
+
 _TERMINAL_STATES = ("completed", "failed", "timed_out")
 
 
 class EvaluationResource(StrictModel):
-    schema_version: Literal["2.0"]
+    schema_version: SchemaVersion
     evaluation_id: str = Field(min_length=1)
     revision: Annotated[int, Field(ge=1)]
     state: ResourceState
