@@ -582,3 +582,80 @@ def test_finite_metric_values_stay_finite():
     assert result.failures[0].metrics.mere is None
     for value in result.failures[0].metrics.model_dump().values():
         assert not (isinstance(value, float) and not math.isfinite(value))
+
+
+# ---------------------------------------------------------------------------
+# Performance: measurement_method projection (event timing, v2.1)
+# ---------------------------------------------------------------------------
+
+
+def test_benchmark_event_measurement_method_projects_per_case_and_overall():
+    result = shape_performance(load("benchmark-event-timing.json"))
+    assert result.measurement_method == "npu_event_v1"
+    first, second = result.per_case
+    assert first.measurement_method == "npu_event_v1"
+    assert second.measurement_method == "npu_event_v1"
+    (unmeasured,) = result.unmeasured_cases
+    assert unmeasured.reason_code == "NO_STABLE_MEASUREMENT"
+
+
+def test_benchmark_without_measurement_method_projects_none():
+    # Older engine JSON lacks the field entirely; every projection stays None.
+    result = shape_performance(load("benchmark-mixed-coverage.json"))
+    assert result.measurement_method is None
+    assert all(case.measurement_method is None for case in result.per_case)
+
+
+def test_benchmark_rejects_unknown_measurement_method():
+    raw = mutated(
+        "benchmark-event-timing.json", "measurement_method", value="wall_clock_v1"
+    )
+    with pytest.raises(ShapingError):
+        shape_performance(raw)
+
+
+def test_benchmark_mismatched_measurement_method_fails_closed():
+    # Top-level says profiler while measured cases say event: the contract
+    # consistency rule must surface as a shaping failure, not a silent pass.
+    raw = mutated(
+        "benchmark-event-timing.json", "measurement_method", value="profiler_kernel_sum_v1"
+    )
+    with pytest.raises(ShapingError):
+        shape_performance(raw)
+
+
+def test_benchmark_measurement_method_round_trips_through_evaluation_result():
+    from triton_evaluation.api.contract import EvaluationResult, dump_for_version
+
+    performance = shape_performance(load("benchmark-event-timing.json"))
+    result = EvaluationResult.model_validate(
+        {
+            "correctness": None,
+            "performance": {
+                "status": "succeeded",
+                "data": performance.model_dump(mode="json", exclude_none=False),
+                "error": None,
+                "reason": None,
+            },
+            "profile": None,
+            "provenance": {
+                "schema_version": "2.0",
+                "evaluator_build": "git:" + "a" * 40,
+                "correctness_algorithm": "ca",
+                "decoy_algorithm": "da",
+                "benchmark_algorithm": "ba",
+                "profiler_algorithm": "pa",
+                "execution_environment": None,
+                "grade_eligible": False,
+                "manifest_id": None,
+                "problem_id": None,
+            },
+        },
+        context={"requested_checks": ["performance"]},
+    )
+    assert result.performance.data.measurement_method == "npu_event_v1"
+    # The 2.0 serialization strips the v2.1-only field (dump_for_version).
+    stripped = json.loads(dump_for_version(result, "2.0"))
+    stripped_performance = stripped["performance"]["data"]
+    assert "measurement_method" not in stripped_performance
+    assert "measurement_method" not in stripped_performance["per_case"][0]

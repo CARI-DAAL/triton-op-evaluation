@@ -53,6 +53,8 @@ WARMUP_DEFAULT = 5
 REPEATS_DEFAULT = 20
 TRITON_IMPL_NAME_DEFAULT = "triton_ascend_impl"
 ERROR_MSG_LIMIT = 2000
+MEASUREMENT_METHOD_DEFAULT = "profiler"
+CV_THRESHOLD_DEFAULT = 0.3
 
 
 # ============================================================================
@@ -72,6 +74,8 @@ class BenchmarkConfig:
     clear_l2_cache: bool = False  # 是否清除 L2 cache
     keep_res: bool = False        # 是否保留 profiling 结果目录
     max_retries: int = 3          # 采集失败时的最大重试次数
+    measurement_method: str = MEASUREMENT_METHOD_DEFAULT  # event | profiler
+    cv_threshold: float = CV_THRESHOLD_DEFAULT  # event 时延稳定性门限（变异系数）
 
 
 @dataclass
@@ -90,6 +94,8 @@ class MeasureContext:
     repeats: int
     profile_name: str
     device: Any
+    method: str = MEASUREMENT_METHOD_DEFAULT  # event | profiler
+    cv_threshold: float = CV_THRESHOLD_DEFAULT
 
 
 @dataclass
@@ -179,6 +185,7 @@ class BenchmarkResult:
     framework: Optional[PerformanceResult]
     implementation: Optional[PerformanceResult]
     speedup_vs_torch: Optional[float]
+    measurement_method: str = MEASUREMENT_METHOD_DEFAULT  # event | profiler
     total_cases: int = 1
     passed_cases: int = 0
     failed_cases: int = 0
@@ -411,6 +418,51 @@ def run_profiler_with_config(test_fn: callable, warmup: int, repeats: int, profi
     return profile_path
 
 
+def _median(values: list) -> float:
+    ordered = sorted(values)
+    mid = len(ordered) // 2
+    if len(ordered) % 2:
+        return ordered[mid]
+    return (ordered[mid - 1] + ordered[mid]) / 2
+
+
+def _cv(values: list) -> float:
+    mean = sum(values) / len(values)
+    if mean == 0:
+        return float("inf")
+    variance = sum((v - mean) ** 2 for v in values) / len(values)
+    return variance ** 0.5 / mean
+
+
+def _stable_latency(samples_ms: list, cv_threshold: float):
+    """Median of the iteration samples; None when the spread is unstable
+    (surfaces as NO_STABLE_MEASUREMENT through the existing None-latency path)."""
+    if len(samples_ms) < 3 or _cv(samples_ms) > cv_threshold:
+        return None
+    return round(_median(samples_ms), 4)
+
+
+def _measure_event(test_fn, warmup: int, repeats: int, cv_threshold: float):
+    """torch.npu.Event per-iteration timing (spec §9). Events are stream-ordered
+    device timestamps; the test_fn's internal syncs do not pollute the window."""
+    import torch  # noqa: F401
+    import torch_npu  # noqa: F401
+
+    for _ in range(warmup):
+        test_fn()
+    torch.npu.synchronize()
+    samples: List[float] = []
+    for _ in range(repeats):
+        start = torch.npu.Event(enable_timing=True)
+        end = torch.npu.Event(enable_timing=True)
+        start.record()
+        test_fn()
+        end.record()
+        torch.npu.synchronize()
+        samples.append(start.elapsed_time(end))
+    return _stable_latency(samples, cv_threshold)
+
+
 def measure_single(
         ctx: MeasureContext,
         clear_l2_cache: bool = False,
@@ -423,11 +475,15 @@ def measure_single(
     torch.npu.reset_peak_memory_stats()
     test_fn = prepare_model_fn(ctx.model, ctx.inputs, ctx.device)
 
-    profile_path = run_profiler_with_config(
-        test_fn, ctx.warmup, ctx.repeats, ctx.profile_name,
-        clear_l2_cache=clear_l2_cache,
-    )
-    operators, latency_ms = parse_operator_latency(profile_path, ctx.warmup, ctx.repeats, keep_res=keep_res)
+    if ctx.method == "event":
+        latency_ms = _measure_event(test_fn, ctx.warmup, ctx.repeats, ctx.cv_threshold)
+        operators = None
+    else:
+        profile_path = run_profiler_with_config(
+            test_fn, ctx.warmup, ctx.repeats, ctx.profile_name,
+            clear_l2_cache=clear_l2_cache,
+        )
+        operators, latency_ms = parse_operator_latency(profile_path, ctx.warmup, ctx.repeats, keep_res=keep_res)
 
     peak_memory = torch.npu.max_memory_allocated() / (1024 * 1024)
     return operators, latency_ms, round(peak_memory, 2)
@@ -473,6 +529,8 @@ def _measure_framework(
             repeats=config.repeats,
             profile_name=f"framework_profile_case{case_idx}",
             device=device,
+            method=config.measurement_method,
+            cv_threshold=config.cv_threshold,
         ),
         clear_l2_cache=config.clear_l2_cache,
         keep_res=config.keep_res,
@@ -497,6 +555,8 @@ def _measure_impl(
             repeats=config.repeats,
             profile_name=f"impl_profile_case{case_idx}",
             device=device,
+            method=config.measurement_method,
+            cv_threshold=config.cv_threshold,
         ),
         clear_l2_cache=config.clear_l2_cache,
         keep_res=config.keep_res,
@@ -804,6 +864,7 @@ def benchmark_implementations(config: BenchmarkConfig) -> BenchmarkResult:
         warmup=config.warmup,
         repeats=config.repeats,
         max_retries=config.max_retries,
+        measurement_method=config.measurement_method,
         framework=overall.framework,
         implementation=overall.implementation,
         speedup_vs_torch=overall.speedup_vs_torch,
@@ -834,6 +895,13 @@ def _normalize_shape_speedup(s: Optional[float]) -> Optional[float]:
     return s if classify_speedup(s) == "valid" else None
 
 
+def _measurement_method_tag(method: str, measured: bool) -> str:
+    """落盘的测量方法标签：event 且该 shape 有时延数据时为 npu_event_v1。"""
+    if method == "event" and measured:
+        return "npu_event_v1"
+    return "profiler_kernel_sum_v1"
+
+
 def result_to_dict(result: BenchmarkResult) -> Dict[str, Any]:
     """将 BenchmarkResult 转换为字典格式。"""
     base_dict: Dict[str, Any] = {
@@ -849,6 +917,9 @@ def result_to_dict(result: BenchmarkResult) -> Dict[str, Any]:
         "zero_indices": result.zero_indices,
         "negative_indices": result.negative_indices,
         "none_indices": result.none_indices,
+        "measurement_method": _measurement_method_tag(
+            result.measurement_method, result.framework is not None
+        ),
         "framework": _perf_to_dict(result.framework),
         "implementation": _perf_to_dict(result.implementation),
         "speedup_vs_torch": result.speedup_vs_torch,
@@ -874,6 +945,9 @@ def result_to_dict(result: BenchmarkResult) -> Dict[str, Any]:
                 } if r.implementation else None
             ),
             "speedup_vs_torch": _normalize_shape_speedup(r.speedup_vs_torch),
+            "measurement_method": _measurement_method_tag(
+                result.measurement_method, r.framework is not None
+            ),
             "error_type": r.error_type,
             "error_msg": r.error_msg,
         }
@@ -1019,6 +1093,11 @@ def _build_argparser():
                        help="保留 profiling 结果目录（默认清理）")
     parser.add_argument("--max_retries", type=int, default=3,
                         help="采集失败时的最大重试次数（默认 3）")
+    parser.add_argument("--measurement-method", choices=["event", "profiler"],
+                        default=MEASUREMENT_METHOD_DEFAULT,
+                        help="时延测量方法（默认 profiler；event 为 torch.npu.Event 逐迭代计时）")
+    parser.add_argument("--cv-threshold", type=float, default=CV_THRESHOLD_DEFAULT,
+                        help="event 方法的时延稳定性门限：变异系数超过该值判定为不稳定（默认 0.3）")
     return parser
 
 
@@ -1071,6 +1150,8 @@ def _build_config(args, verify_dir):
         clear_l2_cache=args.clear_l2_cache,
         keep_res=args.keep_res,
         max_retries=args.max_retries,
+        measurement_method=args.measurement_method,
+        cv_threshold=args.cv_threshold,
     )
 
 

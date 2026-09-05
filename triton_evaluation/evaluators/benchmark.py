@@ -41,6 +41,9 @@ class BenchmarkEvaluator:
                 "performance", "resource deadline expired before performance ran"
             )
         params = request.performance or PerformanceParams()
+        effective_method = params.method or (
+            "event" if request.schema_version == "2.1" else "profiler"
+        )
         out_path = Path(work_dir) / "perf_result.json"
         cmd = [
             sys.executable,
@@ -55,6 +58,8 @@ class BenchmarkEvaluator:
             str(params.warmup),
             "--repeats",
             str(params.repeats),
+            "--measurement-method",
+            effective_method,
             "--output",
             str(out_path),
         ]

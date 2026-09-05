@@ -641,15 +641,26 @@ class EvaluationResult(StrictModel):
 _V21_ONLY_RESULT_KEYS = ("compile",)
 
 
+def _strip_performance_method(performance: dict) -> None:
+    performance.pop("measurement_method", None)
+    for case in performance.get("per_case") or []:
+        if isinstance(case, dict):
+            case.pop("measurement_method", None)
+
+
 def _strip_result_v21_fields(result: dict) -> None:
     for key in _V21_ONLY_RESULT_KEYS:
         result.pop(key, None)
     performance = result.get("performance")
-    if isinstance(performance, dict):
-        performance.pop("measurement_method", None)
-        for case in performance.get("per_case") or []:
-            if isinstance(case, dict):
-                case.pop("measurement_method", None)
+    if not isinstance(performance, dict):
+        return
+    # A result dump nests the PerformanceResult inside the outcome wrapper's
+    # ``data`` slot; a resource dump may already be unwrapped.
+    data = performance.get("data")
+    if isinstance(data, dict):
+        _strip_performance_method(data)
+    else:
+        _strip_performance_method(performance)
 
 
 def strip_v21_fields(dumped: dict) -> dict:
