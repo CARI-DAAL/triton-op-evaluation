@@ -31,6 +31,23 @@ def published_v20_resource_validator():
     )
 
 
+def published_v21_resource_validator():
+    """jsonschema validator for the published 2.1 EvaluationResource $def.
+
+    Same RefResolver approach as the 2.0 helper above.
+    """
+    from pathlib import Path
+
+    import jsonschema
+
+    root = Path(__file__).resolve().parent.parent / "contracts" / "evaluation-api" / "2.1"
+    schema = json.loads((root / "schema.json").read_text(encoding="utf-8"))
+    resolver = jsonschema.RefResolver.from_schema(schema)
+    return jsonschema.Draft202012Validator(
+        schema["$defs"]["EvaluationResource"], resolver=resolver
+    )
+
+
 def _request(**overrides):
     payload = {
         "schema_version": "2.1",
@@ -425,3 +442,44 @@ async def test_unarmed_deployment_keeps_accepting_20(
             headers=trial_headers(key="unarmed-key"),
         )
     assert response.status_code == 202
+
+
+# ---------------------------------------------------------------------------
+# Task 4 erratum: 2.1 short-circuited terminal HTTP body validates against 2.1
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.anyio
+async def test_v21_terminal_http_body_validates_against_published_schema(
+    tmp_path, release_catalog_files
+):
+    """A cached compile_error verdict short-circuits a 2.1
+    checks=["compile","correctness"] request to a terminal 200; that wire body
+    must validate against the published 2.1 schema."""
+    import jsonschema
+    from test_api import build_app, make_test_settings, post, seed_worker, trial_headers
+
+    from triton_evaluation import verdict_cache
+
+    settings = make_test_settings(tmp_path)
+    app = build_app(tmp_path, release_catalog_files, settings=settings)
+    seed_worker(app)  # readiness
+    payload = _request(checks=["compile", "correctness"], kernel_code="def broken(:\n")
+    digest = verdict_cache.digest_for(
+        payload["kernel_code"],
+        payload.get("triton_impl_name", "triton_ascend_impl"),
+        settings.cann_fingerprint,
+    )
+    verdict_cache.put(app.store, digest, "compile_error",
+                      settings.verdict_cache_ttl_seconds)
+
+    validator = published_v21_resource_validator()
+    async with app.http as client:
+        response = await post(client, payload, trial_headers())
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["schema_version"] == "2.1"
+    assert body["state"] == "completed"
+    validator.validate(body)
+    with pytest.raises(jsonschema.ValidationError):
+        validator.validate({"schema_version": "2.1", "result": {"compile": None}})

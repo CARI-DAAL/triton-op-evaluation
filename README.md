@@ -157,6 +157,8 @@ at validation if they carry any of:
   a terminal shaped like an on-card compile_error. When requested alongside other
   checks, `result.compile` carries the typed outcome
   (`{outcome: "compiled"|"compile_error", compiler_stage?, error_excerpt?, duration_ms}`).
+  The published schemas cannot express the per-version rule that 2.0 allows at most
+  3 checks — that rejection is runtime-only; validate 2.0 requests against the 2.0 schema.
 - `purpose: "rollout"` — server-declared RL traffic; admitted like a trial (same
   capability scope, no catalog binding) and resolved to the rollout quota class.
 - `performance.method: "event" | "profiler"` — selects the measurement path. The
@@ -175,6 +177,13 @@ the exact instant; an armed deployment rejects 2.0 requests with
 `400 INVALID_REQUEST` once the clock passes the instant. Arming requires the exact
 published value, at most 90 days before it, and never after it — anything else fails
 startup. Unset means unarmed (pre-sunset development).
+
+Deploy note: this release widens the runtime request model, so the canonical
+bytes of a 2.0 request now include `performance.method: null`. Idempotency
+records admitted before the deploy will not byte-match a replay after it —
+replays of in-flight 2.0 submissions return 409 (IDEMPOTENCY_CONFLICT) for up
+to `retention_seconds` instead of 200. Clients should treat a 409 after the
+deploy as "resubmit as a new evaluation".
 
 Callers hold static capabilities from a mounted secret file: `trial:submit/read` for
 interactive harnesses (trial traffic only), `grade:submit/read` for the trusted hub
