@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 import redis
-from conftest import make_completed_result, make_provenance
+from conftest import make_completed_result, make_provenance, make_request
 
 from triton_evaluation.api.contract import (
     CheckSucceeded,
@@ -20,7 +20,7 @@ from triton_evaluation.api.contract import (
     EvaluationResult,
 )
 from triton_evaluation.config import Settings
-from triton_evaluation.models import AlgorithmVersions
+from triton_evaluation.models import AlgorithmVersions, WorkerIdentity, new_worker_id
 from triton_evaluation.worker import LeaseKeeper, Worker
 
 
@@ -262,6 +262,62 @@ def test_resource_deadline_attempts_timed_out_commit(store, settings, clock, que
     assert worker.run_once() is False
     resource = read_resource(store, "timed_out")
     assert resource.result.correctness.error.code == "DEADLINE_EXCEEDED"
+
+
+def test_late_delivery_deadline_synthesis_is_version_aware(
+    store, settings, clock, make_command
+):
+    """A 2.1 request whose checks include compile must keep the compile
+    carrier on the late-delivery deadline path: the synthesis follows the
+    resource version parsed from the canonical request."""
+    cmd = make_command(
+        request=make_request(schema_version="2.1", checks=["compile", "correctness"])
+    )
+    store.create_or_replay(cmd)
+    lease = store.claim_next(
+        WorkerIdentity(new_worker_id(), settings.evaluator_build, algorithms(settings))
+    )
+    worker = build_worker(store, settings, StubEvaluator(settings), clock)
+    # Directly exercise the worker's own synthesis; the commit wins the CAS
+    # while the lease fence still holds.
+    worker._commit_deadline(lease, ["compile", "correctness"], {})
+    resource = read_resource(store, "timed_out")
+    # The compile slot carries the timeout carrier; correctness is skipped.
+    assert resource.result.compile.status == "timeout"
+    assert resource.result.compile.error.code == "DEADLINE_EXCEEDED"
+    assert resource.result.correctness.status == "skipped"
+    assert resource.result.correctness.reason.code == "RESOURCE_DEADLINE"
+    # Schema-valid: the stored terminal bytes re-validate against the models
+    # with the full requested-checks context.
+    EvaluationResource.model_validate_json(
+        store._r.hget(resource_state_key(store, "timed_out"), b"resource")
+    )
+
+
+def test_late_delivery_watchdog_terminal_carries_compile_slot(
+    store, settings, clock, make_command
+):
+    """End-to-end: a 2.1 compile+correctness request delivered past its
+    deadline terminalizes with the compile carrier on the wire."""
+    cmd = make_command(
+        request=make_request(schema_version="2.1", checks=["compile", "correctness"])
+    )
+    store.create_or_replay(cmd)
+    original_claim = store.claim_next
+
+    def claim_and_expire(worker_identity, avoid_card=None):
+        lease = original_claim(worker_identity)
+        if lease is not None:
+            clock.advance_ms(lease.deadline_at_ms - clock.now_ms + 1)
+        return lease
+
+    store.claim_next = claim_and_expire
+    worker = build_worker(store, settings, StubEvaluator(settings), clock)
+    assert worker.run_once() is True  # late-delivery commit fenced out
+    assert worker.run_once() is False  # maintenance: watchdog terminalizes
+    resource = read_resource(store, "timed_out")
+    assert resource.result.compile.status == "timeout"
+    assert resource.result.compile.error.code == "DEADLINE_EXCEEDED"
 
 
 def test_stale_terminal_commit_is_accepted(store, settings, clock, queued):

@@ -528,6 +528,10 @@ class Worker:
             algorithms=lease.algorithms,
             manifest_id=None,
             problem_id=None,
+            # The version follows the owning resource; a 2.1 request whose
+            # checks include compile keeps the compile carrier (the 2.0 wire
+            # shape is unchanged — the synthesis drops it for 2.0 itself).
+            version=json.loads(lease.canonical_request).get("schema_version", "2.0"),
         )
         # False means the watchdog or a faster worker terminalized it first.
         self.store.commit_terminal(lease, "timed_out", result)
