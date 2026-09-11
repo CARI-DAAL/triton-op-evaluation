@@ -19,6 +19,7 @@ from triton_evaluation.api.contract import (
     EvaluationResult,
 )
 from triton_evaluation.config import Settings
+from triton_evaluation.evaluators.base import LeaseLostError
 from triton_evaluation.models import AlgorithmVersions
 from triton_evaluation.worker import LeaseKeeper, Worker
 
@@ -246,8 +247,8 @@ def test_evaluator_protocol_failure_commits_redacted_failed(store, settings, clo
 def test_resource_deadline_attempts_timed_out_commit(store, settings, clock, queued):
     original_claim = store.claim_next
 
-    def claim_and_expire(worker_identity, avoid_card=None):
-        lease = original_claim(worker_identity)
+    def claim_and_expire(worker_identity, avoid_card=None, *, card=None):
+        lease = original_claim(worker_identity, avoid_card=avoid_card, card=card)
         if lease is not None:
             clock.advance_ms(lease.deadline_at_ms - clock.now_ms + 1)
         return lease
@@ -512,3 +513,23 @@ def test_drained_worker_resumes_claims_after_recovery_ladder_succeeds(
     assert worker.run_once() is True
     assert store.get_visible(resource.evaluation_id, make_caller()).state == "completed"
     assert store.has_fresh_compatible_worker(worker.identity)
+
+
+def test_worker_records_attempt_card_even_when_affinity_avoidance_is_disabled(
+    store, settings, clock, make_command,
+):
+    settings = settings.model_copy(update={"card_affinity_avoidance": False})
+    worker = Worker(
+        store, StubEvaluator(settings, error=LeaseLostError()),
+        device_id=0, settings=settings, clock=clock, canary=lambda **kwargs: True,
+    )
+    resource = store.create_or_replay(make_command()).resource
+    for _ in range(2):
+        assert worker.run_once() is True
+        clock.advance_ms(settings.lease_seconds * 1000 + 1)
+        counts = store.recover_expired_leases()
+    # Both deaths have provenance even though the same card may claim again.
+    assert counts.failed == 1
+    terminal = store.get_visible(resource.evaluation_id, make_caller())
+    assert terminal.state == "failed"
+    assert "poison" in terminal.result.correctness.error.message

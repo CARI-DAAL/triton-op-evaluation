@@ -13,6 +13,14 @@ independent of the caller's connection.
 One worker's leased execution of an EvaluationResource. A replacement attempt
 belongs to the same evaluation and must not overwrite a newer result.
 
+**Attempt card provenance**:
+Optional knowledge of the physical card assigned to one attempt. It cannot
+describe a replacement attempt, even when both belong to the same evaluation.
+
+**Card affinity avoidance**:
+A retry policy that avoids the last known failed card. It is independent of
+recording the card on which the current attempt runs.
+
 **Card health**:
 The assessment of whether a worker's assigned NPU card is fit to execute another
 attempt. It is distinct from the correctness of a candidate kernel.
