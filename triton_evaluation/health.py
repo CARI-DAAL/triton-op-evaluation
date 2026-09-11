@@ -1,19 +1,159 @@
-"""Card health: canary probe and recovery ladder (spec §10).
+"""Card health: claim eligibility, canary probes and recovery (spec §10).
 
 The canary runs a vendored known-good mini kernel in-process under a SIGALRM
 budget; the recovery ladder escalates in-process cleanup -> a configured
 device-reset command -> full process restart via os.execv. Host reboot is
-deliberately never automatic. All torch/triton imports are lazy: this module
-only executes on NPU hosts.
+deliberately never automatic. All torch/triton imports are lazy; hardware
+actions only execute on NPU hosts. CardHealth owns the state and
+retry timing; callers never coordinate individual recovery rungs.
 """
+from __future__ import annotations
+
 import gc
 import logging
 import os
 import signal
 import subprocess
 import sys
+import time
+from collections.abc import Callable
+from enum import Enum
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .broker import EvaluationStore
+    from .config import Settings
+    from .metrics import RedisMetrics
 
 logger = logging.getLogger(__name__)
+
+
+class _State(Enum):
+    HEALTHY = "healthy"
+    SUSPECT = "suspect"
+    DRAINED = "drained"
+
+
+class CardHealth:
+    """One worker's card health and recovery protocol.
+
+    ``prepare_claim`` gates both heartbeats and claims. A drained worker's
+    recovery iteration never claims: success admits the next iteration.
+    ``mark_suspicious`` requires a fresh canary before any more work.
+
+    Probe and recovery callables are the hardware seam. Redis publications
+    must succeed before granting eligibility; metrics remain best effort.
+    Only the worker owning this card calls this module, on its main thread.
+    """
+
+    def __init__(
+        self,
+        store: EvaluationStore,
+        settings: Settings,
+        *,
+        device_id: int,
+        clock: Callable[[], int] | None = None,
+        canary: Callable[..., bool] | None = None,
+        recovery_step: Callable[..., str] | None = None,
+        metrics: RedisMetrics | None = None,
+    ):
+        self._store = store
+        self._settings = settings
+        self._device_id = device_id
+        self._clock = clock or (lambda: int(time.monotonic() * 1000))
+        self._canary = canary or run_canary
+        self._recovery_step = recovery_step or run_recovery_step
+        self._metrics = metrics
+        self._state = _State.SUSPECT if settings.card_canary_on_startup else _State.HEALTHY
+        self._last_probe_ms: int | None = None
+        self._last_recovery_ms: int | None = None
+
+    def mark_suspicious(self) -> None:
+        """Require a canary; repeated reports cannot bypass drain cooldowns."""
+        if self._state is _State.HEALTHY:
+            self._state = _State.SUSPECT
+
+    def prepare_claim(self) -> bool:
+        """Advance health recovery and admit heartbeats/claims when ready."""
+        if self._state is _State.HEALTHY:
+            return True
+        was_drained = self._state is _State.DRAINED
+        if (
+            was_drained
+            and self._last_probe_ms is not None
+            and self._clock() - self._last_probe_ms
+            < self._settings.canary_interval_seconds * 1000
+        ):
+            return False
+        if self._probe():
+            return not was_drained
+        self._recover()
+        return False
+
+    def _probe(self) -> bool:
+        self._last_probe_ms = self._clock()
+        try:
+            healthy = self._canary(
+                device_id=self._device_id,
+                budget_seconds=self._settings.canary_budget_seconds,
+            )
+        except Exception as error:  # noqa: BLE001 — unavailable is not healthy
+            logger.warning(
+                "card %s canary failed (%s)", self._device_id, type(error).__name__
+            )
+            healthy = False
+        self._bump("card_canary_total", outcome="pass" if healthy else "fail")
+        if healthy:
+            self._store.clear_card_unhealthy(self._device_id)
+            self._state = _State.HEALTHY
+        else:
+            # Fail closed locally even if publishing the unhealthy marker fails.
+            self._state = _State.DRAINED
+            self._store.set_card_unhealthy(self._device_id)
+        if self._metrics is not None:
+            try:
+                self._metrics.set_gauge(
+                    "card_health_state", {"card": str(self._device_id)},
+                    value=0 if healthy else 1,
+                )
+            except Exception as error:  # noqa: BLE001 — metrics cannot gate recovery
+                logger.warning("metrics write failed (%s)", type(error).__name__)
+        return healthy
+
+    def _recover(self) -> None:
+        now_ms = self._clock()
+        if (
+            self._last_recovery_ms is not None
+            and now_ms - self._last_recovery_ms
+            < self._settings.card_recovery_retry_seconds * 1000
+        ):
+            return
+        self._last_recovery_ms = now_ms
+        for step in range(1, self._settings.card_recovery_max_step + 1):
+            try:
+                name = self._recovery_step(
+                    step, card=self._device_id,
+                    reset_command=self._settings.card_reset_command,
+                )
+            except Exception as error:  # noqa: BLE001 — a failed rung escalates
+                logger.warning(
+                    "card %s recovery step %s failed (%s)",
+                    self._device_id, step, type(error).__name__,
+                )
+                name = None
+            if name is not None:
+                self._bump("card_recovery_total", step=name)
+            if self._probe():
+                return
+
+    def _bump(self, name: str, **labels) -> None:
+        if self._metrics is None:
+            return
+        try:
+            self._metrics.increment(name, labels)
+        except Exception as error:  # noqa: BLE001 — metrics cannot gate recovery
+            logger.warning("metrics write failed (%s)", type(error).__name__)
+
 
 CANARY_ADD_KERNEL = '''
 import torch

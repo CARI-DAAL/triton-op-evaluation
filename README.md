@@ -179,6 +179,8 @@ It never returns reference code or test inputs.
 
 ## Test
 
+The [card health module](docs/architecture/card-health.md) documents the worker's
+health gate, recovery invariants, and CPU/hardware test seams.
 
 ```bash
 pip install -e ".[test]"
