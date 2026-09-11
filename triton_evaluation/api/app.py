@@ -54,9 +54,17 @@ def create_app(context: AppContext) -> FastAPI:
         # Fail closed before serving: verify published artifact bytes and
         # load security/catalog data. A development credential is never
         # constructed here — only the configured secret file is loaded.
-        from ..api.contract_artifacts import CONTRACT_ROOT, verify_artifacts
+        from ..api.contract_artifacts import (
+            CONTRACT_ROOT,
+            CONTRACT_ROOT_V21,
+            build_v20_artifacts,
+            build_v21_artifacts,
+            verify_artifacts,
+        )
 
-        if verify_artifacts(CONTRACT_ROOT):
+        problems = verify_artifacts(CONTRACT_ROOT, build_v20_artifacts())
+        problems += verify_artifacts(CONTRACT_ROOT_V21, build_v21_artifacts())
+        if problems:
             raise RuntimeError("published contract artifacts failed verification")
         context.artifacts_verified = True
         context.store.probe_storage()  # fail fast when the store rejects writes

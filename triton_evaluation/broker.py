@@ -28,9 +28,12 @@ Fixed keyspace under ``settings.redis_prefix`` (default ``triton-eval:v2``)::
     inflight:caller:{traffic_class}:{sha256(caller_id)}        integer
     inflight:session:{sha256(caller_id NUL session_id)}        integer
     rate:{traffic_class}:{sha256(caller_id)}:{minute}          integer, 120s expiry
+    verdict:{sha256}                             hash {verdict}, TTL =
+                                                 verdict_cache_ttl_seconds
 
-Only the rate-window key expires; nonterminal records never carry a TTL, and
-terminal resource/idempotency records share the retention TTL. Persisted
+Only the rate-window and verdict-cache keys expire; nonterminal records never
+carry a TTL, and terminal resource/idempotency records share the retention
+TTL. Persisted
 timestamps come from the store clock — Redis ``TIME`` in production, an
 injected deterministic clock in tests. The state machine accepts only
 ``queued -> running``, ``queued -> failed|timed_out``, and
@@ -51,6 +54,7 @@ from triton_evaluation.api.contract import (
     CheckOutcome,
     EvaluationResource,
     EvaluationResult,
+    dump_for_version,
 )
 from triton_evaluation.api.contract_artifacts import canonical_json_bytes, sha256_hex
 from triton_evaluation.config import Settings
@@ -69,6 +73,7 @@ from triton_evaluation.security import Caller
 from triton_evaluation.terminal_results import (
     persisted_check_outcomes,
     synthesize_orchestration_result,
+    synthesize_poison_result,
 )
 
 _RATE_WINDOW_EXPIRY_SECONDS = 120
@@ -246,6 +251,82 @@ class EvaluationStore:
             finally:
                 pipeline.reset()
 
+    def create_terminal_at_admission(
+        self, command: CreateResourceCommand, result: EvaluationResult
+    ) -> CreateResourceResult:
+        """Admission-time terminal for a definitive compile verdict: durable and
+        idempotent like create_or_replay, but never queued — no ready/deadlines
+        entries, no inflight held, state completed at revision 1."""
+        caller_digest = _digest_text(command.caller_id)
+        idempotency_key = self._key(
+            f"idempotency:{_scoped_digest(command.caller_id, command.idempotency_key)}"
+        )
+        sequence_key = self._key("queue-sequence")
+        rate_limit, _ = self._quota_limits(command.traffic_class)
+        while True:
+            now_ms = self._clock()
+            rate_key = self._key(
+                f"rate:{command.traffic_class}:{caller_digest}:{now_ms // _MINUTE_MS}"
+            )
+            pipeline = self._r.pipeline()
+            try:
+                pipeline.watch(idempotency_key, rate_key, sequence_key)
+                record = pipeline.hgetall(idempotency_key)
+                if record:
+                    return self._replay(record, command, pipeline)
+                if int(pipeline.get(rate_key) or 0) >= rate_limit:
+                    return CreateResourceResult("rate_limited", None)
+                resource, mapping, _deadline = self._new_queued_resource(
+                    command, idempotency_key,
+                    _scoped_digest(command.caller_id, command.session_id), now_ms,
+                )
+                finished = datetime.fromtimestamp(now_ms / 1000, tz=timezone.utc)
+                terminal = EvaluationResource.model_validate(
+                    {
+                        **resource.model_dump(exclude_none=False),
+                        "revision": 1,
+                        "state": "completed",
+                        "started_at": finished,
+                        "updated_at": finished,
+                        "finished_at": finished,
+                        "result": result.model_dump(mode="json", exclude_none=False),
+                    }
+                )
+                expiry_ms = now_ms + self._s.retention_seconds * 1000
+                mapping = {
+                    **mapping,
+                    "resource": dump_for_version(terminal, terminal.schema_version),
+                    "updated_at_ms": str(now_ms),
+                }
+                pipeline.multi()
+                pipeline.hset(
+                    self._key(f"resource:{command.evaluation_id}"), mapping=mapping
+                )
+                pipeline.expire(
+                    self._key(f"resource:{command.evaluation_id}"),
+                    self._s.retention_seconds,
+                )
+                pipeline.hset(
+                    idempotency_key,
+                    mapping={
+                        "evaluation_id": command.evaluation_id,
+                        "request_digest": command.admission.request_digest,
+                    },
+                )
+                pipeline.expire(idempotency_key, self._s.retention_seconds)
+                pipeline.zadd(
+                    self._key("state:completed"),
+                    {command.evaluation_id: expiry_ms},
+                )
+                pipeline.incr(rate_key)
+                pipeline.expire(rate_key, _RATE_WINDOW_EXPIRY_SECONDS)
+                pipeline.execute()
+                return CreateResourceResult("created", terminal)
+            except redis.WatchError:
+                continue
+            finally:
+                pipeline.reset()
+
     def _replay(self, record: dict, command: CreateResourceCommand, pipeline):
         """Compare a watched idempotency record and its resource, byte-exactly."""
         evaluation_id = record[b"evaluation_id"].decode("utf-8")
@@ -276,7 +357,7 @@ class EvaluationStore:
         deadline_ms = accepted_ms + deadline_seconds * 1000
         accepted_at = datetime.fromtimestamp(accepted_ms / 1000, tz=timezone.utc)
         resource = EvaluationResource(
-            schema_version="2.0",
+            schema_version=payload.get("schema_version", "2.0"),
             evaluation_id=command.evaluation_id,
             revision=1,
             state="queued",
@@ -301,9 +382,7 @@ class EvaluationStore:
             "requested_checks": canonical_json_bytes(
                 list(command.admission.requested_checks)
             ),
-            "resource": canonical_json_bytes(
-                resource.model_dump(mode="json", exclude_none=False)
-            ),
+            "resource": dump_for_version(resource, resource.schema_version),
             "evaluator_build": command.evaluator_build,
             "correctness_algorithm": command.algorithms.correctness,
             "decoy_algorithm": command.algorithms.decoy,
@@ -315,6 +394,9 @@ class EvaluationStore:
             "fencing_token": "0",
             "active_check": "",
             "check_outcomes": "{}",
+            "precheck_verdict": "",
+            "precheck_excerpt": "",
+            "precheck_duration_ms": "",
             "lease_deadline_ms": "0",
             "replacement_pending": "0",
             "created_at_ms": str(accepted_ms),
@@ -337,7 +419,7 @@ class EvaluationStore:
         owner = stored[b"owner"].decode("utf-8")
         purpose = stored[b"purpose"].decode("utf-8")
         if caller.caller_id == owner:
-            required = "trial:read" if purpose == "trial" else "grade:read"
+            required = "trial:read" if purpose in ("trial", "rollout") else "grade:read"
             if required not in caller.scopes:
                 return None
         elif "observer:read" not in caller.scopes:
@@ -517,9 +599,7 @@ class EvaluationStore:
             pipeline.hset(
                 resource_key,
                 mapping={
-                    "resource": canonical_json_bytes(
-                        updated.model_dump(mode="json", exclude_none=False)
-                    ),
+                    "resource": dump_for_version(updated, updated.schema_version),
                     "updated_at_ms": str(now_ms),
                 },
             )
@@ -601,6 +681,25 @@ class EvaluationStore:
 
         return self._fenced_write(lease, mutate)
 
+    def note_precheck_result(
+        self, evaluation_id: str, verdict: str, excerpt: str, duration_ms: int
+    ) -> None:
+        """Advisory admission-precheck provenance on the resource hash.
+
+        Empty verdict means the precheck passed (or was inconclusive). Never
+        fenced: it must not disturb the resource's transition protocol."""
+        try:
+            self._r.hset(
+                self._key(f"resource:{evaluation_id}"),
+                mapping={
+                    "precheck_verdict": verdict,
+                    "precheck_excerpt": excerpt,
+                    "precheck_duration_ms": str(duration_ms),
+                },
+            )
+        except redis.RedisError:
+            logger.warning("note_precheck_result failed for %s", evaluation_id)
+
     def set_active_check(self, lease: AttemptLease, check: Check) -> bool:
         resource_key = self._key(f"resource:{lease.evaluation_id}")
 
@@ -657,11 +756,6 @@ class EvaluationStore:
                 )
                 _commit_post_exec(lease.evaluation_id)
                 self._bump("terminal_commit_cas_total", outcome="won")
-                self._bump(
-                    "resource_terminal_transitions_total",
-                    state=state,
-                    caller_class=self._stored_traffic_class(stored),
-                )
                 started_ms = stored.get(b"created_at_ms")
                 if started_ms is not None and self._metrics is not None:
                     try:
@@ -710,9 +804,7 @@ class EvaluationStore:
         )
         expiry_ms = now_ms + self._s.retention_seconds * 1000
         hash_updates = {
-            "resource": canonical_json_bytes(
-                updated.model_dump(mode="json", exclude_none=False)
-            ),
+            "resource": dump_for_version(updated, updated.schema_version),
             "updated_at_ms": str(now_ms),
             "attempt_id": "",
             "replacement_pending": "0",
@@ -736,6 +828,15 @@ class EvaluationStore:
         pipeline.set(caller_key, max(0, caller_inflight - 1))
         pipeline.set(session_key, max(0, session_inflight - 1))
         pipeline.execute()
+        # Post-EXEC: caller may still hold WATCHes on the main connection, so any
+        # main-connection write here would abort the transaction — bump only after
+        # EXEC, and only via ``_bump`` (swallows exceptions, never touches the
+        # pipeline).
+        self._bump(
+            "resource_terminal_transitions_total",
+            state=state,
+            traffic_class=self._stored_traffic_class(stored),
+        )
 
     @staticmethod
     def _stored_traffic_class(stored: dict) -> str:
@@ -817,20 +918,28 @@ class EvaluationStore:
                     metadata = {}
                 if deaths >= self._s.poison_death_threshold:
                     # Poison quarantine (spec §10): too many suspicious deaths —
-                    # terminate instead of requeueing. 2.0 contract-invisible shape:
-                    # the existing synthesized WORKER_LOST result with a
-                    # quarantine message (retryable stays True; that flag is frozen).
+                    # terminate instead of requeueing. Version-aware surface: a
+                    # 2.1 request gets the typed SUSPECTED_POISON_CANDIDATE code
+                    # (retryable False); a 2.0 request keeps the frozen
+                    # contract-invisible WORKER_LOST shape (retryable stays
+                    # True; that flag is frozen).
                     # Mirrors the attempt-limit path: `_commit_terminal_locked`
                     # issues its own MULTI/EXEC, so the advisory metadata write
                     # must not touch the watched hash before EXEC (a self-write
                     # dirtying the watch would abort the transaction).
-                    result = self._synthesized_result(
-                        stored,
-                        "worker_lost",
+                    message = (
                         "worker lease expired before a subject outcome was committed; "
                         "repeated suspicious deaths — candidate quarantined as "
-                        "suspected poison",
+                        "suspected poison"
                     )
+                    if json.loads(stored[b"canonical_request"]).get(
+                        "schema_version", "2.0"
+                    ) == "2.1":
+                        result = self._synthesized_poison_result(stored, message)
+                    else:
+                        result = self._synthesized_result(
+                            stored, "worker_lost", message
+                        )
                     self._commit_terminal_locked(
                         pipeline,
                         stored=stored,
@@ -981,6 +1090,30 @@ class EvaluationStore:
             ),
             manifest_id=grade_context.get("manifest_id"),
             problem_id=grade_context.get("problem_id"),
+            version=payload.get("schema_version", "2.0"),
+        )
+
+    def _synthesized_poison_result(
+        self, stored: dict, message: str
+    ) -> EvaluationResult:
+        payload = json.loads(stored[b"canonical_request"])
+        grade_context = payload.get("grade_context") or {}
+        return synthesize_poison_result(
+            requested_checks=json.loads(stored[b"requested_checks"]),
+            persisted_outcomes=persisted_check_outcomes(stored[b"check_outcomes"]),
+            code="SUSPECTED_POISON_CANDIDATE",
+            retryable=False,
+            message=message,
+            evaluator_build=stored[b"evaluator_build"].decode("utf-8"),
+            algorithms=AlgorithmVersions(
+                correctness=stored[b"correctness_algorithm"].decode("utf-8"),
+                decoy=stored[b"decoy_algorithm"].decode("utf-8"),
+                benchmark=stored[b"benchmark_algorithm"].decode("utf-8"),
+                profiler=stored[b"profiler_algorithm"].decode("utf-8"),
+            ),
+            manifest_id=grade_context.get("manifest_id"),
+            problem_id=grade_context.get("problem_id"),
+            version=payload.get("schema_version", "2.0"),
         )
 
     # ------------------------------------------------------------------

@@ -27,6 +27,7 @@ _ERROR_CODES = (
 
 LABEL_VALUES = {
     "caller_class": ("trial", "trusted", "observer", "rollout"),
+    "traffic_class": ("trial", "trusted", "rollout"),
     "decision": ("created", "replayed", "conflict", "rate_limited", "limit_exceeded"),
     "state": ("queued", "running", "completed", "failed", "timed_out"),
     "check": ("correctness", "performance", "profile"),
@@ -57,7 +58,7 @@ ALLOWED_METRICS = {
     "auth_failures_total": ("code",),
     "legacy_route_requests_total": ("route",),
     # Resource lifecycle
-    "resource_terminal_transitions_total": ("state", "caller_class"),
+    "resource_terminal_transitions_total": ("state", "traffic_class"),
     "resource_terminal_duration_seconds": ("state",),
     "resource_deadline_expiries_total": ("state",),
     "resource_state_gauge": ("state",),

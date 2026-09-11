@@ -16,6 +16,7 @@ from typing import Literal
 from pydantic import TypeAdapter
 
 from triton_evaluation.api.contract import (
+    CompileCheckOutcome,
     CorrectnessOutcome,
     EvaluationResult,
     PerformanceOutcome,
@@ -23,15 +24,21 @@ from triton_evaluation.api.contract import (
 )
 from triton_evaluation.models import AlgorithmVersions
 
-_CHECK_ORDER = ("correctness", "performance", "profile")
+_CHECK_ORDER = ("compile", "correctness", "performance", "profile")
 _OUTCOME_ADAPTERS = {
+    "compile": TypeAdapter(CompileCheckOutcome),
     "correctness": TypeAdapter(CorrectnessOutcome),
     "performance": TypeAdapter(PerformanceOutcome),
     "profile": TypeAdapter(ProfileOutcome),
 }
-# Section 5 dependency rules: performance depends on correctness; profile and
-# correctness depend on nothing.
-_SKIP_DEPENDS_ON = {"correctness": None, "performance": "correctness", "profile": None}
+# Section 5 dependency rules: performance depends on correctness; profile,
+# correctness, and compile depend on nothing.
+_SKIP_DEPENDS_ON = {
+    "compile": None,
+    "correctness": None,
+    "performance": "correctness",
+    "profile": None,
+}
 
 _FAILURE_SHAPES = {
     "deadline": {
@@ -80,10 +87,81 @@ def synthesize_orchestration_result(
     algorithms: AlgorithmVersions,
     manifest_id: str | None,
     problem_id: str | None,
+    version: str = "2.0",
 ) -> EvaluationResult:
     """Assemble a complete terminal result around persisted partial outcomes."""
-    shape = _FAILURE_SHAPES[failure]
+    return _synthesized_terminal(
+        shape=_FAILURE_SHAPES[failure],
+        requested_checks=requested_checks,
+        persisted_outcomes=persisted_outcomes,
+        failure_message=failure_message,
+        evaluator_build=evaluator_build,
+        algorithms=algorithms,
+        manifest_id=manifest_id,
+        problem_id=problem_id,
+        version=version,
+    )
+
+
+def synthesize_poison_result(
+    *,
+    requested_checks,
+    persisted_outcomes: dict[str, dict],
+    code: str,
+    retryable: bool,
+    message: str,
+    evaluator_build: str,
+    algorithms: AlgorithmVersions,
+    manifest_id: str | None,
+    problem_id: str | None,
+    version: str = "2.0",
+) -> EvaluationResult:
+    """Quarantine terminal for repeated suspicious deaths (spec §10, v2.1).
+
+    The same walk as ``synthesize_orchestration_result`` but the failure code
+    and retryable flag are explicit: a 2.1 poison quarantine surfaces
+    ``SUSPECTED_POISON_CANDIDATE`` with ``retryable=False`` instead of the
+    frozen 2.0 ``WORKER_LOST`` shape.
+    """
+    return _synthesized_terminal(
+        shape={
+            "status": "failed",
+            "error": {"code": code, "phase": "execution", "retryable": retryable},
+            "skip_code": "PRIOR_CHECK_FAILED",
+            "skip_message": "a prior requested check did not complete",
+        },
+        requested_checks=requested_checks,
+        persisted_outcomes=persisted_outcomes,
+        failure_message=message,
+        evaluator_build=evaluator_build,
+        algorithms=algorithms,
+        manifest_id=manifest_id,
+        problem_id=problem_id,
+        version=version,
+    )
+
+
+def _synthesized_terminal(
+    *,
+    shape,
+    requested_checks,
+    persisted_outcomes: dict[str, dict],
+    failure_message: str,
+    evaluator_build: str,
+    algorithms: AlgorithmVersions,
+    manifest_id: str | None,
+    problem_id: str | None,
+    version: str,
+) -> EvaluationResult:
+    """The outcome walk shared by the orchestration and poison syntheses.
+
+    ``version`` follows the owning resource: a 2.0 synthesis never fills the
+    2.1-only compile slot (the frozen 2.0 wire shape stays byte-identical);
+    a 2.1 synthesis walks compile first, as the check ordering demands.
+    """
     requested = [check for check in _CHECK_ORDER if check in requested_checks]
+    if version == "2.0":
+        requested = [check for check in requested if check != "compile"]
     outcomes: dict[str, dict] = {}
 
     target = next(
@@ -117,6 +195,7 @@ def synthesize_orchestration_result(
 
     return EvaluationResult.model_validate(
         {
+            "compile": outcomes.get("compile"),
             "correctness": outcomes.get("correctness"),
             "performance": outcomes.get("performance"),
             "profile": outcomes.get("profile"),
@@ -131,6 +210,91 @@ def synthesize_orchestration_result(
                 "manifest_id": manifest_id,
                 "problem_id": problem_id,
                 "execution_environment": None,
+            },
+        },
+        context={"requested_checks": requested},
+    )
+
+
+def synthesize_compile_error_result(
+    *, requested_checks, failure_message, total_cases,
+    evaluator_build, algorithms, manifest_id, problem_id,
+    version: str = "2.0", precheck_duration_ms: float | None = None,
+) -> EvaluationResult:
+    """Admission-time compile failure, byte-shaped like the engine's own
+    compile_error terminal (contracts .../resource-completed-compile-error.json):
+    correctness succeeds as a carrier with outcome compile_error; dependent
+    checks skip DEPENDENCY_NOT_PASSED.
+
+    A 2.1 request that asked for the compile check also gets the typed
+    ``result.compile`` slot (spec §6): outcome compile_error, frontend stage,
+    excerpt, and the measured admission precheck duration."""
+    requested = [check for check in _CHECK_ORDER if check in requested_checks]
+    if version == "2.0":
+        requested = [check for check in requested if check != "compile"]
+    correctness = {
+        "status": "succeeded",
+        "data": {
+            "decoy": False,
+            "domain_failure": {
+                "case_idx": None,
+                "code": "SUBJECT_COMPILE_ERROR",
+                "message": failure_message,
+                "phase": "compile",
+            },
+            "failures": [],
+            "outcome": "compile_error",
+            "passed": False,
+            "passed_cases": 0,
+            "total_cases": int(total_cases),
+        },
+        "error": None,
+        "reason": None,
+    }
+    checks = {}
+    for check in requested:
+        if check == "correctness":
+            checks[check] = correctness
+        else:
+            checks[check] = {
+                "status": "skipped",
+                "data": None,
+                "error": None,
+                "reason": {
+                    "code": "DEPENDENCY_NOT_PASSED",
+                    "depends_on": _SKIP_DEPENDS_ON[check],
+                    "message": "correctness did not pass",
+                },
+            }
+    if "compile" in requested:
+        checks["compile"] = {
+            "status": "succeeded",
+            "data": {
+                "outcome": "compile_error",
+                "compiler_stage": "frontend",
+                "error_excerpt": failure_message[:400],
+                "duration_ms": precheck_duration_ms,
+            },
+            "error": None,
+            "reason": None,
+        }
+    return EvaluationResult.model_validate(
+        {
+            "compile": checks.get("compile"),
+            "correctness": checks.get("correctness"),
+            "performance": checks.get("performance"),
+            "profile": checks.get("profile"),
+            "provenance": {
+                "schema_version": "2.0",
+                "evaluator_build": evaluator_build,
+                "correctness_algorithm": algorithms.correctness,
+                "decoy_algorithm": algorithms.decoy,
+                "benchmark_algorithm": algorithms.benchmark,
+                "profiler_algorithm": algorithms.profiler,
+                "execution_environment": None,
+                "grade_eligible": False,
+                "manifest_id": manifest_id,
+                "problem_id": problem_id,
             },
         },
         context={"requested_checks": requested},

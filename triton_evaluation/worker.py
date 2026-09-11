@@ -7,6 +7,7 @@ that loses its lease commits nothing — the reaper and a replacement attempt
 own recovery. Logs carry IDs and error codes only: never source, credentials,
 session values, absolute work paths, or tracebacks.
 """
+import json
 import logging
 import shutil
 import tempfile
@@ -166,7 +167,7 @@ def _protocol_failure_result(
 ) -> EvaluationResult:
     """A redacted failed result when no trusted subject outcome exists."""
     requested = [
-        check for check in ("correctness", "performance", "profile")
+        check for check in ("compile", "correctness", "performance", "profile")
         if check in requested_checks
     ]
     outcomes: dict[str, dict] = {}
@@ -200,6 +201,7 @@ def _protocol_failure_result(
             }
     return EvaluationResult.model_validate(
         {
+            "compile": outcomes.get("compile"),
             "correctness": outcomes.get("correctness"),
             "performance": outcomes.get("performance"),
             "profile": outcomes.get("profile"),
@@ -472,10 +474,36 @@ class Worker:
                 context={"requested_checks": request.checks},
             )
             # False means another winner already terminalized the resource.
-            self.store.commit_terminal(lease, "completed", validated)
+            committed = self.store.commit_terminal(lease, "completed", validated)
+            if committed and self.settings.verdict_cache_enabled:
+                self._record_compile_verdict(lease, validated)
         finally:
             if work_dir is not None:
                 shutil.rmtree(work_dir, ignore_errors=True)
+
+    def _record_compile_verdict(self, lease, validated) -> None:
+        """Engine-authoritative compile verdicts feed the admission cache."""
+        from triton_evaluation import verdict_cache
+
+        correctness = validated.correctness
+        if correctness is None or correctness.status != "succeeded":
+            return
+        data = correctness.data
+        if data is None or getattr(data, "outcome", None) != "compile_error":
+            return
+        try:
+            payload = json.loads(lease.canonical_request)
+            digest = verdict_cache.digest_for(
+                payload["kernel_code"],
+                payload.get("triton_impl_name", "triton_ascend_impl"),
+                self.settings.cann_fingerprint,
+            )
+            verdict_cache.put(
+                self.store, digest, "compile_error",
+                self.settings.verdict_cache_ttl_seconds,
+            )
+        except (KeyError, ValueError):
+            logger.warning("compile verdict feedback skipped (unparseable request)")
 
     @staticmethod
     def _parse_and_verify(lease: AttemptLease) -> EvaluationRequest:
@@ -500,6 +528,10 @@ class Worker:
             algorithms=lease.algorithms,
             manifest_id=None,
             problem_id=None,
+            # The version follows the owning resource; a 2.1 request whose
+            # checks include compile keeps the compile carrier (the 2.0 wire
+            # shape is unchanged — the synthesis drops it for 2.0 itself).
+            version=json.loads(lease.canonical_request).get("schema_version", "2.0"),
         )
         # False means the watchdog or a faster worker terminalized it first.
         self.store.commit_terminal(lease, "timed_out", result)

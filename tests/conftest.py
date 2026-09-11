@@ -30,10 +30,13 @@ from triton_evaluation.security import Caller
 def settings(tmp_path):
     # Startup canary off: protocol tests predate card health and keep their
     # exact pre-feature code path; card-health tests opt in explicitly.
+    # Admission precheck off: same pre-feature code path; short-circuit tests
+    # opt in via model_copy.
     return Settings(
         engine_dir=str(tmp_path),
         dequeue_block_seconds=1,
         card_canary_on_startup=False,
+        compile_precheck_enabled=False,
     )
 
 

@@ -47,6 +47,7 @@ from ..api.contract import (
     ErrorInfo,
     FiniteOrSentinel,
     InputShape,
+    MeasurementMethod,
     OpKernel,
     OpProfileCase,
     OpProfileResult,
@@ -420,6 +421,7 @@ class _PerShapeResult(StrictModel):
     framework: _ShapeMeasurement | None
     implementation: _ShapeMeasurement | None
     speedup_vs_torch: float | None
+    measurement_method: MeasurementMethod | None = None
     error_type: str | None
     error_msg: str | None
 
@@ -450,6 +452,7 @@ class _BenchmarkResult(StrictModel):
     framework: _AggregateMeasurement | None
     implementation: _AggregateMeasurement | None
     speedup_vs_torch: float | None
+    measurement_method: MeasurementMethod | None = None
     per_shape_results: list[_PerShapeResult]
 
     @model_validator(mode="after")
@@ -510,6 +513,7 @@ def shape_performance(raw: dict[str, object]) -> PerformanceResult:
                 implementation_latency_ms=implementation,
                 reference_latency_ms=reference,
                 speedup_vs_reference=reference / implementation,
+                measurement_method=case.measurement_method,
             )
         )
     if not per_case:
@@ -525,6 +529,9 @@ def shape_performance(raw: dict[str, object]) -> PerformanceResult:
             selected_cases=selected,
             measured_cases=len(per_case),
             coverage=len(per_case) / selected,
+            measurement_method=(
+                result.measurement_method if per_case else None
+            ),
             per_case=per_case,
             unmeasured_cases=unmeasured,
         ),
