@@ -43,11 +43,12 @@ def admit(
 ) -> CanonicalAdmission:
     """Authorize purpose, validate grade binding, and canonicalize the model.
 
-    Trial requests require ``trial:submit`` and never touch the catalog;
-    grade requests require ``grade:submit`` and a successful catalog binding.
+    Trial and rollout requests require ``trial:submit`` and never touch the
+    catalog; grade requests require ``grade:submit`` and a successful catalog
+    binding.
     """
     binding: CatalogBinding | None = None
-    if request.purpose == "trial":
+    if request.purpose in ("trial", "rollout"):
         if "trial:submit" not in caller.scopes:
             raise ForbiddenError()
     else:

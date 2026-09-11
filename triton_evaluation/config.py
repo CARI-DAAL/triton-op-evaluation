@@ -22,6 +22,11 @@ BENCHMARK_TIMEOUT_SECONDS = 600
 # same value. Removal of the routes is a separate reviewed change.
 LEGACY_SUNSET_AT = datetime(2026, 10, 15, 0, 0, 0, tzinfo=timezone.utc)
 
+# The one published evaluation-api 2.0 sunset instant; the docs publish the
+# same value. After the instant an armed deployment rejects 2.0 requests with
+# INVALID_REQUEST. The instant moves per release plan, like LEGACY_SUNSET_AT.
+V20_SUNSET_AT = datetime(2027, 3, 31, 0, 0, 0, tzinfo=timezone.utc)
+
 
 def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
@@ -96,6 +101,15 @@ class Settings(BaseSettings):
     card_recovery_retry_seconds: float = Field(default=300.0, gt=0)
     card_canary_on_startup: bool = Field(default=True)
 
+    # Compile verdict cache (spec §8, Plan D-on_card): digest-keyed dedup of
+    # deterministic compile failures; fed by engine outcomes + admission precheck.
+    verdict_cache_enabled: bool = Field(default=True)
+    verdict_cache_ttl_seconds: int = Field(default=7 * 24 * 3600, gt=0)
+    # Admission pre-check: subprocess syntax/import classification (spec §8).
+    compile_precheck_enabled: bool = Field(default=True)
+    precheck_budget_seconds: int = Field(default=60, gt=0)
+    cann_fingerprint: str = Field(default="", pattern=r"^[A-Za-z0-9._:-]{0,128}$")
+
     # --- deployment-attested worker environment ---
     worker_hardware_model: str = Field(default="Ascend910B3", min_length=1)
     worker_driver_version: str = Field(default="24.1.0", min_length=1)
@@ -130,6 +144,14 @@ class Settings(BaseSettings):
     legacy_routes_enabled: bool = False
     legacy_routes_sunset_at: datetime | None = None
 
+    # --- time-boxed evaluation-api 2.0 window ---
+    # Arming (setting the instant) requires the exact published UTC value; a
+    # window over 90 days or arming after the instant fails startup/preflight.
+    # Armed deployments reject 2.0 requests with INVALID_REQUEST once the
+    # request-time clock passes the instant; unset = unarmed (pre-sunset
+    # development). 2.0 is default-on until the published instant.
+    v20_sunset_at: datetime | None = None
+
     @model_validator(mode="after")
     def _durable_core_windows(self):
         if self.max_recovery_age_seconds > self.retention_seconds:
@@ -146,6 +168,14 @@ class Settings(BaseSettings):
                 raise ValueError("legacy routes are past their sunset instant")
             if (self.legacy_routes_sunset_at - now).days > 90:
                 raise ValueError("legacy window exceeds 90 days")
+        if self.v20_sunset_at is not None:
+            if self.v20_sunset_at != V20_SUNSET_AT:
+                raise ValueError("v20 sunset must be the published instant")
+            now = _utcnow()
+            if now > self.v20_sunset_at:
+                raise ValueError("v20 sunset instant is in the past")
+            if (self.v20_sunset_at - now).days > 90:
+                raise ValueError("v20 sunset window exceeds 90 days")
         return self
 
     @classmethod

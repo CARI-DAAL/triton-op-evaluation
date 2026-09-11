@@ -1,0 +1,57 @@
+{
+  "op_name": "addmm",
+  "warmup": 5,
+  "repeats": 50,
+  "max_retries": 3,
+  "total_cases": 3,
+  "passed_cases": 2,
+  "failed_cases": 1,
+  "nan_indices": [],
+  "inf_indices": [],
+  "zero_indices": [],
+  "negative_indices": [],
+  "none_indices": [],
+  "measurement_method": "npu_event_v1",
+  "framework": {"avg_latency_ms": 1.0, "peak_memory_mb": 2.0, "operators": {"addmm": 1.0}},
+  "implementation": {"avg_latency_ms": 1.25, "peak_memory_mb": 1.5, "operators": {"addmm": 1.25}},
+  "speedup_vs_torch": 0.8,
+  "per_shape_results": [
+    {
+      "case_idx": 1,
+      "input_desc": [
+        {"type": "tensor", "shape": [1024, 512], "dtype": "torch.float16"}
+      ],
+      "status": "pass",
+      "framework": {"avg_latency_ms": 1.0, "peak_memory_mb": 2.0},
+      "implementation": {"avg_latency_ms": 0.5, "peak_memory_mb": 1.0},
+      "speedup_vs_torch": 2.0,
+      "measurement_method": "npu_event_v1",
+      "error_type": null,
+      "error_msg": null
+    },
+    {
+      "case_idx": 2,
+      "input_desc": [
+        {"type": "tensor", "shape": [2048, 512], "dtype": "torch.float16"}
+      ],
+      "status": "pass",
+      "framework": {"avg_latency_ms": 1.0, "peak_memory_mb": 2.0},
+      "implementation": {"avg_latency_ms": 2.0, "peak_memory_mb": 1.0},
+      "speedup_vs_torch": 0.5,
+      "measurement_method": "npu_event_v1",
+      "error_type": null,
+      "error_msg": null
+    },
+    {
+      "case_idx": 3,
+      "input_desc": [],
+      "status": "fail",
+      "framework": null,
+      "implementation": null,
+      "speedup_vs_torch": null,
+      "measurement_method": "profiler_kernel_sum_v1",
+      "error_type": "RuntimeError",
+      "error_msg": "measurement crashed after all retries"
+    }
+  ]
+}

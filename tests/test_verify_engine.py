@@ -323,3 +323,72 @@ def test_compare_rejects_same_numel_with_different_shapes(monkeypatch):
 
     assert caught.value.fw_shape == (2, 3)
     assert caught.value.impl_shape == (3, 2)
+
+
+def test_first_launch_compilation_error_is_attributed_compile(tmp_path, monkeypatch):
+    """A triton CompilationError raised lazily at first kernel launch is a
+    compile-phase failure, not an execute-phase runtime error (spec §8/Plan D)."""
+    import contextlib
+
+    class _FakeModel:
+        def __init__(self, *_a, **_k):
+            pass
+
+        def to(self, *_a):
+            return self
+
+        def forward(self, *_inputs):
+            return [17]
+
+        __call__ = forward
+
+    reference = SimpleNamespace(
+        Model=_FakeModel,
+        get_init_inputs=lambda: [],
+        get_inputs=lambda: [17],
+    )
+
+    class CompilationError(Exception):
+        pass
+
+    CompilationError.__module__ = "triton.compiler.errors"
+
+    class ModelNew:
+        def __init__(self, *_a, **_k):
+            pass
+
+        def to(self, *_a):
+            return self
+
+        def forward(self, *_inputs):
+            raise CompilationError("at 2:14: NameError: undefined_name")
+
+        __call__ = forward
+
+    candidate = SimpleNamespace(ModelNew=ModelNew)
+
+    def fake_import_module(name):
+        if name == "addmm_torch":
+            return reference
+        if name == "addmm_triton_ascend_impl":
+            return candidate
+        raise AssertionError(f"unexpected module import: {name}")
+
+    torch = _fake_torch_module()
+    torch.no_grad = contextlib.nullcontext
+    monkeypatch.setitem(sys.modules, "torch", torch)
+    monkeypatch.setitem(sys.modules, "torch_npu", ModuleType("torch_npu"))
+    monkeypatch.setattr(verify.importlib, "import_module", fake_import_module)
+    monkeypatch.setattr(verify.sys, "path", list(verify.sys.path))
+
+    output = tmp_path / "verify_result.json"
+    assert verify.verify_implementations(
+        "addmm",
+        str(tmp_path),
+        output_path=str(output),
+    ) == (0, 1)
+
+    failure = json.loads(output.read_text())["failures"][0]
+    assert failure["candidate_error"]["phase"] == "compile"
+    assert failure["error_type"] == "_CandidateCompileError"
+    assert "CompilationError" in failure["error_msg"]

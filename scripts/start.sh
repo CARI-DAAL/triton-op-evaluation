@@ -62,9 +62,17 @@ fi
 if ! "${PYTHON_BIN}" - <<'PYSTART'
 import sys
 
-from triton_evaluation.api.contract_artifacts import CONTRACT_ROOT, verify_artifacts
+from triton_evaluation.api.contract_artifacts import (
+    CONTRACT_ROOT,
+    CONTRACT_ROOT_V21,
+    build_v20_artifacts,
+    build_v21_artifacts,
+    verify_artifacts,
+)
 
-if verify_artifacts(CONTRACT_ROOT):
+problems = verify_artifacts(CONTRACT_ROOT, build_v20_artifacts())
+problems += verify_artifacts(CONTRACT_ROOT_V21, build_v21_artifacts())
+if problems:
     sys.exit("contract artifacts failed verification")
 PYSTART
 then

@@ -10,17 +10,18 @@ from pathlib import Path
 
 import pytest
 import redis
-from conftest import make_caller, make_completed_result, make_provenance
+from conftest import make_caller, make_completed_result, make_provenance, make_request
 
 from triton_evaluation.api.contract import (
     CheckSucceeded,
     CorrectnessResult,
+    DomainFailure,
     EvaluationResource,
     EvaluationResult,
 )
 from triton_evaluation.config import Settings
 from triton_evaluation.evaluators.base import LeaseLostError
-from triton_evaluation.models import AlgorithmVersions
+from triton_evaluation.models import AlgorithmVersions, WorkerIdentity, new_worker_id
 from triton_evaluation.worker import LeaseKeeper, Worker
 
 
@@ -262,6 +263,62 @@ def test_resource_deadline_attempts_timed_out_commit(store, settings, clock, que
     assert worker.run_once() is False
     resource = read_resource(store, "timed_out")
     assert resource.result.correctness.error.code == "DEADLINE_EXCEEDED"
+
+
+def test_late_delivery_deadline_synthesis_is_version_aware(
+    store, settings, clock, make_command
+):
+    """A 2.1 request whose checks include compile must keep the compile
+    carrier on the late-delivery deadline path: the synthesis follows the
+    resource version parsed from the canonical request."""
+    cmd = make_command(
+        request=make_request(schema_version="2.1", checks=["compile", "correctness"])
+    )
+    store.create_or_replay(cmd)
+    lease = store.claim_next(
+        WorkerIdentity(new_worker_id(), settings.evaluator_build, algorithms(settings))
+    )
+    worker = build_worker(store, settings, StubEvaluator(settings), clock)
+    # Directly exercise the worker's own synthesis; the commit wins the CAS
+    # while the lease fence still holds.
+    worker._commit_deadline(lease, ["compile", "correctness"], {})
+    resource = read_resource(store, "timed_out")
+    # The compile slot carries the timeout carrier; correctness is skipped.
+    assert resource.result.compile.status == "timeout"
+    assert resource.result.compile.error.code == "DEADLINE_EXCEEDED"
+    assert resource.result.correctness.status == "skipped"
+    assert resource.result.correctness.reason.code == "RESOURCE_DEADLINE"
+    # Schema-valid: the stored terminal bytes re-validate against the models
+    # with the full requested-checks context.
+    EvaluationResource.model_validate_json(
+        store._r.hget(resource_state_key(store, "timed_out"), b"resource")
+    )
+
+
+def test_late_delivery_watchdog_terminal_carries_compile_slot(
+    store, settings, clock, make_command
+):
+    """End-to-end: a 2.1 compile+correctness request delivered past its
+    deadline terminalizes with the compile carrier on the wire."""
+    cmd = make_command(
+        request=make_request(schema_version="2.1", checks=["compile", "correctness"])
+    )
+    store.create_or_replay(cmd)
+    original_claim = store.claim_next
+
+    def claim_and_expire(worker_identity, avoid_card=None, *, card=None):
+        lease = original_claim(worker_identity, avoid_card=avoid_card, card=card)
+        if lease is not None:
+            clock.advance_ms(lease.deadline_at_ms - clock.now_ms + 1)
+        return lease
+
+    store.claim_next = claim_and_expire
+    worker = build_worker(store, settings, StubEvaluator(settings), clock)
+    assert worker.run_once() is True  # late-delivery commit fenced out
+    assert worker.run_once() is False  # maintenance: watchdog terminalizes
+    resource = read_resource(store, "timed_out")
+    assert resource.result.compile.status == "timeout"
+    assert resource.result.compile.error.code == "DEADLINE_EXCEEDED"
 
 
 def test_stale_terminal_commit_is_accepted(store, settings, clock, queued):
@@ -533,3 +590,43 @@ def test_worker_records_attempt_card_even_when_affinity_avoidance_is_disabled(
     terminal = store.get_visible(resource.evaluation_id, make_caller())
     assert terminal.state == "failed"
     assert "poison" in terminal.result.correctness.error.message
+
+
+def test_compile_error_terminal_feeds_verdict_cache(store, settings, clock,
+                                                    make_command):
+    from triton_evaluation import verdict_cache
+
+    result = make_completed_result(settings)
+    result.correctness.data.outcome = "compile_error"
+    result.correctness.data.passed = False
+    result.correctness.data.domain_failure = DomainFailure(
+        code="SUBJECT_COMPILE_ERROR", phase="compile",
+        message="candidate compilation failed",
+    )
+    worker = build_worker(store, settings, StubEvaluator(settings, result=result), clock)
+    cmd = make_command()
+    store.create_or_replay(cmd)
+    assert worker.run_once() is True
+    request = json.loads(cmd.admission.canonical_request)
+    digest = verdict_cache.digest_for(
+        request["kernel_code"], request.get("triton_impl_name", "triton_ascend_impl"),
+        settings.cann_fingerprint,
+    )
+    assert verdict_cache.get(store, digest) == "compile_error"
+
+
+def test_correct_terminal_does_not_feed_cache(store, settings, clock, make_command):
+    from triton_evaluation import verdict_cache
+
+    worker = build_worker(store, settings,
+                          StubEvaluator(settings, result=make_completed_result(settings)),
+                          clock)
+    cmd = make_command()
+    store.create_or_replay(cmd)
+    assert worker.run_once() is True
+    request = json.loads(cmd.admission.canonical_request)
+    digest = verdict_cache.digest_for(
+        request["kernel_code"], request.get("triton_impl_name", "triton_ascend_impl"),
+        settings.cann_fingerprint,
+    )
+    assert verdict_cache.get(store, digest) is None

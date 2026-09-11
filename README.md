@@ -100,6 +100,16 @@ drives a recovery ladder: in-process cleanup → `TRITON_EVAL_CARD_RESET_COMMAND
 evaluation whose attempts die suspiciously twice is quarantined (terminal
 `WORKER_LOST` with a poison message; never retried by the service).
 
+Compile verdict cache (spec §8): deterministic compile failures (syntax/import
+class via an admission-time precheck subprocess; all compile-class via
+worker-observed engine outcomes) are cached by a toolchain-scoped digest for
+`TRITON_EVAL_VERDICT_CACHE_TTL_SECONDS` (default 7 d) and short-circuited at
+admission into a terminal identical in shape to an on-card compile failure —
+no queue slot, no card time. Set `TRITON_EVAL_CANN_FINGERPRINT` to your CANN
+version so toolchain upgrades invalidate stale verdicts. The precheck runs in
+the API process environment, so API and worker must share one image/conda env
+or import-class verdicts diverge from on-card reality.
+
 ## Endpoints (evaluation API v2 — durable)
 
 - `POST /evaluations?wait_seconds=0..60` — authenticate with a caller-scoped opaque
@@ -121,11 +131,59 @@ frozen and published as reproducible artifacts — the only cross-repository con
 - `contracts/evaluation-api/2.0/schema.json` (entrypoints
   `#/$defs/EvaluationRequest`, `#/$defs/EvaluationResource`, `#/$defs/ErrorEnvelope`)
 - `contracts/evaluation-api/2.0/fixtures/index.json` (+ 29 golden fixtures)
+- `contracts/evaluation-api/2.1/contract.json`, `schema.json`, `fixtures/index.json`
+  (+ 4 golden fixtures) — the additive v2.1 tree, described below
 
 Current digests (pin these in consumer contract tests):
 
-- schema: `5c81434931f7178ee9c1a4f2220404a42764c076f64b0a1b9f40bb88b87ca502`
-- fixture index: `50c226aa68c926284e3bd130145056e3b542bb5eb7090e9fb513b5a4ee5f0d52`
+- 2.0 schema: `5c81434931f7178ee9c1a4f2220404a42764c076f64b0a1b9f40bb88b87ca502`
+- 2.0 fixture index: `50c226aa68c926284e3bd130145056e3b542bb5eb7090e9fb513b5a4ee5f0d52`
+- 2.1 schema: `f6ba908315753b5f5f70281e0ea23c824cf355e3b4bdf5f91955159e588305ac`
+- 2.1 fixture index: `bb30accda364ffeee8bb2552429bb501fffa891d809fdb7b36f50223af3975a9`
+
+The 2.0 tree is byte-frozen: its artifacts generate from a frozen model snapshot, so
+runtime extensions can never move its digest-pinned bytes. Both trees are verified
+byte-for-byte at startup (API lifespan, container entrypoint, and `scripts/start.sh`);
+any drift fails closed before serving.
+
+### Contract v2.1 (additive; 2.0 stays valid until its sunset)
+
+A request selects the contract version with `schema_version: "2.0" | "2.1"` (default
+behavior for omitted fields is unchanged). v2.1 adds, and v2.0 requests are rejected
+at validation if they carry any of:
+
+- `checks: ["compile", ...]` — the compile check. `["compile"]` alone is legal and runs
+  at admission (never queues, never touches a card); a compile failure short-circuits to
+  a terminal shaped like an on-card compile_error. When requested alongside other
+  checks, `result.compile` carries the typed outcome
+  (`{outcome: "compiled"|"compile_error", compiler_stage?, error_excerpt?, duration_ms}`).
+  The published schemas cannot express the per-version rule that 2.0 allows at most
+  3 checks — that rejection is runtime-only; validate 2.0 requests against the 2.0 schema.
+- `purpose: "rollout"` — server-declared RL traffic; admitted like a trial (same
+  capability scope, no catalog binding) and resolved to the rollout quota class.
+- `performance.method: "event" | "profiler"` — selects the measurement path. The
+  effective default is `profiler` for 2.0 requests and `event` for 2.1 requests.
+  Results then carry `measurement_method: "npu_event_v1" | "profiler_kernel_sum_v1"`
+  on the overall performance result and every measured case. **Cross-method absolute
+  latencies are not comparable** (event timing is stream-ordered device time; the
+  profiler path sums kernel CSV rows) — the field exists so datasets never mix methods
+  silently; compare speedups only within one method.
+- Poison quarantine surfaces the typed check code `SUSPECTED_POISON_CANDIDATE`
+  (retryable `false`) on 2.1 resources; 2.0 keeps the frozen `WORKER_LOST` shape.
+
+2.0 sunset: `2027-03-31T00:00:00Z` (published instant, same time-box pattern as the
+legacy routes). Deployments arm enforcement by setting `TRITON_EVAL_V20_SUNSET_AT` to
+the exact instant; an armed deployment rejects 2.0 requests with
+`400 INVALID_REQUEST` once the clock passes the instant. Arming requires the exact
+published value, at most 90 days before it, and never after it — anything else fails
+startup. Unset means unarmed (pre-sunset development).
+
+Deploy note: this release widens the runtime request model, so the canonical
+bytes of a 2.0 request now include `performance.method: null`. Idempotency
+records admitted before the deploy will not byte-match a replay after it —
+replays of in-flight 2.0 submissions return 409 (IDEMPOTENCY_CONFLICT) for up
+to `retention_seconds` instead of 200. Clients should treat a 409 after the
+deploy as "resubmit as a new evaluation".
 
 Callers hold static capabilities from a mounted secret file: `trial:submit/read` for
 interactive harnesses (trial traffic only), `grade:submit/read` for the trusted hub

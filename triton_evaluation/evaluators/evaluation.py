@@ -30,6 +30,7 @@ from ..api.contract import (
     CheckSkipped,
     CheckSucceeded,
     CheckTimedOut,
+    CompileOutcome,
     CorrectnessResult,
     ErrorInfo,
     EvaluationRequest,
@@ -109,6 +110,33 @@ def _skipped(check: Check, code: str, depends_on: Check | None, message: str):
     return CheckSkipped(
         status="skipped",
         reason=SkipInfo(code=code, depends_on=depends_on, message=message),
+    )
+
+
+def _compile_outcome(correctness) -> CheckSucceeded[CompileOutcome]:
+    """Assemble the v2.1 compile slot from the on-card subject verdict (spec §6).
+
+    The compile check itself executes at the admission precheck — it never
+    queues and never touches a card — so on-card it is derived: a subject
+    compile_error attribution maps to outcome ``compile_error`` at the
+    ``backend`` stage with the domain-failure excerpt; every other reachable
+    subject verdict means the kernel compiled.
+    """
+    if (
+        isinstance(correctness, CheckSucceeded)
+        and getattr(correctness.data, "outcome", None) == "compile_error"
+    ):
+        failure = correctness.data.domain_failure
+        return CheckSucceeded[CompileOutcome](
+            status="succeeded",
+            data=CompileOutcome(
+                outcome="compile_error",
+                compiler_stage="backend",
+                error_excerpt=failure.message if failure is not None else None,
+            ),
+        )
+    return CheckSucceeded[CompileOutcome](
+        status="succeeded", data=CompileOutcome(outcome="compiled")
     )
 
 
@@ -242,8 +270,12 @@ class EvaluationEvaluator:
                 )
             outcomes["profile"] = profile
 
+        if "compile" in requested:
+            outcomes["compile"] = _compile_outcome(outcomes.get("correctness"))
+
         return EvaluationResult.model_validate(
             {
+                "compile": outcomes.get("compile"),
                 "correctness": outcomes.get("correctness"),
                 "performance": outcomes.get("performance"),
                 "profile": outcomes.get("profile"),
