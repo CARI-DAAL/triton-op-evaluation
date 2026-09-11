@@ -32,13 +32,9 @@ services:
       context: .
       dockerfile: Dockerfile
       args:
-        # Only relevant if you rebuild AND stop using the host env below. The host-env
-        # bind-mount bypasses the image's conda env at runtime regardless of these.
-        BASE_IMAGE: ${BASE_IMAGE:-quay.io/ascend/vllm-ascend:v0.22.1rc1-a3}
-        TORCH_SPEC: ${TORCH_SPEC:-torch==2.9.0}
-        TORCH_NPU_SPEC: ${TORCH_NPU_SPEC:-torch_npu==2.9.0}
-        TRITON_SPEC: ${TRITON_SPEC:-triton==3.5.0}
-        TRITON_ASCEND_SPEC: ${TRITON_ASCEND_SPEC:-triton-ascend==3.2.0}
+        # Same declared build as `docker build .`; versions live in pyproject [npu].
+        # Keep the BASE_IMAGE default in sync with the Dockerfile ARG.
+        BASE_IMAGE: ${BASE_IMAGE:-python:3.11}
         PIP_EXTRA_INDEX_URL: ${PIP_EXTRA_INDEX_URL:-}
     # Immutable digest reference required at deploy time; preflight rejects tag-only
     # references and RepoDigest mismatches. No :latest fallback exists on purpose.
@@ -50,6 +46,9 @@ services:
     privileged: true             # required for NPU device access in-container (see note above)
     shm_size: "32gb"             # torch_npu needs a large /dev/shm
     environment:
+      # LEGACY kernelgym deployment override: run with the HOST python instead of
+      # the image's declared stack. The plain-Docker path (scripts/docker_run.sh)
+      # does NOT do this — it uses the image's own [npu] stack.
       # Run the service with the HOST kernelgym python (replicate host env in docker).
       PYTHON_BIN: ${PYTHON_BIN:-/home/n84449292/miniconda3/envs/kernelgym/bin/python3}
       # user-site = ~/.local (torch 2.9.0 / torch_npu / triton + ascend backend), decoupled from
@@ -62,6 +61,8 @@ services:
       TRITON_EVAL_API_HOST: ${TRITON_EVAL_API_HOST:?preflight must export the validated gateway}
       TRITON_EVAL_API_PORT: "11907"
       TRITON_EVAL_CARDS: ${TRITON_EVAL_CARDS:-8,9,10,11,12,13,14,15}
+      # Device memory each worker holds from startup so npu-smi shows it while idle.
+      TRITON_EVAL_DEVICE_HOLD_MB: ${TRITON_EVAL_DEVICE_HOLD_MB:-64}
       # Sole evaluator_build used at admission and in Provenance; equals TRITON_EVAL_IMAGE
       # (or an explicitly reviewed git:<40-hex> dev build).
       TRITON_EVAL_EVALUATOR_BUILD: ${TRITON_EVAL_EVALUATOR_BUILD:?must equal the immutable image}

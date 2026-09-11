@@ -3,11 +3,11 @@ import re
 from datetime import datetime, timedelta, timezone
 
 import pytest
-from conftest import make_request
+from conftest import make_caller, make_completed_result, make_request
 
 from triton_evaluation.api.contract import EvaluationResource
 from triton_evaluation.api.contract_artifacts import sha256_hex
-from triton_evaluation.broker import EvaluationStore, StorageError
+from triton_evaluation.broker import EvaluationStore, StorageError, _digest_text
 from triton_evaluation.config import Settings
 from triton_evaluation.models import new_evaluation_id
 
@@ -86,7 +86,7 @@ def test_fifo_sequence_numbers_are_monotonic(store, redis_client, settings, make
         ids.append(command.evaluation_id)
 
     assert redis_client.get(_key(settings, "queue-sequence")) == b"3"
-    entries = redis_client.zrange(_key(settings, "ready"), 0, -1, withscores=True)
+    entries = redis_client.zrange(_key(settings, "ready:exec:interactive"), 0, -1, withscores=True)
     assert entries == [(ids[0].encode(), 1.0), (ids[1].encode(), 2.0), (ids[2].encode(), 3.0)]
 
 
@@ -161,3 +161,146 @@ def test_default_clock_comes_from_redis_time(redis_client, settings, make_comman
     # The store clock truncates to epoch milliseconds; allow that rounding.
     assert before - timedelta(milliseconds=1) <= result.resource.created_at <= after
     assert result.resource.deadline_at - result.resource.created_at == timedelta(seconds=900)
+
+
+def test_terminal_commit_releases_rollout_inflight(
+    store, redis_client, make_command, make_worker, settings,
+):
+    cmd = make_command(
+        caller=make_caller(caller_id="rl-1"),
+        session_id="s1",
+        idempotency_key="k1",
+        traffic_class="rollout",
+    )
+    store.create_or_replay(cmd)
+    rollout_key = _key(settings, f"inflight:caller:rollout:{_digest_text('rl-1')}")
+    assert int(redis_client.get(rollout_key)) == 1
+
+    lease = store.claim_next(make_worker())
+    assert lease is not None
+    assert store.commit_terminal(lease, "completed", make_completed_result(settings))
+    assert int(redis_client.get(rollout_key)) == 0
+
+
+def test_terminal_release_derives_class_when_field_missing(
+    store, redis_client, make_command, make_worker, settings,
+):
+    """Pre-deploy resources lack traffic_class; purpose-derived fallback releases
+    the right bucket (durable Redis volume outlives the deploy)."""
+    cmd = make_command()  # trial caller-1
+    store.create_or_replay(cmd)
+    redis_client.hdel(_key(settings, f"resource:{cmd.evaluation_id}"), "traffic_class")
+
+    lease = store.claim_next(make_worker())
+    assert store.commit_terminal(lease, "completed", make_completed_result(settings))
+    trial_key = _key(settings, f"inflight:caller:trial:{_digest_text('caller-1')}")
+    assert int(redis_client.get(trial_key)) == 0
+
+
+def _queue_members(redis_client):
+    return {
+        "interactive": set(
+            redis_client.zrange("triton-eval:v2:ready:exec:interactive", 0, -1)
+        ),
+        "bulk": set(redis_client.zrange("triton-eval:v2:ready:exec:bulk", 0, -1)),
+        "legacy": set(redis_client.zrange("triton-eval:v2:ready", 0, -1)),
+    }
+
+
+def _rollout_command(make_command, n):
+    return make_command(caller=make_caller(caller_id="rl-1"), session_id=f"s-{n}",
+                        idempotency_key=f"k-{n}", traffic_class="rollout")
+
+
+def test_rollout_routes_to_bulk_queue(store, redis_client, make_command):
+    cmd = _rollout_command(make_command, 1)
+    store.create_or_replay(cmd)
+    queues = _queue_members(redis_client)
+    assert cmd.evaluation_id.encode() in queues["bulk"]
+    assert not queues["interactive"] and not queues["legacy"]
+
+
+def test_trial_routes_to_interactive_queue(store, redis_client, make_command):
+    cmd = make_command()
+    store.create_or_replay(cmd)
+    queues = _queue_members(redis_client)
+    assert cmd.evaluation_id.encode() in queues["interactive"]
+    assert not queues["bulk"]
+
+
+def test_interactive_claim_precedes_older_bulk(store, redis_client, make_command,
+                                               make_worker):
+    older_bulk = _rollout_command(make_command, 1)
+    store.create_or_replay(older_bulk)
+    newer_interactive = make_command(session_id="s-2", idempotency_key="k-2")
+    store.create_or_replay(newer_interactive)
+
+    worker = make_worker()
+    first = store.claim_next(worker)
+    assert first.evaluation_id == newer_interactive.evaluation_id
+    second = store.claim_next(worker)
+    assert second.evaluation_id == older_bulk.evaluation_id
+
+
+def test_bulk_drains_in_fifo_order_when_interactive_empty(store, make_command,
+                                                          make_worker):
+    cmds = [_rollout_command(make_command, n) for n in (1, 2)]
+    for cmd in cmds:
+        store.create_or_replay(cmd)
+    worker = make_worker()
+    assert store.claim_next(worker).evaluation_id == cmds[0].evaluation_id
+    assert store.claim_next(worker).evaluation_id == cmds[1].evaluation_id
+    assert store.claim_next(worker) is None
+
+
+def test_recovery_requeues_rollout_to_bulk(store, redis_client, clock, settings,
+                                           make_command, make_worker):
+    cmd = _rollout_command(make_command, 1)
+    store.create_or_replay(cmd)
+    store.claim_next(make_worker())
+    clock.advance_ms(settings.lease_seconds * 1000 + 1)
+    counts = store.recover_expired_leases()
+    assert counts.requeued == 1
+    queues = _queue_members(redis_client)
+    assert cmd.evaluation_id.encode() in queues["bulk"]
+    assert not queues["interactive"]
+
+
+def test_legacy_ready_zset_still_drains(store, redis_client, make_command,
+                                        make_worker):
+    """Pre-deploy members of the old ready zset remain claimable (durable volume)."""
+    cmd = make_command()
+    store.create_or_replay(cmd)
+    member = cmd.evaluation_id.encode()
+    redis_client.zrem("triton-eval:v2:ready:exec:interactive", member)
+    redis_client.zadd("triton-eval:v2:ready", {member: 1})
+    lease = store.claim_next(make_worker())
+    assert lease is not None and lease.evaluation_id == cmd.evaluation_id
+
+
+def test_claim_avoid_card_skips_last_failed_card(store, redis_client, clock, settings,
+                                                 make_command, make_worker):
+    poisoned = make_command(session_id="s-1", idempotency_key="k-1")
+    store.create_or_replay(poisoned)
+    fine = make_command(session_id="s-2", idempotency_key="k-2")
+    store.create_or_replay(fine)
+    # Only poisoned carries last_failed_card=3; fine died on another card, so
+    # an avoid_card=3 claim skips poisoned and takes fine.
+    for _cmd, card in ((poisoned, 3), (fine, 4)):
+        lease = store.claim_next(make_worker())
+        store.note_claimed_card(lease.evaluation_id, card=card)
+        clock.advance_ms(settings.lease_seconds * 1000 + 1)
+        store.recover_expired_leases()
+        clock.advance_ms(1)
+    lease = store.claim_next(make_worker(), avoid_card=3)
+    assert lease.evaluation_id == fine.evaluation_id
+
+
+def test_note_claimed_card_and_card_health_roundtrip(store, redis_client):
+    store.note_claimed_card("ev_x", card=7)
+    assert redis_client.hget("triton-eval:v2:resource:ev_x", "claimed_card") == b"7"
+    assert not store.is_card_unhealthy(7)
+    store.set_card_unhealthy(7)
+    assert store.is_card_unhealthy(7)
+    store.clear_card_unhealthy(7)
+    assert not store.is_card_unhealthy(7)

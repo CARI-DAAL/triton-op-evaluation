@@ -117,11 +117,15 @@ def wait_until(predicate, timeout=2.0):
 @pytest.fixture
 def settings(tmp_path):
     # Fast heartbeats so lease-loss tests observe invalidation quickly.
+    # Startup canary off: these protocol tests predate card health and keep
+    # their exact pre-feature code path; card-health tests opt in via
+    # canary_settings.
     return Settings(
         engine_dir=str(tmp_path),
         dequeue_block_seconds=1,
         heartbeat_interval_seconds=0.05,
         queue_poll_interval_seconds=0.05,
+        card_canary_on_startup=False,
     )
 
 
@@ -242,7 +246,7 @@ def test_evaluator_protocol_failure_commits_redacted_failed(store, settings, clo
 def test_resource_deadline_attempts_timed_out_commit(store, settings, clock, queued):
     original_claim = store.claim_next
 
-    def claim_and_expire(worker_identity):
+    def claim_and_expire(worker_identity, avoid_card=None):
         lease = original_claim(worker_identity)
         if lease is not None:
             clock.advance_ms(lease.deadline_at_ms - clock.now_ms + 1)
@@ -397,3 +401,114 @@ def test_worker_never_logs_source_or_paths(store, settings, clock, queued, caplo
     assert "torch" not in text
     assert "/abs/path" not in text
     assert "Traceback" not in text
+
+
+# ---------------------------------------------------------------------------
+# Card health: canary gating, drain-on-unhealthy, recovery ladder
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def canary_settings(settings):
+    """Startup suspicion enabled; the card-health tests opt in explicitly."""
+    return settings.model_copy(update={"card_canary_on_startup": True})
+
+
+class _ScriptedCanary:
+    def __init__(self, outcomes):
+        self._outcomes = list(outcomes)
+        self.calls = 0
+
+    def __call__(self, *, device_id, budget_seconds):
+        self.calls += 1
+        return self._outcomes.pop(0)
+
+
+def _healthy_worker(store, settings, evaluator, clock, canary, **kwargs):
+    worker = build_worker(store, settings, evaluator, clock, **kwargs)
+    worker._canary = canary
+    worker._recovery_step = lambda step, *, card, reset_command: (
+        "cleanup" if step == 1 else "reset")
+    return worker
+
+
+def test_canary_runs_before_first_claim_when_startup_canary_enabled(store, canary_settings,
+                                                                    clock, make_command):
+    canary = _ScriptedCanary([True])
+    worker = _healthy_worker(
+        store, canary_settings,
+        StubEvaluator(canary_settings, result=make_completed_result(canary_settings)),
+        clock, canary,
+    )
+    store.create_or_replay(make_command())
+    assert worker.run_once() is True
+    assert canary.calls == 1
+
+
+def test_suspicious_ending_triggers_canary_before_next_claim(store, canary_settings,
+                                                             clock, make_command):
+    canary = _ScriptedCanary([True, True])
+    evaluator = StubEvaluator(canary_settings,
+                              result=make_completed_result(canary_settings))
+    worker = _healthy_worker(store, canary_settings, evaluator, clock, canary)
+    store.create_or_replay(make_command())
+    assert worker.run_once() is True
+    assert canary.calls == 1  # startup
+    evaluator.error = RuntimeError("boom")  # protocol failure -> suspicious
+    store.create_or_replay(make_command(session_id="s-2", idempotency_key="k-2"))
+    assert worker.run_once() is True
+    assert canary.calls == 2  # suspicion triggered a re-canary
+
+
+def test_failed_canary_drains_worker_and_skips_claim_and_heartbeat(store, canary_settings,
+                                                                   clock, make_command):
+    # Outcome budget: the probe consumes 1; each ladder rung re-probes once
+    # (card_recovery_max_step=2).
+    canary = _ScriptedCanary([False, False, False])
+    worker = _healthy_worker(store, canary_settings, StubEvaluator(canary_settings),
+                             clock, canary)
+    store.create_or_replay(make_command())
+    assert worker.run_once() is False
+    assert store.is_card_unhealthy(0)
+    ready_key = f"{canary_settings.redis_prefix}:ready:exec:interactive"
+    assert store._r.zcard(ready_key) == 1  # nothing was claimed; member stays queued
+
+
+def test_recovery_ladder_runs_between_canary_retries(store, canary_settings, clock,
+                                                     make_command):
+    # Outcome budget: the probe consumes 1; the ladder (max_step=2) consumes
+    # up to 2 more; the drained re-probe consumes 1.
+    steps: list[str] = []
+    canary = _ScriptedCanary([False, False, False, True])
+    worker = build_worker(store, canary_settings, StubEvaluator(canary_settings), clock)
+    worker._canary = canary
+    worker._recovery_step = lambda step, *, card, reset_command: steps.append(
+        "cleanup" if step == 1 else "reset") or "cleanup"
+    store.create_or_replay(make_command())
+    # startup suspicion -> canary F -> rung 1 F -> rung 2 F -> drained
+    assert worker.run_once() is False
+    assert steps == ["cleanup", "reset"]
+    assert store.is_card_unhealthy(0)
+    # drained: claims skipped until the re-probe interval elapses
+    assert worker.run_once() is False
+    assert canary.calls == 3
+    clock.advance_ms(int(canary_settings.canary_interval_seconds * 1000) + 1)
+    # drain-loop re-probe passes -> healthy, claims resume next iteration
+    assert worker.run_once() is False
+    assert canary.calls == 4
+    assert not store.is_card_unhealthy(0)
+
+
+def test_avoid_card_passed_to_claim(store, canary_settings, clock, make_command):
+    from unittest import mock
+
+    canary = _ScriptedCanary([True])
+    worker = _healthy_worker(
+        store, canary_settings,
+        StubEvaluator(canary_settings, result=make_completed_result(canary_settings)),
+        clock, canary,
+    )
+    store.create_or_replay(make_command())
+    with mock.patch.object(store, "claim_next", wraps=store.claim_next) as spy:
+        worker.run_once()
+    assert spy.call_args.kwargs.get("avoid_card") == 0

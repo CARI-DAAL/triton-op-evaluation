@@ -28,7 +28,13 @@ from triton_evaluation.security import Caller
 
 @pytest.fixture
 def settings(tmp_path):
-    return Settings(engine_dir=str(tmp_path), dequeue_block_seconds=1)
+    # Startup canary off: protocol tests predate card health and keep their
+    # exact pre-feature code path; card-health tests opt in explicitly.
+    return Settings(
+        engine_dir=str(tmp_path),
+        dequeue_block_seconds=1,
+        card_canary_on_startup=False,
+    )
 
 
 class FakeClock:
@@ -119,6 +125,7 @@ def make_command(settings, release_catalog):
         session_id="session-1",
         idempotency_key="key-1",
         evaluation_id=None,
+        traffic_class=None,
     ):
         caller = caller or make_caller()
         request = request or make_request()
@@ -128,7 +135,8 @@ def make_command(settings, release_catalog):
             evaluation_id=evaluation_id or new_evaluation_id(),
             caller_id=caller.caller_id,
             caller_class=caller.caller_class,
-            traffic_class="trial" if request.purpose == "trial" else "trusted",
+            traffic_class=traffic_class
+            or ("trial" if request.purpose == "trial" else "trusted"),
             session_id=session_id,
             idempotency_key=idempotency_key,
             admission=admission,

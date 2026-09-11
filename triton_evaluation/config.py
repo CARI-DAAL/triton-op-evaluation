@@ -65,12 +65,36 @@ class Settings(BaseSettings):
         default=BENCHMARK_TIMEOUT_SECONDS, ge=10
     )
 
+    # --- NPU visibility hold ---
+    # Megabytes of device memory each worker allocates at startup and keeps
+    # for its lifetime so `npu-smi info` shows the worker even while idle
+    # (without this, only the per-job engine subprocesses briefly appear).
+    # 0 disables the hold.
+    device_hold_mb: int = Field(default=64, ge=0)
+
     # --- admission quotas; trial and trusted buckets stay independent ---
     trial_rate_limit_per_minute: int = Field(default=60, gt=0)
     trusted_rate_limit_per_minute: int = Field(default=60, gt=0)
     trial_max_inflight: int = Field(default=4, gt=0)
     trusted_max_inflight: int = Field(default=4, gt=0)
     session_max_inflight: int = Field(default=2, gt=0)
+    # Rollout bucket: server-declared RL traffic (routes._build_command maps
+    # declared callers here). Contract-invisible; grade never lands here.
+    rollout_rate_limit_per_minute: int = Field(default=600, gt=0)
+    rollout_max_inflight: int = Field(default=256, gt=0)
+    rollout_caller_ids: list[str] = Field(default_factory=list)
+
+    # Card health loop (spec §10): poison quarantine + canary/drain/recovery.
+    poison_death_threshold: int = Field(default=2, ge=2)
+    card_affinity_avoidance: bool = Field(default=True)
+
+    # Canary + recovery ladder (spec §10).
+    canary_budget_seconds: int = Field(default=120, gt=0)
+    canary_interval_seconds: float = Field(default=60.0, gt=0)
+    card_reset_command: str = Field(default="", max_length=500)  # "{card}" substituted
+    card_recovery_max_step: int = Field(default=2, ge=1, le=3)  # 1 cleanup, 2 reset, 3 restart
+    card_recovery_retry_seconds: float = Field(default=300.0, gt=0)
+    card_canary_on_startup: bool = Field(default=True)
 
     # --- deployment-attested worker environment ---
     worker_hardware_model: str = Field(default="Ascend910B3", min_length=1)

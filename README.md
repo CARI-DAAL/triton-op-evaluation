@@ -12,18 +12,20 @@ Two ways: **directly on the host** (uses your existing conda env + CANN) or **in
 
 ### On the host — one-time setup
 
-Use the conda env that already has `torch_npu` + `triton-ascend`, add the service's light
-deps, and make sure Redis is up:
+Either reuse a conda env that already has the Ascend stack, or create one —
+the versions are declared once in `pyproject.toml` (`[project.optional-dependencies].npu`):
 
 ```bash
-conda activate <your-env>          # the env you run these kernels with
-pip install -e . && pip install pandas     # service deps (fastapi/uvicorn/redis/...) + engine's pandas
+conda create -n triton-eval python=3.11 && conda activate triton-eval
+pip install -e ".[npu]" --extra-index-url https://<ascend-wheel-index>/simple
+#   (the [npu] extra carries the pinned Ascend stack — see pyproject.toml;
+#    the extra index is only needed because torch_npu / triton-ascend are
+#    not on PyPI)
 redis-server --daemonize yes       # or point TRITON_EVAL_REDIS_URL at an existing Redis
 ```
 
-`pip install -e .` does not touch torch / torch_npu / triton-ascend. The engine is bundled,
-so `TRITON_EVAL_ENGINE_DIR` is not needed. `scripts/start.sh` must run with this conda env
-active (or pass `PYTHON_BIN=/path/to/env/bin/python`).
+The engine is bundled, so `TRITON_EVAL_ENGINE_DIR` is not needed. `scripts/start.sh` must
+run with this conda env active (or pass `PYTHON_BIN=/path/to/env/bin/python`).
 
 ### Quick start (script)
 
@@ -54,13 +56,30 @@ See `.env.example` for all environment variables.
 
 ## Run in Docker (Ascend NPU host)
 
-Reuses the proven **vllm-ascend** manual device-mount scheme (no ascend-docker-runtime).
-The base image `quay.io/ascend/vllm-ascend` carries **CANN 9.0.0 + torch_npu (arm64)** matching
-the host driver, so the container mounts only the host **driver + NPU devices** — not CANN.
-The base is py3.12, so the image builds a **py3.11 conda env** mirroring the working
-triton-ascend stack (torch 2.9.0 / torch_npu 2.9.0 / triton 3.5.0 / triton-ascend 3.2.1).
-Redis is the **host's** (via `--network host`), not bundled. One container runs the API +
-one worker per card.
+The image is **self-contained for the Python stack**: on the official `python:3.11`
+(aarch64) base it installs the SAME declared versions the host path uses
+(`pip install ".[npu]"` — see `pyproject.toml`). Network access is needed at build time;
+when torch_npu / triton-ascend are not reachable from PyPI, pass
+`--build-arg PIP_EXTRA_INDEX_URL=https://<ascend-wheel-index>/simple`.
+
+Host-coupled pieces — the **CANN toolkit, NPU driver, and `/dev/davinci*` devices** — are
+NOT baked into the image; they are bind-mounted at runtime because they must match the
+host's driver. Redis is the **host's** (via `--network host`), not bundled. One container
+runs the API + one worker per card.
+
+### Quick path — scripts
+
+```bash
+docker build -t triton-eval:1.0 .     # add --build-arg PIP_EXTRA_INDEX_URL=... if needed
+cp .env.example .env                  # set CANN_HOST, TRITON_EVAL_CARDS, redis url, ...
+bash scripts/docker_run.sh 1.0        # mounts CANN/driver/devices/secret/catalog, runs all
+curl 127.0.0.1:10907/healthz          # -> {"redis":"ok"}
+```
+
+`scripts/docker_run.sh` reads `.env` (same file the host path uses), mounts
+`${REPO_ROOT}/.capability-secret.json` (mode 0600 caller capabilities) and
+`${REPO_ROOT}/catalog/` (release catalog) read-only, and honors
+`TRITON_EVAL_CARDS` (one `--device /dev/davinciN` per card).
 
 ### With docker compose
 
@@ -73,30 +92,13 @@ docker compose --env-file docker.env logs -f
 
 For multiple chips, list one `- /dev/davinciN` per card under `devices:` in the compose file.
 
-### Or plain docker run (single chip, e.g. npu:14)
-
-```bash
-docker build -t triton-evaluation .
-docker run -d --name triton-eval --network host --shm-size 32g \
-  --device /dev/davinci14 --device /dev/davinci_manager \
-  --device /dev/devmm_svm --device /dev/hisi_hdc \
-  -v /usr/local/dcmi:/usr/local/dcmi \
-  -v /usr/local/Ascend/driver/lib64:/usr/local/Ascend/driver/lib64 \
-  -v /usr/local/Ascend/driver/version.info:/usr/local/Ascend/driver/version.info \
-  -v /usr/local/Ascend/driver/tools/hccn_tool:/usr/local/Ascend/driver/tools/hccn_tool \
-  -v /usr/local/bin/npu-smi:/usr/local/bin/npu-smi \
-  -v /etc/ascend_install.info:/etc/ascend_install.info \
-  -v "$PWD/logs":/opt/triton-eval/logs \
-  -e TRITON_EVAL_CARDS=14 \
-  -e TRITON_EVAL_REDIS_URL=redis://127.0.0.1:6379/0 \
-  -e TRITON_EVAL_API_PORT=10907 \
-  triton-evaluation
-
-curl 127.0.0.1:10907/healthz          # -> {"redis":"ok"}
-```
-
-`TRITON_EVAL_CARDS` must match the mounted `/dev/davinciN`. Smoke-test one real Triton kernel
-after bring-up to confirm triton-ascend links `bishengir-compile` from the image's CANN.
+Card health (spec §10): workers run a canary kernel before claiming after any
+suspicious attempt death and at startup. A failed canary drains the worker (no
+heartbeats — readiness drops to 503 once no claim-capable worker remains) and
+drives a recovery ladder: in-process cleanup → `TRITON_EVAL_CARD_RESET_COMMAND`
+("{card}" substituted) → process restart. Host reboot is never automatic. An
+evaluation whose attempts die suspiciously twice is quarantined (terminal
+`WORKER_LOST` with a poison message; never retried by the service).
 
 ## Endpoints (evaluation API v2 — durable)
 

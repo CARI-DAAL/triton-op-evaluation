@@ -1,32 +1,47 @@
 #!/usr/bin/env bash
-# Pre-download the large ML wheels with curl -C - (resumable), because the build proxy
-# drops connections before pip can finish big wheels (IncompleteRead ~12MiB). curl resumes
-# across each drop; pip cannot. Resulting ./wheels is consumed by the Dockerfile via
-# --find-links so the build doesn't re-fetch these from the flaky proxy.
+# Pre-download the pinned ML wheels with curl -C - (resumable), for networks that
+# drop transfers before pip can finish (IncompleteRead). Versions are read from
+# pyproject.toml [project.optional-dependencies].npu — the same declaration the
+# install paths use, so this file cannot drift.
+#
+# Resulting ./wheels can be fed to pip/docker builds on an offline host, e.g.:
+#   pip install --find-links wheels -e ".[npu]"
 set -u
 cd "$(dirname "$0")/.."
 mkdir -p wheels
 cd wheels
 
-declare -a URLS=(
-  "https://files.pythonhosted.org/packages/58/fe/334225e6330e672b36aef23d77451fa906ea12881570c08638a91331a212/torch-2.9.0-cp311-cp311-manylinux_2_28_aarch64.whl"
-  "https://files.pythonhosted.org/packages/df/91/ea9a22a34ca108e70d9752097228091cccdb28d20af7657653cfd9dc6508/torch_npu-2.9.0-cp311-cp311-manylinux_2_28_aarch64.whl"
-  "https://files.pythonhosted.org/packages/79/f9/b6f60f978397c616fd8dacca2305759fe4f80d397b20ef72534803244bd5/triton-3.5.0-cp311-cp311-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl"
-  "https://files.pythonhosted.org/packages/09/01/dafaeccae2cffddd7cf0c7abdeec650b430ecda8fb6ca349d29fea118a6f/triton_ascend-3.2.0-cp311-cp311-manylinux_2_27_aarch64.manylinux_2_28_aarch64.whl"
+# Resolve each [npu] pin (== or bare name) to its cp311 aarch64 (or py3-any)
+# wheel URL via the PyPI JSON API.
+URLS=$(
+  python3 - <<'PY'
+import json, urllib.request
+
+import tomllib
+
+with open("../pyproject.toml", "rb") as f:
+    pins = tomllib.load(f)["project"]["optional-dependencies"]["npu"]
+
+for pin in pins:
+    name, _, version = pin.partition("==")
+    if not version:  # unpinned (pandas, pyyaml): take the latest
+        meta = json.load(urllib.request.urlopen(f"https://pypi.org/pypi/{name}/json"))
+        files = meta["urls"]
+    else:
+        meta = json.load(urllib.request.urlopen(f"https://pypi.org/pypi/{name}/{version}/json"))
+        files = meta["urls"]
+    wheel = next(
+        (f["url"] for f in files
+         if "cp311" in f["filename"]
+         and ("aarch64" in f["filename"] or f["filename"].endswith("any.whl"))),
+        None,
+    )
+    print(wheel if wheel else f"WARN no cp311/aarch64 wheel for {pin}")
+PY
 )
 
-# Resolve latest cp311/aarch64 (or py3-any) wheels for the rest dynamically.
-for pkg in numpy pandas pyyaml; do
-  u=$(curl -sS -m 30 "https://pypi.org/pypi/$pkg/json" 2>/dev/null | python3 -c "
-import sys, json
-d = json.load(sys.stdin)
-cands = [x['url'] for x in d['urls'] if 'cp311' in x['filename'] and ('aarch64' in x['filename'] or 'any' in x['filename'])]
-print(cands[0] if cands else '')
-" 2>/dev/null)
-  [ -n "$u" ] && URLS+=("$u") || echo "WARN: no URL resolved for $pkg"
-done
-
-for url in "${URLS[@]}"; do
+for url in ${URLS}; do
+  [[ "$url" == WARN* ]] && { echo "$url"; continue; }
   f=$(basename "$url")
   echo "=== $f ==="
   for i in $(seq 1 200); do

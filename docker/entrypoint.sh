@@ -6,7 +6,7 @@
 #   entrypoint.sh workers   -> workers only
 #   entrypoint.sh <cmd...>  -> exec cmd (escape hatch, e.g. `bash`)
 #
-# Python interpreter: defaults to the image's py3.11 conda env python3 (on PATH from the
+# Python interpreter: defaults to the image's python3 (py3.11, on PATH from the
 # Dockerfile). Override with PYTHON_BIN to run a different interpreter — e.g. a bind-mounted
 # host conda env (Plan A), so the engine subprocess (sys.executable) shares that env too.
 set -euo pipefail
@@ -90,8 +90,12 @@ if image and build != image and not reviewed_git:
     sys.exit("evaluator build must equal the immutable image")
 
 host = os.environ.get("TRITON_EVAL_API_HOST", "127.0.0.1")
-if host in ("0.0.0.0", "::") or ":" in host:
-    sys.exit("API host must be a single IPv4 address, never a wildcard")
+allow_wildcard = os.environ.get("TRITON_EVAL_ALLOW_WILDCARD_BIND", "") == "1"
+if not allow_wildcard and (host in ("0.0.0.0", "::") or ":" in host):
+    sys.exit(
+        "API host must be a single IPv4 address, never a wildcard "
+        "(0.0.0.0 needs TRITON_EVAL_ALLOW_WILDCARD_BIND=1)"
+    )
 PYREADINESS
 }
 

@@ -13,7 +13,9 @@ Fixed keyspace under ``settings.redis_prefix`` (default ``triton-eval:v2``)::
     resource:{evaluation_id}                     hash (canonical request, public
                                                  resource JSON, owner, quotas metadata)
     idempotency:{sha256(caller_id NUL key)}      hash: evaluation_id, request_digest
-    ready                                        zset, score = queue sequence
+    ready:exec:interactive                       zset, score = queue sequence
+    ready:exec:bulk                              zset, score = queue sequence (rollout class)
+    ready                                        legacy zset, drain-only (pre-dual-queue deploys)
     queue-sequence                               integer
     deadlines                                    zset, score = deadline epoch ms
     running-leases                               zset, score = lease expiry epoch ms
@@ -150,7 +152,15 @@ class EvaluationStore:
     def _quota_limits(self, traffic_class: str) -> tuple[int, int]:
         if traffic_class == "trial":
             return self._s.trial_rate_limit_per_minute, self._s.trial_max_inflight
+        if traffic_class == "rollout":
+            return self._s.rollout_rate_limit_per_minute, self._s.rollout_max_inflight
         return self._s.trusted_rate_limit_per_minute, self._s.trusted_max_inflight
+
+    def _ready_key(self, traffic_class: str) -> str:
+        """Strict-priority dispatch: rollout drains from bulk, everything else
+        from interactive; workers always scan interactive first."""
+        suffix = "bulk" if traffic_class == "rollout" else "interactive"
+        return self._key(f"ready:exec:{suffix}")
 
     def create_or_replay(self, command: CreateResourceCommand) -> CreateResourceResult:
         """Atomically write idempotency, resource, FIFO entry, deadline, and quotas.
@@ -215,7 +225,10 @@ class EvaluationStore:
                         "request_digest": command.admission.request_digest,
                     },
                 )
-                pipeline.zadd(self._key("ready"), {command.evaluation_id: successor})
+                pipeline.zadd(
+                    self._ready_key(command.traffic_class),
+                    {command.evaluation_id: successor},
+                )
                 pipeline.zadd(self._key("deadlines"), {command.evaluation_id: deadline_ms})
                 pipeline.zadd(
                     self._key("state:queued"), {command.evaluation_id: deadline_ms}
@@ -279,6 +292,7 @@ class EvaluationStore:
         mapping = {
             "owner": command.caller_id,
             "purpose": payload["purpose"],
+            "traffic_class": command.traffic_class,
             "session_digest": session_digest,
             "idempotency_key": idempotency_key,
             "canonical_request": command.admission.canonical_request,
@@ -296,6 +310,7 @@ class EvaluationStore:
             "benchmark_algorithm": command.algorithms.benchmark,
             "profiler_algorithm": command.algorithms.profiler,
             "attempt_count": "0",
+            "suspicious_deaths": "0",
             "attempt_id": "",
             "fencing_token": "0",
             "active_check": "",
@@ -365,19 +380,44 @@ class EvaluationStore:
     # Claims and leases (design section 6)
     # ------------------------------------------------------------------
 
-    def claim_next(self, worker: WorkerIdentity) -> AttemptLease | None:
-        """Atomically claim the head of the ready queue for ``worker``.
+    def claim_next(
+        self, worker: WorkerIdentity, avoid_card: int | None = None
+    ) -> AttemptLease | None:
+        """Atomically claim the head of the dispatch queues for ``worker``.
 
-        A queued claim removes the ready member, flips the public resource to
-        running with a bumped revision and the first ``started_at``, installs
-        attempt/lease fields, and moves the state indexes. A
-        replacement-pending running resource keeps its public state, revision,
-        and started time and consumes the higher token the reaper reserved.
-        Past-deadline members never start; duplicate members for claimed
-        resources are removed.
+        Strict priority: the interactive queue (trial/trusted) scans first, the
+        bulk queue (rollout class) only when interactive is empty, and the legacy
+        ``ready`` zset (pre-dual-queue deploys) drains last. Interactive callers
+        are quota-capped, so priority cannot starve bulk traffic; bulk floods
+        cannot head-of-line block interactive latency. A queued claim removes the
+        ready member, flips the public resource to running with a bumped revision
+        and the first ``started_at``, installs attempt/lease fields, and moves the
+        state indexes. A replacement-pending running resource keeps its public
+        state, revision, and started time and consumes the higher token the reaper
+        reserved. Past-deadline members never start; duplicate members for claimed
+        resources are removed. ``avoid_card`` skips members whose stored
+        ``last_failed_card`` matches (affinity avoidance): the member stays in the
+        queue for a worker on another card.
         """
-        ready_key = self._key("ready")
         leases_key = self._key("running-leases")
+        for ready_key in (
+            self._key("ready:exec:interactive"),
+            self._key("ready:exec:bulk"),
+            self._key("ready"),  # legacy, drain-only
+        ):
+            lease = self._claim_from_queue(worker, ready_key, leases_key, avoid_card)
+            if lease is not None:
+                return lease
+        return None
+
+    def _claim_from_queue(
+        self,
+        worker: WorkerIdentity,
+        ready_key: str,
+        leases_key: str,
+        avoid_card: int | None = None,
+    ) -> AttemptLease | None:
+        """Single-queue claim scan; fencing and replacement semantics unchanged."""
         while True:
             now_ms = self._clock()
             pipeline = self._r.pipeline()
@@ -396,6 +436,11 @@ class EvaluationStore:
                     if not stored:
                         stale.append(member)
                         continue
+                    if (
+                        avoid_card is not None
+                        and stored.get(b"last_failed_card") == str(avoid_card).encode()
+                    ):
+                        continue  # affinity avoidance: another card may claim it
                     resource = EvaluationResource.model_validate_json(stored[b"resource"])
                     if now_ms >= int(stored[b"deadline_ms"]):
                         continue  # the deadline watchdog owns this resource
@@ -615,9 +660,7 @@ class EvaluationStore:
                 self._bump(
                     "resource_terminal_transitions_total",
                     state=state,
-                    caller_class="trusted"
-                    if stored.get(b"traffic_class", b"trial") == b"trusted"
-                    else "trial",
+                    caller_class=self._stored_traffic_class(stored),
                 )
                 started_ms = stored.get(b"created_at_ms")
                 if started_ms is not None and self._metrics is not None:
@@ -682,7 +725,9 @@ class EvaluationStore:
         pipeline.expire(
             stored[b"idempotency_key"].decode("utf-8"), self._s.retention_seconds
         )
-        pipeline.zrem(self._key("ready"), evaluation_id)
+        pipeline.zrem(self._key("ready:exec:interactive"), evaluation_id)
+        pipeline.zrem(self._key("ready:exec:bulk"), evaluation_id)
+        pipeline.zrem(self._key("ready"), evaluation_id)  # legacy drain-only queue
         pipeline.zrem(self._key("deadlines"), evaluation_id)
         pipeline.zrem(self._key("running-leases"), evaluation_id)
         pipeline.zrem(self._key("state:queued"), evaluation_id)
@@ -692,10 +737,19 @@ class EvaluationStore:
         pipeline.set(session_key, max(0, session_inflight - 1))
         pipeline.execute()
 
+    @staticmethod
+    def _stored_traffic_class(stored: dict) -> str:
+        """Class persisted since the rollout-class deploy; older resources on the
+        durable volume derive it from purpose."""
+        raw = stored.get(b"traffic_class")
+        if raw is not None:
+            return raw.decode("utf-8")
+        purpose = stored[b"purpose"].decode("utf-8")
+        return "trial" if purpose == "trial" else "trusted"
+
     def _inflight_keys(self, stored: dict) -> tuple[str, str]:
         owner = stored[b"owner"].decode("utf-8")
-        purpose = stored[b"purpose"].decode("utf-8")
-        traffic_class = "trial" if purpose == "trial" else "trusted"
+        traffic_class = self._stored_traffic_class(stored)
         caller_key = self._key(f"inflight:caller:{traffic_class}:{_digest_text(owner)}")
         session_digest = stored[b"session_digest"].decode("utf-8")
         return caller_key, self._key(f"inflight:session:{session_digest}")
@@ -725,7 +779,6 @@ class EvaluationStore:
         evaluation_id = member.decode("utf-8")
         resource_key = self._key(f"resource:{evaluation_id}")
         leases_key = self._key("running-leases")
-        ready_key = self._key("ready")
         sequence_key = self._key("queue-sequence")
         while True:
             pipeline = self._r.pipeline()
@@ -749,7 +802,53 @@ class EvaluationStore:
                     return None  # committed, renewed, or already replaced
                 if now_ms >= int(stored[b"deadline_ms"]):
                     return None  # the deadline watchdog owns this resource
+                # Suspicious deaths are counted only when card provenance exists:
+                # without it there is no card to attribute the death to, and
+                # card-unaware traffic keeps the exact Plan B retry semantics.
+                failed_card = stored.get(b"claimed_card")
+                if failed_card is not None:
+                    deaths = int(stored.get(b"suspicious_deaths", b"0")) + 1
+                    metadata = {
+                        "suspicious_deaths": str(deaths),
+                        "last_failed_card": failed_card.decode("utf-8"),
+                    }
+                else:
+                    deaths = 0
+                    metadata = {}
+                if deaths >= self._s.poison_death_threshold:
+                    # Poison quarantine (spec §10): too many suspicious deaths —
+                    # terminate instead of requeueing. 2.0 contract-invisible shape:
+                    # the existing synthesized WORKER_LOST result with a
+                    # quarantine message (retryable stays True; that flag is frozen).
+                    # Mirrors the attempt-limit path: `_commit_terminal_locked`
+                    # issues its own MULTI/EXEC, so the advisory metadata write
+                    # must not touch the watched hash before EXEC (a self-write
+                    # dirtying the watch would abort the transaction).
+                    result = self._synthesized_result(
+                        stored,
+                        "worker_lost",
+                        "worker lease expired before a subject outcome was committed; "
+                        "repeated suspicious deaths — candidate quarantined as "
+                        "suspected poison",
+                    )
+                    self._commit_terminal_locked(
+                        pipeline,
+                        stored=stored,
+                        resource=resource,
+                        state="failed",
+                        result=result,
+                        now_ms=now_ms,
+                        bump_fence=True,
+                    )
+                    try:
+                        self._r.hset(resource_key, mapping=metadata)
+                    except redis.RedisError:
+                        logger.warning(
+                            "poison-path advisory write failed for %s", evaluation_id
+                        )
+                    return "failed"
                 if int(stored[b"attempt_count"]) < MAX_ATTEMPTS:
+                    ready_key = self._ready_key(self._stored_traffic_class(stored))
                     pipeline.watch(ready_key, sequence_key)
                     successor = int(pipeline.get(sequence_key) or 0) + 1
                     pipeline.multi()
@@ -762,6 +861,7 @@ class EvaluationStore:
                             "replacement_pending": "1",
                             "active_check": "",
                             "lease_deadline_ms": "0",
+                            **metadata,
                         },
                     )
                     pipeline.zrem(leases_key, member)
@@ -886,6 +986,28 @@ class EvaluationStore:
     # ------------------------------------------------------------------
     # Worker heartbeats and fencing metric
     # ------------------------------------------------------------------
+
+    def note_claimed_card(self, evaluation_id: str, card: int) -> None:
+        """Advisory provenance: which card ran this attempt. Never fenced — affinity
+        avoidance degrades gracefully if the write is lost."""
+        try:
+            self._r.hset(
+                self._key(f"resource:{evaluation_id}"), "claimed_card", str(card)
+            )
+        except redis.RedisError:
+            logger.warning("note_claimed_card failed for %s", evaluation_id)
+
+    def set_card_unhealthy(self, card: int) -> None:
+        self._r.hset(self._key(f"card-health:{card}"), "state", "unhealthy")
+
+    def clear_card_unhealthy(self, card: int) -> None:
+        self._r.hset(self._key(f"card-health:{card}"), "state", "ok")
+
+    def is_card_unhealthy(self, card: int) -> bool:
+        try:
+            return self._r.hget(self._key(f"card-health:{card}"), "state") == b"unhealthy"
+        except redis.RedisError:
+            return False
 
     def heartbeat(self, worker: WorkerIdentity) -> None:
         """Record a worker heartbeat; fresh means within one lease window."""

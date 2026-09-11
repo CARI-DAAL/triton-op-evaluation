@@ -128,6 +128,8 @@ quota class 由 **capability 授权声明**(registry 服务端配置,契约不�
 | grade(可信 hub) | 不变 | 不变 | 不变 |
 | rollout(新) | 600 | 256(≈一步 rollout) | 300s |
 
+> 实现注记(Plan B,2026-09-04):300s 默认 deadline 未实现——rollout 以 trial purpose 准入,沿用调用方自报的 deadline(上限 900s);且 rollout caller 仍共享 session 级 in-flight 上限(默认 2),每步 rollout 应使用独立 X-Session-ID。
+
 rollout 的 in-flight 给到整步规模:**整个 rollout 步一次性 durable 入队**,RL 客户端不做滑窗 pacing;公平性在调度端解决。
 
 ### 调度:严格优先级双派发队列
