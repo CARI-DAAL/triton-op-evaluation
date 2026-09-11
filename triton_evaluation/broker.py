@@ -463,7 +463,8 @@ class EvaluationStore:
     # ------------------------------------------------------------------
 
     def claim_next(
-        self, worker: WorkerIdentity, avoid_card: int | None = None
+        self, worker: WorkerIdentity, avoid_card: int | None = None,
+        *, card: int | None = None,
     ) -> AttemptLease | None:
         """Atomically claim the head of the dispatch queues for ``worker``.
 
@@ -479,7 +480,9 @@ class EvaluationStore:
         reserved. Past-deadline members never start; duplicate members for claimed
         resources are removed. ``avoid_card`` skips members whose stored
         ``last_failed_card`` matches (affinity avoidance): the member stays in the
-        queue for a worker on another card.
+        queue for a worker on another card. ``card`` records the actual executing
+        card independently of affinity policy. Its advisory publication is owned
+        by this method: failure never discards an already committed claim.
         """
         leases_key = self._key("running-leases")
         for ready_key in (
@@ -489,6 +492,8 @@ class EvaluationStore:
         ):
             lease = self._claim_from_queue(worker, ready_key, leases_key, avoid_card)
             if lease is not None:
+                if card is not None:
+                    self._record_attempt_card(lease, card)
                 return lease
         return None
 
@@ -615,8 +620,12 @@ class EvaluationStore:
                 "replacement_pending": "0",
                 "active_check": "",
                 "check_outcomes": "{}",
+                # Presence opts this attempt into scoped provenance, even when
+                # publication is lost. Never fall back to a late legacy HSET.
+                "attempt_card": "",
             },
         )
+        pipeline.hdel(resource_key, "claimed_card")
         pipeline.zrem(ready_key, member)
         pipeline.zadd(leases_key, {evaluation_id: lease_expiry_ms})
         return AttemptLease(
@@ -634,6 +643,51 @@ class EvaluationStore:
                 profiler=stored[b"profiler_algorithm"].decode("utf-8"),
             ),
         )
+
+    def _record_attempt_card(self, lease: AttemptLease, card: int) -> None:
+        """Best-effort provenance for this attempt, never a replacement's.
+
+        Reuse the existing attempt fence without adding a new fence condition.
+        Redis errors and WATCH conflicts discard only the advisory write.
+        """
+        resource_key = self._key(f"resource:{lease.evaluation_id}")
+        try:
+            with self._r.pipeline() as pipeline:
+                pipeline.watch(resource_key)
+                stored = pipeline.hgetall(resource_key)
+                if not stored or not self._fence_conditions_met(stored, lease, self._clock()):
+                    return
+                pipeline.multi()
+                pipeline.hset(resource_key, mapping={
+                    "attempt_card": canonical_json_bytes({
+                        "attempt_id": lease.attempt_id, "card": card,
+                    }),
+                    # Compatibility projection for pre-upgrade reapers.
+                    "claimed_card": str(card),
+                })
+                pipeline.execute()
+        except redis.RedisError:
+            logger.warning("attempt card write failed for %s", lease.evaluation_id)
+
+    @staticmethod
+    def _card_for_attempt(stored: dict) -> bytes | None:
+        """Resolve optional provenance without borrowing another attempt's card."""
+        if b"attempt_card" not in stored:
+            # Existing running attempts on a durable volume predate scoped data.
+            return stored.get(b"claimed_card")
+        try:
+            binding = json.loads(stored[b"attempt_card"])
+        except (ValueError, TypeError):
+            return None
+        if (
+            not isinstance(binding, dict)
+            or binding.get("attempt_id") != stored.get(b"attempt_id", b"").decode("utf-8")
+        ):
+            return None
+        card = binding.get("card")
+        if type(card) is not int or card < 0:
+            return None
+        return str(card).encode("utf-8")
 
     def _fence_conditions_met(self, stored: dict, lease: AttemptLease, now_ms: int) -> bool:
         resource = EvaluationResource.model_validate_json(stored[b"resource"])
@@ -906,7 +960,7 @@ class EvaluationStore:
                 # Suspicious deaths are counted only when card provenance exists:
                 # without it there is no card to attribute the death to, and
                 # card-unaware traffic keeps the exact Plan B retry semantics.
-                failed_card = stored.get(b"claimed_card")
+                failed_card = self._card_for_attempt(stored)
                 if failed_card is not None:
                     deaths = int(stored.get(b"suspicious_deaths", b"0")) + 1
                     metadata = {
@@ -1119,16 +1173,6 @@ class EvaluationStore:
     # ------------------------------------------------------------------
     # Worker heartbeats and fencing metric
     # ------------------------------------------------------------------
-
-    def note_claimed_card(self, evaluation_id: str, card: int) -> None:
-        """Advisory provenance: which card ran this attempt. Never fenced — affinity
-        avoidance degrades gracefully if the write is lost."""
-        try:
-            self._r.hset(
-                self._key(f"resource:{evaluation_id}"), "claimed_card", str(card)
-            )
-        except redis.RedisError:
-            logger.warning("note_claimed_card failed for %s", evaluation_id)
 
     def set_card_unhealthy(self, card: int) -> None:
         self._r.hset(self._key(f"card-health:{card}"), "state", "unhealthy")

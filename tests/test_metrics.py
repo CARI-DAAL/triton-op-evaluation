@@ -29,6 +29,17 @@ def test_unknown_metric_names_are_rejected(app):
         metrics.increment("arbitrary_metric_total", {"caller_class": "trial"})
 
 
+@pytest.mark.parametrize("name, labels", [
+    ("unknown_gauge", {}),
+    ("card_health_state", {"card": "unbounded-card-id"}),
+    ("card_health_state", {"worker_id": "private-worker"}),
+    ("worker_attempts_total", {}),
+])
+def test_gauge_writes_preserve_metric_kind_and_label_allowlists(app, name, labels):
+    with pytest.raises(ValueError):
+        app.app.state.context.metrics.set_gauge(name, labels, 1)
+
+
 def test_unknown_label_names_are_rejected(app):
     metrics = app.app.state.context.metrics
     with pytest.raises(ValueError):

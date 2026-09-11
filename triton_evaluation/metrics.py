@@ -153,6 +153,17 @@ class RedisMetrics:
         except Exception as error:  # noqa: BLE001 — never affect a transition
             logger.warning("metrics write failed (%s)", type(error).__name__)
 
+    def set_gauge(self, name: str, labels, value: int) -> None:
+        """Publish the current value, independent of prior probes or restarts."""
+        labels = dict(labels)
+        _validate(name, labels)
+        if name not in _GAUGE_NAMES:
+            raise ValueError(f"metric is not a gauge: {name}")
+        try:
+            self._r.hset(self._key(name), _field(labels), int(value))
+        except Exception as error:  # noqa: BLE001 — never affect a transition
+            logger.warning("metrics write failed (%s)", type(error).__name__)
+
     def render_openmetrics(self) -> bytes:
         lines: list[str] = []
         for name in sorted(ALLOWED_METRICS):

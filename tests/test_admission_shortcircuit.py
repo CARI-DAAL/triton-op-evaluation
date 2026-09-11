@@ -246,8 +246,7 @@ def _poison_terminal(store, settings, clock, make_command, make_worker, request,
     cmd = make_command(request=request, idempotency_key=idempotency_key)
     store.create_or_replay(cmd)
     for _ in range(2):
-        lease = store.claim_next(make_worker())
-        store.note_claimed_card(lease.evaluation_id, card=7)
+        store.claim_next(make_worker(), card=7)
         clock.advance_ms(settings.lease_seconds * 1000 + 1)
         counts = store.recover_expired_leases()
         if counts.failed:

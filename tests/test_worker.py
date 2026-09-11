@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 import redis
-from conftest import make_completed_result, make_provenance, make_request
+from conftest import make_caller, make_completed_result, make_provenance, make_request
 
 from triton_evaluation.api.contract import (
     CheckSucceeded,
@@ -20,6 +20,7 @@ from triton_evaluation.api.contract import (
     EvaluationResult,
 )
 from triton_evaluation.config import Settings
+from triton_evaluation.evaluators.base import LeaseLostError
 from triton_evaluation.models import AlgorithmVersions, WorkerIdentity, new_worker_id
 from triton_evaluation.worker import LeaseKeeper, Worker
 
@@ -65,10 +66,10 @@ def algorithms(settings):
     )
 
 
-def build_worker(store, settings, evaluator, clock, identity=None):
+def build_worker(store, settings, evaluator, clock, identity=None, **kwargs):
     return Worker(
         store, evaluator, device_id=0, settings=settings, identity=identity,
-        clock=clock, sleep=lambda _s: None,
+        clock=clock, sleep=lambda _s: None, **kwargs,
     )
 
 
@@ -247,8 +248,8 @@ def test_evaluator_protocol_failure_commits_redacted_failed(store, settings, clo
 def test_resource_deadline_attempts_timed_out_commit(store, settings, clock, queued):
     original_claim = store.claim_next
 
-    def claim_and_expire(worker_identity, avoid_card=None):
-        lease = original_claim(worker_identity)
+    def claim_and_expire(worker_identity, avoid_card=None, *, card=None):
+        lease = original_claim(worker_identity, avoid_card=avoid_card, card=card)
         if lease is not None:
             clock.advance_ms(lease.deadline_at_ms - clock.now_ms + 1)
         return lease
@@ -305,8 +306,8 @@ def test_late_delivery_watchdog_terminal_carries_compile_slot(
     store.create_or_replay(cmd)
     original_claim = store.claim_next
 
-    def claim_and_expire(worker_identity, avoid_card=None):
-        lease = original_claim(worker_identity)
+    def claim_and_expire(worker_identity, avoid_card=None, *, card=None):
+        lease = original_claim(worker_identity, avoid_card=avoid_card, card=card)
         if lease is not None:
             clock.advance_ms(lease.deadline_at_ms - clock.now_ms + 1)
         return lease
@@ -482,11 +483,13 @@ class _ScriptedCanary:
 
 
 def _healthy_worker(store, settings, evaluator, clock, canary, **kwargs):
-    worker = build_worker(store, settings, evaluator, clock, **kwargs)
-    worker._canary = canary
-    worker._recovery_step = lambda step, *, card, reset_command: (
-        "cleanup" if step == 1 else "reset")
-    return worker
+    return build_worker(
+        store, settings, evaluator, clock, canary=canary,
+        recovery_step=lambda step, *, card, reset_command: (
+            "cleanup" if step == 1 else "reset"
+        ),
+        **kwargs,
+    )
 
 
 def test_canary_runs_before_first_claim_when_startup_canary_enabled(store, canary_settings,
@@ -524,36 +527,11 @@ def test_failed_canary_drains_worker_and_skips_claim_and_heartbeat(store, canary
     canary = _ScriptedCanary([False, False, False])
     worker = _healthy_worker(store, canary_settings, StubEvaluator(canary_settings),
                              clock, canary)
-    store.create_or_replay(make_command())
+    resource = store.create_or_replay(make_command()).resource
     assert worker.run_once() is False
     assert store.is_card_unhealthy(0)
-    ready_key = f"{canary_settings.redis_prefix}:ready:exec:interactive"
-    assert store._r.zcard(ready_key) == 1  # nothing was claimed; member stays queued
-
-
-def test_recovery_ladder_runs_between_canary_retries(store, canary_settings, clock,
-                                                     make_command):
-    # Outcome budget: the probe consumes 1; the ladder (max_step=2) consumes
-    # up to 2 more; the drained re-probe consumes 1.
-    steps: list[str] = []
-    canary = _ScriptedCanary([False, False, False, True])
-    worker = build_worker(store, canary_settings, StubEvaluator(canary_settings), clock)
-    worker._canary = canary
-    worker._recovery_step = lambda step, *, card, reset_command: steps.append(
-        "cleanup" if step == 1 else "reset") or "cleanup"
-    store.create_or_replay(make_command())
-    # startup suspicion -> canary F -> rung 1 F -> rung 2 F -> drained
-    assert worker.run_once() is False
-    assert steps == ["cleanup", "reset"]
-    assert store.is_card_unhealthy(0)
-    # drained: claims skipped until the re-probe interval elapses
-    assert worker.run_once() is False
-    assert canary.calls == 3
-    clock.advance_ms(int(canary_settings.canary_interval_seconds * 1000) + 1)
-    # drain-loop re-probe passes -> healthy, claims resume next iteration
-    assert worker.run_once() is False
-    assert canary.calls == 4
-    assert not store.is_card_unhealthy(0)
+    assert store.get_visible(resource.evaluation_id, make_caller()).state == "queued"
+    assert not store.has_fresh_compatible_worker(worker.identity)
 
 
 def test_avoid_card_passed_to_claim(store, canary_settings, clock, make_command):
@@ -569,6 +547,49 @@ def test_avoid_card_passed_to_claim(store, canary_settings, clock, make_command)
     with mock.patch.object(store, "claim_next", wraps=store.claim_next) as spy:
         worker.run_once()
     assert spy.call_args.kwargs.get("avoid_card") == 0
+
+
+def test_drained_worker_resumes_claims_after_recovery_ladder_succeeds(
+    store, canary_settings, clock, make_command,
+):
+    worker = Worker(
+        store, StubEvaluator(canary_settings), device_id=0,
+        settings=canary_settings, clock=clock,
+        canary=_ScriptedCanary([False, False, False, False, True]),
+        recovery_step=lambda step, **kwargs: "cleanup" if step == 1 else "reset",
+    )
+    resource = store.create_or_replay(make_command()).resource
+    assert worker.run_once() is False
+    assert store.is_card_unhealthy(0)
+
+    clock.advance_ms(300_001)
+    # The drained probe fails, then cleanup restores the card. The recovery
+    # iteration does not claim; the next iteration must resume useful work.
+    assert worker.run_once() is False
+    assert not store.is_card_unhealthy(0)
+    assert worker.run_once() is True
+    assert store.get_visible(resource.evaluation_id, make_caller()).state == "completed"
+    assert store.has_fresh_compatible_worker(worker.identity)
+
+
+def test_worker_records_attempt_card_even_when_affinity_avoidance_is_disabled(
+    store, settings, clock, make_command,
+):
+    settings = settings.model_copy(update={"card_affinity_avoidance": False})
+    worker = Worker(
+        store, StubEvaluator(settings, error=LeaseLostError()),
+        device_id=0, settings=settings, clock=clock, canary=lambda **kwargs: True,
+    )
+    resource = store.create_or_replay(make_command()).resource
+    for _ in range(2):
+        assert worker.run_once() is True
+        clock.advance_ms(settings.lease_seconds * 1000 + 1)
+        counts = store.recover_expired_leases()
+    # Both deaths have provenance even though the same card may claim again.
+    assert counts.failed == 1
+    terminal = store.get_visible(resource.evaluation_id, make_caller())
+    assert terminal.state == "failed"
+    assert "poison" in terminal.result.correctness.error.message
 
 
 def test_compile_error_terminal_feeds_verdict_cache(store, settings, clock,
