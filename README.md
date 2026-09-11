@@ -181,6 +181,8 @@ It never returns reference code or test inputs.
 
 The [card health module](docs/architecture/card-health.md) documents the worker's
 health gate, recovery invariants, and CPU/hardware test seams.
+The [attempt card provenance](docs/architecture/attempt-card-provenance.md) note
+documents claim ownership, advisory failure handling, and storage compatibility.
 
 ```bash
 pip install -e ".[test]"

@@ -246,11 +246,10 @@ class Worker:
         # Only claim-capable workers heartbeat, including when the queue is empty.
         self.store.heartbeat(self.identity)
         avoid_card = self.device_id if self.settings.card_affinity_avoidance else None
-        lease = self.store.claim_next(self.identity, avoid_card=avoid_card)
+        lease = self.store.claim_next(self.identity, card=self.device_id, avoid_card=avoid_card)
         if lease is None:
             self._maintenance()
             return False
-        self.store.note_claimed_card(lease.evaluation_id, self.device_id)
         if self.store._metrics is not None:
             try:
                 self.store._metrics.increment("worker_attempts_total", {})

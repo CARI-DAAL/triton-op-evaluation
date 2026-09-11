@@ -317,8 +317,7 @@ def test_reap_counts_suspicious_death_and_records_failed_card(store, redis_clien
     cmd = make_command()
     store.create_or_replay(cmd)
     worker = make_worker()
-    lease = store.claim_next(worker)
-    store.note_claimed_card(lease.evaluation_id, card=7)
+    store.claim_next(worker, card=7)
     clock.advance_ms(settings.lease_seconds * 1000 + 1)
 
     counts = store.recover_expired_leases()
@@ -334,8 +333,7 @@ def test_second_suspicious_death_quarantines_as_worker_lost(store, clock, settin
     store.create_or_replay(cmd)
     worker = make_worker()
     for _ in range(2):
-        lease = store.claim_next(worker)
-        store.note_claimed_card(lease.evaluation_id, card=7)
+        store.claim_next(worker, card=7)
         clock.advance_ms(settings.lease_seconds * 1000 + 1)
         counts = store.recover_expired_leases()
         if counts.failed:
@@ -358,8 +356,7 @@ def test_clean_failure_does_not_count_suspicious_death(store, redis_client, cloc
     never sees the attempt, so no suspicious death is counted (spec §11)."""
     cmd = make_command()
     store.create_or_replay(cmd)
-    lease = store.claim_next(make_worker())
-    store.note_claimed_card(lease.evaluation_id, card=7)
+    lease = store.claim_next(make_worker(), card=7)
     assert store.commit_terminal(lease, "completed", make_completed_result(settings))
     clock.advance_ms(settings.lease_seconds * 1000 + 1)
     store.recover_expired_leases()
