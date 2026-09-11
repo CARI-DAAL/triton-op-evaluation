@@ -1,6 +1,7 @@
 """Contract v2.1: additive extensions, per-version purity, serialization stripping."""
 
 import json
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -13,39 +14,46 @@ from triton_evaluation.catalog import ReleaseCatalog
 
 
 def published_v20_resource_validator():
-    """jsonschema validator for the published 2.0 EvaluationResource $def.
-
-    Uses the pre-``referencing`` jsonschema API (``RefResolver``): the portable
-    probe's ``referencing``-based approach needs a dependency that torchless
-    CI hosts do not carry.
-    """
-    from pathlib import Path
-
-    import jsonschema
-
-    root = Path(__file__).resolve().parent.parent / "contracts" / "evaluation-api" / "2.0"
-    schema = json.loads((root / "schema.json").read_text(encoding="utf-8"))
-    resolver = jsonschema.RefResolver.from_schema(schema)
-    return jsonschema.Draft202012Validator(
-        schema["$defs"]["EvaluationResource"], resolver=resolver
-    )
+    """jsonschema validator for the published 2.0 EvaluationResource $def."""
+    return _published_resource_validator("2.0")
 
 
 def published_v21_resource_validator():
-    """jsonschema validator for the published 2.1 EvaluationResource $def.
+    """jsonschema validator for the published 2.1 EvaluationResource $def."""
+    return _published_resource_validator("2.1")
 
-    Same RefResolver approach as the 2.0 helper above.
-    """
-    from pathlib import Path
 
+def _published_resource_validator(version):
+    import jsonschema
+    from referencing import Registry, Resource
+
+    root = Path(__file__).resolve().parent.parent / "contracts" / "evaluation-api" / version
+    schema = json.loads((root / "schema.json").read_text(encoding="utf-8"))
+    # Register the full URN document so nested fragment refs retain their root.
+    registry = Registry().with_resource(schema["$id"], Resource.from_contents(schema))
+    return jsonschema.Draft202012Validator(
+        {"$ref": f"{schema['$id']}#/$defs/EvaluationResource"}, registry=registry
+    )
+
+
+@pytest.mark.parametrize("version, validator_factory, fixture", [
+    ("2.0", published_v20_resource_validator, "resource-completed-correct.json"),
+    ("2.1", published_v21_resource_validator, "resource-completed-compile-check.json"),
+])
+def test_published_resource_validators_resolve_nested_outcomes(
+    version, validator_factory, fixture,
+):
     import jsonschema
 
-    root = Path(__file__).resolve().parent.parent / "contracts" / "evaluation-api" / "2.1"
-    schema = json.loads((root / "schema.json").read_text(encoding="utf-8"))
-    resolver = jsonschema.RefResolver.from_schema(schema)
-    return jsonschema.Draft202012Validator(
-        schema["$defs"]["EvaluationResource"], resolver=resolver
-    )
+    root = Path(__file__).resolve().parent.parent / "contracts" / "evaluation-api" / version
+    resource = json.loads((root / "fixtures" / fixture).read_text(encoding="utf-8"))
+    validator = validator_factory()
+    # Reuse the validator as HTTP tests do for POST, GET, and replay bodies.
+    validator.validate(resource)
+    validator.validate(resource)
+    resource["result"]["correctness"]["status"] = "invalid"
+    with pytest.raises(jsonschema.ValidationError):
+        validator.validate(resource)
 
 
 def _request(**overrides):

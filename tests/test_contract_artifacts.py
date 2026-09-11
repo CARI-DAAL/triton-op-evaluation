@@ -317,12 +317,13 @@ def test_v21_schema_carries_the_compile_slot_and_measurement_method():
 
 def _v21_entrypoint_validator(def_name):
     import jsonschema
+    from referencing import Registry, Resource
 
     schema = json.loads(build_v21_artifacts()[PurePosixPath("schema.json")])
-    # RefResolver (not `referencing`): torchless CI hosts carry jsonschema
-    # without the referencing package (same pattern as test_contract_v21).
-    resolver = jsonschema.RefResolver.from_schema(schema)
-    return jsonschema.Draft202012Validator(schema["$defs"][def_name], resolver=resolver)
+    registry = Registry().with_resource(schema["$id"], Resource.from_contents(schema))
+    return jsonschema.Draft202012Validator(
+        {"$ref": f"{schema['$id']}#/$defs/{def_name}"}, registry=registry
+    )
 
 
 def test_v21_consumer_entrypoints_resolve_and_validate_independently():
