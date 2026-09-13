@@ -10,6 +10,7 @@ retry timing; callers never coordinate individual recovery rungs.
 from __future__ import annotations
 
 import gc
+import linecache
 import logging
 import os
 import signal
@@ -183,6 +184,18 @@ class CanaryBudgetExceeded(TimeoutError):
     pass
 
 
+def _canary_namespace() -> dict:
+    """Make generated source discoverable by Triton's inspect-based JIT."""
+    filename = "<triton-eval-canary>"
+    linecache.cache[filename] = (
+        len(CANARY_ADD_KERNEL), None,
+        CANARY_ADD_KERNEL.splitlines(keepends=True), filename,
+    )
+    namespace: dict = {}
+    exec(compile(CANARY_ADD_KERNEL, filename, "exec"), namespace)
+    return namespace
+
+
 def _cleanup_in_process() -> None:
     import torch  # noqa: F401
     import torch_npu  # noqa: F401
@@ -214,8 +227,7 @@ def run_canary(*, device_id: int, budget_seconds: int) -> bool:
     signal.setitimer(signal.ITIMER_REAL, budget_seconds)
     try:
         torch.npu.set_device(0)  # pinned to the card via ASCEND_RT_VISIBLE_DEVICES
-        namespace: dict = {}
-        exec(compile(CANARY_ADD_KERNEL, "<canary>", "exec"), namespace)
+        namespace = _canary_namespace()
         model = namespace["ModelNew"]().npu()
         x = torch.randn(1024, device="npu")
         y = torch.randn(1024, device="npu")
