@@ -12,7 +12,7 @@ OBSERVER_HEADERS = {"Authorization": "Bearer observer-token-1"}
 @pytest.fixture
 def app(tmp_path, release_catalog_files):
     built = build_app(tmp_path, release_catalog_files)
-    built.app.state.context.metrics = RedisMetrics(
+    built.app.state.context.instance.metrics = RedisMetrics(
         built.store._r, built.settings.redis_prefix
     )
     return built
@@ -24,7 +24,7 @@ def app(tmp_path, release_catalog_files):
 
 
 def test_unknown_metric_names_are_rejected(app):
-    metrics = app.app.state.context.metrics
+    metrics = app.app.state.context.instance.metrics
     with pytest.raises(ValueError):
         metrics.increment("arbitrary_metric_total", {"caller_class": "trial"})
 
@@ -37,23 +37,23 @@ def test_unknown_metric_names_are_rejected(app):
 ])
 def test_gauge_writes_preserve_metric_kind_and_label_allowlists(app, name, labels):
     with pytest.raises(ValueError):
-        app.app.state.context.metrics.set_gauge(name, labels, 1)
+        app.app.state.context.instance.metrics.set_gauge(name, labels, 1)
 
 
 def test_unknown_label_names_are_rejected(app):
-    metrics = app.app.state.context.metrics
+    metrics = app.app.state.context.instance.metrics
     with pytest.raises(ValueError):
         metrics.increment("evaluation_admissions_total", {"caller_id": "trial-caller"})
 
 
 def test_unknown_label_values_are_rejected(app):
-    metrics = app.app.state.context.metrics
+    metrics = app.app.state.context.instance.metrics
     with pytest.raises(ValueError):
         metrics.increment("evaluation_admissions_total", {"caller_class": "vip"})
 
 
 def test_caller_values_aggregate_to_bounded_classes(app):
-    metrics = app.app.state.context.metrics
+    metrics = app.app.state.context.instance.metrics
     metrics.increment("evaluation_admissions_total", {"decision": "created",
                                                       "caller_class": "trial"})
     rendered = metrics.render_openmetrics().decode()
@@ -62,7 +62,7 @@ def test_caller_values_aggregate_to_bounded_classes(app):
 
 
 def test_leakage_attempts_are_rejected(app):
-    metrics = app.app.state.context.metrics
+    metrics = app.app.state.context.instance.metrics
     for bad in (
         {"caller_class": "trial", "evaluation_id": "ev_1"},
         {"caller_class": "trial-caller"},
@@ -88,7 +88,7 @@ def test_no_graderecord_metrics_in_this_service(app):
 
 
 def test_histogram_uses_fixed_buckets(app):
-    metrics = app.app.state.context.metrics
+    metrics = app.app.state.context.instance.metrics
     metrics.observe("resource_terminal_duration_seconds", {"state": "completed"}, 0.05)
     metrics.observe("resource_terminal_duration_seconds", {"state": "completed"}, 2.0)
     rendered = metrics.render_openmetrics().decode()
@@ -100,7 +100,7 @@ def test_histogram_uses_fixed_buckets(app):
 
 
 def test_rendering_is_deterministic_and_ends_with_eof(app):
-    metrics = app.app.state.context.metrics
+    metrics = app.app.state.context.instance.metrics
     metrics.increment("evaluation_admissions_total", {"decision": "created",
                                                       "caller_class": "trial"})
     first = metrics.render_openmetrics()
@@ -211,7 +211,7 @@ async def test_terminal_dimensions_are_instrumented(app, make_command):
                        algorithms(app.settings))
     )
     app.store.commit_terminal(lease, "completed", make_completed_result(app.settings))
-    body = app.app.state.context.metrics.render_openmetrics().decode()
+    body = app.app.state.context.instance.metrics.render_openmetrics().decode()
     assert "resource_terminal_transitions_total" in body
     assert 'state="completed"' in body
     assert "resource_terminal_duration_seconds" in body
@@ -226,7 +226,7 @@ def test_worker_dimensions_are_instrumented(app):
                               algorithms(app.settings))
     app.store.heartbeat(identity)
     app.store.note_fenced_write()
-    body = app.app.state.context.metrics.render_openmetrics().decode()
+    body = app.app.state.context.instance.metrics.render_openmetrics().decode()
     assert "worker_heartbeats_total" in body
     assert "fenced_write_rejections_total" in body
 

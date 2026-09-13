@@ -181,7 +181,7 @@ def test_same_compose_supports_single_or_multiple_cards(cards):
     ("card_canary_on_startup", "false", False),
     ("verdict_cache_enabled", "false", False),
     ("verdict_cache_ttl_seconds", "7200", 7200),
-    ("compile_precheck_enabled", "false", False),
+    ("cpu_workers", "2", 2),
     ("precheck_budget_seconds", "20", 20),
     ("cann_fingerprint", "site-cann-2026", "site-cann-2026"),
     ("worker_hardware_model", "SiteAscendModel", "SiteAscendModel"),
@@ -400,9 +400,10 @@ def test_container_readiness_checks_the_image_digest_build(
     ("mode", "expected_args"),
     [
         ("api", ("args=-m uvicorn run_api:app --host 127.0.0.1 --port 12000",)),
-        ("workers", ("args=run_worker.py --card 3",)),
+        ("workers", ("args=run_worker.py --cpu", "args=run_worker.py --card 3")),
         ("all", (
             "args=-m uvicorn run_api:app --host 127.0.0.1 --port 12000",
+            "args=run_worker.py --cpu",
             "args=run_worker.py --card 3",
         )),
     ],
@@ -467,7 +468,8 @@ printf 'args=%s\n' "$*"
         assert expected in result.stdout
 
 
-def test_host_launcher_adds_cann_arch_library_to_api_and_worker(tmp_path):
+@pytest.mark.parametrize("cpu_workers", [0, 2])
+def test_host_launcher_adds_cann_arch_library_to_api_and_worker(tmp_path, cpu_workers):
     set_env = _create_fake_cann(tmp_path)
     fake_python = tmp_path / "fake-python"
     _write_executable(
@@ -485,6 +487,7 @@ printf 'args=%s\\n' "$*"
         "TRITON_EVAL_API_HOST=127.0.0.1",
         "TRITON_EVAL_API_PORT=11907",
         "TRITON_EVAL_CARDS=8",
+        f"TRITON_EVAL_CPU_WORKERS={cpu_workers}",
         f"LOG_DIR={log_dir}",
         "",
     ]))
@@ -500,3 +503,8 @@ printf 'args=%s\\n' "$*"
     arch_library = f"{set_env.parent}/aarch64-linux/lib64"
     assert arch_library in (log_dir / "api.log").read_text()
     assert arch_library in (log_dir / "worker_8.log").read_text()
+    cpu_logs = sorted(log_dir.glob("worker_cpu_*.log"))
+    assert len(cpu_logs) == cpu_workers
+    for cpu_log in cpu_logs:
+        assert arch_library in cpu_log.read_text()
+        assert "args=run_worker.py --cpu" in cpu_log.read_text()

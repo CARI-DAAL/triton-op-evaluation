@@ -1,32 +1,41 @@
-"""Rollout traffic-class wiring: declared callers map to the rollout bucket."""
-from types import SimpleNamespace
-
+"""Caller and purpose policy select quota and scheduling through submission."""
 from conftest import make_caller, make_grade_caller, make_grade_request, make_request
 
-from triton_evaluation.admission import admit
-from triton_evaluation.api.routes import _build_command
-from triton_evaluation.catalog import ReleaseCatalog
+from triton_evaluation.instance import EvaluationInstance
 
 
-def test_build_command_maps_declared_rollout_callers(settings, release_catalog):
-    rollout_settings = settings.model_copy(update={"rollout_caller_ids": ["rl-1"]})
-    context = SimpleNamespace(settings=rollout_settings)
+def test_declared_rollout_caller_uses_bulk_queue(settings, store, release_catalog, make_worker):
+    instance = EvaluationInstance(
+        settings=settings.model_copy(update={"rollout_caller_ids": ["rl-1"]}),
+        store=store, catalog=release_catalog, artifacts_verified=True,
+    )
+    worker = make_worker()
+    store.heartbeat(worker)
+    rollout = instance.submit(
+        make_request(), make_caller("rl-1"), session_id="s1", idempotency_key="k1",
+    )
+    plain = instance.submit(
+        make_request(), make_caller("plain-1"), session_id="s2", idempotency_key="k2",
+    )
+    # Interactive work is claimed before an earlier rollout submission.
+    assert store.claim_next(worker).evaluation_id == plain.resource.evaluation_id
+    assert store.claim_next(worker).evaluation_id == rollout.resource.evaluation_id
 
-    rollout_caller = make_caller(caller_id="rl-1")
-    admission = admit(make_request(), rollout_caller, ReleaseCatalog({}))
-    cmd = _build_command(context, rollout_caller, "s1", "k1", admission, "trial")
-    assert cmd.traffic_class == "rollout"
 
-    plain_caller = make_caller(caller_id="someone-else")
-    admission2 = admit(make_request(), plain_caller, ReleaseCatalog({}))
-    cmd2 = _build_command(context, plain_caller, "s2", "k2", admission2, "trial")
-    assert cmd2.traffic_class == "trial"
-
-
-def test_build_command_never_maps_grade_to_rollout(settings, release_catalog):
-    rollout_settings = settings.model_copy(update={"rollout_caller_ids": ["grader-1"]})
-    context = SimpleNamespace(settings=rollout_settings)
-    grade_caller = make_grade_caller()
-    admission = admit(make_grade_request(), grade_caller, release_catalog)
-    cmd = _build_command(context, grade_caller, "s1", "k1", admission, "grade")
-    assert cmd.traffic_class == "trusted"
+def test_grade_caller_is_never_reclassified_as_rollout(
+    settings, store, release_catalog, make_worker,
+):
+    instance = EvaluationInstance(
+        settings=settings.model_copy(update={"rollout_caller_ids": ["grader-1"]}),
+        store=store, catalog=release_catalog, artifacts_verified=True,
+    )
+    worker = make_worker()
+    store.heartbeat(worker)
+    rollout = instance.submit(
+        make_request(purpose="rollout"), make_caller(), session_id="s1", idempotency_key="k1",
+    )
+    grade = instance.submit(
+        make_grade_request(), make_grade_caller(), session_id="s2", idempotency_key="k2",
+    )
+    assert store.claim_next(worker).evaluation_id == grade.resource.evaluation_id
+    assert store.claim_next(worker).evaluation_id == rollout.resource.evaluation_id

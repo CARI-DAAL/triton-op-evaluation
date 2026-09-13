@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Initialize the mounted host CANN/driver and run the image's declared Python stack.
 #
-#   entrypoint.sh all       -> API + one worker per card in TRITON_EVAL_CARDS (default)
+#   entrypoint.sh all       -> API + CPU workers + one NPU worker per configured card
 #   entrypoint.sh api       -> uvicorn run_api:app only
 #   entrypoint.sh workers   -> workers only
 #   entrypoint.sh <cmd...>  -> exec cmd (escape hatch, e.g. `bash`)
@@ -109,6 +109,16 @@ run_api() {
 
 run_workers() {
   local pids=("$@")   # any pre-existing pids to also wait on
+  local cpu_count="${TRITON_EVAL_CPU_WORKERS:-1}"
+  if [[ ! "${cpu_count}" =~ ^([0-9]|[12][0-9]|3[0-2])$ ]]; then
+    echo "TRITON_EVAL_CPU_WORKERS must be an integer from 0 to 32" >&2
+    exit 2
+  fi
+  for ((i=0; i<cpu_count; i++)); do
+    echo "Starting CPU worker ${i}" >&2
+    "${PYTHON_BIN}" run_worker.py --cpu &
+    pids+=("$!")
+  done
   IFS=',' read -ra cards <<< "${TRITON_EVAL_CARDS:-0}"
   for c in "${cards[@]}"; do
     c="${c//[[:space:]]/}"
@@ -117,7 +127,7 @@ run_workers() {
     "${PYTHON_BIN}" run_worker.py --card "${c}" &
     pids+=("$!")
   done
-  [[ ${#pids[@]} -eq 0 ]] && { echo "No cards in TRITON_EVAL_CARDS" >&2; exit 2; }
+  [[ ${#pids[@]} -eq 0 ]] && { echo "No workers configured" >&2; exit 2; }
   # shellcheck disable=SC2317
   stop() { kill "${pids[@]}" 2>/dev/null || true; }
   trap stop TERM INT

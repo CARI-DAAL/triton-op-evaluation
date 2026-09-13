@@ -9,26 +9,18 @@ import asyncio
 import json
 import re
 import time
-from dataclasses import replace
 
 from fastapi import APIRouter, Depends, Query, Request
 from pydantic import ValidationError
 
-from ..admission import ForbiddenError, admit
+from ..admission import ForbiddenError
 from ..broker import StorageError
 from ..catalog import ManifestBindingError
-from ..models import CreateResourceCommand
-from ..precheck import run_precheck
-from ..security import Caller
-from ..terminal_results import (
-    compile_outcome_from_precheck,
-    synthesize_compile_error_result,
-    synthesize_compile_only_result,
-)
+from ..instance import InstanceNotReadyError, QueueUnavailableError
 from . import errors
 from .auth import require_read_caller, require_submit_caller
 from .contract import EvaluationRequest, EvaluationResource, dump_contract
-from .dependencies import AppContext, get_context
+from .dependencies import get_context, get_instance
 
 router = APIRouter()
 
@@ -80,88 +72,8 @@ async def _decode_and_validate(request: Request) -> EvaluationRequest:
             from None
 
 
-def _algorithms(context: AppContext):
-    from ..models import AlgorithmVersions
-
-    settings = context.settings
-    return AlgorithmVersions(
-        correctness=settings.correctness_algorithm_version,
-        decoy=settings.decoy_algorithm_version,
-        benchmark=settings.benchmark_algorithm_version,
-        profiler=settings.profiler_algorithm_version,
-    )
-
-
-def _metrics(context: AppContext):
-    return context.metrics
-
-
-def _bump(context: AppContext, name: str, **labels) -> None:
-    """Best-effort bounded counter; never affects the response."""
-    metrics = _metrics(context)
-    if metrics is None:
-        return
-    try:
-        metrics.increment(name, labels)
-    except Exception as error:  # noqa: BLE001 — never affect the response
-        import logging
-
-        logging.getLogger(__name__).warning(
-            "metrics write failed (%s)", type(error).__name__
-        )
-
-
-def _require_ready(
-    context: AppContext, caller: Caller, *, require_worker: bool = True,
-) -> None:
-    if not context.artifacts_verified:
-        _bump(context, "worker_compatibility_total", outcome="incompatible")
-        raise errors.not_ready("published contract artifacts are not verified")
-    if not context.store.probe_storage():
-        raise errors.queue_unavailable()
-    if not require_worker:
-        return
-    compatible = context.store.has_fresh_compatible_worker(
-        type(
-            "Compatibility",
-            (),
-            {"evaluator_build": context.settings.evaluator_build,
-             "algorithms": _algorithms(context)},
-        )()
-    )
-    _bump(
-        context, "worker_compatibility_total",
-        outcome="compatible" if compatible else "incompatible",
-    )
-    if not compatible:
-        raise errors.not_ready()
-
-
-def _build_command(context, caller, session_id, idempotency_key, admission, purpose):
-    from ..models import new_evaluation_id
-
-    is_rollout = purpose == "rollout" or (
-        purpose == "trial" and caller.caller_id in context.settings.rollout_caller_ids
-    )
-    return CreateResourceCommand(
-        evaluation_id=new_evaluation_id(),
-        caller_id=caller.caller_id,
-        caller_class=caller.caller_class,
-        traffic_class=(
-            "rollout"
-            if is_rollout
-            else ("trial" if purpose == "trial" else "trusted")
-        ),
-        session_id=session_id,
-        idempotency_key=idempotency_key,
-        admission=admission,
-        evaluator_build=context.settings.evaluator_build,
-        algorithms=_algorithms(context),
-    )
-
-
 async def wait_until_terminal(
-    store, caller, evaluation_id, *, budget_seconds, poll_seconds, is_disconnected
+    instance, caller, evaluation_id, *, budget_seconds, poll_seconds, is_disconnected
 ) -> EvaluationResource | None:
     """Poll the durable resource until terminal, budget end, or disconnect.
 
@@ -169,13 +81,13 @@ async def wait_until_terminal(
     the current nonterminal resource when its budget ends.
     """
     deadline = time.monotonic() + budget_seconds
-    resource = await asyncio.to_thread(store.get_visible, evaluation_id, caller)
+    resource = await asyncio.to_thread(instance.get, evaluation_id, caller)
     while resource is not None and resource.state not in TERMINAL_STATES:
         remaining = deadline - time.monotonic()
         if remaining <= 0 or await _maybe_await(is_disconnected):
             break
         await asyncio.sleep(min(poll_seconds, max(remaining, 0)))
-        resource = await asyncio.to_thread(store.get_visible, evaluation_id, caller)
+        resource = await asyncio.to_thread(instance.get, evaluation_id, caller)
     return resource
 
 
@@ -193,7 +105,7 @@ async def submit_evaluation(
     request: Request,
     wait_seconds: int = Query(default=0),
     caller=Depends(require_submit_caller),
-    context=Depends(get_context),
+    instance=Depends(get_instance),
 ):
     if not 0 <= wait_seconds <= 60:
         raise errors.invalid_request("wait_seconds must be between 0 and 60")
@@ -203,81 +115,21 @@ async def submit_evaluation(
     evaluation_request = await _decode_and_validate(request)
 
     try:
-        admission = admit(evaluation_request, caller, context.catalog)
-        if evaluation_request.purpose == "grade":
-            _bump(context, "catalog_binding_outcomes_total", outcome="bound")
+        outcome = await asyncio.to_thread(
+            instance.submit, evaluation_request, caller,
+            session_id=session_id, idempotency_key=idempotency_key,
+        )
     except ForbiddenError:
-        raise errors.forbidden("caller lacks the required scope") from None
+        raise errors.forbidden() from None
     except ManifestBindingError:
-        _bump(context, "catalog_binding_outcomes_total", outcome="rejected_binding")
         raise errors.manifest_binding_failed() from None
-
-    command = _build_command(
-        context, caller, session_id, idempotency_key, admission,
-        evaluation_request.purpose,
-    )
-
-    # An idempotent replay stays recoverable through transient unreadiness:
-    # the record is consulted before readiness applies to a new admission.
-    replayed = await asyncio.to_thread(
-        context.store.lookup_idempotent, caller.caller_id, idempotency_key
-    )
-    compile_only = admission.requested_checks == ("compile",)
-    if replayed is None:
-        _require_ready(context, caller, require_worker=not compile_only)
-
-    try:
-        if replayed is not None:
-            outcome = await asyncio.to_thread(context.store.create_or_replay, command)
-        else:
-            precheck_started = time.monotonic()
-            verdict = await asyncio.to_thread(
-                run_precheck, context.store, context.settings,
-                evaluation_request.kernel_code, evaluation_request.triton_impl_name,
-                force="compile" in admission.requested_checks,
-            )
-            precheck_duration_ms = round((time.monotonic() - precheck_started) * 1000)
-            grade = evaluation_request.grade_context
-            if "compile" in admission.requested_checks:
-                command = replace(command, compile_outcome=compile_outcome_from_precheck(
-                    verdict, precheck_duration_ms,
-                ))
-            if compile_only:
-                result = synthesize_compile_only_result(
-                    compile_outcome=command.compile_outcome,
-                    evaluator_build=command.evaluator_build, algorithms=command.algorithms,
-                    manifest_id=grade.manifest_id if grade else None,
-                    problem_id=grade.problem_id if grade else None,
-                )
-                outcome = await asyncio.to_thread(
-                    context.store.create_terminal_at_admission, command, result,
-                    state="failed" if command.compile_outcome.status == "failed" else "completed",
-                )
-            elif verdict == "compile_error" and "profile" not in admission.requested_checks:
-                result = synthesize_compile_error_result(
-                    requested_checks=list(admission.requested_checks),
-                    failure_message="candidate compilation failed (admission precheck)",
-                    total_cases=1,
-                    evaluator_build=command.evaluator_build,
-                    algorithms=command.algorithms,
-                    manifest_id=grade.manifest_id if grade else None,
-                    problem_id=grade.problem_id if grade else None,
-                    precheck_duration_ms=precheck_duration_ms,
-                )
-                outcome = await asyncio.to_thread(
-                    context.store.create_terminal_at_admission, command, result
-                )
-            else:
-                outcome = await asyncio.to_thread(context.store.create_or_replay, command)
+    except InstanceNotReadyError:
+        raise errors.not_ready() from None
+    except QueueUnavailableError:
+        raise errors.queue_unavailable() from None
     except StorageError:
         raise errors.internal() from None
 
-    _bump(
-        context, "evaluation_admissions_total",
-        decision=outcome.decision, caller_class=caller.caller_class,
-    )
-    if outcome.decision == "replayed":
-        _bump(context, "idempotency_replays_total", caller_class=caller.caller_class)
     if outcome.decision == "conflict":
         raise errors.idempotency_conflict()
     if outcome.decision == "rate_limited":
@@ -293,11 +145,11 @@ async def submit_evaluation(
 
     if wait_seconds > 0:
         final = await wait_until_terminal(
-            context.store,
+            instance,
             caller,
             resource.evaluation_id,
             budget_seconds=wait_seconds,
-            poll_seconds=context.settings.api_poll_interval_seconds,
+            poll_seconds=instance.settings.api_poll_interval_seconds,
             is_disconnected=request.is_disconnected,
         )
         if final is not None and final.state in TERMINAL_STATES:
@@ -323,10 +175,10 @@ def _resource_response(resource: EvaluationResource, accepted: bool = False):
 async def get_evaluation(
     evaluation_id: str,
     caller=Depends(require_read_caller),
-    context=Depends(get_context),
+    instance=Depends(get_instance),
 ):
     resource = await asyncio.to_thread(
-        context.store.get_visible, evaluation_id, caller
+        instance.get, evaluation_id, caller
     )
     if resource is None:
         # Unknown, invisible, and invalidly shaped IDs are indistinguishable.
@@ -350,19 +202,8 @@ async def livez():
 
 
 @router.get("/readyz")
-async def readyz(context=Depends(get_context)):
-    ready = (
-        context.artifacts_verified
-        and context.store.probe_storage()
-        and context.store.has_fresh_compatible_worker(
-            type(
-                "Compatibility",
-                (),
-                {"evaluator_build": context.settings.evaluator_build,
-                 "algorithms": _algorithms(context)},
-            )()
-        )
-    )
+async def readyz(instance=Depends(get_instance)):
+    ready = await asyncio.to_thread(instance.is_ready)
     if not ready:
         # No component detail: readiness failures are uniform.
         raise errors.not_ready()
@@ -374,7 +215,7 @@ async def internal_metrics(request: Request, context=Depends(get_context)):
     caller = _require_observer(request, context)
     if caller is None:
         raise errors.forbidden("metrics require observer scope")
-    metrics = context.metrics
+    metrics = context.instance.metrics
     if metrics is None:
         raise errors.not_found()
     from fastapi.responses import Response

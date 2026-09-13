@@ -37,7 +37,7 @@ def _envelope_response(request: Request, error: errors.ApiError) -> JSONResponse
 def _count_error_response(request: Request, error: errors.ApiError) -> None:
     """Best-effort bounded error counter; never affects the response."""
     metrics = getattr(request.app.state, "context", None)
-    metrics = getattr(metrics, "metrics", None) if metrics is not None else None
+    metrics = getattr(getattr(metrics, "instance", None), "metrics", None)
     if metrics is None:
         return
     try:
@@ -63,8 +63,8 @@ def create_app(context: AppContext) -> FastAPI:
         problems = verify_artifacts(CONTRACT_ROOT, build_artifacts())
         if problems:
             raise RuntimeError("published contract artifacts failed verification")
-        context.artifacts_verified = True
-        context.store.probe_storage()  # fail fast when the store rejects writes
+        context.instance.artifacts_verified = True
+        context.instance.store.probe_storage()  # fail fast when the store rejects writes
 
         stop = asyncio.Event()
         app.state.maintenance_stop = stop
@@ -87,7 +87,7 @@ async def _maintenance_loop(context: AppContext, stop: asyncio.Event) -> None:
     """Bounded watchdog/reaper/cleanup so queued deadlines terminalize even
     with no workers running. Every mutation is fenced/CAS, so duplicate
     maintenance (API plus workers) is safe."""
-    interval = context.settings.maintenance_interval_seconds
+    interval = context.instance.settings.maintenance_interval_seconds
     while not stop.is_set():
         try:
             await asyncio.to_thread(_run_maintenance, context)
@@ -102,7 +102,7 @@ async def _maintenance_loop(context: AppContext, stop: asyncio.Event) -> None:
 
 
 def _run_maintenance(context: AppContext) -> None:
-    store = context.store
+    store = context.instance.store
     store.expire_due_resources(limit=_MAINTENANCE_BATCH)
     store.recover_expired_leases(limit=_MAINTENANCE_BATCH)
     store.purge_expired_terminal_indexes(limit=_MAINTENANCE_BATCH)

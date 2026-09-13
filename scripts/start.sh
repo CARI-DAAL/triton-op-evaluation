@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Start the triton-evaluation service: one API + one worker per NPU card.
+# Start the service: one API + CPU workers + one worker per NPU card.
 # Style mirrors kernelgym-npu/scripts/start_service.sh (require .env, preflight, then launch).
 #
 # Usage:
@@ -47,8 +47,14 @@ PYTHON_BIN="${PYTHON_BIN:-python3}"
 API_HOST="${TRITON_EVAL_API_HOST:-127.0.0.1}"
 API_PORT="${TRITON_EVAL_API_PORT:-11907}"
 CARDS="${TRITON_EVAL_CARDS:-0}"
+CPU_WORKERS="${TRITON_EVAL_CPU_WORKERS:-1}"
 LOG_DIR="${LOG_DIR:-${ROOT_DIR}/logs}"
 PID_FILE="${LOG_DIR}/triton-eval.pids"
+
+if [[ ! "${CPU_WORKERS}" =~ ^([0-9]|[12][0-9]|3[0-2])$ ]]; then
+  echo "TRITON_EVAL_CPU_WORKERS must be an integer from 0 to 32" >&2
+  exit 2
+fi
 
 # Preflight: the engine is bundled by default; only validate an explicit override
 if [[ -n "${TRITON_EVAL_ENGINE_DIR:-}" && ! -d "${TRITON_EVAL_ENGINE_DIR}" ]]; then
@@ -95,6 +101,14 @@ echo "Starting API on ${API_HOST}:${API_PORT} (log: ${LOG_DIR}/api.log)" >&2
   >"${LOG_DIR}/api.log" 2>&1 &
 pids+=("$!")
 
+# CPU workers execute compile-only attempts without claiming an NPU card.
+for ((i=0; i<CPU_WORKERS; i++)); do
+  echo "Starting CPU worker ${i} (log: ${LOG_DIR}/worker_cpu_${i}.log)" >&2
+  "${PYTHON_BIN}" run_worker.py --cpu \
+    >"${LOG_DIR}/worker_cpu_${i}.log" 2>&1 &
+  pids+=("$!")
+done
+
 # One worker per card; run_worker.py pins ASCEND_RT_VISIBLE_DEVICES to --card
 worker_count=0
 IFS=',' read -ra CARD_ARR <<< "${CARDS}"
@@ -109,6 +123,6 @@ for card in "${CARD_ARR[@]}"; do
 done
 
 printf '%s\n' "${pids[@]}" > "${PID_FILE}"
-echo "Started API + ${worker_count} worker(s). Logs in ${LOG_DIR}/. PID file: ${PID_FILE}." >&2
+echo "Started API + ${CPU_WORKERS} CPU and ${worker_count} NPU worker(s). Logs in ${LOG_DIR}/. PID file: ${PID_FILE}." >&2
 echo "Stop with: bash scripts/stop.sh   (or Ctrl-C if this is in the foreground)" >&2
 wait

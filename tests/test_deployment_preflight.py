@@ -282,6 +282,9 @@ def test_explicit_local_database_and_unique_card_list_are_allowed(tmp_path):
     ("TRITON_EVAL_WORKER_DRIVER_VERSION", ""),
     ("TRITON_EVAL_CANARY_INTERVAL_SECONDS", "-1"),
     ("TRITON_EVAL_SESSION_MAX_INFLIGHT", "0"),
+    ("TRITON_EVAL_CPU_WORKERS", "-1"),
+    ("TRITON_EVAL_CPU_WORKERS", "33"),
+    ("TRITON_EVAL_CPU_WORKERS", ""),
 ])
 def test_invalid_rendered_runtime_options_are_rejected_before_image_inspection(
     tmp_path, setting, value,

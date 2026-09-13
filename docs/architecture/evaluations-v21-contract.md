@@ -57,20 +57,31 @@ that admitted it before that deployment is retired.
 
 ## Compile evidence
 
-An explicit compile check runs the syntax/import precheck even if optional
-admission prechecking is disabled. `compiled` means that this precheck passed;
+An explicit compile check runs the syntax/import precheck within a leased
+attempt. Admission never executes candidate code. `compiled` means that the precheck passed;
 it does not claim that backend JIT compilation will succeed for every input
 shape. Backend compilation failures remain correctness domain outcomes.
 
-A compile-only request terminates durably at admission without queueing or
-requiring a worker heartbeat. A definitive precheck failure carries
+A compile-only request is durably queued for a compatible CPU worker. Its first
+POST normally returns 202; `wait_seconds` can observe completion and return 200.
+It needs a CPU worker heartbeat but no NPU card. A definitive precheck failure carries
 `compile_error`; an unavailable or inconclusive precheck produces a failed
 compile check with retryable `COMPILE_PRECHECK_UNAVAILABLE`. GET and idempotent
 replay recover the same terminal resource and do not repeat the check.
 
-For mixed requests, the compile outcome is stored atomically with admission
-and carried in every attempt lease. Workers fence and persist this evidence
-before running the remaining checks. A missing precheck outcome is never
-inferred to be a pass from absent or failed correctness results. Inconclusive
-compile evidence does not prevent independent on-card checks, and recovery
-retains the actual admission evidence through replacement attempts and deadlines.
+For mixed requests, one NPU worker executes all requested checks in the same
+attempt. Compile progress is fenced and persisted before remaining checks run.
+Inconclusive compile evidence does not prevent independent on-card checks.
+Correctness always comes from actual verification; syntax/import evidence has
+no measured case count and cannot substitute for it. Requests without `compile`
+do not perform an extra syntax/import precheck.
+
+A replacement attempt begins with fresh check evidence. Recovery preserves
+valid evidence from the current attempt, records the ending failure on the
+first missing check, and marks later missing checks skipped. Normal completion
+with missing evidence fails closed with `INVALID_ENGINE_OUTPUT`; it never
+infers a successful check. Grade binding survives every terminal path, but
+grade eligibility requires complete scoring evidence and execution provenance.
+
+See [ADR 0002](../adr/0002-admission-before-execution.md) for the execution and
+evidence module design. These changes retain the published v2.1 wire schema.

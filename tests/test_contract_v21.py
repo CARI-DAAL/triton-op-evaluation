@@ -2,15 +2,13 @@
 
 import json
 from pathlib import Path
-from types import SimpleNamespace
 
 import pytest
 from conftest import make_caller, make_completed_result, make_request
 
 from triton_evaluation.admission import ForbiddenError, admit
-from triton_evaluation.api import routes
 from triton_evaluation.api.contract import EvaluationRequest, EvaluationResult
-from triton_evaluation.catalog import ReleaseCatalog
+from triton_evaluation.instance import EvaluationInstance
 
 
 def published_v21_resource_validator():
@@ -220,15 +218,19 @@ def test_rollout_admission_forbidden_without_trial_submit(release_catalog):
         admit(request, caller, release_catalog)
 
 
-def test_rollout_purpose_resolves_rollout_traffic_class(settings):
-    context = SimpleNamespace(
-        settings=settings.model_copy(update={"rollout_caller_ids": []})
+def test_rollout_purpose_resolves_rollout_traffic_class(
+    settings, store, release_catalog, make_worker,
+):
+    instance = EvaluationInstance(
+        settings=settings, store=store, catalog=release_catalog, artifacts_verified=True,
     )
-    caller = make_caller()
-    request = make_request(schema_version="2.1", purpose="rollout")
-    admission = admit(request, caller, ReleaseCatalog({}))
-    command = routes._build_command(context, caller, "s1", "k1", admission, "rollout")
-    assert command.traffic_class == "rollout"
+    store.heartbeat(make_worker())
+    outcome = instance.submit(
+        make_request(purpose="rollout"), make_caller(), session_id="s1", idempotency_key="k1",
+    )
+    assert store._r.zscore(
+        f"{settings.redis_prefix}:ready:npu:bulk", outcome.resource.evaluation_id,
+    ) is not None
 
 
 def test_rollout_owner_reads_with_trial_scope(store, make_command):
@@ -242,42 +244,46 @@ def test_rollout_owner_reads_with_trial_scope(store, make_command):
     assert visible.evaluation_id == cmd.evaluation_id
 
 
-# ---------------------------------------------------------------------------
-# Task 4 erratum: 2.1 short-circuited terminal HTTP body validates against 2.1
-# ---------------------------------------------------------------------------
-
-
 @pytest.mark.anyio
-async def test_v21_terminal_http_body_validates_against_published_schema(
-    tmp_path, release_catalog_files
+async def test_leased_compile_http_body_validates_against_published_schema(
+    tmp_path, release_catalog_files,
 ):
-    """A cached compile_error verdict short-circuits a 2.1
-    checks=["compile","correctness"] request to a terminal 200; that wire body
-    must validate against the published 2.1 schema."""
+    import time
+
     import jsonschema
+    from conftest import FakeClock
     from test_api import build_app, make_test_settings, post, seed_worker, trial_headers
 
     from triton_evaluation import verdict_cache
+    from triton_evaluation.evaluators.evaluation import EvaluationEvaluator
+    from triton_evaluation.worker import Worker
 
     settings = make_test_settings(tmp_path)
-    app = build_app(tmp_path, release_catalog_files, settings=settings)
-    seed_worker(app)  # readiness
-    payload = _request(checks=["compile", "correctness"], kernel_code="def broken(:\n")
+    app = build_app(tmp_path, release_catalog_files, settings=settings,
+                    clock=FakeClock(int(time.time() * 1000)))
+    seed_worker(app, execution_class="cpu")
+    payload = _request(checks=["compile"], kernel_code="def broken(:\n")
     digest = verdict_cache.digest_for(
-        payload["kernel_code"],
-        payload.get("triton_impl_name", "triton_ascend_impl"),
-        settings.cann_fingerprint,
+        payload["kernel_code"], "triton_ascend_impl", settings.cann_fingerprint,
     )
-    verdict_cache.put(app.store, digest, "compile_error",
-                      settings.verdict_cache_ttl_seconds)
-
+    verdict_cache.put(app.store, digest, "compile_error", settings.verdict_cache_ttl_seconds)
+    worker = Worker(
+        app.store, EvaluationEvaluator(settings.engine_dir, settings=settings),
+        device_id=None, settings=settings, clock=app.clock,
+    )
     validator = published_v21_resource_validator()
     async with app.http as client:
-        response = await post(client, payload, trial_headers())
-    assert response.status_code == 200, response.text
-    body = response.json()
-    assert body["schema_version"] == "2.1"
+        response = await post(client, payload)
+        assert response.status_code == 202, response.text
+        validator.validate(response.json())
+        assert worker.run_once()
+        terminal = await client.get(
+            f"/evaluations/{response.json()['evaluation_id']}", headers=trial_headers(),
+        )
+    assert terminal.status_code == 200, terminal.text
+    body = terminal.json()
     assert body["state"] == "completed"
+    assert body["result"]["compile"]["data"]["outcome"] == "compile_error"
     validator.validate(body)
     with pytest.raises(jsonschema.ValidationError):
         validator.validate({"schema_version": "2.1", "result": {"compile": None}})

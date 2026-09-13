@@ -1,19 +1,18 @@
-"""Admission pre-check behavior through the same interface used by admission."""
+"""Attempt precheck behavior through its public execution interface."""
 import importlib.util
-import subprocess
 from unittest import mock
 
 import pytest
 import redis
 
 from triton_evaluation import precheck, verdict_cache
+from triton_evaluation.evaluators.base import ScriptOutcome
 
 
 @pytest.fixture
 def precheck_settings(settings):
     return settings.model_copy(update={
         "verdict_cache_enabled": True,
-        "compile_precheck_enabled": True,
         "cann_fingerprint": "cann-test",
     })
 
@@ -27,7 +26,7 @@ def test_definitive_failure_is_cached_without_repeating_subprocess(
     store, precheck_settings, source,
 ):
     assert precheck.run_precheck(store, precheck_settings, source, "impl") == "compile_error"
-    with mock.patch.object(precheck.subprocess, "run") as run:
+    with mock.patch.object(precheck, "run_script") as run:
         assert precheck.run_precheck(store, precheck_settings, source, "impl") == "compile_error"
     run.assert_not_called()
 
@@ -37,7 +36,7 @@ def test_cached_pass_only_skips_precheck_and_allows_evaluation(store, precheck_s
     assert precheck.run_precheck(store, precheck_settings, source, "impl") == "precheck_passed"
     digest = verdict_cache.digest_for(source, "impl", precheck_settings.cann_fingerprint)
     assert verdict_cache.get(store, digest) == "precheck_passed"
-    with mock.patch.object(precheck.subprocess, "run") as run:
+    with mock.patch.object(precheck, "run_script") as run:
         assert precheck.run_precheck(store, precheck_settings, source, "impl") == "precheck_passed"
     run.assert_not_called()
 
@@ -60,7 +59,7 @@ def test_torch_import_is_inconclusive_on_torchless_host(store, precheck_settings
 def test_runtime_import_failure_is_inconclusive_and_not_cached(
     store, precheck_settings, source,
 ):
-    with mock.patch.object(precheck.subprocess, "run", wraps=subprocess.run) as run:
+    with mock.patch.object(precheck, "run_script", wraps=precheck.run_script) as run:
         for _ in range(2):
             assert precheck.run_precheck(store, precheck_settings, source, "impl") is None
     assert run.call_count == 2
@@ -70,7 +69,7 @@ def test_runtime_import_failure_is_inconclusive_and_not_cached(
 
 def test_missing_cann_identity_still_runs_precheck_without_reuse(store, precheck_settings):
     settings = precheck_settings.model_copy(update={"cann_fingerprint": ""})
-    with mock.patch.object(precheck.subprocess, "run", wraps=subprocess.run) as run:
+    with mock.patch.object(precheck, "run_script", wraps=precheck.run_script) as run:
         for _ in range(2):
             assert precheck.run_precheck(
                 store, settings, "class ModelNew: pass", "impl"
@@ -86,11 +85,9 @@ def test_concurrent_failure_during_successful_precheck_remains_authoritative(
 
     def concurrent_compile_failure(*args, **kwargs):
         verdict_cache.put(store, digest, "compile_error", 60)
-        return subprocess.CompletedProcess(
-            args=[], returncode=0, stdout='VERDICT {"stage": null}\n',
-        )
+        return ScriptOutcome(0, 'VERDICT {"stage": null}\n', "", False)
 
-    with mock.patch.object(precheck.subprocess, "run", side_effect=concurrent_compile_failure):
+    with mock.patch.object(precheck, "run_script", side_effect=concurrent_compile_failure):
         assert precheck.run_precheck(store, precheck_settings, source, "impl") == "compile_error"
     assert verdict_cache.get(store, digest) == "compile_error"
 
@@ -100,8 +97,8 @@ def test_concurrent_failure_during_successful_precheck_remains_authoritative(
     '{"stage": "unknown"}', '{"stage": null, "inconclusive": true}',
 ])
 def test_invalid_or_inconclusive_output_is_not_cached(store, precheck_settings, payload):
-    result = subprocess.CompletedProcess(args=[], returncode=0, stdout=f"VERDICT {payload}\n")
-    with mock.patch.object(precheck.subprocess, "run", return_value=result):
+    result = ScriptOutcome(0, f"VERDICT {payload}\n", "", False)
+    with mock.patch.object(precheck, "run_script", return_value=result):
         assert precheck.run_precheck(store, precheck_settings, "code", "impl") is None
     digest = verdict_cache.digest_for("code", "impl", precheck_settings.cann_fingerprint)
     assert verdict_cache.get(store, digest) is None
@@ -112,9 +109,9 @@ def test_candidate_stdout_does_not_replace_runner_verdict(store, precheck_settin
     assert precheck.run_precheck(store, precheck_settings, source, "impl") == "precheck_passed"
 
 
-@pytest.mark.parametrize("error", [OSError("unavailable"), subprocess.TimeoutExpired("runner", 1)])
+@pytest.mark.parametrize("error", [OSError("unavailable")])
 def test_subprocess_failure_is_advisory(store, precheck_settings, error):
-    with mock.patch.object(precheck.subprocess, "run", side_effect=error):
+    with mock.patch.object(precheck, "run_script", side_effect=error):
         assert precheck.run_precheck(store, precheck_settings, "code", "impl") is None
     digest = verdict_cache.digest_for("code", "impl", precheck_settings.cann_fingerprint)
     assert verdict_cache.get(store, digest) is None
@@ -135,3 +132,64 @@ def test_redis_failure_preserves_direct_precheck_verdict(
     with mock.patch.object(store._r, "hgetall", side_effect=redis.ConnectionError("down")):
         with mock.patch.object(store._r, "pipeline", side_effect=redis.ConnectionError("down")):
             assert precheck.run_precheck(store, precheck_settings, source, "impl") == expected
+
+
+def test_precheck_never_calls_candidate_input_factories(store, precheck_settings, tmp_path):
+    marker = tmp_path / "candidate-inputs-ran"
+    source = (
+        f"def get_input_groups():\n    open({str(marker)!r}, 'w').write('called')\n"
+        "    return [[]]\n"
+    )
+    assert precheck.run_precheck(store, precheck_settings, source, "impl") == "precheck_passed"
+    assert not marker.exists()
+
+
+def test_precheck_lost_lease_kills_candidate_process_group(store, precheck_settings, tmp_path):
+    import time
+
+    from triton_evaluation.evaluators.base import LeaseLostError
+
+    child_marker = tmp_path / "child-survived"
+    source = (
+        "import subprocess, sys, time\n"
+        f"subprocess.Popen([sys.executable, '-c', \"import time; time.sleep(0.5); "
+        f"open({str(child_marker)!r}, 'w').write('survived')\"])\n"
+        "time.sleep(20)\n"
+    )
+    start = time.monotonic()
+    with pytest.raises(LeaseLostError):
+        precheck.run_precheck(
+            store, precheck_settings, source, "impl",
+            lease_valid=lambda: time.monotonic() - start < 0.15,
+        )
+    assert time.monotonic() - start < 2
+    time.sleep(0.6)
+    assert not child_marker.exists()
+
+
+def test_expired_resource_never_executes_candidate(store, precheck_settings, tmp_path):
+    from datetime import datetime, timedelta, timezone
+
+    marker = tmp_path / "candidate-ran"
+    source = f"open({str(marker)!r}, 'w').write('called')\n"
+    assert precheck.run_precheck(
+        store, precheck_settings, source, "impl",
+        deadline_at=datetime.now(timezone.utc) - timedelta(seconds=1),
+    ) is None
+    assert not marker.exists()
+
+
+def test_successful_import_does_not_leave_candidate_children_running(
+    store, precheck_settings, tmp_path,
+):
+    import time
+
+    child_marker = tmp_path / "child-survived"
+    source = (
+        "import subprocess, sys\n"
+        f"subprocess.Popen([sys.executable, '-c', \"import time; time.sleep(0.4); "
+        f"open({str(child_marker)!r}, 'w').write('survived')\"])\n"
+    )
+    assert precheck.run_precheck(store, precheck_settings, source, "impl") == "precheck_passed"
+    time.sleep(0.5)
+    assert not child_marker.exists()

@@ -51,7 +51,7 @@ def test_queued_deadline_times_out_without_an_attempt(
     assert store.expire_due_resources() == 0
     member = command.evaluation_id.encode()
     assert redis_client.zscore(_key(settings, "deadlines"), member) is None
-    assert redis_client.zrange(_key(settings, "ready:exec:interactive"), 0, -1) == []
+    assert redis_client.zrange(_key(settings, "ready:npu:interactive"), 0, -1) == []
 
 
 def test_running_deadline_times_out_and_raises_the_fence(
@@ -93,7 +93,7 @@ def test_worker_crash_below_attempt_limit_requeues_and_reruns(
     visible = store.get_visible(command.evaluation_id, make_caller())
     assert visible.state == "running"
     assert visible.revision == 2
-    assert redis_client.zrange(_key(settings, "ready:exec:interactive"), 0, -1) == [
+    assert redis_client.zrange(_key(settings, "ready:npu:interactive"), 0, -1) == [
         command.evaluation_id.encode()
     ]
 
@@ -187,11 +187,11 @@ def test_duplicate_ready_member_for_a_running_resource_is_removed(
     lease = store.claim_next(make_worker())
     assert lease is not None
     # A duplicated queue delivery for an already-claimed resource.
-    redis_client.zadd(_key(settings, "ready:exec:interactive"), {command.evaluation_id: 99})
+    redis_client.zadd(_key(settings, "ready:npu:interactive"), {command.evaluation_id: 99})
 
     assert store.claim_next(make_worker()) is None
 
-    assert redis_client.zrange(_key(settings, "ready:exec:interactive"), 0, -1) == []
+    assert redis_client.zrange(_key(settings, "ready:npu:interactive"), 0, -1) == []
     visible = store.get_visible(command.evaluation_id, make_caller())
     assert visible.state == "running"
     assert visible.revision == 2

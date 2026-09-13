@@ -30,6 +30,8 @@ class Settings(BaseSettings):
     # Isolated durable state for the v2.1-only release.
     redis_prefix: str = Field(default="triton-eval:v2.1", min_length=1)
     engine_dir: str = _DEFAULT_ENGINE_DIR
+    # Compile-only attempts use CPU capacity; mixed checks stay on one NPU worker.
+    cpu_workers: int = Field(default=1, ge=0, le=32)
     api_poll_interval_seconds: float = Field(default=0.25, ge=0.05, le=5)
 
     # --- durable-core lifecycle (evaluation API v2) ---
@@ -85,8 +87,7 @@ class Settings(BaseSettings):
     # Backend JIT failures and completed evaluation results are never cached.
     verdict_cache_enabled: bool = Field(default=True)
     verdict_cache_ttl_seconds: int = Field(default=7 * 24 * 3600, gt=0)
-    # Admission pre-check: subprocess syntax/import classification (spec §8).
-    compile_precheck_enabled: bool = Field(default=True)
+    # Worker precheck: subprocess syntax/import classification within an attempt.
     precheck_budget_seconds: int = Field(default=60, gt=0)
     cann_fingerprint: str = Field(default="", pattern=r"^[A-Za-z0-9._:-]{0,128}$")
 

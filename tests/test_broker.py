@@ -86,7 +86,7 @@ def test_fifo_sequence_numbers_are_monotonic(store, redis_client, settings, make
         ids.append(command.evaluation_id)
 
     assert redis_client.get(_key(settings, "queue-sequence")) == b"3"
-    entries = redis_client.zrange(_key(settings, "ready:exec:interactive"), 0, -1, withscores=True)
+    entries = redis_client.zrange(_key(settings, "ready:npu:interactive"), 0, -1, withscores=True)
     assert entries == [(ids[0].encode(), 1.0), (ids[1].encode(), 2.0), (ids[2].encode(), 3.0)]
 
 
@@ -185,9 +185,9 @@ def test_terminal_commit_releases_rollout_inflight(
 def _queue_members(redis_client):
     return {
         "interactive": set(
-            redis_client.zrange("triton-eval:v2.1:ready:exec:interactive", 0, -1)
+            redis_client.zrange("triton-eval:v2.1:ready:npu:interactive", 0, -1)
         ),
-        "bulk": set(redis_client.zrange("triton-eval:v2.1:ready:exec:bulk", 0, -1)),
+        "bulk": set(redis_client.zrange("triton-eval:v2.1:ready:npu:bulk", 0, -1)),
     }
 
 

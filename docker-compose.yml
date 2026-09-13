@@ -32,6 +32,7 @@ services:
       TRITON_EVAL_API_HOST: ${TRITON_EVAL_API_HOST:?set the instance private IPv4 address}
       TRITON_EVAL_API_PORT: "11907"
       TRITON_EVAL_CARDS: ${TRITON_EVAL_CARDS:-0}
+      TRITON_EVAL_CPU_WORKERS: ${TRITON_EVAL_CPU_WORKERS-1}
       # Device memory each worker holds from startup so npu-smi shows it while idle.
       TRITON_EVAL_DEVICE_HOLD_MB: ${TRITON_EVAL_DEVICE_HOLD_MB:-64}
       # The build identity is the image's sha256:<64-hex> digest, without its registry/name
@@ -59,7 +60,6 @@ services:
       TRITON_EVAL_CARD_CANARY_ON_STARTUP: ${TRITON_EVAL_CARD_CANARY_ON_STARTUP-true}
       TRITON_EVAL_VERDICT_CACHE_ENABLED: ${TRITON_EVAL_VERDICT_CACHE_ENABLED-true}
       TRITON_EVAL_VERDICT_CACHE_TTL_SECONDS: ${TRITON_EVAL_VERDICT_CACHE_TTL_SECONDS-604800}
-      TRITON_EVAL_COMPILE_PRECHECK_ENABLED: ${TRITON_EVAL_COMPILE_PRECHECK_ENABLED-true}
       TRITON_EVAL_PRECHECK_BUDGET_SECONDS: ${TRITON_EVAL_PRECHECK_BUDGET_SECONDS-60}
       # Operator declarations from this host's actual inventory, recorded in provenance.
       TRITON_EVAL_WORKER_HARDWARE_MODEL: ${TRITON_EVAL_WORKER_HARDWARE_MODEL-Ascend910B3}

@@ -40,6 +40,7 @@ async def test_readyz_requires_fresh_compatible_worker(app):
 
 async def test_readyz_succeeds_with_dependencies(app):
     seed_worker(app)
+    seed_worker(app, execution_class="cpu")
     async with app.http as client:
         response = await client.get("/readyz")
     assert response.status_code == 200
@@ -59,7 +60,7 @@ async def test_readyz_fails_closed_when_artifacts_unverified(
     app, release_catalog_files, tmp_path
 ):
     seed_worker(app)
-    app.app.state.context.artifacts_verified = False
+    app.app.state.context.instance.artifacts_verified = False
     async with app.http as client:
         response = await client.get("/readyz")
     assert response.status_code == 503

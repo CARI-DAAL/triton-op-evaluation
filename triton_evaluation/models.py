@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from typing import Literal
 
 from triton_evaluation.admission import CanonicalAdmission
-from triton_evaluation.api.contract import CompileCheckOutcome, EvaluationResource
+from triton_evaluation.api.contract import Check, EvaluationRequest, EvaluationResource, Purpose
 from triton_evaluation.security import CallerClass
 
 # Quota buckets: trial and trusted derive from purpose; rollout is a
@@ -16,6 +16,7 @@ from triton_evaluation.security import CallerClass
 # observer granted grade:submit consumes trusted capacity, never an observer
 # bucket.
 TrafficClass = Literal["trial", "trusted", "rollout"]
+ExecutionClass = Literal["cpu", "npu"]
 CreateDecision = Literal["created", "replayed", "conflict", "rate_limited", "limit_exceeded"]
 TerminalState = Literal["completed", "failed", "timed_out"]
 
@@ -46,6 +47,31 @@ class AlgorithmVersions:
 
 
 @dataclass(frozen=True)
+class PinnedProvenance:
+    """Admission facts shared by execution and every recovery outcome."""
+
+    evaluator_build: str
+    algorithms: AlgorithmVersions
+    purpose: Purpose
+    manifest_id: str | None
+    problem_id: str | None
+
+    @classmethod
+    def for_request(
+        cls, request: EvaluationRequest, *, evaluator_build: str,
+        algorithms: AlgorithmVersions,
+    ) -> "PinnedProvenance":
+        context = request.grade_context
+        return cls(
+            evaluator_build=evaluator_build,
+            algorithms=algorithms,
+            purpose=request.purpose,
+            manifest_id=context.manifest_id if context is not None else None,
+            problem_id=context.problem_id if context is not None else None,
+        )
+
+
+@dataclass(frozen=True)
 class CreateResourceCommand:
     evaluation_id: str
     caller_id: str
@@ -56,7 +82,11 @@ class CreateResourceCommand:
     admission: CanonicalAdmission
     evaluator_build: str
     algorithms: AlgorithmVersions
-    compile_outcome: CompileCheckOutcome | None = None
+
+    @property
+    def execution_class(self) -> ExecutionClass:
+        """Compile-only work has no physical-card requirement."""
+        return "cpu" if tuple(self.admission.requested_checks) == ("compile",) else "npu"
 
 
 @dataclass(frozen=True)
@@ -71,6 +101,7 @@ class WorkerCompatibility:
 
     evaluator_build: str
     algorithms: AlgorithmVersions
+    execution_class: ExecutionClass = "npu"
 
 
 @dataclass(frozen=True)
@@ -78,6 +109,7 @@ class WorkerIdentity:
     worker_id: str
     evaluator_build: str
     algorithms: AlgorithmVersions
+    execution_class: ExecutionClass = "npu"
 
 
 @dataclass(frozen=True)
@@ -90,9 +122,9 @@ class AttemptLease:
     expected_revision: int
     deadline_at_ms: int
     canonical_request: bytes
-    evaluator_build: str
-    algorithms: AlgorithmVersions
-    compile_outcome: CompileCheckOutcome | None = None
+    request_digest: str
+    requested_checks: tuple[Check, ...]
+    pinned: PinnedProvenance
 
 
 @dataclass(frozen=True)

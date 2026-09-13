@@ -3,7 +3,8 @@
 Durable Triton-Ascend evaluation over one HTTP interface. The service owns
 admission, leases, recovery, execution and typed evidence. The consumer owns
 session, instance selection and scoring. Workers run isolated evaluation
-subprocesses, one worker per configured NPU card.
+subprocesses: CPU workers for compile-only requests and one NPU worker per
+configured card for all other evaluations.
 
 ## Interface
 
@@ -15,7 +16,9 @@ The only supported evaluation protocol is **v2.1**:
 - `GET /evaluations/{evaluation_id}` on the original instance returns HTTP 200
   with its current state, including pending states. Pending resources include
   `Retry-After: 1`. Unknown and invisible IDs return 404.
-- `/livez`, `/readyz`: process and dependency readiness.
+- `/livez`: process liveness. `/readyz` requires the contract, Redis, catalog,
+  credentials and compatible CPU and NPU workers. Submissions require only
+  the execution capacity needed by their requested checks.
 - `/internal/metrics`: observer-authenticated metrics.
 
 | Caller intent | `checks` |
@@ -29,6 +32,12 @@ There is no benchmark HTTP verb. `performance.method` defaults to `event`;
 callers may explicitly select `profiler`. Results identify the measurement
 method; consumers must not mix methods silently. Compile-only precheck does
 not prove that every input shape can compile on the device.
+
+Admission validates and persists the request without executing candidate code.
+Compile-only requests enter a CPU queue and normally return HTTP 202; they can
+return 200 when an explicit wait observes completion. Every check executes
+within a leased attempt under the resource deadline. Mixed requests stay on
+one NPU worker, including an explicitly requested compile check.
 
 ```json
 {
@@ -89,6 +98,9 @@ HTTPS URL in the consumer pool.
 For a single-card smoke deployment, use this same Compose file with
 `TRITON_EVAL_CARDS=0`. Card lists are unique nonnegative integers, such as
 `0,1,3`. Redis uses the local server on port 6379, with database 7 by default.
+`TRITON_EVAL_CPU_WORKERS` defaults to 1 and accepts 0–32. Setting it to 0
+disables compile-only capacity unless separate `run_worker.py --cpu` processes
+join the same instance. CPU workers do not claim cards or run card recovery.
 
 Set `EVALUATION_POOL_FILE` on the consumer driver to a JSON file:
 
@@ -124,21 +136,25 @@ timeout or disconnect never cancels an accepted evaluation. Persist its
 handle and recover by ID; without an ID, replay exactly the same POST and
 idempotency key against the same instance.
 
-Card health gates claims and heartbeats. Canaries and bounded recovery restore
+Card health gates NPU claims and heartbeats. Canaries and bounded recovery restore
 claim eligibility after suspicious endings. Repeated suspicious deaths with
 attempt-owned card provenance produce `SUSPECTED_POISON_CANDIDATE`. Lease
 fencing prevents stale attempts from publishing results.
 
 The cache stores only syntax/import precheck verdicts. Atomic publication owns
 negative precedence and TTL. Reuse requires `TRITON_EVAL_CANN_FINGERPRINT`
-and is scoped by Python and installed toolchain versions. Missing fingerprints,
-Redis errors or inconclusive prechecks fall through to normal execution.
+and is scoped by Python and installed toolchain versions. Missing fingerprints
+or Redis errors disable reuse; an inconclusive explicit compile check reports
+`COMPILE_PRECHECK_UNAVAILABLE`. Prechecks parse and import candidate code; they
+do not call reference input factories or synthesize correctness case results.
 
 A positive precheck skips another precheck. New logical evaluations still
 measure correctness and performance. Backend JIT failures are not reused
 across inputs because they can depend on shape and dtype. There is no promised
 cross-request executable-artifact or successful-result cache. See
 [the architecture decision](docs/adr/0001-evaluation-instance-ownership.md).
+The [admission and evidence decision](docs/adr/0002-admission-before-execution.md)
+explains attempt ownership, CPU scheduling and terminal evidence rules.
 
 ## Cutover
 

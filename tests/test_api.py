@@ -14,9 +14,11 @@ from conftest import FakeClock, make_completed_result
 
 from triton_evaluation.api import create_app
 from triton_evaluation.api.contract import ErrorEnvelope, EvaluationResource
+from triton_evaluation.api.dependencies import AppContext
 from triton_evaluation.broker import EvaluationStore
 from triton_evaluation.catalog import ReleaseCatalog
 from triton_evaluation.config import Settings
+from triton_evaluation.instance import EvaluationInstance
 from triton_evaluation.models import AlgorithmVersions, WorkerIdentity, new_worker_id
 from triton_evaluation.security import CapabilityRegistry
 
@@ -41,9 +43,6 @@ def make_test_settings(tmp_path):
         catalog_manifest_path=str(tmp_path / "catalog" / "catalog.json"),
         # Startup canary off: e2e protocol tests predate card health.
         card_canary_on_startup=False,
-        # Admission precheck off: e2e protocol tests predate the compile
-        # short-circuit; short-circuit tests opt in explicitly.
-        compile_precheck_enabled=False,
     )
 
 
@@ -91,11 +90,11 @@ def algorithms(settings):
     )
 
 
-def seed_worker(app):
+def seed_worker(app, *, execution_class="npu"):
     """Heartbeat one compatible worker so new admissions pass readiness."""
     app.store.heartbeat(
         WorkerIdentity(new_worker_id(), app.settings.evaluator_build,
-                       algorithms(app.settings))
+                       algorithms(app.settings), execution_class=execution_class)
     )
 
 
@@ -121,16 +120,13 @@ def build_app(tmp_path, catalog_files, clock=None, settings=None):
     registry = CapabilityRegistry.from_secret_file(Path(settings.capability_secret_path))
     catalog = ReleaseCatalog.load(catalog_files.root, catalog_files.manifest_path)
 
-    class AppContext:
-        pass
-
-    context = AppContext()
-    context.settings = settings
-    context.store = store
-    context.registry = registry
-    context.catalog = catalog
-    context.metrics = metrics
-    context.artifacts_verified = True
+    context = AppContext(
+        instance=EvaluationInstance(
+            settings=settings, store=store, catalog=catalog,
+            metrics=metrics, artifacts_verified=True,
+        ),
+        registry=registry,
+    )
     app = create_app(context)
     transport = httpx.ASGITransport(app=app)
     http = httpx.AsyncClient(transport=transport, base_url="http://test")

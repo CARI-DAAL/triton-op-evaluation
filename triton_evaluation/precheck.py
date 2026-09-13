@@ -1,20 +1,23 @@
-"""Admission pre-check runner (spec §8, Plan D-on_card).
+"""Attempt-owned syntax/import precheck with scoped verdict reuse.
 
-Cache-first classification of candidate compile failures: a Redis verdict hit
-short-circuits without spawning anything; a miss runs the subprocess entry with
-a budget and caches definitive verdicts. Advisory and fail-open throughout.
+A scoped Redis verdict can avoid repeating syntax/import work; a miss executes
+in a process group owned by the attempt's lease and deadline. Only definitive
+evidence is cached. Unavailable evidence fails the requested compile check;
+lost leases abort the attempt.
 """
 import json
 import logging
 import re
-import subprocess
 import sys
 import tempfile
+from collections.abc import Callable
+from datetime import datetime
 from pathlib import Path
 
 from triton_evaluation import verdict_cache
 from triton_evaluation.broker import EvaluationStore
 from triton_evaluation.config import Settings
+from triton_evaluation.evaluators.base import LeaseLostError, remaining_seconds, run_script
 
 logger = logging.getLogger(__name__)
 
@@ -23,39 +26,45 @@ _ENGINE_DIR = Path(__file__).parent / "engine"
 
 def run_precheck(
     store: EvaluationStore, settings: Settings, kernel_code: str, impl_name: str,
-    *, force: bool = False,
+    *, deadline_at: datetime | None = None,
+    lease_valid: Callable[[], bool] | None = None, device_id: int | None = None,
 ) -> verdict_cache.Verdict | None:
     """Return explicit syntax/import evidence; None means no definitive verdict.
 
-    ``force`` executes an explicitly requested compile check even when optional
-    admission prechecking is disabled. Cached passes are evidence of this same
-    scoped precheck, never of backend JIT compilation or an evaluation result.
+    Every invocation belongs to an explicitly requested compile check. Cached
+    passes establish only this same scoped precheck, never backend JIT
+    compilation or an evaluation result.
     """
-    if not force and not settings.compile_precheck_enabled and not settings.verdict_cache_enabled:
+    if lease_valid is not None and not lease_valid():
+        raise LeaseLostError("lease lost before syntax/import precheck")
+    if deadline_at is not None and remaining_seconds(deadline_at) <= 0:
         return None
     digest = verdict_cache.digest_for(kernel_code, impl_name, settings.cann_fingerprint)
     if settings.verdict_cache_enabled:
         cached = verdict_cache.get(store, digest)
         if cached is not None:
             return cached
-    if not force and not settings.compile_precheck_enabled:
-        return None
     try:
         with tempfile.TemporaryDirectory(prefix="precheck_") as work:
             safe_name = re.sub(r"[^A-Za-z0-9_.-]", "_", impl_name)
             module_path = Path(work) / f"candidate_{safe_name}.py"
             module_path.write_text(kernel_code, encoding="utf-8")
-            proc = subprocess.run(
+            proc = run_script(
                 [sys.executable, str(_ENGINE_DIR / "precheck_module.py"),
                  str(module_path), impl_name],
-                capture_output=True, text=True, timeout=settings.precheck_budget_seconds,
+                cwd=work, device_id=device_id, deadline_at=deadline_at,
+                lease_valid=lease_valid, budget_seconds=settings.precheck_budget_seconds,
             )
-    except (OSError, subprocess.TimeoutExpired) as error:
+    except OSError as error:
         logger.warning("precheck unavailable (%s)", type(error).__name__)
         return None
+    if proc.outcome == "fenced" or (lease_valid is not None and not lease_valid()):
+        raise LeaseLostError("lease lost during syntax/import precheck")
+    if proc.timed_out:
+        return None
     line = next((s for s in reversed(proc.stdout.splitlines()) if s.startswith("VERDICT ")), None)
-    if proc.returncode != 0 or line is None:
-        logger.warning("precheck produced no verdict (exit=%s)", proc.returncode)
+    if proc.exit_code != 0 or line is None:
+        logger.warning("precheck produced no verdict (exit=%s)", proc.exit_code)
         return None
     try:
         verdict = json.loads(line[len("VERDICT "):])
