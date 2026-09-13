@@ -35,7 +35,7 @@ def test_same_key_same_request_replays_without_new_writes(
     assert replay.resource == first.resource
     assert replay.resource.evaluation_id == first.resource.evaluation_id
     assert redis_client.get(_key(settings, "queue-sequence")) == b"1"
-    assert redis_client.zcard(_key(settings, "ready:exec:interactive")) == 1
+    assert redis_client.zcard(_key(settings, "ready:npu:interactive")) == 1
     caller_digest = sha256_hex(b"caller-1")
     session_digest = sha256_hex(b"caller-1\0session-1")
     assert redis_client.get(_key(settings, f"inflight:caller:trial:{caller_digest}")) == b"1"
@@ -74,7 +74,7 @@ def test_same_key_across_callers_creates_independent_resources(
     assert first.decision == "created"
     assert second.decision == "created"
     assert first.resource.evaluation_id != second.resource.evaluation_id
-    assert redis_client.zcard(_key(settings, "ready:exec:interactive")) == 2
+    assert redis_client.zcard(_key(settings, "ready:npu:interactive")) == 2
 
 
 def test_replay_compares_exact_canonical_bytes_not_digest_alone(
@@ -276,7 +276,7 @@ def test_sixteen_concurrent_identical_creates_create_exactly_one_resource(
 
     client = fakeredis.FakeStrictRedis(server=redis_server)
     assert client.get(_key(settings, "queue-sequence")) == b"1"
-    assert client.zcard(_key(settings, "ready:exec:interactive")) == 1
+    assert client.zcard(_key(settings, "ready:npu:interactive")) == 1
     caller_digest = sha256_hex(b"caller-1")
     session_digest = sha256_hex(b"caller-1\0session-1")
     assert client.get(_key(settings, f"inflight:caller:trial:{caller_digest}")) == b"1"
@@ -301,9 +301,9 @@ def test_rollout_inflight_limit_is_independent(redis_client, clock, make_command
     trial = make_command()  # separate bucket, unaffected
     assert store.create_or_replay(trial).decision == "created"
 
-    rollout_key = "triton-eval:v2:inflight:caller:rollout:" + _digest_text("rl-runner-1")
+    rollout_key = "triton-eval:v2.1:inflight:caller:rollout:" + _digest_text("rl-runner-1")
     assert int(redis_client.get(rollout_key)) == 1
-    trial_key = "triton-eval:v2:inflight:caller:trial:" + _digest_text("caller-1")
+    trial_key = "triton-eval:v2.1:inflight:caller:trial:" + _digest_text("caller-1")
     assert int(redis_client.get(trial_key)) == 1
 
 

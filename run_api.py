@@ -10,6 +10,7 @@ from triton_evaluation.api.dependencies import AppContext
 from triton_evaluation.broker import EvaluationStore
 from triton_evaluation.catalog import ReleaseCatalog
 from triton_evaluation.config import Settings
+from triton_evaluation.instance import EvaluationInstance
 from triton_evaluation.security import CapabilityRegistry
 
 
@@ -24,7 +25,8 @@ def build_app() -> "FastAPI":  # noqa: F821 — FastAPI imported via api
         Path(settings.catalog_root), Path(settings.catalog_manifest_path)
     )
     context = AppContext(
-        settings=settings, store=store, registry=registry, catalog=catalog
+        instance=EvaluationInstance(settings=settings, store=store, catalog=catalog),
+        registry=registry,
     )
     return create_app(context)
 

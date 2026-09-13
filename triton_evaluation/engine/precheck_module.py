@@ -1,8 +1,8 @@
-"""Admission pre-check subprocess entry (spec §8, Plan D-on_card).
+"""Attempt-owned syntax/import subprocess entry.
 
-Classifies a candidate module without any NPU: syntax parse, then import, then
-input-case counting. Never launches kernels. Always exits 0; the verdict is the
-last stdout line as JSON. Stdlib-only so it runs in any worker/API env.
+Classifies a candidate module with syntax parsing and import. It never calls
+candidate input factories. Import can execute arbitrary candidate code, so the
+worker owns the process group's lease and deadline. Stdlib-only.
 """
 import ast
 import importlib.util
@@ -18,8 +18,8 @@ def main() -> int:
     module_path, impl_name = sys.argv[1], sys.argv[2]
     try:
         source = open(module_path, encoding="utf-8").read()
-    except OSError as error:
-        _emit({"stage": "import", "error": f"unreadable module: {error}"})
+    except OSError:
+        _emit({"stage": None, "inconclusive": True})
         return 0
     try:
         ast.parse(source)
@@ -30,22 +30,27 @@ def main() -> int:
         spec = importlib.util.spec_from_file_location(f"{impl_name}_candidate", module_path)
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
-    except Exception as error:  # noqa: BLE001 — any import failure is a verdict
+    except Exception as error:  # noqa: BLE001 — import executes candidate code
         missing = getattr(error, "name", None)
-        if isinstance(error, ModuleNotFoundError) and missing in _INCONCLUSIVE_MISSING:
-            _emit({"stage": None, "total_cases": 0, "inconclusive": True})
+        missing_module = (
+            isinstance(error, ModuleNotFoundError)
+            and missing is not None
+            and missing not in _INCONCLUSIVE_MISSING
+        )
+        missing_symbol = (
+            isinstance(error, ImportError)
+            and missing is not None
+            and str(error).startswith("cannot import name ")
+        )
+        # Arbitrary import-time code can fail due to temporary I/O, a native
+        # runtime loader, or unavailable hardware. Only import resolution
+        # failures establish a negative verdict within this toolchain scope.
+        if not missing_module and not missing_symbol:
+            _emit({"stage": None, "inconclusive": True})
             return 0
         _emit({"stage": "import", "error": f"{type(error).__name__}: {error}"[:400]})
         return 0
-    total_cases = 0
-    try:
-        if hasattr(module, "get_input_groups"):
-            total_cases = len(module.get_input_groups())
-        elif hasattr(module, "get_inputs"):
-            total_cases = 1
-    except Exception:  # noqa: BLE001 — case counting is best effort
-        total_cases = 0
-    _emit({"stage": None, "total_cases": total_cases})
+    _emit({"stage": None})
     return 0
 
 

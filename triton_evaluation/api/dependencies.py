@@ -3,22 +3,20 @@ from dataclasses import dataclass
 
 from fastapi import Request
 
-from ..broker import EvaluationStore
-from ..catalog import ReleaseCatalog
-from ..config import Settings
+from ..instance import EvaluationInstance
 from ..security import CapabilityRegistry
 
 
 @dataclass
 class AppContext:
-    settings: Settings
-    store: EvaluationStore
+    instance: EvaluationInstance
     registry: CapabilityRegistry
-    catalog: ReleaseCatalog
-    metrics: object | None = None
-    artifacts_verified: bool = False
 
 
 def get_context(request: Request) -> AppContext:
     """Return the process-wide context stashed on app.state by create_app."""
     return request.app.state.context
+
+
+def get_instance(request: Request) -> EvaluationInstance:
+    return get_context(request).instance

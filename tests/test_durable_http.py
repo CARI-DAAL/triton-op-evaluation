@@ -70,7 +70,7 @@ async def test_wait_expiry_returns_202_without_state_mutation(app):
 async def test_disconnect_budget_is_not_a_task_timeout(app, make_command):
     resource = app.store.create_or_replay(make_command(caller=_http_trial_caller())).resource
     final = await wait_until_terminal(
-        app.store,
+        app.app.state.context.instance,
         _http_trial_caller(),
         resource.evaluation_id,
         budget_seconds=0.05,
@@ -86,7 +86,7 @@ async def test_wait_helper_returns_terminal_resource(app, make_command):
         asyncio.to_thread(claim_and_complete, app)
     )
     final = await wait_until_terminal(
-        app.store,
+        app.app.state.context.instance,
         _http_trial_caller(),
         resource.evaluation_id,
         budget_seconds=5,

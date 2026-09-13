@@ -1,4 +1,4 @@
-"""Durable evaluation worker entrypoint: one process per NPU card."""
+"""Durable evaluation worker entrypoint: CPU prechecks or one pinned NPU."""
 import argparse
 import logging
 import os
@@ -36,9 +36,9 @@ def build_store(settings: Settings) -> EvaluationStore:
     return EvaluationStore(client, settings)
 
 
-def build_worker(card: int, settings: Settings | None = None) -> Worker:
+def build_worker(card: int | None, settings: Settings | None = None) -> Worker:
     settings = settings or Settings.from_env()
-    os.environ["ASCEND_RT_VISIBLE_DEVICES"] = str(card)
+    os.environ["ASCEND_RT_VISIBLE_DEVICES"] = "" if card is None else str(card)
     store = build_store(settings)
     evaluator = EvaluationEvaluator(settings.engine_dir, settings=settings)
     return Worker(
@@ -81,17 +81,22 @@ def hold_device(settings: Settings, card: int) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument(
-        "--card", type=int, required=True, help="Physical NPU card id to pin this worker to"
+    execution = parser.add_mutually_exclusive_group(required=True)
+    execution.add_argument(
+        "--card", type=int, help="Physical NPU card id to pin this worker to"
     )
+    execution.add_argument("--cpu", action="store_true", help="Execute compile-only attempts")
     args = parser.parse_args()
+    if args.card is not None and args.card < 0:
+        parser.error("--card must be nonnegative")
     set_process_title()
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s %(levelname)s %(name)s %(message)s",
     )
     worker = build_worker(args.card)
-    hold_device(worker.settings, args.card)
+    if args.card is not None:
+        hold_device(worker.settings, args.card)
     stop = _install_signal_handlers()
     worker.serve_forever(stop_event=stop)
 

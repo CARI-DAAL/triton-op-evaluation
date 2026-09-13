@@ -7,7 +7,6 @@ that loses its lease commits nothing — the reaper and a replacement attempt
 own recovery. Logs carry IDs and error codes only: never source, credentials,
 session values, absolute work paths, or tracebacks.
 """
-import json
 import logging
 import shutil
 import tempfile
@@ -19,20 +18,30 @@ from datetime import datetime, timezone
 import redis
 
 from . import health
-from .api.contract import Check, CheckOutcome, EvaluationRequest, EvaluationResult
+from .api.contract import (
+    Check,
+    CheckFailed,
+    CheckOutcome,
+    CheckTimedOut,
+    ErrorInfo,
+    EvaluationRequest,
+    EvaluationResult,
+)
 from .api.contract_artifacts import canonical_json_bytes, sha256_hex
 from .broker import EvaluationStore
 from .config import Settings
-from .evaluators.base import LeaseLostError, PinnedProvenance
+from .evaluators.base import LeaseLostError
 from .evaluators.evaluation import EvaluationEvaluator
 from .execution_environment import build_execution_environment
 from .models import (
     AlgorithmVersions,
     AttemptLease,
+    PinnedProvenance,
     WorkerIdentity,
     new_worker_id,
 )
-from .terminal_results import synthesize_orchestration_result
+from .precheck import run_precheck
+from .terminal_results import complete_evaluation
 
 logger = logging.getLogger(__name__)
 
@@ -143,82 +152,16 @@ class _CorruptedRequestError(RuntimeError):
     """The stored canonical request bytes no longer round-trip canonically."""
 
 
-def _protocol_failure_result(
-    *,
-    requested_checks,
-    persisted_outcomes: dict[str, dict],
-    code: str,
-    phase: str,
-    retryable: bool,
-    message: str,
-    lease: AttemptLease,
-) -> EvaluationResult:
-    """A redacted failed result when no trusted subject outcome exists."""
-    requested = [
-        check for check in ("compile", "correctness", "performance", "profile")
-        if check in requested_checks
-    ]
-    outcomes: dict[str, dict] = {}
-    target = next((check for check in requested if check not in persisted_outcomes), None)
-    for check in requested:
-        if check in persisted_outcomes:
-            outcomes[check] = persisted_outcomes[check]
-        elif check == target:
-            outcomes[check] = {
-                "status": "failed",
-                "data": None,
-                "error": {
-                    "code": code,
-                    "phase": phase,
-                    "check": check,
-                    "retryable": retryable,
-                    "message": message,
-                },
-                "reason": None,
-            }
-        else:
-            outcomes[check] = {
-                "status": "skipped",
-                "data": None,
-                "error": None,
-                "reason": {
-                    "code": "PRIOR_CHECK_FAILED",
-                    "depends_on": "correctness" if check == "performance" else None,
-                    "message": "a prior requested check did not complete",
-                },
-            }
-    return EvaluationResult.model_validate(
-        {
-            "compile": outcomes.get("compile"),
-            "correctness": outcomes.get("correctness"),
-            "performance": outcomes.get("performance"),
-            "profile": outcomes.get("profile"),
-            "provenance": {
-                "schema_version": "2.0",
-                "evaluator_build": lease.evaluator_build,
-                "correctness_algorithm": lease.algorithms.correctness,
-                "decoy_algorithm": lease.algorithms.decoy,
-                "benchmark_algorithm": lease.algorithms.benchmark,
-                "profiler_algorithm": lease.algorithms.profiler,
-                "grade_eligible": False,
-                "manifest_id": None,
-                "problem_id": None,
-                "execution_environment": None,
-            },
-        },
-        context={"requested_checks": requested},
-    )
-
 
 class Worker:
-    """One claim-capable worker bound to a single NPU device."""
+    """One claim-capable worker for CPU prechecks or a single NPU device."""
 
     def __init__(
         self,
         store: EvaluationStore,
         evaluator: EvaluationEvaluator,
         *,
-        device_id: int,
+        device_id: int | None,
         settings: Settings,
         identity: WorkerIdentity | None = None,
         clock: Callable[[], int] | None = None,
@@ -231,19 +174,23 @@ class Worker:
         self.device_id = device_id
         self.settings = settings
         self.identity = identity or WorkerIdentity(
-            new_worker_id(), settings.evaluator_build, _algorithms(settings)
+            new_worker_id(), settings.evaluator_build, _algorithms(settings),
+            execution_class="cpu" if device_id is None else "npu",
         )
+        execution_class = "cpu" if device_id is None else "npu"
+        if self.identity.execution_class != execution_class:
+            raise ValueError("worker identity execution class does not match its device")
         self._clock = clock or (lambda: int(time.time() * 1000))
         self._sleep = sleep or time.sleep
         self._health = health.CardHealth(
             store, settings, device_id=device_id, clock=clock,
             canary=canary, recovery_step=recovery_step, metrics=store._metrics,
-        )
+        ) if device_id is not None else None
 
     def run_once(self, *, sleep=None) -> bool:
         """Claim one attempt, lease it, evaluate, fenced-commit it."""
         do_sleep = sleep if sleep is not None else self._sleep
-        if not self._health.prepare_claim():
+        if self._health is not None and not self._health.prepare_claim():
             return False
         # Only claim-capable workers heartbeat, including when the queue is empty.
         self.store.heartbeat(self.identity)
@@ -260,7 +207,8 @@ class Worker:
         self._run_attempt(lease, do_sleep)
         # Suspicious endings require a canary immediately after the attempt.
         # Healthy attempts pass through without probing.
-        self._health.prepare_claim()
+        if self._health is not None:
+            self._health.prepare_claim()
         return True
 
     def serve_forever(self, stop_event=None, *, sleep=None) -> None:
@@ -303,7 +251,7 @@ class Worker:
                 request = self._parse_and_verify(lease)
             except _CorruptedRequestError:
                 self._commit_protocol_failure(
-                    lease, requested_checks=["correctness"], persisted={}, code="INTERNAL",
+                    lease, requested_checks=lease.requested_checks, persisted={}, code="INTERNAL",
                     phase="storage", message="stored request failed canonical verification",
                 )
                 return
@@ -328,24 +276,41 @@ class Worker:
                 identity=self.identity, sleep=do_sleep,
             ) as keeper:
                 try:
+                    environment = (
+                        build_execution_environment(self.settings)
+                        if self.device_id is not None else None
+                    )
+                    pinned = lease.pinned
                     result = self.evaluator.run(
                         request,
                         work_dir,
                         self.device_id,
                         deadline_at,
                         keeper.is_valid,
-                        build_execution_environment(self.settings),
-                        PinnedProvenance.for_request(
-                            request,
-                            evaluator_build=lease.evaluator_build,
-                            algorithms=lease.algorithms,
-                        ),
+                        environment,
+                        pinned,
                         progress,
+                        precheck=lambda: run_precheck(
+                            self.store, self.settings, request.kernel_code,
+                            request.triton_impl_name,
+                            deadline_at=deadline_at, lease_valid=keeper.is_valid,
+                            device_id=self.device_id,
+                        ),
+                    )
+                    validated = EvaluationResult.model_validate(
+                        result.model_dump(mode="json", exclude_none=False),
+                        context={"requested_checks": request.checks},
+                    )
+                    validated = complete_evaluation(
+                        requested_checks=request.checks,
+                        outcomes={check: getattr(validated, check) for check in request.checks},
+                        pinned=pinned, execution_environment=environment,
                     )
                 except LeaseLostError:
                     # Fenced work is discarded; the reaper owns recovery.
                     self.store.note_fenced_write()
-                    self._health.mark_suspicious()
+                    if self._health is not None:
+                        self._health.mark_suspicious()
                     return
                 except Exception as error:  # noqa: BLE001 — redacted, never a crash
                     logger.warning(
@@ -360,79 +325,55 @@ class Worker:
                         phase="execution",
                         message="evaluator failed before a subject outcome",
                     )
-                    self._health.mark_suspicious()
+                    if self._health is not None:
+                        self._health.mark_suspicious()
                     return
                 if not keeper.is_valid():
                     self.store.note_fenced_write()
-                    self._health.mark_suspicious()
+                    if self._health is not None:
+                        self._health.mark_suspicious()
                     return
 
             if self._clock() >= lease.deadline_at_ms:
                 self._commit_deadline(lease, request.checks, progress.saved)
                 return
-            validated = EvaluationResult.model_validate(
-                result.model_dump(mode="json", exclude_none=False),
-                context={"requested_checks": request.checks},
-            )
             # False means another winner already terminalized the resource.
-            committed = self.store.commit_terminal(lease, "completed", validated)
-            if committed and self.settings.verdict_cache_enabled:
-                self._record_compile_verdict(lease, validated)
+            self.store.commit_terminal(lease, "completed", validated)
         finally:
             if work_dir is not None:
                 shutil.rmtree(work_dir, ignore_errors=True)
 
-    def _record_compile_verdict(self, lease, validated) -> None:
-        """Engine-authoritative compile verdicts feed the admission cache."""
-        from triton_evaluation import verdict_cache
-
-        correctness = validated.correctness
-        if correctness is None or correctness.status != "succeeded":
-            return
-        data = correctness.data
-        if data is None or getattr(data, "outcome", None) != "compile_error":
-            return
-        try:
-            payload = json.loads(lease.canonical_request)
-            digest = verdict_cache.digest_for(
-                payload["kernel_code"],
-                payload.get("triton_impl_name", "triton_ascend_impl"),
-                self.settings.cann_fingerprint,
-            )
-            verdict_cache.put(
-                self.store, digest, "compile_error",
-                self.settings.verdict_cache_ttl_seconds,
-            )
-        except (KeyError, ValueError):
-            logger.warning("compile verdict feedback skipped (unparseable request)")
-
     @staticmethod
     def _parse_and_verify(lease: AttemptLease) -> EvaluationRequest:
         canonical = lease.canonical_request
-        request = EvaluationRequest.model_validate_json(canonical)
+        try:
+            request = EvaluationRequest.model_validate_json(canonical)
+        except ValueError as error:
+            raise _CorruptedRequestError from error
         recomputed = canonical_json_bytes(
             request.model_dump(mode="json", exclude_none=False)
         )
-        if recomputed != canonical:
+        parsed_pinned = PinnedProvenance.for_request(
+            request, evaluator_build=lease.pinned.evaluator_build,
+            algorithms=lease.pinned.algorithms,
+        )
+        if (recomputed != canonical or sha256_hex(canonical) != lease.request_digest
+                or set(request.checks) != set(lease.requested_checks)
+                or parsed_pinned != lease.pinned):
             raise _CorruptedRequestError
         return request
 
     def _commit_deadline(
         self, lease: AttemptLease, requested_checks, persisted: dict
     ) -> None:
-        result = synthesize_orchestration_result(
-            requested_checks=requested_checks,
-            persisted_outcomes=persisted,
-            failure="deadline",
-            failure_message="resource deadline expired before a subject outcome",
-            evaluator_build=lease.evaluator_build,
-            algorithms=lease.algorithms,
-            manifest_id=None,
-            problem_id=None,
-            # The version follows the owning resource; a 2.1 request whose
-            # checks include compile keeps the compile carrier (the 2.0 wire
-            # shape is unchanged — the synthesis drops it for 2.0 itself).
-            version=json.loads(lease.canonical_request).get("schema_version", "2.0"),
+        result = complete_evaluation(
+            requested_checks=requested_checks, outcomes=persisted,
+            pinned=lease.pinned,
+            failure=CheckTimedOut(status="timeout", error=ErrorInfo(
+                code="DEADLINE_EXCEEDED", phase="deadline", check=None,
+                retryable=False,
+                message="resource deadline expired before a subject outcome",
+            )),
         )
         # False means the watchdog or a faster worker terminalized it first.
         self.store.commit_terminal(lease, "timed_out", result)
@@ -447,13 +388,12 @@ class Worker:
         phase: str,
         message: str,
     ) -> None:
-        result = _protocol_failure_result(
-            requested_checks=requested_checks,
-            persisted_outcomes=persisted,
-            code=code,
-            phase=phase,
-            retryable=code != "INTERNAL",
-            message=message,
-            lease=lease,
+        result = complete_evaluation(
+            requested_checks=requested_checks, outcomes=persisted,
+            pinned=lease.pinned,
+            failure=CheckFailed(status="failed", error=ErrorInfo(
+                code=code, phase=phase, check=None, retryable=code != "INTERNAL",
+                message=message,
+            )),
         )
         self.store.commit_terminal(lease, "failed", result)

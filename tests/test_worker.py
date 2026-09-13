@@ -37,7 +37,7 @@ class StubEvaluator:
 
     def run(
         self, request, work_dir, device_id, deadline_at, lease_valid,
-        execution_environment, pinned, progress,
+        execution_environment, pinned, progress, *, precheck=None,
     ):
         self.calls.append(
             {
@@ -68,7 +68,8 @@ def algorithms(settings):
 
 def build_worker(store, settings, evaluator, clock, identity=None, **kwargs):
     return Worker(
-        store, evaluator, device_id=0, settings=settings, identity=identity,
+        store, evaluator, device_id=kwargs.pop("device_id", 0),
+        settings=settings, identity=identity,
         clock=clock, sleep=lambda _s: None, **kwargs,
     )
 
@@ -124,7 +125,6 @@ def settings(tmp_path):
     # canary_settings.
     return Settings(
         engine_dir=str(tmp_path),
-        dequeue_block_seconds=1,
         heartbeat_interval_seconds=0.05,
         queue_poll_interval_seconds=0.05,
         card_canary_on_startup=False,
@@ -157,6 +157,7 @@ def test_empty_claim_heartbeats_and_runs_maintenance(store, settings, clock, que
     class Compatibility:
         evaluator_build = settings.evaluator_build
         algorithms = algorithms(settings)
+        execution_class = "npu"
 
     assert store.has_fresh_compatible_worker(Compatibility())
 
@@ -169,6 +170,7 @@ def test_incompatible_worker_build_is_not_fresh(store, settings, clock, queued):
     class Other:
         evaluator_build = "sha256:" + "b" * 64
         algorithms = algorithms(settings)
+        execution_class = "npu"
 
     assert not store.has_fresh_compatible_worker(Other())
 
@@ -265,12 +267,10 @@ def test_resource_deadline_attempts_timed_out_commit(store, settings, clock, que
     assert resource.result.correctness.error.code == "DEADLINE_EXCEEDED"
 
 
-def test_late_delivery_deadline_synthesis_is_version_aware(
+def test_late_delivery_deadline_completion_preserves_requested_checks(
     store, settings, clock, make_command
 ):
-    """A 2.1 request whose checks include compile must keep the compile
-    carrier on the late-delivery deadline path: the synthesis follows the
-    resource version parsed from the canonical request."""
+    """Late-delivery completion keeps the independently pinned compile slot."""
     cmd = make_command(
         request=make_request(schema_version="2.1", checks=["compile", "correctness"])
     )
@@ -592,10 +592,11 @@ def test_worker_records_attempt_card_even_when_affinity_avoidance_is_disabled(
     assert "poison" in terminal.result.correctness.error.message
 
 
-def test_compile_error_terminal_feeds_verdict_cache(store, settings, clock,
+def test_shape_dependent_compile_error_is_not_reused_for_other_inputs(store, settings, clock,
                                                     make_command):
     from triton_evaluation import verdict_cache
 
+    settings = settings.model_copy(update={"cann_fingerprint": "cann-test"})
     result = make_completed_result(settings)
     result.correctness.data.outcome = "compile_error"
     result.correctness.data.passed = False
@@ -612,7 +613,8 @@ def test_compile_error_terminal_feeds_verdict_cache(store, settings, clock,
         request["kernel_code"], request.get("triton_impl_name", "triton_ascend_impl"),
         settings.cann_fingerprint,
     )
-    assert verdict_cache.get(store, digest) == "compile_error"
+    assert digest is not None
+    assert verdict_cache.get(store, digest) is None
 
 
 def test_correct_terminal_does_not_feed_cache(store, settings, clock, make_command):
@@ -630,3 +632,71 @@ def test_correct_terminal_does_not_feed_cache(store, settings, clock, make_comma
         settings.cann_fingerprint,
     )
     assert verdict_cache.get(store, digest) is None
+
+
+@pytest.mark.parametrize("malformed", [object(), {}, {"correctness": None}])
+def test_malformed_evaluator_result_is_failed_without_waiting_for_reaper(
+    store, settings, clock, queued, malformed,
+):
+    evaluator = StubEvaluator(settings, result=malformed)
+    worker = build_worker(store, settings, evaluator, clock)
+    assert worker.run_once()
+    resource = read_resource(store, "failed")
+    assert resource.result.correctness.error.code == "EVALUATOR_EXECUTION_FAILED"
+    assert resource.result.provenance.grade_eligible is False
+
+
+def test_evaluator_cannot_replace_admission_pinned_provenance(
+    store, settings, clock, queued,
+):
+    result = make_completed_result(settings)
+    forged = result.model_copy(update={
+        "provenance": result.provenance.model_copy(update={
+            "evaluator_build": "sha256:" + "a" * 64,
+            "grade_eligible": True,
+            "manifest_id": "forged-manifest", "problem_id": "forged-problem",
+        }),
+    })
+    worker = build_worker(store, settings, StubEvaluator(settings, result=forged), clock)
+    assert worker.run_once()
+    provenance = read_resource(store, "completed").result.provenance
+    assert provenance.evaluator_build == settings.evaluator_build
+    assert provenance.manifest_id is None
+    assert provenance.problem_id is None
+    assert provenance.grade_eligible is False
+
+
+@pytest.mark.parametrize("corruption", [b"not-json", b"{}"])
+def test_corrupted_compile_request_keeps_cpu_check_identity(
+    store, settings, clock, make_command, corruption,
+):
+    command = make_command(request=make_request(checks=["compile"]))
+    admitted = store.create_or_replay(command).resource
+    key = f"{settings.redis_prefix}:resource:{admitted.evaluation_id}"
+    store._r.hset(key, "canonical_request", corruption)
+    evaluator = StubEvaluator(settings)
+    worker = build_worker(store, settings, evaluator, clock, device_id=None)
+    assert worker.run_once()
+    assert not evaluator.calls
+    resource = read_resource(store, "failed")
+    assert resource.result.compile.error.code == "INTERNAL"
+    assert resource.result.correctness is None
+    assert resource.result.provenance.grade_eligible is False
+
+
+def test_canonical_source_replacement_cannot_change_admitted_request_identity(
+    store, settings, clock, make_command,
+):
+    from triton_evaluation.api.contract_artifacts import canonical_json_bytes
+
+    resource = store.create_or_replay(make_command()).resource
+    key = f"{settings.redis_prefix}:resource:{resource.evaluation_id}"
+    request = json.loads(store._r.hget(key, "canonical_request"))
+    request["kernel_code"] = "class ReplacedCandidate: pass"
+    store._r.hset(key, "canonical_request", canonical_json_bytes(request))
+    evaluator = StubEvaluator(settings)
+    worker = build_worker(store, settings, evaluator, clock)
+    assert worker.run_once()
+    assert not evaluator.calls
+    failed = read_resource(store, "failed")
+    assert failed.result.correctness.error.code == "INTERNAL"

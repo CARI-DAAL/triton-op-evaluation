@@ -63,7 +63,7 @@ def http_json(method, url, body, headers, timeout=15.0):
 
 def classify_one(base, headers, name, source, reference, deadline=600) -> dict:
     body = {
-        "schema_version": "2.0",
+        "schema_version": "2.1",
         "purpose": "trial",
         "op_name": f"spike_{name}",
         "reference_code": reference,

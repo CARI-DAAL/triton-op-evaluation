@@ -74,7 +74,7 @@ class _RecordingEvaluator:
 
     def run(
         self, request, work_dir, device_id, deadline_at, lease_valid,
-        execution_environment, pinned, progress,
+        execution_environment, pinned, progress, *, precheck=None,
     ):
         self.calls.append({"request": request})
         return make_completed_result(self.settings)

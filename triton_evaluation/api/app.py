@@ -23,7 +23,7 @@ def _envelope_response(request: Request, error: errors.ApiError) -> JSONResponse
     _count_error_response(request, error)
     request_id = getattr(request.state, "request_id", None) or new_request_id()
     envelope = ErrorEnvelope(
-        schema_version="2.0",
+        schema_version="2.1",
         request_id=request_id,
         error=error.info,
     )
@@ -37,7 +37,7 @@ def _envelope_response(request: Request, error: errors.ApiError) -> JSONResponse
 def _count_error_response(request: Request, error: errors.ApiError) -> None:
     """Best-effort bounded error counter; never affects the response."""
     metrics = getattr(request.app.state, "context", None)
-    metrics = getattr(metrics, "metrics", None) if metrics is not None else None
+    metrics = getattr(getattr(metrics, "instance", None), "metrics", None)
     if metrics is None:
         return
     try:
@@ -56,18 +56,15 @@ def create_app(context: AppContext) -> FastAPI:
         # constructed here — only the configured secret file is loaded.
         from ..api.contract_artifacts import (
             CONTRACT_ROOT,
-            CONTRACT_ROOT_V21,
-            build_v20_artifacts,
-            build_v21_artifacts,
+            build_artifacts,
             verify_artifacts,
         )
 
-        problems = verify_artifacts(CONTRACT_ROOT, build_v20_artifacts())
-        problems += verify_artifacts(CONTRACT_ROOT_V21, build_v21_artifacts())
+        problems = verify_artifacts(CONTRACT_ROOT, build_artifacts())
         if problems:
             raise RuntimeError("published contract artifacts failed verification")
-        context.artifacts_verified = True
-        context.store.probe_storage()  # fail fast when the store rejects writes
+        context.instance.artifacts_verified = True
+        context.instance.store.probe_storage()  # fail fast when the store rejects writes
 
         stop = asyncio.Event()
         app.state.maintenance_stop = stop
@@ -82,13 +79,6 @@ def create_app(context: AppContext) -> FastAPI:
     app.state.context = context
     app.add_middleware(RequestIdBodyLimitMiddleware)
     app.include_router(router)
-    if context.settings.legacy_routes_enabled:
-        # Settings validation already rejected enabling without the exact
-        # published sunset instant, past it, or with a window over 90 days.
-        from .legacy_routes import router as legacy_router
-
-        app.include_router(legacy_router)
-
     _install_exception_handlers(app)
     return app
 
@@ -97,7 +87,7 @@ async def _maintenance_loop(context: AppContext, stop: asyncio.Event) -> None:
     """Bounded watchdog/reaper/cleanup so queued deadlines terminalize even
     with no workers running. Every mutation is fenced/CAS, so duplicate
     maintenance (API plus workers) is safe."""
-    interval = context.settings.maintenance_interval_seconds
+    interval = context.instance.settings.maintenance_interval_seconds
     while not stop.is_set():
         try:
             await asyncio.to_thread(_run_maintenance, context)
@@ -112,7 +102,7 @@ async def _maintenance_loop(context: AppContext, stop: asyncio.Event) -> None:
 
 
 def _run_maintenance(context: AppContext) -> None:
-    store = context.store
+    store = context.instance.store
     store.expire_due_resources(limit=_MAINTENANCE_BATCH)
     store.recover_expired_leases(limit=_MAINTENANCE_BATCH)
     store.purge_expired_terminal_indexes(limit=_MAINTENANCE_BATCH)

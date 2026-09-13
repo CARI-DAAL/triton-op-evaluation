@@ -1,5 +1,4 @@
 import os
-from datetime import datetime, timezone
 from pathlib import Path
 
 from pydantic import Field, model_validator
@@ -18,19 +17,6 @@ _DEFAULT_ENGINE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "
 VERIFY_BUDGET_CAP_SECONDS = 1500
 BENCHMARK_TIMEOUT_SECONDS = 600
 
-# The one published legacy compatibility removal instant; the docs publish the
-# same value. Removal of the routes is a separate reviewed change.
-LEGACY_SUNSET_AT = datetime(2026, 10, 15, 0, 0, 0, tzinfo=timezone.utc)
-
-# The one published evaluation-api 2.0 sunset instant; the docs publish the
-# same value. After the instant an armed deployment rejects 2.0 requests with
-# INVALID_REQUEST. The instant moves per release plan, like LEGACY_SUNSET_AT.
-V20_SUNSET_AT = datetime(2027, 3, 31, 0, 0, 0, tzinfo=timezone.utc)
-
-
-def _utcnow() -> datetime:
-    return datetime.now(timezone.utc)
-
 _EVALUATOR_BUILD_PATTERN = r"^(sha256:[0-9a-f]{64}|git:[0-9a-f]{40})$"
 _ALGORITHM_VERSION_PATTERN = r"^[A-Za-z0-9._:-]{1,128}$"
 
@@ -41,15 +27,11 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="TRITON_EVAL_", extra="ignore")
 
     redis_url: str = "redis://localhost:6379/0"
-    # Fixed v2 durable-core keyspace root; v1 keys live outside this prefix.
-    redis_prefix: str = Field(default="triton-eval:v2", min_length=1)
+    # Isolated durable state for the v2.1-only release.
+    redis_prefix: str = Field(default="triton-eval:v2.1", min_length=1)
     engine_dir: str = _DEFAULT_ENGINE_DIR
-    queue_key: str = "eval:queue"
-    task_key_prefix: str = "eval:task:"
-    session_key_prefix: str = "eval:session:"
-    task_ttl_seconds: int = 24 * 3600
-    dequeue_block_seconds: int = 5
-    reaper_grace_seconds: int = 120
+    # Compile-only attempts use CPU capacity; mixed checks stay on one NPU worker.
+    cpu_workers: int = Field(default=1, ge=0, le=32)
     api_poll_interval_seconds: float = Field(default=0.25, ge=0.05, le=5)
 
     # --- durable-core lifecycle (evaluation API v2) ---
@@ -101,12 +83,11 @@ class Settings(BaseSettings):
     card_recovery_retry_seconds: float = Field(default=300.0, gt=0)
     card_canary_on_startup: bool = Field(default=True)
 
-    # Compile verdict cache (spec §8, Plan D-on_card): digest-keyed dedup of
-    # deterministic compile failures; fed by engine outcomes + admission precheck.
+    # Syntax/import verdict reuse scoped to candidate source and toolchain.
+    # Backend JIT failures and completed evaluation results are never cached.
     verdict_cache_enabled: bool = Field(default=True)
     verdict_cache_ttl_seconds: int = Field(default=7 * 24 * 3600, gt=0)
-    # Admission pre-check: subprocess syntax/import classification (spec §8).
-    compile_precheck_enabled: bool = Field(default=True)
+    # Worker precheck: subprocess syntax/import classification within an attempt.
     precheck_budget_seconds: int = Field(default=60, gt=0)
     cann_fingerprint: str = Field(default="", pattern=r"^[A-Za-z0-9._:-]{0,128}$")
 
@@ -138,44 +119,12 @@ class Settings(BaseSettings):
     catalog_root: Path | None = None
     catalog_manifest_path: Path | None = None
 
-    # --- time-boxed legacy route window ---
-    # Enabling requires the exact published UTC sunset instant; a window over
-    # 90 days or enabling after the instant fails startup/preflight.
-    legacy_routes_enabled: bool = False
-    legacy_routes_sunset_at: datetime | None = None
-
-    # --- time-boxed evaluation-api 2.0 window ---
-    # Arming (setting the instant) requires the exact published UTC value; a
-    # window over 90 days or arming after the instant fails startup/preflight.
-    # Armed deployments reject 2.0 requests with INVALID_REQUEST once the
-    # request-time clock passes the instant; unset = unarmed (pre-sunset
-    # development). 2.0 is default-on until the published instant.
-    v20_sunset_at: datetime | None = None
-
     @model_validator(mode="after")
     def _durable_core_windows(self):
         if self.max_recovery_age_seconds > self.retention_seconds:
             raise ValueError("max_recovery_age_seconds must not exceed retention_seconds")
         if self.heartbeat_interval_seconds >= self.lease_seconds:
             raise ValueError("heartbeat_interval_seconds must be less than lease_seconds")
-        if self.legacy_routes_enabled:
-            if self.legacy_routes_sunset_at is None:
-                raise ValueError("legacy routes require the published sunset instant")
-            if self.legacy_routes_sunset_at != LEGACY_SUNSET_AT:
-                raise ValueError("legacy sunset must be the published instant")
-            now = _utcnow()
-            if now > self.legacy_routes_sunset_at:
-                raise ValueError("legacy routes are past their sunset instant")
-            if (self.legacy_routes_sunset_at - now).days > 90:
-                raise ValueError("legacy window exceeds 90 days")
-        if self.v20_sunset_at is not None:
-            if self.v20_sunset_at != V20_SUNSET_AT:
-                raise ValueError("v20 sunset must be the published instant")
-            now = _utcnow()
-            if now > self.v20_sunset_at:
-                raise ValueError("v20 sunset instant is in the past")
-            if (self.v20_sunset_at - now).days > 90:
-                raise ValueError("v20 sunset window exceeds 90 days")
         return self
 
     @classmethod

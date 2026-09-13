@@ -625,7 +625,7 @@ def test_benchmark_mismatched_measurement_method_fails_closed():
 
 
 def test_benchmark_measurement_method_round_trips_through_evaluation_result():
-    from triton_evaluation.api.contract import EvaluationResult, dump_for_version
+    from triton_evaluation.api.contract import EvaluationResult, dump_contract
 
     performance = shape_performance(load("benchmark-event-timing.json"))
     result = EvaluationResult.model_validate(
@@ -639,7 +639,7 @@ def test_benchmark_measurement_method_round_trips_through_evaluation_result():
             },
             "profile": None,
             "provenance": {
-                "schema_version": "2.0",
+                "schema_version": "2.1",
                 "evaluator_build": "git:" + "a" * 40,
                 "correctness_algorithm": "ca",
                 "decoy_algorithm": "da",
@@ -654,8 +654,7 @@ def test_benchmark_measurement_method_round_trips_through_evaluation_result():
         context={"requested_checks": ["performance"]},
     )
     assert result.performance.data.measurement_method == "npu_event_v1"
-    # The 2.0 serialization strips the v2.1-only field (dump_for_version).
-    stripped = json.loads(dump_for_version(result, "2.0"))
-    stripped_performance = stripped["performance"]["data"]
-    assert "measurement_method" not in stripped_performance
-    assert "measurement_method" not in stripped_performance["per_case"][0]
+    wire = json.loads(dump_contract(result))
+    serialized = wire["performance"]["data"]
+    assert serialized["measurement_method"] == "npu_event_v1"
+    assert serialized["per_case"][0]["measurement_method"] == "npu_event_v1"

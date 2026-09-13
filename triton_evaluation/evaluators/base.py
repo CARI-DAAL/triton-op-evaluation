@@ -19,9 +19,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Literal, Protocol
 
-from ..api.contract import Check, CheckOutcome, ErrorInfo, EvaluationRequest, Purpose
+from ..api.contract import Check, CheckOutcome, ErrorInfo, EvaluationRequest
 from ..api.contract_artifacts import canonical_json_bytes, sha256_hex
-from ..models import AlgorithmVersions
 
 logger = logging.getLogger(__name__)
 
@@ -36,33 +35,6 @@ class EngineCheckResult:
     raw: dict[str, object] | None = None
     error: ErrorInfo | None = None
 
-
-@dataclass(frozen=True)
-class PinnedProvenance:
-    """Provenance facts pinned at admission: build, algorithms, purpose, binding."""
-
-    evaluator_build: str
-    algorithms: AlgorithmVersions
-    purpose: Purpose
-    manifest_id: str | None
-    problem_id: str | None
-
-    @classmethod
-    def for_request(
-        cls,
-        request: EvaluationRequest,
-        *,
-        evaluator_build: str,
-        algorithms: AlgorithmVersions,
-    ) -> "PinnedProvenance":
-        context = request.grade_context
-        return cls(
-            evaluator_build=evaluator_build,
-            algorithms=algorithms,
-            purpose=request.purpose,
-            manifest_id=context.manifest_id if context is not None else None,
-            problem_id=context.problem_id if context is not None else None,
-        )
 
 
 class ProgressSink(Protocol):
@@ -150,7 +122,7 @@ _SCRIPT_POLL_SECONDS = 0.05
 def run_script(
     cmd: list,
     cwd,
-    device_id: int,
+    device_id: int | None,
     deadline_at=None,
     lease_valid=None,
     *,
@@ -164,8 +136,13 @@ def run_script(
     those is a candidate execution timeout. Output goes to temporary files so
     a chatty engine can never deadlock on a full pipe.
     """
+    if lease_valid is not None and not lease_valid():
+        return ScriptOutcome(-1, "", "", True, "fenced")
+    if deadline_at is not None and remaining_seconds(deadline_at) <= 0:
+        return ScriptOutcome(-1, "", "", True, "resource_deadline")
     env = dict(os.environ)
-    env["ASCEND_RT_VISIBLE_DEVICES"] = str(device_id)
+    # A CPU precheck must not inherit the parent's NPU assignment.
+    env["ASCEND_RT_VISIBLE_DEVICES"] = "" if device_id is None else str(device_id)
     with tempfile.TemporaryFile(mode="w+") as out_file, tempfile.TemporaryFile(
         mode="w+"
     ) as err_file:
@@ -197,13 +174,16 @@ def run_script(
                 time.sleep(_SCRIPT_POLL_SECONDS)
             return _collected(proc, out_file, err_file, "exited")
         finally:
-            if proc.poll() is None:
-                _kill_group(proc)
+            # The entrypoint can exit while candidate-created children remain.
+            # Its process group belongs to this invocation on every exit path.
+            _kill_group(proc)
 
 
 def _kill_group(proc: subprocess.Popen) -> None:
     try:
-        os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+        # start_new_session fixes the group ID to the entrypoint PID, including
+        # after that entrypoint has exited and getpgid(pid) would fail.
+        os.killpg(proc.pid, signal.SIGKILL)
     except ProcessLookupError:
         pass
     proc.wait()

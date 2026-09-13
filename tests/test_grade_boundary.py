@@ -20,7 +20,7 @@ FIXTURES = (
     Path(__file__).parent.parent
     / "contracts"
     / "evaluation-api"
-    / "2.0"
+    / "2.1"
     / "fixtures"
 )
 
@@ -124,7 +124,7 @@ def test_check_data_always_comes_with_a_full_execution_environment():
 
 def _provenance_payload(**overrides):
     payload = {
-        "schema_version": "2.0",
+        "schema_version": "2.1",
         "evaluator_build": "sha256:" + "a" * 64,
         "correctness_algorithm": "correctness-v1",
         "decoy_algorithm": "decoy-v1",

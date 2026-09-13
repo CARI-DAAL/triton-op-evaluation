@@ -1,7 +1,6 @@
 from .base import (
     EngineCheckResult,
     LeaseLostError,
-    PinnedProvenance,
     ProgressSink,
 )
 from .benchmark import BenchmarkEvaluator
@@ -14,7 +13,6 @@ __all__ = [
     "EngineCheckResult",
     "EvaluationEvaluator",
     "LeaseLostError",
-    "PinnedProvenance",
     "ProfileEvaluator",
     "ProgressSink",
     "VerifyEvaluator",

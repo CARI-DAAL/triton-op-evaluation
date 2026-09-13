@@ -1,4 +1,4 @@
-"""Stable v2 wire contract for the evaluation service.
+"""Strict v2.1 wire contract for the evaluation service.
 
 This module is the public API surface: the request shapes a consumer sends and
 the typed resource they get back. It depends only on pydantic — no app
@@ -7,8 +7,9 @@ model is strict: unknown fields, scalar coercion, and non-finite ordinary
 floats are rejected; NaN/Inf exist only as explicit string sentinels inside
 correctness samples.
 
-The canonical design authority is
-``docs/specs/2026-08-06-evaluation-api-v2-design.md`` sections 3.4 and 4.
+The supported interface is documented in
+``docs/architecture/evaluations-v21-contract.md`` and published under
+``contracts/evaluation-api/2.1``.
 """
 import math
 from collections.abc import Callable
@@ -24,7 +25,7 @@ from pydantic import (
     model_validator,
 )
 
-SchemaVersion = Literal["2.0", "2.1"]
+SchemaVersion = Literal["2.1"]
 Purpose = Literal["trial", "grade", "rollout"]
 Check = Literal["correctness", "performance", "profile", "compile"]
 MeasurementMethod = Literal["npu_event_v1", "profiler_kernel_sum_v1"]
@@ -90,7 +91,7 @@ def redacted_text(max_bytes: int) -> Callable[[str], str]:
 class PerformanceParams(StrictModel):
     warmup: int = Field(default=5, ge=0, le=100)
     repeats: int = Field(default=50, ge=1, le=1000)
-    method: Literal["event", "profiler"] | None = None
+    method: Literal["event", "profiler"] = "event"
 
 
 class ProfileParams(StrictModel):
@@ -149,19 +150,10 @@ class EvaluationRequest(StrictModel):
                 self.profile = ProfileParams()
         elif self.profile is not None:
             raise ValueError("profile params require the profile check")
-        if self.purpose == "trial" and self.grade_context is not None:
-            raise ValueError("trial requests must not carry grade_context")
+        if self.purpose != "grade" and self.grade_context is not None:
+            raise ValueError("only grade requests may carry grade_context")
         if self.purpose == "grade" and self.grade_context is None:
             raise ValueError("grade requests require grade_context")
-        if self.schema_version == "2.0":
-            if len(self.checks) > 3:
-                raise ValueError("schema_version 2.0 allows at most 3 checks")
-            if "compile" in self.checks:
-                raise ValueError("schema_version 2.0 does not support the compile check")
-            if self.purpose == "rollout":
-                raise ValueError("schema_version 2.0 does not support purpose rollout")
-            if self.performance is not None and self.performance.method is not None:
-                raise ValueError("schema_version 2.0 does not support performance.method")
         return self
 
 
@@ -188,7 +180,7 @@ class ErrorInfo(StrictModel):
 
 
 class ErrorEnvelope(StrictModel):
-    schema_version: Literal["2.0"]
+    schema_version: SchemaVersion
     request_id: str
     error: ErrorInfo
 
@@ -595,9 +587,7 @@ class ExecutionEnvironment(StrictModel):
 
 
 class Provenance(StrictModel):
-    # v2.1 resources still carry provenance schema_version "2.0"; the literal
-    # widens with the 2.1 artifact tree (Task 4).
-    schema_version: Literal["2.0"]
+    schema_version: SchemaVersion
     evaluator_build: str
     correctness_algorithm: str
     decoy_algorithm: str
@@ -638,59 +628,11 @@ class EvaluationResult(StrictModel):
         return self
 
 
-_V21_ONLY_RESULT_KEYS = ("compile",)
-
-
-def _strip_performance_method(performance: dict) -> None:
-    performance.pop("measurement_method", None)
-    for case in performance.get("per_case") or []:
-        if isinstance(case, dict):
-            case.pop("measurement_method", None)
-
-
-def _strip_result_v21_fields(result: dict) -> None:
-    for key in _V21_ONLY_RESULT_KEYS:
-        result.pop(key, None)
-    performance = result.get("performance")
-    if not isinstance(performance, dict):
-        return
-    # A result dump nests the PerformanceResult inside the outcome wrapper's
-    # ``data`` slot; a resource dump may already be unwrapped.
-    data = performance.get("data")
-    if isinstance(data, dict):
-        _strip_performance_method(data)
-    else:
-        _strip_performance_method(performance)
-
-
-def strip_v21_fields(dumped: dict) -> dict:
-    """Remove v2.1-only keys for a 2.0 canonical serialization.
-
-    Accepts a dump of ``EvaluationResource`` (keys are stripped inside its
-    ``result``) or of ``EvaluationResult`` directly (a result dump carries
-    ``provenance`` at the top level). Mutates the dumped dict — callers must
-    pass a fresh ``model_dump()``.
-    """
-    nested = dumped.get("result")
-    if isinstance(nested, dict):
-        _strip_result_v21_fields(nested)
-    if "provenance" in dumped:
-        _strip_result_v21_fields(dumped)
-    return dumped
-
-
-def dump_for_version(model, version: str) -> bytes:
-    """Canonical serialization of ``model`` with only ``version``'s fields.
-
-    A 2.0 dump strips v2.1-only keys so 2.0 consumers never see them on the
-    wire. Never mutates ``model`` itself: the strip runs on a fresh dump.
-    """
+def dump_contract(model: StrictModel) -> bytes:
+    """Serialize the sole public contract as canonical JSON, preserving null slots."""
     from .contract_artifacts import canonical_json_bytes
 
-    dumped = model.model_dump(mode="json", exclude_none=False)
-    if version == "2.0":
-        dumped = strip_v21_fields(dumped)
-    return canonical_json_bytes(dumped)
+    return canonical_json_bytes(model.model_dump(mode="json", exclude_none=False))
 
 
 _TERMINAL_STATES = ("completed", "failed", "timed_out")

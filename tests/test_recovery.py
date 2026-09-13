@@ -30,7 +30,7 @@ def _compatibility(worker):
 
 
 def redis_client_hgetall(store, evaluation_id):
-    return store._r.hgetall(f"triton-eval:v2:resource:{evaluation_id}")
+    return store._r.hgetall(f"triton-eval:v2.1:resource:{evaluation_id}")
 
 
 def test_queued_deadline_times_out_without_an_attempt(
@@ -51,7 +51,7 @@ def test_queued_deadline_times_out_without_an_attempt(
     assert store.expire_due_resources() == 0
     member = command.evaluation_id.encode()
     assert redis_client.zscore(_key(settings, "deadlines"), member) is None
-    assert redis_client.zrange(_key(settings, "ready:exec:interactive"), 0, -1) == []
+    assert redis_client.zrange(_key(settings, "ready:npu:interactive"), 0, -1) == []
 
 
 def test_running_deadline_times_out_and_raises_the_fence(
@@ -93,7 +93,7 @@ def test_worker_crash_below_attempt_limit_requeues_and_reruns(
     visible = store.get_visible(command.evaluation_id, make_caller())
     assert visible.state == "running"
     assert visible.revision == 2
-    assert redis_client.zrange(_key(settings, "ready:exec:interactive"), 0, -1) == [
+    assert redis_client.zrange(_key(settings, "ready:npu:interactive"), 0, -1) == [
         command.evaluation_id.encode()
     ]
 
@@ -187,11 +187,11 @@ def test_duplicate_ready_member_for_a_running_resource_is_removed(
     lease = store.claim_next(make_worker())
     assert lease is not None
     # A duplicated queue delivery for an already-claimed resource.
-    redis_client.zadd(_key(settings, "ready:exec:interactive"), {command.evaluation_id: 99})
+    redis_client.zadd(_key(settings, "ready:npu:interactive"), {command.evaluation_id: 99})
 
     assert store.claim_next(make_worker()) is None
 
-    assert redis_client.zrange(_key(settings, "ready:exec:interactive"), 0, -1) == []
+    assert redis_client.zrange(_key(settings, "ready:npu:interactive"), 0, -1) == []
     visible = store.get_visible(command.evaluation_id, make_caller())
     assert visible.state == "running"
     assert visible.revision == 2
@@ -322,12 +322,12 @@ def test_reap_counts_suspicious_death_and_records_failed_card(store, redis_clien
 
     counts = store.recover_expired_leases()
     assert counts.requeued == 1
-    key = f"triton-eval:v2:resource:{cmd.evaluation_id}"
+    key = f"triton-eval:v2.1:resource:{cmd.evaluation_id}"
     assert redis_client.hget(key, "suspicious_deaths") == b"1"
     assert redis_client.hget(key, "last_failed_card") == b"7"
 
 
-def test_second_suspicious_death_quarantines_as_worker_lost(store, clock, settings,
+def test_second_suspicious_death_quarantines_as_poison(store, clock, settings,
                                                             make_command, make_worker):
     cmd = make_command()
     store.create_or_replay(cmd)
@@ -345,7 +345,7 @@ def test_second_suspicious_death_quarantines_as_worker_lost(store, clock, settin
     resource = EvaluationResource.model_validate_json(stored[b"resource"])
     assert resource.state == "failed"
     assert resource.result.correctness.status == "failed"
-    assert resource.result.correctness.error.code == "WORKER_LOST"
+    assert resource.result.correctness.error.code == "SUSPECTED_POISON_CANDIDATE"
     assert "poison" in resource.result.correctness.error.message
 
 
@@ -360,6 +360,6 @@ def test_clean_failure_does_not_count_suspicious_death(store, redis_client, cloc
     assert store.commit_terminal(lease, "completed", make_completed_result(settings))
     clock.advance_ms(settings.lease_seconds * 1000 + 1)
     store.recover_expired_leases()
-    key = f"triton-eval:v2:resource:{cmd.evaluation_id}"
+    key = f"triton-eval:v2.1:resource:{cmd.evaluation_id}"
     assert redis_client.hget(key, "suspicious_deaths") == b"0"
     assert redis_client.hget(key, "last_failed_card") is None

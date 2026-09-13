@@ -23,7 +23,7 @@ class CompletingEvaluator:
         self.settings = settings
 
     def run(self, request, work_dir, device_id, deadline_at, lease_valid,
-            execution_environment, pinned, progress):
+            execution_environment, pinned, progress, *, precheck=None):
         return make_completed_result(self.settings)
 
 
@@ -92,15 +92,19 @@ def _rebuild(app):
     metrics = RedisMetrics(app.store._r, app.settings.redis_prefix)
     store = EvaluationStore(app.store._r, app.settings, clock=app.clock,
                             metrics=metrics)
-    context = type("C", (), {})()
-    context.settings = app.settings
-    context.store = store
-    context.registry = CapabilityRegistry.from_secret_file(
-        Path(app.settings.capability_secret_path)
+    from triton_evaluation.api.dependencies import AppContext
+    from triton_evaluation.instance import EvaluationInstance
+
+    context = AppContext(
+        instance=EvaluationInstance(
+            settings=app.settings, store=store,
+            catalog=app.app.state.context.instance.catalog, metrics=metrics,
+            artifacts_verified=True,
+        ),
+        registry=CapabilityRegistry.from_secret_file(
+            Path(app.settings.capability_secret_path)
+        ),
     )
-    context.catalog = app.app.state.context.catalog
-    context.metrics = metrics
-    context.artifacts_verified = True
     application = create_app(context)
     http = httpx.AsyncClient(transport=httpx.ASGITransport(app=application),
                              base_url="http://test")

@@ -30,13 +30,10 @@ from triton_evaluation.security import Caller
 def settings(tmp_path):
     # Startup canary off: protocol tests predate card health and keep their
     # exact pre-feature code path; card-health tests opt in explicitly.
-    # Admission precheck off: same pre-feature code path; short-circuit tests
-    # opt in via model_copy.
     return Settings(
         engine_dir=str(tmp_path),
-        dequeue_block_seconds=1,
+        cann_fingerprint="cann-test",
         card_canary_on_startup=False,
-        compile_precheck_enabled=False,
     )
 
 
@@ -85,7 +82,7 @@ def make_caller(caller_id="caller-1", caller_class="trial", scopes=("trial:submi
 
 def make_request(**overrides):
     payload = {
-        "schema_version": "2.0",
+        "schema_version": "2.1",
         "op_name": "addmm",
         "reference_code": "REF",
         "kernel_code": "IMPL",
@@ -101,7 +98,7 @@ def make_grade_caller(caller_id="grader-1", scopes=("grade:submit", "grade:read"
 
 def make_grade_request(**overrides):
     payload = {
-        "schema_version": "2.0",
+        "schema_version": "2.1",
         "purpose": "grade",
         "op_name": "addmm",
         "reference_code": CATALOG_REFERENCE_CODE,
@@ -217,7 +214,7 @@ def make_worker(settings):
 
 def make_provenance(settings, **overrides):
     payload = {
-        "schema_version": "2.0",
+        "schema_version": "2.1",
         "evaluator_build": settings.evaluator_build,
         "correctness_algorithm": settings.correctness_algorithm_version,
         "decoy_algorithm": settings.decoy_algorithm_version,

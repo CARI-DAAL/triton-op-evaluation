@@ -134,7 +134,7 @@ def test_unknown_schema_version_is_rejected(tmp_path):
     with pytest.raises(ValueError):
         load_catalog(
             tmp_path, [make_entry()], {"references/addmm-1.py": REFERENCE_CODE},
-            schema_version="2.0",
+            schema_version="2.1",
         )
 
 

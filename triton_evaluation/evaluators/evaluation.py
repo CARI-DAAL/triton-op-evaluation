@@ -2,7 +2,8 @@
 
 Order and dependency rules (design section 5):
 
-* correctness always runs first when requested;
+* compile obtains syntax/import evidence inside the leased attempt;
+* correctness runs before the remaining on-card checks;
 * performance runs only when the correctness check ``status == "succeeded"``
   *and* the subject ``data.outcome == "correct"`` — the derived ``passed``
   flag is never consulted; any other subject outcome skips performance with
@@ -23,6 +24,7 @@ Order and dependency rules (design section 5):
 from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
+from time import monotonic
 
 from ..api.contract import (
     Check,
@@ -30,7 +32,6 @@ from ..api.contract import (
     CheckSkipped,
     CheckSucceeded,
     CheckTimedOut,
-    CompileOutcome,
     CorrectnessResult,
     ErrorInfo,
     EvaluationRequest,
@@ -38,14 +39,14 @@ from ..api.contract import (
     ExecutionEnvironment,
     PerformanceResult,
     ProfileResult,
-    Provenance,
     SkipInfo,
 )
 from ..config import BENCHMARK_TIMEOUT_SECONDS, VERIFY_BUDGET_CAP_SECONDS
+from ..models import PinnedProvenance
+from ..terminal_results import compile_outcome_from_precheck, complete_evaluation
 from .base import (
     EngineCheckResult,
     LeaseLostError,
-    PinnedProvenance,
     ProgressSink,
 )
 from .benchmark import BenchmarkEvaluator
@@ -113,33 +114,6 @@ def _skipped(check: Check, code: str, depends_on: Check | None, message: str):
     )
 
 
-def _compile_outcome(correctness) -> CheckSucceeded[CompileOutcome]:
-    """Assemble the v2.1 compile slot from the on-card subject verdict (spec §6).
-
-    The compile check itself executes at the admission precheck — it never
-    queues and never touches a card — so on-card it is derived: a subject
-    compile_error attribution maps to outcome ``compile_error`` at the
-    ``backend`` stage with the domain-failure excerpt; every other reachable
-    subject verdict means the kernel compiled.
-    """
-    if (
-        isinstance(correctness, CheckSucceeded)
-        and getattr(correctness.data, "outcome", None) == "compile_error"
-    ):
-        failure = correctness.data.domain_failure
-        return CheckSucceeded[CompileOutcome](
-            status="succeeded",
-            data=CompileOutcome(
-                outcome="compile_error",
-                compiler_stage="backend",
-                error_excerpt=failure.message if failure is not None else None,
-            ),
-        )
-    return CheckSucceeded[CompileOutcome](
-        status="succeeded", data=CompileOutcome(outcome="compiled")
-    )
-
-
 class EvaluationEvaluator:
     def __init__(self, engine_dir: str, settings=None):
         self.engine_dir = engine_dir
@@ -181,17 +155,35 @@ class EvaluationEvaluator:
         self,
         request: EvaluationRequest,
         work_dir: Path,
-        device_id: int,
+        device_id: int | None,
         deadline_at: datetime,
         lease_valid: Callable[[], bool],
-        execution_environment: ExecutionEnvironment,
+        execution_environment: ExecutionEnvironment | None,
         pinned: PinnedProvenance,
         progress: ProgressSink,
+        *, precheck: Callable[[], str | None] | None = None,
     ) -> EvaluationResult:
         """Run correctness, conditional performance, then independent profile."""
         requested = list(request.checks)
         outcomes: dict[str, object] = {}
         infra_broken = False
+
+        if device_id is None and requested != ["compile"]:
+            raise ValueError("CPU attempts can only execute the compile check")
+
+        def compile_check():
+            started = monotonic()
+            verdict = precheck() if precheck is not None else None
+            return compile_outcome_from_precheck(verdict, (monotonic() - started) * 1000)
+
+        if "compile" in requested:
+            outcomes["compile"] = self._slot(
+                "compile",
+                compile_check,
+                lease_valid, progress,
+            )
+            # Missing precheck evidence is independent of on-card execution.
+            # It does not establish a broken worker environment or skip checks.
 
         if "correctness" in requested:
             correctness = self._slot(
@@ -270,50 +262,7 @@ class EvaluationEvaluator:
                 )
             outcomes["profile"] = profile
 
-        if "compile" in requested:
-            outcomes["compile"] = _compile_outcome(outcomes.get("correctness"))
-
-        return EvaluationResult.model_validate(
-            {
-                "compile": outcomes.get("compile"),
-                "correctness": outcomes.get("correctness"),
-                "performance": outcomes.get("performance"),
-                "profile": outcomes.get("profile"),
-                "provenance": _provenance(
-                    pinned, execution_environment, outcomes, requested
-                ),
-            },
-            context={"requested_checks": requested},
+        return complete_evaluation(
+            requested_checks=requested, outcomes=outcomes, pinned=pinned,
+            execution_environment=execution_environment,
         )
-
-
-def _provenance(
-    pinned: PinnedProvenance,
-    environment: ExecutionEnvironment,
-    outcomes: dict[str, object],
-    requested: list[str],
-) -> Provenance:
-    # ``completed`` means orchestration obtained an outcome for every requested
-    # check without an infrastructure failure; subject failures still count.
-    completed = all(
-        outcomes[check].status not in ("failed", "timeout") for check in requested
-    )
-    grade_eligible = (
-        pinned.purpose == "grade"
-        and pinned.manifest_id is not None
-        and pinned.problem_id is not None
-        and completed
-        and environment is not None
-    )
-    return Provenance(
-        schema_version="2.0",
-        evaluator_build=pinned.evaluator_build,
-        correctness_algorithm=pinned.algorithms.correctness,
-        decoy_algorithm=pinned.algorithms.decoy,
-        benchmark_algorithm=pinned.algorithms.benchmark,
-        profiler_algorithm=pinned.algorithms.profiler,
-        grade_eligible=grade_eligible,
-        manifest_id=pinned.manifest_id,
-        problem_id=pinned.problem_id,
-        execution_environment=environment,
-    )

@@ -21,13 +21,12 @@ from triton_evaluation.config import Settings
 from triton_evaluation.evaluators.base import (
     EngineCheckResult,
     LeaseLostError,
-    PinnedProvenance,
     engine_failure,
     engine_timeout,
 )
 from triton_evaluation.evaluators.evaluation import EvaluationEvaluator
 from triton_evaluation.execution_environment import build_execution_environment
-from triton_evaluation.models import AlgorithmVersions
+from triton_evaluation.models import AlgorithmVersions, PinnedProvenance
 
 FIXTURES = Path(__file__).parent / "fixtures" / "engine"
 
@@ -126,7 +125,7 @@ def grade_pinned():
 def run_evaluation(harness, checks, sink, tmp_path, *, pinned=None, lease=lambda: True):
     request = EvaluationRequest.model_validate(
         {
-            "schema_version": "2.0",
+            "schema_version": "2.1",
             "op_name": "addmm",
             "reference_code": "REF",
             "kernel_code": "IMPL",
@@ -461,7 +460,7 @@ def test_execution_environment_never_carries_host_or_card_identity():
 def _request(checks=("correctness",)):
     return EvaluationRequest.model_validate(
         {
-            "schema_version": "2.0",
+            "schema_version": "2.1",
             "op_name": "addmm",
             "reference_code": "REF",
             "kernel_code": "IMPL",
@@ -521,3 +520,45 @@ def test_ambiguous_exit_past_deadline_is_timeout_never_attributed(tmp_path, monk
     assert result.status == "timeout"
     assert result.error.code == "DEADLINE_EXCEEDED"
     assert result.error.retryable is False
+
+
+def test_compile_precheck_is_fenced_before_candidate_import(tmp_path):
+    sink = RecordingSink()
+    harness = Harness(verify=succeeded("verify-correct.json"))
+    calls = []
+
+    def precheck():
+        assert sink.calls == [("begin", "compile")]
+        calls.append("import")
+        return "precheck_passed"
+
+    request = EvaluationRequest.model_validate({
+        "schema_version": "2.1", "op_name": "addmm", "reference_code": "REF",
+        "kernel_code": "IMPL", "checks": ["compile", "correctness"],
+    })
+    result = harness.run(
+        request, tmp_path, 0, datetime.now(timezone.utc) + timedelta(minutes=1),
+        lambda: True, ENVIRONMENT, trial_pinned(), sink, precheck=precheck,
+    )
+    assert calls == ["import"]
+    assert result.compile.data.outcome == "compiled"
+    assert result.correctness.data.outcome == "correct"
+
+
+def test_correctness_does_not_execute_an_unrequested_compile_check(tmp_path):
+    harness = Harness(verify=succeeded("verify-correct.json"))
+    request = EvaluationRequest.model_validate({
+        "schema_version": "2.1", "op_name": "addmm", "reference_code": "REF",
+        "kernel_code": "IMPL", "checks": ["correctness"],
+    })
+
+    def unexpected_precheck():
+        raise AssertionError("compile was not requested")
+
+    result = harness.run(
+        request, tmp_path, 0, datetime.now(timezone.utc) + timedelta(minutes=1),
+        lambda: True, ENVIRONMENT, trial_pinned(), RecordingSink(),
+        precheck=unexpected_precheck,
+    )
+    assert result.compile is None
+    assert result.correctness.data.outcome == "correct"

@@ -5,6 +5,30 @@ results and a known execution environment.
 
 ## Language
 
+**Evaluation instance**:
+The authority that admits an evaluation and owns its execution, durable
+identity, physical cards and recoverable evidence.
+
+**Evaluation handle**:
+The information identifying an evaluation and its owning instance, sufficient
+to recover that same logical evaluation without submitting duplicate work.
+
+**Admission**:
+The durable decision to accept one logical evaluation with pinned identity,
+quotas and deadline. Admission does not execute candidate code.
+
+**Execution class**:
+The capacity needed by an evaluation: CPU for syntax/import checks alone, or
+NPU for evaluations containing device checks. One attempt owns all requested checks.
+
+**Check evidence**:
+A typed observation produced by a requested check in an attempt. Missing
+evidence cannot establish success; a candidate failure can still be valid evidence.
+
+**Precheck verdict**:
+Evidence from parsing and importing a candidate under an identified toolchain.
+It does not prove correctness or successful device compilation for every input.
+
 **EvaluationResource**:
 A recoverable evaluation with a stable identity, a deadline, and a lifecycle
 independent of the caller's connection.

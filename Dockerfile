@@ -11,7 +11,7 @@
 #
 # Host-coupled pieces (CANN toolkit, NPU driver, /dev/davinci*) are NOT in the
 # image: they must match the host driver and are bind-mounted at runtime —
-# see scripts/docker_run.sh.
+# see docker-compose.yml.
 #
 # BASE_IMAGE: any aarch64 base with bash + python3.11/pip. The official python
 # image is all this build needs; override only if your site mandates a

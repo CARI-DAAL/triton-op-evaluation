@@ -1,4 +1,4 @@
-"""Schema 2.0 invariant matrices for resources, outcomes, and domain models.
+"""Schema 2.1 invariant matrices for resources, outcomes, and domain models.
 
 Every rule here traces to design section 4: resource lifecycle shape, the four
 check-outcome discriminants, the five correctness domain outcomes, domain
@@ -197,7 +197,7 @@ def deep_profile_payload():
 
 def provenance(**overrides):
     base = {
-        "schema_version": "2.0",
+        "schema_version": "2.1",
         "evaluator_build": "sha256:" + "c" * 64,
         "correctness_algorithm": "correctness-v1",
         "decoy_algorithm": "decoy-v1",
@@ -238,7 +238,7 @@ def result_payload(correctness=_UNSET, performance=None, profile=None):
 
 def resource_payload(state="completed", **overrides):
     base = {
-        "schema_version": "2.0",
+        "schema_version": "2.1",
         "evaluation_id": "ev_" + "0" * 32,
         "revision": 1,
         "state": state,
@@ -842,7 +842,7 @@ def test_deep_ratios_reject_unknown_metric_names():
         ({"status": "partial", "missing_metrics": [], "warnings": [], "error": None}, False),
         ({"status": "partial", "missing_metrics": [], "warnings": ["degraded"],
           "error": None}, True),
-        ({"bound": "MTE2 BOUND"}, False),  # v1 bound strings are not schema 2.0
+        ({"bound": "MTE2 BOUND"}, False),  # v1 bound strings are not schema 2.1
         ({"bound": "NONE"}, True),
     ],
 )

@@ -36,7 +36,7 @@ OBSERVER_WITH_GRADE_SUBMIT = Caller(
 
 def make_request(reference_code, checks=("correctness",), **overrides):
     payload = {
-        "schema_version": "2.0",
+        "schema_version": "2.1",
         "op_name": "addmm",
         "reference_code": reference_code,
         "kernel_code": KERNEL_CODE,

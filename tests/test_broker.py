@@ -34,7 +34,7 @@ def test_create_returns_initial_queued_resource(store, make_command, clock):
     assert result.decision == "created"
     resource = result.resource
     accepted_at = datetime.fromtimestamp(clock.now_ms / 1000, tz=timezone.utc)
-    assert resource.schema_version == "2.0"
+    assert resource.schema_version == "2.1"
     assert resource.evaluation_id == command.evaluation_id
     assert resource.revision == 1
     assert resource.state == "queued"
@@ -86,7 +86,7 @@ def test_fifo_sequence_numbers_are_monotonic(store, redis_client, settings, make
         ids.append(command.evaluation_id)
 
     assert redis_client.get(_key(settings, "queue-sequence")) == b"3"
-    entries = redis_client.zrange(_key(settings, "ready:exec:interactive"), 0, -1, withscores=True)
+    entries = redis_client.zrange(_key(settings, "ready:npu:interactive"), 0, -1, withscores=True)
     assert entries == [(ids[0].encode(), 1.0), (ids[1].encode(), 2.0), (ids[2].encode(), 3.0)]
 
 
@@ -143,7 +143,7 @@ def test_idempotency_record_mapping_to_missing_resource_is_storage_failure(
 
 def test_store_rejects_retention_below_recovery_window(redis_client, clock):
     settings = Settings.model_construct(
-        redis_prefix="triton-eval:v2",
+        redis_prefix="triton-eval:v2.1",
         retention_seconds=60,
         max_recovery_age_seconds=120,
     )
@@ -182,28 +182,12 @@ def test_terminal_commit_releases_rollout_inflight(
     assert int(redis_client.get(rollout_key)) == 0
 
 
-def test_terminal_release_derives_class_when_field_missing(
-    store, redis_client, make_command, make_worker, settings,
-):
-    """Pre-deploy resources lack traffic_class; purpose-derived fallback releases
-    the right bucket (durable Redis volume outlives the deploy)."""
-    cmd = make_command()  # trial caller-1
-    store.create_or_replay(cmd)
-    redis_client.hdel(_key(settings, f"resource:{cmd.evaluation_id}"), "traffic_class")
-
-    lease = store.claim_next(make_worker())
-    assert store.commit_terminal(lease, "completed", make_completed_result(settings))
-    trial_key = _key(settings, f"inflight:caller:trial:{_digest_text('caller-1')}")
-    assert int(redis_client.get(trial_key)) == 0
-
-
 def _queue_members(redis_client):
     return {
         "interactive": set(
-            redis_client.zrange("triton-eval:v2:ready:exec:interactive", 0, -1)
+            redis_client.zrange("triton-eval:v2.1:ready:npu:interactive", 0, -1)
         ),
-        "bulk": set(redis_client.zrange("triton-eval:v2:ready:exec:bulk", 0, -1)),
-        "legacy": set(redis_client.zrange("triton-eval:v2:ready", 0, -1)),
+        "bulk": set(redis_client.zrange("triton-eval:v2.1:ready:npu:bulk", 0, -1)),
     }
 
 
@@ -217,7 +201,7 @@ def test_rollout_routes_to_bulk_queue(store, redis_client, make_command):
     store.create_or_replay(cmd)
     queues = _queue_members(redis_client)
     assert cmd.evaluation_id.encode() in queues["bulk"]
-    assert not queues["interactive"] and not queues["legacy"]
+    assert not queues["interactive"]
 
 
 def test_trial_routes_to_interactive_queue(store, redis_client, make_command):
@@ -264,18 +248,6 @@ def test_recovery_requeues_rollout_to_bulk(store, redis_client, clock, settings,
     queues = _queue_members(redis_client)
     assert cmd.evaluation_id.encode() in queues["bulk"]
     assert not queues["interactive"]
-
-
-def test_legacy_ready_zset_still_drains(store, redis_client, make_command,
-                                        make_worker):
-    """Pre-deploy members of the old ready zset remain claimable (durable volume)."""
-    cmd = make_command()
-    store.create_or_replay(cmd)
-    member = cmd.evaluation_id.encode()
-    redis_client.zrem("triton-eval:v2:ready:exec:interactive", member)
-    redis_client.zadd("triton-eval:v2:ready", {member: 1})
-    lease = store.claim_next(make_worker())
-    assert lease is not None and lease.evaluation_id == cmd.evaluation_id
 
 
 def test_claim_avoid_card_skips_last_failed_card(store, redis_client, clock, settings,

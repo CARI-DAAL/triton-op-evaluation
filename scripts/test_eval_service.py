@@ -182,7 +182,7 @@ def main() -> int:
         "Idempotency-Key": f"smoke-{uuid.uuid4().hex}",
     }
     body = {
-        "schema_version": "2.0",
+        "schema_version": "2.1",
         "purpose": "trial",
         "op_name": args.op,
         "reference_code": REFERENCE_CODE,

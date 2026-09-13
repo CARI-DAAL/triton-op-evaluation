@@ -86,7 +86,7 @@ def test_correct_case_reaches_completed_with_environment():
     _skip_without_service()
     status, body = _request(
         "POST", "/evaluations?wait_seconds=60",
-        {"schema_version": "2.0", "purpose": "grade", "op_name": "calibration",
+        {"schema_version": "2.1", "purpose": "grade", "op_name": "calibration",
          "reference_code": "...", "kernel_code": "...",
          "checks": ["correctness", "performance", "profile"],
          "deadline_seconds": 1800,

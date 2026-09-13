@@ -1,14 +1,12 @@
 #!/usr/bin/env bash
-# Container entrypoint: wire up the mounted host driver + baked CANN, then run the service.
+# Initialize the mounted host CANN/driver and run the image's declared Python stack.
 #
-#   entrypoint.sh all       -> API + one worker per card in TRITON_EVAL_CARDS (default)
+#   entrypoint.sh all       -> API + CPU workers + one NPU worker per configured card
 #   entrypoint.sh api       -> uvicorn run_api:app only
 #   entrypoint.sh workers   -> workers only
 #   entrypoint.sh <cmd...>  -> exec cmd (escape hatch, e.g. `bash`)
 #
-# Python interpreter: defaults to the image's python3 (py3.11, on PATH from the
-# Dockerfile). Override with PYTHON_BIN to run a different interpreter — e.g. a bind-mounted
-# host conda env (Plan A), so the engine subprocess (sys.executable) shares that env too.
+# PYTHON_BIN selects the interpreter shared by the service and engine subprocesses.
 set -euo pipefail
 : "${PYTHON_BIN:=python3}"
 
@@ -18,12 +16,8 @@ if [[ -d "${DRIVER_LIB}" ]]; then
   export LD_LIBRARY_PATH="${DRIVER_LIB}:${DRIVER_LIB}/driver:${LD_LIBRARY_PATH:-}"
 fi
 
-# --- CANN toolkit env (host CANN mounted over the base image's baked-in copy) ---
-# The base image pre-sets ASCEND_TOOLKIT_HOME / ASCEND_OPP_PATH / ASCEND_HOME_PATH to its
-# baked-in /usr/local/Ascend CANN. That build is too old for this driver: GEInitialize /
-# OpCompileProcessor init fail (ACL_ALLOW_HF32 error 500001). CANN's set_env.sh will NOT
-# overwrite those vars when already set, so unset them first and let the HOST CANN's
-# set_env.sh repopulate them from its own install path.
+# CANN's set_env.sh preserves existing values, so clear inherited toolkit paths
+# before initializing the host installation mounted into this container.
 if [[ -n "${CANN_SET_ENV_PATH:-}" && -r "${CANN_SET_ENV_PATH}" ]]; then
   unset ASCEND_TOOLKIT_HOME ASCEND_HOME_PATH ASCEND_OPP_PATH \
         ASCEND_AICPU_PATH ASCEND_SLOG_PATH DAVINCIHOME 2>/dev/null || true
@@ -58,16 +52,13 @@ import sys
 
 from triton_evaluation.api.contract_artifacts import (
     CONTRACT_ROOT,
-    CONTRACT_ROOT_V21,
-    build_v20_artifacts,
-    build_v21_artifacts,
+    build_artifacts,
     verify_artifacts,
 )
 from triton_evaluation.catalog import ReleaseCatalog
 from triton_evaluation.security import CapabilityRegistry
 
-problems = verify_artifacts(CONTRACT_ROOT, build_v20_artifacts())
-problems += verify_artifacts(CONTRACT_ROOT_V21, build_v21_artifacts())
+problems = verify_artifacts(CONTRACT_ROOT, build_artifacts())
 if problems:
     sys.exit(f"contract artifacts failed verification: {len(problems)} file(s)")
 import os
@@ -93,8 +84,8 @@ reviewed_git = (
 )
 if build != settings.evaluator_build:
     sys.exit("evaluator build disagrees with the configured setting")
-if image and build != image and not reviewed_git:
-    sys.exit("evaluator build must equal the immutable image")
+if image and build != image.rsplit("@", 1)[-1] and not reviewed_git:
+    sys.exit("evaluator build must equal the immutable image's sha256 digest")
 
 host = os.environ.get("TRITON_EVAL_API_HOST", "127.0.0.1")
 allow_wildcard = os.environ.get("TRITON_EVAL_ALLOW_WILDCARD_BIND", "") == "1"
@@ -113,11 +104,21 @@ fi
 run_api() {
   exec "${PYTHON_BIN}" -m uvicorn run_api:app \
     --host "${TRITON_EVAL_API_HOST:-127.0.0.1}" \
-    --port "${TRITON_EVAL_API_PORT:-10907}"
+    --port "${TRITON_EVAL_API_PORT:-11907}"
 }
 
 run_workers() {
   local pids=("$@")   # any pre-existing pids to also wait on
+  local cpu_count="${TRITON_EVAL_CPU_WORKERS:-1}"
+  if [[ ! "${cpu_count}" =~ ^([0-9]|[12][0-9]|3[0-2])$ ]]; then
+    echo "TRITON_EVAL_CPU_WORKERS must be an integer from 0 to 32" >&2
+    exit 2
+  fi
+  for ((i=0; i<cpu_count; i++)); do
+    echo "Starting CPU worker ${i}" >&2
+    "${PYTHON_BIN}" run_worker.py --cpu &
+    pids+=("$!")
+  done
   IFS=',' read -ra cards <<< "${TRITON_EVAL_CARDS:-0}"
   for c in "${cards[@]}"; do
     c="${c//[[:space:]]/}"
@@ -126,7 +127,7 @@ run_workers() {
     "${PYTHON_BIN}" run_worker.py --card "${c}" &
     pids+=("$!")
   done
-  [[ ${#pids[@]} -eq 0 ]] && { echo "No cards in TRITON_EVAL_CARDS" >&2; exit 2; }
+  [[ ${#pids[@]} -eq 0 ]] && { echo "No workers configured" >&2; exit 2; }
   # shellcheck disable=SC2317
   stop() { kill "${pids[@]}" 2>/dev/null || true; }
   trap stop TERM INT
@@ -143,7 +144,7 @@ case "${1:-all}" in
   all)
     "${PYTHON_BIN}" -m uvicorn run_api:app \
       --host "${TRITON_EVAL_API_HOST:-127.0.0.1}" \
-      --port "${TRITON_EVAL_API_PORT:-10907}" &
+      --port "${TRITON_EVAL_API_PORT:-11907}" &
     api_pid=$!
     run_workers "${api_pid}"
     ;;

@@ -4,7 +4,7 @@ The request ID is accepted inbound only when it matches
 ``[A-Za-z0-9._:-]{1,64}``; otherwise ``rq_`` plus 32 UUID4 hex characters is
 generated. Actual request bytes are counted from the stream (never trusting
 ``Content-Length``) and rejected above 4 MiB before the app parses anything,
-with a schema 2.0 ``ErrorEnvelope`` body.
+with a schema 2.1 ``ErrorEnvelope`` body.
 """
 import re
 import uuid
@@ -32,7 +32,7 @@ def resolve_request_id(headers: Headers) -> str:
 
 def _limit_exceeded_response(request_id: str) -> Response:
     envelope = ErrorEnvelope(
-        schema_version="2.0",
+        schema_version="2.1",
         request_id=request_id,
         error=ErrorInfo(
             code="LIMIT_EXCEEDED",

@@ -2,7 +2,7 @@
 from scripts import test_eval_service as smoke
 
 QUEUED_RESOURCE = {
-    "schema_version": "2.0",
+    "schema_version": "2.1",
     "evaluation_id": "ev_" + "1" * 32,
     "revision": 1,
     "state": "queued",
@@ -10,7 +10,7 @@ QUEUED_RESOURCE = {
 }
 
 TERMINAL_RESOURCE = {
-    "schema_version": "2.0",
+    "schema_version": "2.1",
     "evaluation_id": "ev_" + "1" * 32,
     "revision": 3,
     "state": "completed",
@@ -99,7 +99,7 @@ def test_main_sends_capability_headers_and_recovers_by_get(monkeypatch):
     assert post["headers"]["Authorization"] == "Bearer secret-token"
     assert post["headers"]["X-Session-ID"] == "triton-eval-smoke"
     assert post["headers"]["Idempotency-Key"].startswith("smoke-")
-    assert post["body"]["schema_version"] == "2.0"
+    assert post["body"]["schema_version"] == "2.1"
     assert post["body"]["purpose"] == "trial"
 
     gets = [call for call in calls if call["method"] == "GET"
