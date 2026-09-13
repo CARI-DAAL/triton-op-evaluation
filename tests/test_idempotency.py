@@ -301,9 +301,9 @@ def test_rollout_inflight_limit_is_independent(redis_client, clock, make_command
     trial = make_command()  # separate bucket, unaffected
     assert store.create_or_replay(trial).decision == "created"
 
-    rollout_key = "triton-eval:v2:inflight:caller:rollout:" + _digest_text("rl-runner-1")
+    rollout_key = "triton-eval:v2.1:inflight:caller:rollout:" + _digest_text("rl-runner-1")
     assert int(redis_client.get(rollout_key)) == 1
-    trial_key = "triton-eval:v2:inflight:caller:trial:" + _digest_text("caller-1")
+    trial_key = "triton-eval:v2.1:inflight:caller:trial:" + _digest_text("caller-1")
     assert int(redis_client.get(trial_key)) == 1
 
 

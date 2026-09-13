@@ -1,21 +1,19 @@
 """Durable idempotent resource admission store (design sections 3.2 and 6).
 
-``EvaluationStore`` replaces the old list-based ``Broker``: resource creation
-is one optimistic ``WATCH``/``MULTI``/``EXEC`` transaction that atomically
+Resource creation is one optimistic ``WATCH``/``MULTI``/``EXEC`` transaction that atomically
 writes the idempotency record, the resource hash, the FIFO ``ready`` entry,
 the deadline and state indexes, and the quota counters. Connections are
 binary (``decode_responses=False``) so canonical request bytes are stored and
 compared exactly, never decoded and re-encoded. No Lua scripts and no
 in-memory fallback.
 
-Fixed keyspace under ``settings.redis_prefix`` (default ``triton-eval:v2``)::
+Fixed keyspace under ``settings.redis_prefix`` (default ``triton-eval:v2.1``)::
 
     resource:{evaluation_id}                     hash (canonical request, public
                                                  resource JSON, owner, quotas metadata)
     idempotency:{sha256(caller_id NUL key)}      hash: evaluation_id, request_digest
     ready:exec:interactive                       zset, score = queue sequence
     ready:exec:bulk                              zset, score = queue sequence (rollout class)
-    ready                                        legacy zset, drain-only (pre-dual-queue deploys)
     queue-sequence                               integer
     deadlines                                    zset, score = deadline epoch ms
     running-leases                               zset, score = lease expiry epoch ms
@@ -46,15 +44,18 @@ import logging
 import uuid
 from collections.abc import Callable
 from datetime import datetime, timedelta, timezone
+from typing import Literal
 
 import redis
+from pydantic import TypeAdapter
 
 from triton_evaluation.api.contract import (
     Check,
     CheckOutcome,
+    CompileCheckOutcome,
     EvaluationResource,
     EvaluationResult,
-    dump_for_version,
+    dump_contract,
 )
 from triton_evaluation.api.contract_artifacts import canonical_json_bytes, sha256_hex
 from triton_evaluation.config import Settings
@@ -85,6 +86,7 @@ MAX_ATTEMPTS = 3
 logger = logging.getLogger(__name__)
 _CLAIM_SCAN_BATCH = 10
 _TERMINAL_STATES = ("completed", "failed", "timed_out")
+_COMPILE_OUTCOME = TypeAdapter(CompileCheckOutcome | None)
 
 
 def _no_op_failpoint(evaluation_id: str) -> None:
@@ -252,11 +254,14 @@ class EvaluationStore:
                 pipeline.reset()
 
     def create_terminal_at_admission(
-        self, command: CreateResourceCommand, result: EvaluationResult
+        self, command: CreateResourceCommand, result: EvaluationResult,
+        *, state: Literal["completed", "failed"] = "completed",
     ) -> CreateResourceResult:
-        """Admission-time terminal for a definitive compile verdict: durable and
-        idempotent like create_or_replay, but never queued — no ready/deadlines
-        entries, no inflight held, state completed at revision 1."""
+        """Durable admission result without queue membership or held inflight quota.
+
+        A definitive precheck result completes; an inconclusive compile-only
+        request fails with a recoverable infrastructure outcome at revision 1.
+        """
         caller_digest = _digest_text(command.caller_id)
         idempotency_key = self._key(
             f"idempotency:{_scoped_digest(command.caller_id, command.idempotency_key)}"
@@ -285,7 +290,7 @@ class EvaluationStore:
                     {
                         **resource.model_dump(exclude_none=False),
                         "revision": 1,
-                        "state": "completed",
+                        "state": state,
                         "started_at": finished,
                         "updated_at": finished,
                         "finished_at": finished,
@@ -295,7 +300,7 @@ class EvaluationStore:
                 expiry_ms = now_ms + self._s.retention_seconds * 1000
                 mapping = {
                     **mapping,
-                    "resource": dump_for_version(terminal, terminal.schema_version),
+                    "resource": dump_contract(terminal),
                     "updated_at_ms": str(now_ms),
                 }
                 pipeline.multi()
@@ -315,7 +320,7 @@ class EvaluationStore:
                 )
                 pipeline.expire(idempotency_key, self._s.retention_seconds)
                 pipeline.zadd(
-                    self._key("state:completed"),
+                    self._key(f"state:{state}"),
                     {command.evaluation_id: expiry_ms},
                 )
                 pipeline.incr(rate_key)
@@ -357,7 +362,7 @@ class EvaluationStore:
         deadline_ms = accepted_ms + deadline_seconds * 1000
         accepted_at = datetime.fromtimestamp(accepted_ms / 1000, tz=timezone.utc)
         resource = EvaluationResource(
-            schema_version=payload.get("schema_version", "2.0"),
+            schema_version=payload["schema_version"],
             evaluation_id=command.evaluation_id,
             revision=1,
             state="queued",
@@ -382,7 +387,7 @@ class EvaluationStore:
             "requested_checks": canonical_json_bytes(
                 list(command.admission.requested_checks)
             ),
-            "resource": dump_for_version(resource, resource.schema_version),
+            "resource": dump_contract(resource),
             "evaluator_build": command.evaluator_build,
             "correctness_algorithm": command.algorithms.correctness,
             "decoy_algorithm": command.algorithms.decoy,
@@ -393,10 +398,14 @@ class EvaluationStore:
             "attempt_id": "",
             "fencing_token": "0",
             "active_check": "",
-            "check_outcomes": "{}",
-            "precheck_verdict": "",
-            "precheck_excerpt": "",
-            "precheck_duration_ms": "",
+            "admission_compile_outcome": (
+                dump_contract(command.compile_outcome)
+                if command.compile_outcome is not None else b"null"
+            ),
+            "check_outcomes": canonical_json_bytes(
+                {"compile": command.compile_outcome.model_dump(mode="json")}
+                if command.compile_outcome is not None else {}
+            ),
             "lease_deadline_ms": "0",
             "replacement_pending": "0",
             "created_at_ms": str(accepted_ms),
@@ -469,10 +478,9 @@ class EvaluationStore:
         """Atomically claim the head of the dispatch queues for ``worker``.
 
         Strict priority: the interactive queue (trial/trusted) scans first, the
-        bulk queue (rollout class) only when interactive is empty, and the legacy
-        ``ready`` zset (pre-dual-queue deploys) drains last. Interactive callers
-        are quota-capped, so priority cannot starve bulk traffic; bulk floods
-        cannot head-of-line block interactive latency. A queued claim removes the
+        bulk queue (rollout class) only when interactive is empty. Interactive callers
+        are quota-capped; sustained interactive demand can still delay bulk work.
+        Bulk floods cannot head-of-line block interactive latency. A queued claim removes the
         ready member, flips the public resource to running with a bumped revision
         and the first ``started_at``, installs attempt/lease fields, and moves the
         state indexes. A replacement-pending running resource keeps its public
@@ -488,7 +496,6 @@ class EvaluationStore:
         for ready_key in (
             self._key("ready:exec:interactive"),
             self._key("ready:exec:bulk"),
-            self._key("ready"),  # legacy, drain-only
         ):
             lease = self._claim_from_queue(worker, ready_key, leases_key, avoid_card)
             if lease is not None:
@@ -604,7 +611,7 @@ class EvaluationStore:
             pipeline.hset(
                 resource_key,
                 mapping={
-                    "resource": dump_for_version(updated, updated.schema_version),
+                    "resource": dump_contract(updated),
                     "updated_at_ms": str(now_ms),
                 },
             )
@@ -619,13 +626,14 @@ class EvaluationStore:
                 "lease_deadline_ms": str(lease_expiry_ms),
                 "replacement_pending": "0",
                 "active_check": "",
-                "check_outcomes": "{}",
-                # Presence opts this attempt into scoped provenance, even when
-                # publication is lost. Never fall back to a late legacy HSET.
+                "check_outcomes": canonical_json_bytes(
+                    {"compile": json.loads(stored[b"admission_compile_outcome"])}
+                    if stored[b"admission_compile_outcome"] != b"null" else {}
+                ),
+                # Empty means this attempt has no published card provenance.
                 "attempt_card": "",
             },
         )
-        pipeline.hdel(resource_key, "claimed_card")
         pipeline.zrem(ready_key, member)
         pipeline.zadd(leases_key, {evaluation_id: lease_expiry_ms})
         return AttemptLease(
@@ -635,6 +643,7 @@ class EvaluationStore:
             expected_revision=revision,
             deadline_at_ms=deadline_ms,
             canonical_request=stored[b"canonical_request"],
+            compile_outcome=_COMPILE_OUTCOME.validate_json(stored[b"admission_compile_outcome"]),
             evaluator_build=stored[b"evaluator_build"].decode("utf-8"),
             algorithms=AlgorithmVersions(
                 correctness=stored[b"correctness_algorithm"].decode("utf-8"),
@@ -662,8 +671,6 @@ class EvaluationStore:
                     "attempt_card": canonical_json_bytes({
                         "attempt_id": lease.attempt_id, "card": card,
                     }),
-                    # Compatibility projection for pre-upgrade reapers.
-                    "claimed_card": str(card),
                 })
                 pipeline.execute()
         except redis.RedisError:
@@ -672,11 +679,8 @@ class EvaluationStore:
     @staticmethod
     def _card_for_attempt(stored: dict) -> bytes | None:
         """Resolve optional provenance without borrowing another attempt's card."""
-        if b"attempt_card" not in stored:
-            # Existing running attempts on a durable volume predate scoped data.
-            return stored.get(b"claimed_card")
         try:
-            binding = json.loads(stored[b"attempt_card"])
+            binding = json.loads(stored.get(b"attempt_card", b""))
         except (ValueError, TypeError):
             return None
         if (
@@ -734,25 +738,6 @@ class EvaluationStore:
             pipeline.zadd(leases_key, {lease.evaluation_id: expiry_ms})
 
         return self._fenced_write(lease, mutate)
-
-    def note_precheck_result(
-        self, evaluation_id: str, verdict: str, excerpt: str, duration_ms: int
-    ) -> None:
-        """Advisory admission-precheck provenance on the resource hash.
-
-        Empty verdict means the precheck passed (or was inconclusive). Never
-        fenced: it must not disturb the resource's transition protocol."""
-        try:
-            self._r.hset(
-                self._key(f"resource:{evaluation_id}"),
-                mapping={
-                    "precheck_verdict": verdict,
-                    "precheck_excerpt": excerpt,
-                    "precheck_duration_ms": str(duration_ms),
-                },
-            )
-        except redis.RedisError:
-            logger.warning("note_precheck_result failed for %s", evaluation_id)
 
     def set_active_check(self, lease: AttemptLease, check: Check) -> bool:
         resource_key = self._key(f"resource:{lease.evaluation_id}")
@@ -858,7 +843,7 @@ class EvaluationStore:
         )
         expiry_ms = now_ms + self._s.retention_seconds * 1000
         hash_updates = {
-            "resource": dump_for_version(updated, updated.schema_version),
+            "resource": dump_contract(updated),
             "updated_at_ms": str(now_ms),
             "attempt_id": "",
             "replacement_pending": "0",
@@ -873,7 +858,6 @@ class EvaluationStore:
         )
         pipeline.zrem(self._key("ready:exec:interactive"), evaluation_id)
         pipeline.zrem(self._key("ready:exec:bulk"), evaluation_id)
-        pipeline.zrem(self._key("ready"), evaluation_id)  # legacy drain-only queue
         pipeline.zrem(self._key("deadlines"), evaluation_id)
         pipeline.zrem(self._key("running-leases"), evaluation_id)
         pipeline.zrem(self._key("state:queued"), evaluation_id)
@@ -894,13 +878,8 @@ class EvaluationStore:
 
     @staticmethod
     def _stored_traffic_class(stored: dict) -> str:
-        """Class persisted since the rollout-class deploy; older resources on the
-        durable volume derive it from purpose."""
-        raw = stored.get(b"traffic_class")
-        if raw is not None:
-            return raw.decode("utf-8")
-        purpose = stored[b"purpose"].decode("utf-8")
-        return "trial" if purpose == "trial" else "trusted"
+        """Use the quota class owned by this admitted resource."""
+        return stored[b"traffic_class"].decode("utf-8")
 
     def _inflight_keys(self, stored: dict) -> tuple[str, str]:
         owner = stored[b"owner"].decode("utf-8")
@@ -971,29 +950,13 @@ class EvaluationStore:
                     deaths = 0
                     metadata = {}
                 if deaths >= self._s.poison_death_threshold:
-                    # Poison quarantine (spec §10): too many suspicious deaths —
-                    # terminate instead of requeueing. Version-aware surface: a
-                    # 2.1 request gets the typed SUSPECTED_POISON_CANDIDATE code
-                    # (retryable False); a 2.0 request keeps the frozen
-                    # contract-invisible WORKER_LOST shape (retryable stays
-                    # True; that flag is frozen).
-                    # Mirrors the attempt-limit path: `_commit_terminal_locked`
-                    # issues its own MULTI/EXEC, so the advisory metadata write
-                    # must not touch the watched hash before EXEC (a self-write
-                    # dirtying the watch would abort the transaction).
+                    # Quarantine belongs to the current attempt's card provenance.
                     message = (
                         "worker lease expired before a subject outcome was committed; "
                         "repeated suspicious deaths — candidate quarantined as "
                         "suspected poison"
                     )
-                    if json.loads(stored[b"canonical_request"]).get(
-                        "schema_version", "2.0"
-                    ) == "2.1":
-                        result = self._synthesized_poison_result(stored, message)
-                    else:
-                        result = self._synthesized_result(
-                            stored, "worker_lost", message
-                        )
+                    result = self._synthesized_poison_result(stored, message)
                     self._commit_terminal_locked(
                         pipeline,
                         stored=stored,
@@ -1144,7 +1107,6 @@ class EvaluationStore:
             ),
             manifest_id=grade_context.get("manifest_id"),
             problem_id=grade_context.get("problem_id"),
-            version=payload.get("schema_version", "2.0"),
         )
 
     def _synthesized_poison_result(
@@ -1167,7 +1129,6 @@ class EvaluationStore:
             ),
             manifest_id=grade_context.get("manifest_id"),
             problem_id=grade_context.get("problem_id"),
-            version=payload.get("schema_version", "2.0"),
         )
 
     # ------------------------------------------------------------------

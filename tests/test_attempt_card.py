@@ -196,40 +196,6 @@ def test_card_unaware_replacement_does_not_inherit_prior_attempt_provenance(
     assert store.get_visible(command.evaluation_id, make_caller()).state == "running"
 
 
-@pytest.mark.parametrize("card", [3, None])
-def test_legacy_worker_late_write_cannot_change_new_attempt_attribution(
-    store, redis_client, settings, clock, make_command, make_worker, card,
-):
-    command = make_command()
-    store.create_or_replay(command)
-    store.claim_next(make_worker(), card=card)
-    # A pre-upgrade worker only knows the unscoped advisory HSET. This must
-    # neither overwrite a current card nor supply one for a card-unaware claim.
-    redis_client.hset(
-        f"{settings.redis_prefix}:resource:{command.evaluation_id}", "claimed_card", "7"
-    )
-    clock.advance_ms(settings.lease_seconds * 1000 + 1)
-    assert store.recover_expired_leases().requeued == 1
-    if card == 3:
-        assert store.claim_next(make_worker(), card=3, avoid_card=3) is None
-    assert store.claim_next(make_worker(), card=7, avoid_card=7) is not None
-
-
-def test_pre_upgrade_running_attempt_keeps_legacy_card_attribution(
-    store, redis_client, settings, clock, make_command, make_worker,
-):
-    command = make_command()
-    store.create_or_replay(command)
-    store.claim_next(make_worker(), card=7)
-    # This is the resource shape written by the pre-upgrade claim path.
-    key = f"{settings.redis_prefix}:resource:{command.evaluation_id}"
-    redis_client.hdel(key, "attempt_card")
-    clock.advance_ms(settings.lease_seconds * 1000 + 1)
-    assert store.recover_expired_leases().requeued == 1
-    assert store.claim_next(make_worker(), card=7, avoid_card=7) is None
-    assert store.claim_next(make_worker(), card=3, avoid_card=3) is not None
-
-
 @pytest.mark.parametrize("binding", [
     b"",
     b"invalid JSON",
@@ -238,7 +204,7 @@ def test_pre_upgrade_running_attempt_keeps_legacy_card_attribution(
     {"card": True},
     {"card": -1},
 ])
-def test_unusable_scoped_provenance_never_falls_back_to_legacy_card(
+def test_unusable_provenance_does_not_attribute_a_card(
     store, redis_client, settings, clock, make_command, make_worker, binding,
 ):
     command = make_command()

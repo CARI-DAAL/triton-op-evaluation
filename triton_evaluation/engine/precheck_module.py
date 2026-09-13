@@ -18,8 +18,8 @@ def main() -> int:
     module_path, impl_name = sys.argv[1], sys.argv[2]
     try:
         source = open(module_path, encoding="utf-8").read()
-    except OSError as error:
-        _emit({"stage": "import", "error": f"unreadable module: {error}"})
+    except OSError:
+        _emit({"stage": None, "total_cases": 0, "inconclusive": True})
         return 0
     try:
         ast.parse(source)
@@ -30,9 +30,22 @@ def main() -> int:
         spec = importlib.util.spec_from_file_location(f"{impl_name}_candidate", module_path)
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
-    except Exception as error:  # noqa: BLE001 — any import failure is a verdict
+    except Exception as error:  # noqa: BLE001 — import executes candidate code
         missing = getattr(error, "name", None)
-        if isinstance(error, ModuleNotFoundError) and missing in _INCONCLUSIVE_MISSING:
+        missing_module = (
+            isinstance(error, ModuleNotFoundError)
+            and missing is not None
+            and missing not in _INCONCLUSIVE_MISSING
+        )
+        missing_symbol = (
+            isinstance(error, ImportError)
+            and missing is not None
+            and str(error).startswith("cannot import name ")
+        )
+        # Arbitrary import-time code can fail due to temporary I/O, a native
+        # runtime loader, or unavailable hardware. Only import resolution
+        # failures establish a negative verdict within this toolchain scope.
+        if not missing_module and not missing_symbol:
             _emit({"stage": None, "total_cases": 0, "inconclusive": True})
             return 0
         _emit({"stage": "import", "error": f"{type(error).__name__}: {error}"[:400]})

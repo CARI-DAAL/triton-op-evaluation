@@ -5,6 +5,18 @@ results and a known execution environment.
 
 ## Language
 
+**Evaluation instance**:
+The authority that admits an evaluation and owns its execution, durable
+identity, physical cards and recoverable evidence.
+
+**Evaluation handle**:
+The information identifying an evaluation and its owning instance, sufficient
+to recover that same logical evaluation without submitting duplicate work.
+
+**Precheck verdict**:
+Evidence from parsing and importing a candidate under an identified toolchain.
+It does not prove correctness or successful device compilation for every input.
+
 **EvaluationResource**:
 A recoverable evaluation with a stable identity, a deadline, and a lifecycle
 independent of the caller's connection.

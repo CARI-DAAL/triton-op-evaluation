@@ -27,4 +27,4 @@ jobs:
       - run: .venv/bin/python -m ruff check .
       - run: .venv/bin/python -m pytest -m 'not npu' -q
       - run: .venv/bin/python -m compileall -q triton_evaluation scripts
-      - run: git diff --exit-code -- contracts/evaluation-api/2.0
+      - run: git diff --exit-code -- contracts/evaluation-api/2.1

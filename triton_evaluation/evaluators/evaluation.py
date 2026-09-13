@@ -2,7 +2,8 @@
 
 Order and dependency rules (design section 5):
 
-* correctness always runs first when requested;
+* compile records actual admission precheck evidence first when requested;
+* correctness runs before the remaining on-card checks;
 * performance runs only when the correctness check ``status == "succeeded"``
   *and* the subject ``data.outcome == "correct"`` — the derived ``passed``
   flag is never consulted; any other subject outcome skips performance with
@@ -30,7 +31,7 @@ from ..api.contract import (
     CheckSkipped,
     CheckSucceeded,
     CheckTimedOut,
-    CompileOutcome,
+    CompileCheckOutcome,
     CorrectnessResult,
     ErrorInfo,
     EvaluationRequest,
@@ -42,6 +43,7 @@ from ..api.contract import (
     SkipInfo,
 )
 from ..config import BENCHMARK_TIMEOUT_SECONDS, VERIFY_BUDGET_CAP_SECONDS
+from ..terminal_results import compile_outcome_from_precheck
 from .base import (
     EngineCheckResult,
     LeaseLostError,
@@ -113,33 +115,6 @@ def _skipped(check: Check, code: str, depends_on: Check | None, message: str):
     )
 
 
-def _compile_outcome(correctness) -> CheckSucceeded[CompileOutcome]:
-    """Assemble the v2.1 compile slot from the on-card subject verdict (spec §6).
-
-    The compile check itself executes at the admission precheck — it never
-    queues and never touches a card — so on-card it is derived: a subject
-    compile_error attribution maps to outcome ``compile_error`` at the
-    ``backend`` stage with the domain-failure excerpt; every other reachable
-    subject verdict means the kernel compiled.
-    """
-    if (
-        isinstance(correctness, CheckSucceeded)
-        and getattr(correctness.data, "outcome", None) == "compile_error"
-    ):
-        failure = correctness.data.domain_failure
-        return CheckSucceeded[CompileOutcome](
-            status="succeeded",
-            data=CompileOutcome(
-                outcome="compile_error",
-                compiler_stage="backend",
-                error_excerpt=failure.message if failure is not None else None,
-            ),
-        )
-    return CheckSucceeded[CompileOutcome](
-        status="succeeded", data=CompileOutcome(outcome="compiled")
-    )
-
-
 class EvaluationEvaluator:
     def __init__(self, engine_dir: str, settings=None):
         self.engine_dir = engine_dir
@@ -187,11 +162,21 @@ class EvaluationEvaluator:
         execution_environment: ExecutionEnvironment,
         pinned: PinnedProvenance,
         progress: ProgressSink,
+        *, compile_outcome: CompileCheckOutcome | None = None,
     ) -> EvaluationResult:
         """Run correctness, conditional performance, then independent profile."""
         requested = list(request.checks)
         outcomes: dict[str, object] = {}
         infra_broken = False
+
+        if "compile" in requested:
+            outcomes["compile"] = self._slot(
+                "compile",
+                lambda: compile_outcome or compile_outcome_from_precheck(None),
+                lease_valid, progress,
+            )
+            # Missing admission evidence is independent of on-card execution.
+            # It does not establish a broken worker environment or skip checks.
 
         if "correctness" in requested:
             correctness = self._slot(
@@ -270,9 +255,6 @@ class EvaluationEvaluator:
                 )
             outcomes["profile"] = profile
 
-        if "compile" in requested:
-            outcomes["compile"] = _compile_outcome(outcomes.get("correctness"))
-
         return EvaluationResult.model_validate(
             {
                 "compile": outcomes.get("compile"),
@@ -306,7 +288,7 @@ def _provenance(
         and environment is not None
     )
     return Provenance(
-        schema_version="2.0",
+        schema_version="2.1",
         evaluator_build=pinned.evaluator_build,
         correctness_algorithm=pinned.algorithms.correctness,
         decoy_algorithm=pinned.algorithms.decoy,

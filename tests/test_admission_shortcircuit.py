@@ -76,7 +76,7 @@ def test_create_terminal_at_admission(store, settings, redis_client, clock,
     assert resource.started_at is not None and resource.finished_at is not None
     assert resource.result.correctness.data.outcome == "compile_error"
     # never queued: no ready membership, no inflight held
-    assert redis_client.zscore("triton-eval:v2:ready:exec:interactive",
+    assert redis_client.zscore("triton-eval:v2.1:ready:exec:interactive",
                                cmd.evaluation_id.encode()) is None
     # idempotent replay returns the same terminal resource
     replay = store.create_terminal_at_admission(cmd, result)
@@ -131,7 +131,7 @@ async def _post_with_cached_verdict(tmp_path, release_catalog_files, payload):
 async def test_routes_shortcircuit_cached_verdict(tmp_path, release_catalog_files):
     app, response = await _post_with_cached_verdict(
         tmp_path, release_catalog_files,
-        {"schema_version": "2.0", "op_name": "addmm", "reference_code": "REF",
+        {"schema_version": "2.1", "op_name": "addmm", "reference_code": "REF",
          "kernel_code": "def broken(:\n", "checks": ["correctness"]},
     )
     assert response.status_code == 200, response.text
@@ -139,21 +139,21 @@ async def test_routes_shortcircuit_cached_verdict(tmp_path, release_catalog_file
     assert resource["state"] == "completed"
     assert resource["result"]["correctness"]["data"]["outcome"] == "compile_error"
     # never queued: no ready membership anywhere
-    assert app.store._r.zcard("triton-eval:v2:ready:exec:interactive") == 0
-    assert app.store._r.zcard("triton-eval:v2:ready:exec:bulk") == 0
+    assert app.store._r.zcard("triton-eval:v2.1:ready:exec:interactive") == 0
+    assert app.store._r.zcard("triton-eval:v2.1:ready:exec:bulk") == 0
 
 
 async def test_routes_profile_guard_queues_normally(tmp_path, release_catalog_files):
     app, response = await _post_with_cached_verdict(
         tmp_path, release_catalog_files,
-        {"schema_version": "2.0", "op_name": "addmm", "reference_code": "REF",
+        {"schema_version": "2.1", "op_name": "addmm", "reference_code": "REF",
          "kernel_code": "def broken(:\n", "checks": ["correctness", "profile"]},
     )
     # profile guard: a cached compile verdict must not short-circuit a
     # profile request — it queues normally.
     assert response.status_code == 202, response.text
     assert response.json()["state"] == "queued"
-    assert app.store._r.zcard("triton-eval:v2:state:completed") == 0
+    assert app.store._r.zcard("triton-eval:v2.1:state:completed") == 0
 
 
 # ---------------------------------------------------------------------------
@@ -178,8 +178,8 @@ async def test_v21_compile_only_cached_verdict_returns_terminal(tmp_path,
     assert compile_slot["data"]["compiler_stage"] == "frontend"
     assert resource["result"]["correctness"] is None
     # never queued: no ready membership anywhere
-    assert app.store._r.zcard("triton-eval:v2:ready:exec:interactive") == 0
-    assert app.store._r.zcard("triton-eval:v2:ready:exec:bulk") == 0
+    assert app.store._r.zcard("triton-eval:v2.1:ready:exec:interactive") == 0
+    assert app.store._r.zcard("triton-eval:v2.1:ready:exec:bulk") == 0
 
 
 async def test_v21_compile_verdict_shortcircuit_fills_compile_slot(
@@ -201,43 +201,8 @@ async def test_v21_compile_verdict_shortcircuit_fills_compile_slot(
     )
 
 
-async def test_v21_admission_records_precheck_verdict_on_resource(
-    tmp_path, release_catalog_files
-):
-    app, response = await _post_with_cached_verdict(
-        tmp_path, release_catalog_files,
-        {"schema_version": "2.1", "op_name": "addmm", "reference_code": "REF",
-         "kernel_code": "def broken(:\n", "checks": ["compile"]},
-    )
-    evaluation_id = response.json()["evaluation_id"]
-    key = f"triton-eval:v2:resource:{evaluation_id}"
-    assert app.store._r.hget(key, "precheck_verdict") == b"compile_error"
-    assert int(app.store._r.hget(key, "precheck_duration_ms")) >= 0
-
-
-async def test_v21_compiled_verdict_queues_normally(tmp_path, release_catalog_files):
-    from test_api import build_app, make_test_settings, post, seed_worker, trial_headers
-
-    app = build_app(tmp_path, release_catalog_files, settings=make_test_settings(tmp_path))
-    seed_worker(app)
-    response = await post(
-        app.http,
-        {"schema_version": "2.1", "op_name": "addmm", "reference_code": "REF",
-         "kernel_code": "IMPL", "checks": ["compile", "correctness"]},
-        trial_headers(),
-    )
-    assert response.status_code == 202, response.text
-    resource = response.json()
-    assert resource["schema_version"] == "2.1"
-    assert resource["state"] == "queued"
-    # the advisory precheck fields exist on the created resource hash
-    key = f"triton-eval:v2:resource:{resource['evaluation_id']}"
-    assert app.store._r.hget(key, "precheck_verdict") == b""
-    assert app.store._r.hget(key, "precheck_excerpt") == b""
-
-
 # ---------------------------------------------------------------------------
-# Poison quarantine is version-aware (SUSPECTED_POISON_CANDIDATE for 2.1)
+# Poison quarantine is non-retryable
 # ---------------------------------------------------------------------------
 
 
@@ -255,7 +220,7 @@ def _poison_terminal(store, settings, clock, make_command, make_worker, request,
     return store.get_visible(cmd.evaluation_id, make_caller())
 
 
-def test_poison_quarantine_code_is_version_aware(store, settings, clock,
+def test_poison_quarantine_code_is_non_retryable(store, settings, clock,
                                                  make_command, make_worker):
     from conftest import make_request
 
@@ -266,20 +231,14 @@ def test_poison_quarantine_code_is_version_aware(store, settings, clock,
     assert v21.result.correctness.error.code == "SUSPECTED_POISON_CANDIDATE"
     assert v21.result.correctness.error.retryable is False
 
-    # the identical 2.0 resource keeps the frozen WORKER_LOST shape
-    v20 = _poison_terminal(store, settings, clock, make_command, make_worker,
-                           make_request(), "key-20")
-    assert v20.schema_version == "2.0"
-    assert v20.result.correctness.error.code == "WORKER_LOST"
-    assert v20.result.correctness.error.retryable is True
 
 
 # ---------------------------------------------------------------------------
-# Erratum E-1: 2.0 HTTP response bodies validate against the published schema
+# Terminal HTTP response bodies validate against the published schema
 # ---------------------------------------------------------------------------
 
 
-async def test_v20_terminal_http_bodies_validate_against_published_schema(
+async def test_v21_terminal_http_bodies_validate_against_published_schema(
     tmp_path, release_catalog_files, make_command
 ):
     import jsonschema
@@ -294,7 +253,7 @@ async def test_v20_terminal_http_bodies_validate_against_published_schema(
         seed_worker,
         trial_headers,
     )
-    from test_contract_v21 import published_v20_resource_validator
+    from test_contract_v21 import published_v21_resource_validator
 
     app = build_app(tmp_path, release_catalog_files, settings=make_test_settings(tmp_path))
     seed_worker(app)
@@ -309,7 +268,7 @@ async def test_v20_terminal_http_bodies_validate_against_published_schema(
     app.store.commit_terminal(lease, "completed",
                               make_completed_result(app.settings))
 
-    validator = published_v20_resource_validator()
+    validator = published_v21_resource_validator()
     async with app.http as client:
         # an idempotent replay of the terminal answers 200 immediately
         replayed = await post(client)
@@ -322,4 +281,4 @@ async def test_v20_terminal_http_bodies_validate_against_published_schema(
         assert got.status_code == 200
         validator.validate(got.json())
     with pytest.raises(jsonschema.ValidationError):
-        validator.validate({"schema_version": "2.0", "result": {"compile": None}})
+        validator.validate({"schema_version": "2.1", "result": {"compile": None}})

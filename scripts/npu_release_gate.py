@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""Target-NPU production release gate for evaluation API 2.0.
+"""Target-NPU production release gate for evaluation API 2.1.
 
 Orchestrates the ``npu``/``release_gate`` marked calibration tests plus an
 HTTP crash soak against the deployed service. Exits nonzero on any missing
@@ -22,7 +22,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 def _contract_identity() -> dict:
     contract = json.loads(
-        (PROJECT_ROOT / "contracts/evaluation-api/2.0/contract.json").read_bytes()
+        (PROJECT_ROOT / "contracts/evaluation-api/2.1/contract.json").read_bytes()
     )
     return {
         "evaluation_api_schema_version": contract["evaluation_api_schema_version"],

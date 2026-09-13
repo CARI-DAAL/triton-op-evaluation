@@ -1,17 +1,14 @@
-"""Immutable durable-core storage records for evaluation API v2.
+"""Immutable storage records for durable v2.1 evaluations.
 
-The old list-based queue models (``Job``/``JobSpec``/``TaskStatus``) are
-replaced by the immutable command/result records below plus the attempt and
-worker records used by the leased state machine. The legacy synchronous HTTP
-request/response models are intentionally absent — the compatibility task
-re-creates them in ``legacy_contract.py``.
+Commands, attempts and worker identities belong to the leased state machine;
+public request and response models belong to ``api.contract``.
 """
 import uuid
 from dataclasses import dataclass
 from typing import Literal
 
 from triton_evaluation.admission import CanonicalAdmission
-from triton_evaluation.api.contract import EvaluationResource
+from triton_evaluation.api.contract import CompileCheckOutcome, EvaluationResource
 from triton_evaluation.security import CallerClass
 
 # Quota buckets: trial and trusted derive from purpose; rollout is a
@@ -59,6 +56,7 @@ class CreateResourceCommand:
     admission: CanonicalAdmission
     evaluator_build: str
     algorithms: AlgorithmVersions
+    compile_outcome: CompileCheckOutcome | None = None
 
 
 @dataclass(frozen=True)
@@ -94,6 +92,7 @@ class AttemptLease:
     canonical_request: bytes
     evaluator_build: str
     algorithms: AlgorithmVersions
+    compile_outcome: CompileCheckOutcome | None = None
 
 
 @dataclass(frozen=True)

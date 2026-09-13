@@ -1,5 +1,8 @@
 # Evaluation API v2（durable resource + 可组合 checks）设计文档
 
+> Historical design. The active interface and deployment decisions are specified
+> in [the v2.1 cutover](../architecture/evaluations-v21-contract.md). Compatibility windows described below are retired.
+
 - 日期：2026-08-06
 - 最近修订：2026-08-13
 - 状态：目标契约已批准；durable runner、调用方隔离和消费方迁移待实现；真实 NPU

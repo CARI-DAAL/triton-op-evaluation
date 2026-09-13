@@ -1,14 +1,9 @@
 """Deterministic evaluation-api contract artifact builder.
 
-Two published trees: ``contracts/evaluation-api/2.0`` (byte-frozen, generated
-from the ``_frozen_v20`` snapshot so v2.1 runtime extensions can never move
-its digest-pinned bytes) and ``contracts/evaluation-api/2.1`` (generated from
-the live models). Each tree is one Draft 2020-12 JSON schema, its golden
-fixtures, a fixture index, and a contract digest file. Pydantic owns the
-generated JSON Schema bytes, ``rfc8785.dumps()`` is the only JSON
-canonicalizer, and every artifact is RFC 8785 canonical bytes with no
-trailing newline. ``json.dumps(sort_keys=True)`` is not RFC 8785 and is never
-used here.
+The v2.1-only release publishes one Draft 2020-12 schema and a complete
+set of golden requests, resources, and errors. All publication bytes use
+RFC 8785 canonical JSON; the index pins every fixture and contract.json
+pins the schema and index. Rebuild consumers against these release digests.
 """
 import hashlib
 import math
@@ -20,13 +15,10 @@ from pathlib import Path, PurePosixPath
 import rfc8785
 from pydantic.json_schema import models_json_schema
 
-from . import _frozen_v20
+from . import contract as m
 
-CONTRACT_ROOT = Path("contracts/evaluation-api/2.0")
-SCHEMA_ID = "urn:triton-evaluation:evaluation-api:2.0:schema"
-CONTRACT_ROOT_V21 = Path("contracts/evaluation-api/2.1")
-SCHEMA_ID_V21 = "urn:triton-evaluation:evaluation-api:2.1:schema"
-
+CONTRACT_ROOT = Path("contracts/evaluation-api/2.1")
+SCHEMA_ID = "urn:triton-evaluation:evaluation-api:2.1:schema"
 
 def canonical_json_bytes(value: object) -> bytes:
     return rfc8785.dumps(value)
@@ -41,7 +33,7 @@ def sha256_hex(data: bytes) -> str:
 # ---------------------------------------------------------------------------
 
 
-def _build_schema_bytes(m, schema_id: str) -> bytes:
+def _build_schema_bytes(schema_id: str) -> bytes:
     _, top = models_json_schema(
         [
             (m.EvaluationRequest, "validation"),
@@ -73,9 +65,9 @@ _REFERENCE_CODE = "import torch\n\n\nclass Model(torch.nn.Module):\n    pass\n"
 _KERNEL_CODE = "import torch\n\n\nclass ModelNew(torch.nn.Module):\n    pass\n"
 
 
-def _request(m, checks, schema_version: str, **overrides):
+def _request(checks, **overrides):
     payload = {
-        "schema_version": schema_version,
+        "schema_version": "2.1",
         "op_name": "addmm",
         "reference_code": _REFERENCE_CODE,
         "kernel_code": _KERNEL_CODE,
@@ -85,11 +77,9 @@ def _request(m, checks, schema_version: str, **overrides):
     return m.EvaluationRequest.model_validate(payload)
 
 
-def _grade_request(m, schema_version: str):
+def _grade_request():
     return _request(
-        m,
         ["profile", "performance", "correctness"],
-        schema_version,
         purpose="grade",
         deadline_seconds=1200,
         performance={"warmup": 3, "repeats": 20},
@@ -107,7 +97,7 @@ def _request_digest(request) -> str:
     return sha256_hex(canonical_json_bytes(canonical))
 
 
-def _error(m, code, phase, retryable, message, check=None):
+def _error(code, phase, retryable, message, check=None):
     return m.ErrorInfo(
         code=code, phase=phase, check=check, retryable=retryable, message=message
     )
@@ -134,13 +124,13 @@ def _skipped(code, depends_on, message):
     }
 
 
-def _correct_data(m):
+def _correct_data():
     return m.CorrectnessResult(
         outcome="correct", passed=True, passed_cases=3, total_cases=3, failures=[]
     )
 
 
-def _wrong_data(m):
+def _wrong_data():
     return m.CorrectnessResult(
         outcome="wrong",
         passed=False,
@@ -170,8 +160,8 @@ def _wrong_data(m):
     )
 
 
-def _domain_data(m, outcome, code, phase, case_idx, message, passed_cases=0,
-                 total_cases=4, failures=()) -> "_frozen_v20.CorrectnessResult":
+def _domain_data(outcome, code, phase, case_idx, message, passed_cases=0,
+                 total_cases=4, failures=()) -> "m.CorrectnessResult":
     return m.CorrectnessResult(
         outcome=outcome,
         passed=False,
@@ -184,12 +174,7 @@ def _domain_data(m, outcome, code, phase, case_idx, message, passed_cases=0,
     )
 
 
-def _performance_data(m, measurement_method=None) -> "_frozen_v20.PerformanceResult":
-    # measurement_method is a v2.1-only field: the frozen 2.0 models forbid it
-    # even as None, so it is only passed when set.
-    case_kwargs = (
-        {"measurement_method": measurement_method} if measurement_method else {}
-    )
+def _performance_data(measurement_method="npu_event_v1") -> "m.PerformanceResult":
     per_case = [
         m.PerformanceCase(
             case_idx=0,
@@ -199,7 +184,7 @@ def _performance_data(m, measurement_method=None) -> "_frozen_v20.PerformanceRes
             implementation_latency_ms=0.5,
             reference_latency_ms=1.0,
             speedup_vs_reference=2.0,
-            **case_kwargs,
+            measurement_method=measurement_method,
         ),
         m.PerformanceCase(
             case_idx=1,
@@ -209,7 +194,7 @@ def _performance_data(m, measurement_method=None) -> "_frozen_v20.PerformanceRes
             implementation_latency_ms=2.0,
             reference_latency_ms=1.0,
             speedup_vs_reference=0.5,
-            **case_kwargs,
+            measurement_method=measurement_method,
         ),
     ]
     unmeasured = [
@@ -222,9 +207,6 @@ def _performance_data(m, measurement_method=None) -> "_frozen_v20.PerformanceRes
     overall = math.exp(
         sum(math.log(case.speedup_vs_reference) for case in per_case) / measured
     )
-    result_kwargs = (
-        {"measurement_method": measurement_method} if measurement_method else {}
-    )
     return m.PerformanceResult(
         aggregation="geometric_mean_v1",
         overall_speedup_vs_reference=overall,
@@ -233,11 +215,11 @@ def _performance_data(m, measurement_method=None) -> "_frozen_v20.PerformanceRes
         coverage=measured / selected,
         per_case=per_case,
         unmeasured_cases=unmeasured,
-        **result_kwargs,
+        measurement_method=measurement_method,
     )
 
 
-def _op_profile_data(m) -> "_frozen_v20.OpProfileResult":
+def _op_profile_data() -> "m.OpProfileResult":
     return m.OpProfileResult(
         mode="op",
         counts=m.ProfileCounts(selected=2, complete=2, partial=0, failed=0),
@@ -259,7 +241,7 @@ def _op_profile_data(m) -> "_frozen_v20.OpProfileResult":
     )
 
 
-def _deep_profile_partial_data(m) -> "_frozen_v20.DeepProfileResult":
+def _deep_profile_partial_data() -> "m.DeepProfileResult":
     return m.DeepProfileResult(
         mode="deep",
         counts=m.ProfileCounts(selected=2, complete=1, partial=1, failed=0),
@@ -292,7 +274,7 @@ def _deep_profile_partial_data(m) -> "_frozen_v20.DeepProfileResult":
     )
 
 
-def _environment(m) -> "_frozen_v20.ExecutionEnvironment":
+def _environment() -> "m.ExecutionEnvironment":
     return m.ExecutionEnvironment(
         hardware_model="Ascend910B3",
         hardware_count=1,
@@ -305,11 +287,9 @@ def _environment(m) -> "_frozen_v20.ExecutionEnvironment":
     )
 
 
-def _provenance(m, environment) -> "_frozen_v20.Provenance":
-    # Provenance schema_version stays the "2.0" literal even on 2.1 resources
-    # in v1; the literal widens with a later contract revision.
+def _provenance(environment) -> "m.Provenance":
     return m.Provenance(
-        schema_version="2.0",
+        schema_version="2.1",
         evaluator_build="sha256:" + "a" * 64,
         correctness_algorithm="correctness-v1",
         decoy_algorithm="decoy-v1",
@@ -325,27 +305,32 @@ def _provenance(m, environment) -> "_frozen_v20.Provenance":
 _ENVIRONMENT_UNSET = object()
 
 
-def _result(m, correctness=None, performance=None, profile=None, compile=None,
-            environment=_ENVIRONMENT_UNSET) -> "_frozen_v20.EvaluationResult":
-    # compile is a v2.1-only slot: the frozen 2.0 models forbid it even as
-    # None, so it is only passed when set.
-    compile_kwargs = {"compile": compile} if compile is not None else {}
+def _result(correctness=None, performance=None, profile=None, compile=None,
+            environment=_ENVIRONMENT_UNSET) -> "m.EvaluationResult":
     if environment is _ENVIRONMENT_UNSET:
-        environment = _environment(m)
+        environment = _environment()
     return m.EvaluationResult(
         correctness=correctness,
         performance=performance,
         profile=profile,
-        provenance=_provenance(m, environment),
-        **compile_kwargs,
+        provenance=_provenance(environment),
+        compile=compile,
     )
 
 
-def _resource(m, state, request, *, schema_version: str, result=None, revision=1,
+def _resource(state, request, *, result=None, revision=1,
               started_at=None, finished_at=None,
-              id_hex="0" * 32) -> "_frozen_v20.EvaluationResource":
+              id_hex="0" * 32) -> "m.EvaluationResource":
+    if result is not None:
+        result = m.EvaluationResult.model_validate(
+            result.model_dump(), context={"requested_checks": request.checks}
+        )
+        if request.purpose == "grade":
+            result.provenance.manifest_id = request.grade_context.manifest_id
+            result.provenance.problem_id = request.grade_context.problem_id
+            result.provenance.grade_eligible = True
     return m.EvaluationResource(
-        schema_version=schema_version,
+        schema_version="2.1",
         evaluation_id="ev_" + id_hex,
         revision=revision,
         state=state,
@@ -360,15 +345,15 @@ def _resource(m, state, request, *, schema_version: str, result=None, revision=1
     )
 
 
-def _envelope(m, code, phase, retryable, message, id_hex) -> "_frozen_v20.ErrorEnvelope":
+def _envelope(code, phase, retryable, message, id_hex) -> "m.ErrorEnvelope":
     return m.ErrorEnvelope(
-        schema_version="2.0",
+        schema_version="2.1",
         request_id="rq_" + id_hex,
-        error=_error(m, code, phase, retryable, message),
+        error=_error(code, phase, retryable, message),
     )
 
 
-def _error_fixtures(m) -> dict[str, "_frozen_v20.ErrorEnvelope"]:
+def _error_fixtures() -> dict[str, "m.ErrorEnvelope"]:
     error_fixtures = [
         ("error-invalid-request.json", "INVALID_REQUEST", "request", False,
          "request failed schema validation"),
@@ -402,16 +387,16 @@ def _error_fixtures(m) -> dict[str, "_frozen_v20.ErrorEnvelope"]:
          "unexpected internal error"),
     ]
     return {
-        name: _envelope(m, code, phase, retryable, message, f"{index + 1:032x}")
+        name: _envelope(code, phase, retryable, message, f"{index + 1:032x}")
         for index, (name, code, phase, retryable, message) in enumerate(error_fixtures)
     }
 
 
-def _fixtures_v20(m) -> dict[str, "_frozen_v20.StrictModel"]:
-    correctness_only = _request(m, ["correctness"], "2.0")
-    with_performance = _request(m, ["correctness", "performance"], "2.0")
-    with_profile = _request(m, ["correctness", "profile"], "2.0")
-    all_checks = _request(m, ["correctness", "performance", "profile"], "2.0")
+def _fixtures() -> dict[str, "m.StrictModel"]:
+    correctness_only = _request(["correctness"])
+    with_performance = _request(["correctness", "performance"])
+    with_profile = _request(["correctness", "profile"])
+    all_checks = _request(["correctness", "performance", "profile"])
     started = _T0 + timedelta(seconds=5)
     finished = _T0 + timedelta(seconds=95)
     dependency_skip = _skipped(
@@ -423,22 +408,21 @@ def _fixtures_v20(m) -> dict[str, "_frozen_v20.StrictModel"]:
             "RESOURCE_DEADLINE", depends_on,
             "resource deadline expired before execution",
         )
-    fixtures: dict[str, _frozen_v20.StrictModel] = {
+    fixtures: dict[str, m.StrictModel] = {
         "request-trial-minimal.json": correctness_only,
-        "request-grade-full.json": _grade_request(m, "2.0"),
+        "request-grade-full.json": _grade_request(),
         "resource-queued.json": _resource(
-            m, "queued", correctness_only, schema_version="2.0", id_hex="0" * 31 + "1"
+            "queued", correctness_only, id_hex="0" * 31 + "1"
         ),
         "resource-running.json": _resource(
-            m, "running", correctness_only, schema_version="2.0",
+            "running", correctness_only,
             revision=2, started_at=started, id_hex="0" * 31 + "2",
         ),
         "resource-completed-correct.json": _resource(
-            m, "completed", with_performance, schema_version="2.0",
+            "completed", with_performance,
             result=_result(
-                m,
-                correctness=_ok(_correct_data(m)),
-                performance=_ok(_performance_data(m)),
+                correctness=_ok(_correct_data()),
+                performance=_ok(_performance_data()),
             ),
             revision=3,
             started_at=started,
@@ -446,10 +430,9 @@ def _fixtures_v20(m) -> dict[str, "_frozen_v20.StrictModel"]:
             id_hex="0" * 31 + "3",
         ),
         "resource-completed-wrong.json": _resource(
-            m, "completed", with_performance, schema_version="2.0",
+            "completed", with_performance,
             result=_result(
-                m,
-                correctness=_ok(_wrong_data(m)), performance=dependency_skip
+                correctness=_ok(_wrong_data()), performance=dependency_skip
             ),
             revision=3,
             started_at=started,
@@ -457,9 +440,8 @@ def _fixtures_v20(m) -> dict[str, "_frozen_v20.StrictModel"]:
             id_hex="0" * 31 + "4",
         ),
         "resource-completed-decoy.json": _resource(
-            m, "completed", correctness_only, schema_version="2.0",
+            "completed", correctness_only,
             result=_result(
-                m,
                 correctness=_ok(
                     m.CorrectnessResult(
                         outcome="wrong", passed=False, decoy=True,
@@ -473,12 +455,11 @@ def _fixtures_v20(m) -> dict[str, "_frozen_v20.StrictModel"]:
             id_hex="0" * 31 + "5",
         ),
         "resource-completed-compile-error.json": _resource(
-            m, "completed", with_performance, schema_version="2.0",
+            "completed", with_performance,
             result=_result(
-                m,
                 correctness=_ok(
                     _domain_data(
-                        m, "compile_error", "SUBJECT_COMPILE_ERROR", "compile", None,
+                        "compile_error", "SUBJECT_COMPILE_ERROR", "compile", None,
                         "candidate compilation failed", total_cases=8,
                     )
                 ),
@@ -490,12 +471,11 @@ def _fixtures_v20(m) -> dict[str, "_frozen_v20.StrictModel"]:
             id_hex="0" * 31 + "6",
         ),
         "resource-completed-runtime-error.json": _resource(
-            m, "completed", with_performance, schema_version="2.0",
+            "completed", with_performance,
             result=_result(
-                m,
                 correctness=_ok(
                     _domain_data(
-                        m, "runtime_error", "SUBJECT_RUNTIME_ERROR", "execute", 1,
+                        "runtime_error", "SUBJECT_RUNTIME_ERROR", "execute", 1,
                         "candidate raised during execute",
                         passed_cases=1,
                         failures=[
@@ -520,12 +500,11 @@ def _fixtures_v20(m) -> dict[str, "_frozen_v20.StrictModel"]:
             id_hex="0" * 31 + "7",
         ),
         "resource-completed-execution-timeout.json": _resource(
-            m, "completed", with_performance, schema_version="2.0",
+            "completed", with_performance,
             result=_result(
-                m,
                 correctness=_ok(
                     _domain_data(
-                        m, "execution_timeout", "SUBJECT_EXECUTION_TIMEOUT", "execute",
+                        "execution_timeout", "SUBJECT_EXECUTION_TIMEOUT", "execute",
                         0, "candidate exceeded per-subject execution budget",
                     )
                 ),
@@ -537,12 +516,11 @@ def _fixtures_v20(m) -> dict[str, "_frozen_v20.StrictModel"]:
             id_hex="0" * 31 + "8",
         ),
         "resource-completed-performance-profile-op.json": _resource(
-            m, "completed", all_checks, schema_version="2.0",
+            "completed", all_checks,
             result=_result(
-                m,
-                correctness=_ok(_correct_data(m)),
-                performance=_ok(_performance_data(m)),
-                profile=_ok(_op_profile_data(m)),
+                correctness=_ok(_correct_data()),
+                performance=_ok(_performance_data()),
+                profile=_ok(_op_profile_data()),
             ),
             revision=3,
             started_at=started,
@@ -550,11 +528,10 @@ def _fixtures_v20(m) -> dict[str, "_frozen_v20.StrictModel"]:
             id_hex="0" * 31 + "9",
         ),
         "resource-completed-profile-deep-partial.json": _resource(
-            m, "completed", with_profile, schema_version="2.0",
+            "completed", with_profile,
             result=_result(
-                m,
-                correctness=_ok(_correct_data(m)),
-                profile=_ok(_deep_profile_partial_data(m)),
+                correctness=_ok(_correct_data()),
+                profile=_ok(_deep_profile_partial_data()),
             ),
             revision=3,
             started_at=started,
@@ -562,12 +539,11 @@ def _fixtures_v20(m) -> dict[str, "_frozen_v20.StrictModel"]:
             id_hex="0" * 31 + "a",
         ),
         "resource-failed.json": _resource(
-            m, "failed", correctness_only, schema_version="2.0",
+            "failed", correctness_only,
             result=_result(
-                m,
                 correctness=_failed(
                     _error(
-                        m, "WORKER_LOST", "execution", True,
+                        "WORKER_LOST", "execution", True,
                         "worker lease expired before a subject outcome was committed",
                         check="correctness",
                     )
@@ -579,12 +555,11 @@ def _fixtures_v20(m) -> dict[str, "_frozen_v20.StrictModel"]:
             id_hex="0" * 31 + "b",
         ),
         "resource-timed-out.json": _resource(
-            m, "timed_out", all_checks, schema_version="2.0",
+            "timed_out", all_checks,
             result=_result(
-                m,
                 correctness=_timeout(
                     _error(
-                        m, "DEADLINE_EXCEEDED", "deadline", False,
+                        "DEADLINE_EXCEEDED", "deadline", False,
                         "resource deadline expired before any attempt started",
                         check="correctness",
                     )
@@ -598,32 +573,76 @@ def _fixtures_v20(m) -> dict[str, "_frozen_v20.StrictModel"]:
             id_hex="0" * 31 + "c",
         ),
     }
-    fixtures.update(_error_fixtures(m))
+    fixtures.update(_error_fixtures())
+    fixtures.update(_compile_rollout_fixtures())
     return fixtures
 
 
-def _fixtures_v21(m) -> dict[str, "_frozen_v20.StrictModel"]:
+def _compile_rollout_fixtures() -> dict[str, "m.StrictModel"]:
     started = _T0 + timedelta(seconds=5)
     finished = _T0 + timedelta(seconds=95)
-    fixtures: dict[str, _frozen_v20.StrictModel] = {
+    fixtures: dict[str, m.StrictModel] = {
         "request-trial-rollout.json": _request(
-            m,
             ["correctness", "performance"],
-            "2.1",
             purpose="rollout",
             performance={"warmup": 3, "repeats": 20, "method": "event"},
         ),
-        "request-trial-compile-only.json": _request(m, ["compile"], "2.1"),
-        "resource-completed-compile-check.json": _resource(
-            m,
+        "request-trial-compile-only.json": _request(["compile"]),
+        "request-profile-only.json": _request(["profile"]),
+        "request-profiler-performance.json": _request(
+            ["correctness", "performance"], performance={"method": "profiler"}
+        ),
+        "request-all-checks.json": _request(
+            ["compile", "correctness", "performance", "profile"]
+        ),
+        "resource-completed-profile-only.json": _resource(
+            "completed", _request(["profile"]),
+            result=_result(profile=_ok(_op_profile_data())),
+            revision=3, started_at=started, finished_at=finished,
+            id_hex="1" * 32,
+        ),
+        "resource-completed-profiler-performance.json": _resource(
             "completed",
-            _request(m, ["compile", "correctness", "performance"], "2.1"),
-            schema_version="2.1",
+            _request(["correctness", "performance"], performance={"method": "profiler"}),
             result=_result(
-                m,
+                correctness=_ok(_correct_data()),
+                performance=_ok(_performance_data("profiler_kernel_sum_v1")),
+            ),
+            revision=3, started_at=started, finished_at=finished,
+            id_hex="2" * 32,
+        ),
+        "resource-completed-compile-only.json": _resource(
+            "completed", _request(["compile"]),
+            result=_result(compile=_ok({"outcome": "compiled", "duration_ms": 12.5})),
+            revision=3, started_at=started, finished_at=finished,
+            id_hex="3" * 32,
+        ),
+        "resource-completed-compile-error-check.json": _resource(
+            "completed", _request(["compile"]),
+            result=_result(compile=_ok({
+                "outcome": "compile_error", "compiler_stage": "frontend",
+                "error_excerpt": "candidate compilation failed", "duration_ms": 3.5,
+            })),
+            revision=3, started_at=started, finished_at=finished,
+            id_hex="4" * 32,
+        ),
+        "resource-completed-grade.json": _resource(
+            "completed", _grade_request(),
+            result=_result(
+                correctness=_ok(_correct_data()),
+                performance=_ok(_performance_data()),
+                profile=_ok(_deep_profile_partial_data()),
+            ),
+            revision=3, started_at=started, finished_at=finished,
+            id_hex="5" * 32,
+        ),
+        "resource-completed-compile-check.json": _resource(
+            "completed",
+            _request(["compile", "correctness", "performance"]),
+            result=_result(
                 compile=_ok({"outcome": "compiled", "duration_ms": 12.5}),
-                correctness=_ok(_correct_data(m)),
-                performance=_ok(_performance_data(m, measurement_method="npu_event_v1")),
+                correctness=_ok(_correct_data()),
+                performance=_ok(_performance_data(measurement_method="npu_event_v1")),
             ),
             revision=3,
             started_at=started,
@@ -631,15 +650,12 @@ def _fixtures_v21(m) -> dict[str, "_frozen_v20.StrictModel"]:
             id_hex="0" * 31 + "d",
         ),
         "resource-failed-poison.json": _resource(
-            m,
             "failed",
-            _request(m, ["correctness"], "2.1"),
-            schema_version="2.1",
+            _request(["correctness"]),
             result=_result(
-                m,
                 correctness=_failed(
                     _error(
-                        m, "SUSPECTED_POISON_CANDIDATE", "execution", False,
+                        "SUSPECTED_POISON_CANDIDATE", "execution", False,
                         "worker lease expired before a subject outcome was committed; "
                         "repeated suspicious deaths — candidate quarantined as "
                         "suspected poison",
@@ -661,16 +677,13 @@ def _fixtures_v21(m) -> dict[str, "_frozen_v20.StrictModel"]:
 # ---------------------------------------------------------------------------
 
 
-def build_artifacts(m, schema_version: str, schema_id: str) -> dict[PurePosixPath, bytes]:
+def build_artifacts() -> dict[PurePosixPath, bytes]:
     """Return every publication path and its final bytes without writing."""
-    if schema_version == "2.0":
-        fixture_models = _fixtures_v20(m)
-    elif schema_version == "2.1":
-        fixture_models = _fixtures_v21(m)
-    else:
-        raise ValueError(f"unsupported schema_version: {schema_version}")
+    fixture_models = _fixtures()
+    schema_version = "2.1"
+    schema_id = SCHEMA_ID
     artifacts: dict[PurePosixPath, bytes] = {}
-    schema_bytes = _build_schema_bytes(m, schema_id)
+    schema_bytes = _build_schema_bytes(schema_id)
     artifacts[PurePosixPath("schema.json")] = schema_bytes
     fixture_paths: dict[str, PurePosixPath] = {}
     for name, model in fixture_models.items():
@@ -702,18 +715,6 @@ def build_artifacts(m, schema_version: str, schema_id: str) -> dict[PurePosixPat
         }
     )
     return artifacts
-
-
-def build_v20_artifacts() -> dict[PurePosixPath, bytes]:
-    """The published 2.0 tree, from the byte-frozen snapshot models."""
-    return build_artifacts(_frozen_v20, "2.0", SCHEMA_ID)
-
-
-def build_v21_artifacts() -> dict[PurePosixPath, bytes]:
-    """The published 2.1 tree, from the live models."""
-    from . import contract as contract_models
-
-    return build_artifacts(contract_models, "2.1", SCHEMA_ID_V21)
 
 
 def write_artifacts(root: Path, artifacts: dict[PurePosixPath, bytes]) -> None:

@@ -22,7 +22,8 @@ _ERROR_CODES = (
     "INVALID_REQUEST", "UNAUTHENTICATED", "FORBIDDEN", "MANIFEST_BINDING_FAILED",
     "NOT_FOUND", "IDEMPOTENCY_CONFLICT", "LIMIT_EXCEEDED", "RATE_LIMITED",
     "NOT_READY", "QUEUE_UNAVAILABLE", "WORKER_LOST", "EVALUATOR_EXECUTION_FAILED",
-    "INVALID_ENGINE_OUTPUT", "DEADLINE_EXCEEDED", "INTERNAL",
+    "INVALID_ENGINE_OUTPUT", "DEADLINE_EXCEEDED", "INTERNAL", "SUSPECTED_POISON_CANDIDATE",
+    "COMPILE_PRECHECK_UNAVAILABLE",
 )
 
 LABEL_VALUES = {
@@ -30,7 +31,7 @@ LABEL_VALUES = {
     "traffic_class": ("trial", "trusted", "rollout"),
     "decision": ("created", "replayed", "conflict", "rate_limited", "limit_exceeded"),
     "state": ("queued", "running", "completed", "failed", "timed_out"),
-    "check": ("correctness", "performance", "profile"),
+    "check": ("compile", "correctness", "performance", "profile"),
     "status": ("succeeded", "failed", "timeout", "skipped"),
     "skip_code": ("DEPENDENCY_NOT_PASSED", "PRIOR_CHECK_FAILED", "RESOURCE_DEADLINE"),
     "code": _ERROR_CODES,
@@ -42,8 +43,7 @@ LABEL_VALUES = {
         "renewed", "rejected", "won", "lost", "requeued", "failed", "bound",
         "rejected_binding", "compatible", "incompatible", "pass", "fail",
     ),
-    "route": ("evaluations_post", "evaluations_get", "verify", "profile", "tasks"),
-    "purpose": ("trial", "grade"),
+    "purpose": ("trial", "grade", "rollout"),
     "eligible": ("true", "false"),
     "decoy": ("true", "false"),
     "step": ("cleanup", "reset", "restart"),
@@ -56,7 +56,6 @@ ALLOWED_METRICS = {
     "idempotency_replays_total": ("caller_class",),
     "api_error_responses_total": ("code",),
     "auth_failures_total": ("code",),
-    "legacy_route_requests_total": ("route",),
     # Resource lifecycle
     "resource_terminal_transitions_total": ("state", "traffic_class"),
     "resource_terminal_duration_seconds": ("state",),

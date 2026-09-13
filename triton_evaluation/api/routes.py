@@ -9,22 +9,25 @@ import asyncio
 import json
 import re
 import time
+from dataclasses import replace
 
 from fastapi import APIRouter, Depends, Query, Request
 from pydantic import ValidationError
 
-from .. import config as config_module
 from ..admission import ForbiddenError, admit
 from ..broker import StorageError
 from ..catalog import ManifestBindingError
-from ..config import V20_SUNSET_AT
 from ..models import CreateResourceCommand
 from ..precheck import run_precheck
 from ..security import Caller
-from ..terminal_results import synthesize_compile_error_result
+from ..terminal_results import (
+    compile_outcome_from_precheck,
+    synthesize_compile_error_result,
+    synthesize_compile_only_result,
+)
 from . import errors
 from .auth import require_read_caller, require_submit_caller
-from .contract import EvaluationRequest, EvaluationResource, dump_for_version
+from .contract import EvaluationRequest, EvaluationResource, dump_contract
 from .dependencies import AppContext, get_context
 
 router = APIRouter()
@@ -108,12 +111,16 @@ def _bump(context: AppContext, name: str, **labels) -> None:
         )
 
 
-def _require_ready(context: AppContext, caller: Caller) -> None:
+def _require_ready(
+    context: AppContext, caller: Caller, *, require_worker: bool = True,
+) -> None:
     if not context.artifacts_verified:
         _bump(context, "worker_compatibility_total", outcome="incompatible")
         raise errors.not_ready("published contract artifacts are not verified")
     if not context.store.probe_storage():
         raise errors.queue_unavailable()
+    if not require_worker:
+        return
     compatible = context.store.has_fresh_compatible_worker(
         type(
             "Compatibility",
@@ -195,16 +202,6 @@ async def submit_evaluation(
 
     evaluation_request = await _decode_and_validate(request)
 
-    if (
-        evaluation_request.schema_version == "2.0"
-        and context.settings.v20_sunset_at is not None
-        and config_module._utcnow() > context.settings.v20_sunset_at
-    ):
-        raise errors.invalid_request(
-            "schema_version 2.0 was sunset at "
-            f"{V20_SUNSET_AT.isoformat()}; use schema_version 2.1"
-        )
-
     try:
         admission = admit(evaluation_request, caller, context.catalog)
         if evaluation_request.purpose == "grade":
@@ -225,35 +222,46 @@ async def submit_evaluation(
     replayed = await asyncio.to_thread(
         context.store.lookup_idempotent, caller.caller_id, idempotency_key
     )
+    compile_only = admission.requested_checks == ("compile",)
     if replayed is None:
-        _require_ready(context, caller)
+        _require_ready(context, caller, require_worker=not compile_only)
 
-    precheck_verdict: str | None = None
-    precheck_duration_ms = 0
     try:
-        if (context.settings.compile_precheck_enabled
-                or context.settings.verdict_cache_enabled):
-            payload = json.loads(command.admission.canonical_request)
+        if replayed is not None:
+            outcome = await asyncio.to_thread(context.store.create_or_replay, command)
+        else:
             precheck_started = time.monotonic()
             verdict = await asyncio.to_thread(
                 run_precheck, context.store, context.settings,
-                payload["kernel_code"],
-                payload.get("triton_impl_name", "triton_ascend_impl"),
+                evaluation_request.kernel_code, evaluation_request.triton_impl_name,
+                force="compile" in admission.requested_checks,
             )
-            precheck_duration_ms = round(
-                (time.monotonic() - precheck_started) * 1000
-            )
-            precheck_verdict = verdict or ""
-            if verdict == "compile_error" and "profile" not in admission.requested_checks:
+            precheck_duration_ms = round((time.monotonic() - precheck_started) * 1000)
+            grade = evaluation_request.grade_context
+            if "compile" in admission.requested_checks:
+                command = replace(command, compile_outcome=compile_outcome_from_precheck(
+                    verdict, precheck_duration_ms,
+                ))
+            if compile_only:
+                result = synthesize_compile_only_result(
+                    compile_outcome=command.compile_outcome,
+                    evaluator_build=command.evaluator_build, algorithms=command.algorithms,
+                    manifest_id=grade.manifest_id if grade else None,
+                    problem_id=grade.problem_id if grade else None,
+                )
+                outcome = await asyncio.to_thread(
+                    context.store.create_terminal_at_admission, command, result,
+                    state="failed" if command.compile_outcome.status == "failed" else "completed",
+                )
+            elif verdict == "compile_error" and "profile" not in admission.requested_checks:
                 result = synthesize_compile_error_result(
                     requested_checks=list(admission.requested_checks),
                     failure_message="candidate compilation failed (admission precheck)",
                     total_cases=1,
                     evaluator_build=command.evaluator_build,
                     algorithms=command.algorithms,
-                    manifest_id=(payload.get("grade_context") or {}).get("manifest_id"),
-                    problem_id=(payload.get("grade_context") or {}).get("problem_id"),
-                    version=evaluation_request.schema_version,
+                    manifest_id=grade.manifest_id if grade else None,
+                    problem_id=grade.problem_id if grade else None,
                     precheck_duration_ms=precheck_duration_ms,
                 )
                 outcome = await asyncio.to_thread(
@@ -261,8 +269,6 @@ async def submit_evaluation(
                 )
             else:
                 outcome = await asyncio.to_thread(context.store.create_or_replay, command)
-        else:
-            outcome = await asyncio.to_thread(context.store.create_or_replay, command)
     except StorageError:
         raise errors.internal() from None
 
@@ -280,13 +286,6 @@ async def submit_evaluation(
         raise errors.limit_exceeded("caller inflight limit exceeded")
     resource = outcome.resource
     assert resource is not None
-
-    if precheck_verdict is not None and outcome.decision == "created":
-        # Advisory provenance only: never for replays, never response-affecting.
-        await asyncio.to_thread(
-            context.store.note_precheck_result,
-            resource.evaluation_id, precheck_verdict, "", precheck_duration_ms,
-        )
 
     if resource.state in TERMINAL_STATES:
         # A replayed terminal resource answers 200 immediately.
@@ -314,7 +313,7 @@ def _resource_response(resource: EvaluationResource, accepted: bool = False):
     if accepted:
         headers["Location"] = f"/evaluations/{resource.evaluation_id}"
     return JSONResponse(
-        content=json.loads(dump_for_version(resource, resource.schema_version)),
+        content=json.loads(dump_contract(resource)),
         status_code=202 if accepted else 200,
         headers=headers,
     )
@@ -338,7 +337,7 @@ async def get_evaluation(
     from fastapi.responses import JSONResponse
 
     return JSONResponse(
-        content=json.loads(dump_for_version(resource, resource.schema_version)),
+        content=json.loads(dump_contract(resource)),
         status_code=200,
         headers=headers,
     )

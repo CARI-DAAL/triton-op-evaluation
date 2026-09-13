@@ -45,7 +45,7 @@ fi
 
 PYTHON_BIN="${PYTHON_BIN:-python3}"
 API_HOST="${TRITON_EVAL_API_HOST:-127.0.0.1}"
-API_PORT="${TRITON_EVAL_API_PORT:-10907}"
+API_PORT="${TRITON_EVAL_API_PORT:-11907}"
 CARDS="${TRITON_EVAL_CARDS:-0}"
 LOG_DIR="${LOG_DIR:-${ROOT_DIR}/logs}"
 PID_FILE="${LOG_DIR}/triton-eval.pids"
@@ -64,14 +64,11 @@ import sys
 
 from triton_evaluation.api.contract_artifacts import (
     CONTRACT_ROOT,
-    CONTRACT_ROOT_V21,
-    build_v20_artifacts,
-    build_v21_artifacts,
+    build_artifacts,
     verify_artifacts,
 )
 
-problems = verify_artifacts(CONTRACT_ROOT, build_v20_artifacts())
-problems += verify_artifacts(CONTRACT_ROOT_V21, build_v21_artifacts())
+problems = verify_artifacts(CONTRACT_ROOT, build_artifacts())
 if problems:
     sys.exit("contract artifacts failed verification")
 PYSTART

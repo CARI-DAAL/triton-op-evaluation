@@ -1,4 +1,4 @@
-"""Every non-2xx path returns a schema 2.0 ErrorEnvelope with stable mappings."""
+"""Every non-2xx path returns a schema 2.1 ErrorEnvelope with stable mappings."""
 
 import pytest
 from test_api import build_app, post, request_payload, trial_headers
@@ -66,7 +66,7 @@ async def test_non_2xx_paths_return_stable_error_envelopes(app, case):
     response = await exercise(app, case)
     assert response.status_code == status, response.text
     envelope = ErrorEnvelope.model_validate_json(response.content)
-    assert envelope.schema_version == "2.0"
+    assert envelope.schema_version == "2.1"
     assert envelope.error.code == code
     assert envelope.error.phase == phase
     assert envelope.error.retryable is retryable

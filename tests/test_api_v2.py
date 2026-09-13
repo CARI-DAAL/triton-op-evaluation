@@ -17,7 +17,7 @@ from triton_evaluation.api.contract import ErrorEnvelope
 pytestmark = pytest.mark.anyio
 
 GRADE_BODY = {
-    "schema_version": "2.0",
+    "schema_version": "2.1",
     "purpose": "grade",
     "op_name": "addmm",
     "reference_code": "import torch\n\n\nclass Model(torch.nn.Module):\n    pass\n",

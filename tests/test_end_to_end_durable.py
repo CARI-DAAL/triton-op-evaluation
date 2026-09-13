@@ -23,7 +23,7 @@ class CompletingEvaluator:
         self.settings = settings
 
     def run(self, request, work_dir, device_id, deadline_at, lease_valid,
-            execution_environment, pinned, progress):
+            execution_environment, pinned, progress, *, compile_outcome=None):
         return make_completed_result(self.settings)
 
 

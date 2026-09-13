@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""Portable evaluation-api 2.0 schema consumer (framework-free).
+"""Portable evaluation-api 2.1 schema consumer (framework-free).
 
 Stdlib only plus the sole narrow direct dependency ``jsonschema`` (whose
 resolver runtime dependency ``referencing`` is also permitted). It never
@@ -174,7 +174,7 @@ def audit_imports():
 
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--contract-root", default="contracts/evaluation-api/2.0")
+    parser.add_argument("--contract-root", default="contracts/evaluation-api/2.1")
     parser.add_argument("--url", default="http://127.0.0.1:11907")
     parser.add_argument("--token", required=True)
     parser.add_argument("--session-id", default="portable-probe")

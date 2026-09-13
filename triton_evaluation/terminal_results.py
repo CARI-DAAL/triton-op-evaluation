@@ -16,8 +16,12 @@ from typing import Literal
 from pydantic import TypeAdapter
 
 from triton_evaluation.api.contract import (
+    CheckFailed,
+    CheckSucceeded,
     CompileCheckOutcome,
+    CompileOutcome,
     CorrectnessOutcome,
+    ErrorInfo,
     EvaluationResult,
     PerformanceOutcome,
     ProfileOutcome,
@@ -87,7 +91,6 @@ def synthesize_orchestration_result(
     algorithms: AlgorithmVersions,
     manifest_id: str | None,
     problem_id: str | None,
-    version: str = "2.0",
 ) -> EvaluationResult:
     """Assemble a complete terminal result around persisted partial outcomes."""
     return _synthesized_terminal(
@@ -99,7 +102,6 @@ def synthesize_orchestration_result(
         algorithms=algorithms,
         manifest_id=manifest_id,
         problem_id=problem_id,
-        version=version,
     )
 
 
@@ -114,14 +116,12 @@ def synthesize_poison_result(
     algorithms: AlgorithmVersions,
     manifest_id: str | None,
     problem_id: str | None,
-    version: str = "2.0",
 ) -> EvaluationResult:
     """Quarantine terminal for repeated suspicious deaths (spec §10, v2.1).
 
     The same walk as ``synthesize_orchestration_result`` but the failure code
-    and retryable flag are explicit: a 2.1 poison quarantine surfaces
-    ``SUSPECTED_POISON_CANDIDATE`` with ``retryable=False`` instead of the
-    frozen 2.0 ``WORKER_LOST`` shape.
+    and retryable flag are explicit. Poison quarantine surfaces
+    ``SUSPECTED_POISON_CANDIDATE`` with ``retryable=False``.
     """
     return _synthesized_terminal(
         shape={
@@ -137,7 +137,6 @@ def synthesize_poison_result(
         algorithms=algorithms,
         manifest_id=manifest_id,
         problem_id=problem_id,
-        version=version,
     )
 
 
@@ -151,17 +150,9 @@ def _synthesized_terminal(
     algorithms: AlgorithmVersions,
     manifest_id: str | None,
     problem_id: str | None,
-    version: str,
 ) -> EvaluationResult:
-    """The outcome walk shared by the orchestration and poison syntheses.
-
-    ``version`` follows the owning resource: a 2.0 synthesis never fills the
-    2.1-only compile slot (the frozen 2.0 wire shape stays byte-identical);
-    a 2.1 synthesis walks compile first, as the check ordering demands.
-    """
+    """Walk requested checks in execution order, retaining committed evidence."""
     requested = [check for check in _CHECK_ORDER if check in requested_checks]
-    if version == "2.0":
-        requested = [check for check in requested if check != "compile"]
     outcomes: dict[str, dict] = {}
 
     target = next(
@@ -200,7 +191,7 @@ def _synthesized_terminal(
             "performance": outcomes.get("performance"),
             "profile": outcomes.get("profile"),
             "provenance": {
-                "schema_version": "2.0",
+                "schema_version": "2.1",
                 "evaluator_build": evaluator_build,
                 "correctness_algorithm": algorithms.correctness,
                 "decoy_algorithm": algorithms.decoy,
@@ -219,7 +210,7 @@ def _synthesized_terminal(
 def synthesize_compile_error_result(
     *, requested_checks, failure_message, total_cases,
     evaluator_build, algorithms, manifest_id, problem_id,
-    version: str = "2.0", precheck_duration_ms: float | None = None,
+    precheck_duration_ms: float | None = None,
 ) -> EvaluationResult:
     """Admission-time compile failure, byte-shaped like the engine's own
     compile_error terminal (contracts .../resource-completed-compile-error.json):
@@ -230,8 +221,6 @@ def synthesize_compile_error_result(
     ``result.compile`` slot (spec §6): outcome compile_error, frontend stage,
     excerpt, and the measured admission precheck duration."""
     requested = [check for check in _CHECK_ORDER if check in requested_checks]
-    if version == "2.0":
-        requested = [check for check in requested if check != "compile"]
     correctness = {
         "status": "succeeded",
         "data": {
@@ -285,7 +274,7 @@ def synthesize_compile_error_result(
             "performance": checks.get("performance"),
             "profile": checks.get("profile"),
             "provenance": {
-                "schema_version": "2.0",
+                "schema_version": "2.1",
                 "evaluator_build": evaluator_build,
                 "correctness_algorithm": algorithms.correctness,
                 "decoy_algorithm": algorithms.decoy,
@@ -299,3 +288,49 @@ def synthesize_compile_error_result(
         },
         context={"requested_checks": requested},
     )
+
+
+def compile_outcome_from_precheck(
+    verdict: str | None, duration_ms: float | None = None,
+) -> CompileCheckOutcome:
+    """Only explicit syntax/import evidence may produce a positive compile check."""
+    if verdict in ("precheck_passed", "compile_error"):
+        return CheckSucceeded[CompileOutcome](
+            status="succeeded",
+            data=CompileOutcome(
+                outcome="compiled" if verdict == "precheck_passed" else "compile_error",
+                compiler_stage="frontend" if verdict == "compile_error" else None,
+                error_excerpt=(
+                    "candidate compilation failed (admission precheck)"
+                    if verdict == "compile_error" else None
+                ),
+                duration_ms=duration_ms,
+            ),
+        )
+    return CheckFailed(
+        status="failed",
+        error=ErrorInfo(
+            code="COMPILE_PRECHECK_UNAVAILABLE", phase="execution", check="compile",
+            retryable=True, message="syntax and import precheck produced no definitive verdict",
+        ),
+    )
+
+
+def synthesize_compile_only_result(
+    *, compile_outcome: CompileCheckOutcome, evaluator_build: str,
+    algorithms: AlgorithmVersions, manifest_id: str | None, problem_id: str | None,
+) -> EvaluationResult:
+    """Compile-only admission has no execution environment and never needs a card."""
+    return EvaluationResult.model_validate({
+        "compile": compile_outcome,
+        "correctness": None, "performance": None, "profile": None,
+        "provenance": {
+            "schema_version": "2.1", "evaluator_build": evaluator_build,
+            "correctness_algorithm": algorithms.correctness,
+            "decoy_algorithm": algorithms.decoy,
+            "benchmark_algorithm": algorithms.benchmark,
+            "profiler_algorithm": algorithms.profiler,
+            "grade_eligible": False, "manifest_id": manifest_id, "problem_id": problem_id,
+            "execution_environment": None,
+        },
+    }, context={"requested_checks": ["compile"]})

@@ -7,7 +7,6 @@ that loses its lease commits nothing — the reaper and a replacement attempt
 own recovery. Logs carry IDs and error codes only: never source, credentials,
 session values, absolute work paths, or tracebacks.
 """
-import json
 import logging
 import shutil
 import tempfile
@@ -127,7 +126,10 @@ class FencedProgress:
     def __init__(self, store: EvaluationStore, lease: AttemptLease):
         self._store = store
         self._lease = lease
-        self.saved: dict[str, dict] = {}
+        self.saved: dict[str, dict] = (
+            {"compile": lease.compile_outcome.model_dump(mode="json")}
+            if lease.compile_outcome is not None else {}
+        )
 
     def begin(self, check: Check) -> bool:
         return self._store.set_active_check(self._lease, check)
@@ -194,7 +196,7 @@ def _protocol_failure_result(
             "performance": outcomes.get("performance"),
             "profile": outcomes.get("profile"),
             "provenance": {
-                "schema_version": "2.0",
+                "schema_version": "2.1",
                 "evaluator_build": lease.evaluator_build,
                 "correctness_algorithm": lease.algorithms.correctness,
                 "decoy_algorithm": lease.algorithms.decoy,
@@ -313,7 +315,10 @@ class Worker:
             )
             if self._clock() >= lease.deadline_at_ms:
                 # Late delivery: expire rather than start past the deadline.
-                self._commit_deadline(lease, request.checks, {})
+                self._commit_deadline(lease, request.checks, (
+                    {"compile": lease.compile_outcome.model_dump(mode="json")}
+                    if lease.compile_outcome is not None else {}
+                ))
                 return
 
             digest = sha256_hex(
@@ -341,6 +346,7 @@ class Worker:
                             algorithms=lease.algorithms,
                         ),
                         progress,
+                        compile_outcome=lease.compile_outcome,
                     )
                 except LeaseLostError:
                     # Fenced work is discarded; the reaper owns recovery.
@@ -375,36 +381,10 @@ class Worker:
                 context={"requested_checks": request.checks},
             )
             # False means another winner already terminalized the resource.
-            committed = self.store.commit_terminal(lease, "completed", validated)
-            if committed and self.settings.verdict_cache_enabled:
-                self._record_compile_verdict(lease, validated)
+            self.store.commit_terminal(lease, "completed", validated)
         finally:
             if work_dir is not None:
                 shutil.rmtree(work_dir, ignore_errors=True)
-
-    def _record_compile_verdict(self, lease, validated) -> None:
-        """Engine-authoritative compile verdicts feed the admission cache."""
-        from triton_evaluation import verdict_cache
-
-        correctness = validated.correctness
-        if correctness is None or correctness.status != "succeeded":
-            return
-        data = correctness.data
-        if data is None or getattr(data, "outcome", None) != "compile_error":
-            return
-        try:
-            payload = json.loads(lease.canonical_request)
-            digest = verdict_cache.digest_for(
-                payload["kernel_code"],
-                payload.get("triton_impl_name", "triton_ascend_impl"),
-                self.settings.cann_fingerprint,
-            )
-            verdict_cache.put(
-                self.store, digest, "compile_error",
-                self.settings.verdict_cache_ttl_seconds,
-            )
-        except (KeyError, ValueError):
-            logger.warning("compile verdict feedback skipped (unparseable request)")
 
     @staticmethod
     def _parse_and_verify(lease: AttemptLease) -> EvaluationRequest:
@@ -429,10 +409,6 @@ class Worker:
             algorithms=lease.algorithms,
             manifest_id=None,
             problem_id=None,
-            # The version follows the owning resource; a 2.1 request whose
-            # checks include compile keeps the compile carrier (the 2.0 wire
-            # shape is unchanged — the synthesis drops it for 2.0 itself).
-            version=json.loads(lease.canonical_request).get("schema_version", "2.0"),
         )
         # False means the watchdog or a faster worker terminalized it first.
         self.store.commit_terminal(lease, "timed_out", result)

@@ -31,7 +31,7 @@ OBSERVER_TOKEN = "observer-token-1"
 def make_test_settings(tmp_path):
     return Settings(
         engine_dir=str(tmp_path),
-        dequeue_block_seconds=1,
+        cann_fingerprint="cann-test",
         heartbeat_interval_seconds=0.05,
         queue_poll_interval_seconds=0.05,
         api_poll_interval_seconds=0.05,
@@ -160,7 +160,7 @@ def grade_headers(session="session-g", key="key-g"):
 
 def request_payload(**overrides):
     payload = {
-        "schema_version": "2.0",
+        "schema_version": "2.1",
         "op_name": "addmm",
         "reference_code": "REF",
         "kernel_code": "IMPL",

@@ -126,7 +126,7 @@ def grade_pinned():
 def run_evaluation(harness, checks, sink, tmp_path, *, pinned=None, lease=lambda: True):
     request = EvaluationRequest.model_validate(
         {
-            "schema_version": "2.0",
+            "schema_version": "2.1",
             "op_name": "addmm",
             "reference_code": "REF",
             "kernel_code": "IMPL",
@@ -461,7 +461,7 @@ def test_execution_environment_never_carries_host_or_card_identity():
 def _request(checks=("correctness",)):
     return EvaluationRequest.model_validate(
         {
-            "schema_version": "2.0",
+            "schema_version": "2.1",
             "op_name": "addmm",
             "reference_code": "REF",
             "kernel_code": "IMPL",

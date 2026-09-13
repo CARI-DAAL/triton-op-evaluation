@@ -37,7 +37,7 @@ class StubEvaluator:
 
     def run(
         self, request, work_dir, device_id, deadline_at, lease_valid,
-        execution_environment, pinned, progress,
+        execution_environment, pinned, progress, *, compile_outcome=None,
     ):
         self.calls.append(
             {
@@ -124,7 +124,6 @@ def settings(tmp_path):
     # canary_settings.
     return Settings(
         engine_dir=str(tmp_path),
-        dequeue_block_seconds=1,
         heartbeat_interval_seconds=0.05,
         queue_poll_interval_seconds=0.05,
         card_canary_on_startup=False,
@@ -592,10 +591,11 @@ def test_worker_records_attempt_card_even_when_affinity_avoidance_is_disabled(
     assert "poison" in terminal.result.correctness.error.message
 
 
-def test_compile_error_terminal_feeds_verdict_cache(store, settings, clock,
+def test_shape_dependent_compile_error_is_not_reused_for_other_inputs(store, settings, clock,
                                                     make_command):
     from triton_evaluation import verdict_cache
 
+    settings = settings.model_copy(update={"cann_fingerprint": "cann-test"})
     result = make_completed_result(settings)
     result.correctness.data.outcome = "compile_error"
     result.correctness.data.passed = False
@@ -612,7 +612,8 @@ def test_compile_error_terminal_feeds_verdict_cache(store, settings, clock,
         request["kernel_code"], request.get("triton_impl_name", "triton_ascend_impl"),
         settings.cann_fingerprint,
     )
-    assert verdict_cache.get(store, digest) == "compile_error"
+    assert digest is not None
+    assert verdict_cache.get(store, digest) is None
 
 
 def test_correct_terminal_does_not_feed_cache(store, settings, clock, make_command):

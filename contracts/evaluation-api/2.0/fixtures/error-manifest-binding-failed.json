@@ -1,1 +1,0 @@
-{"error":{"check":null,"code":"MANIFEST_BINDING_FAILED","message":"reference does not match the bound manifest entry","phase":"admission","retryable":false},"request_id":"rq_00000000000000000000000000000004","schema_version":"2.0"}

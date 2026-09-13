@@ -1,6 +1,6 @@
-"""Schema 2.0 strict request and error-envelope contract tests.
+"""Schema 2.1 strict request and error-envelope contract tests.
 
-These tests pin the frozen Evaluation API 2.0 request boundary: strict scalar
+These tests pin the frozen Evaluation API 2.1 request boundary: strict scalar
 types, no unknown fields, check/parameter/purpose coupling, UTF-8 byte limits,
 and rejection of nonstandard JSON constants.
 """
@@ -24,7 +24,7 @@ GRADE_CONTEXT = {
 
 def valid_request(**overrides):
     base = {
-        "schema_version": "2.0",
+        "schema_version": "2.1",
         "op_name": "addmm",
         "reference_code": "import torch\n\n\nclass Model:\n    pass\n",
         "kernel_code": "import torch\n\n\nclass ModelNew:\n    pass\n",
@@ -83,6 +83,7 @@ def test_grade_request_requires_and_accepts_grade_context():
         {"checks": ["correctness"], "profile": {"mode": "op"}},
         # purpose/context coupling
         {"purpose": "trial", "grade_context": GRADE_CONTEXT},
+        {"purpose": "rollout", "grade_context": GRADE_CONTEXT},
         {"purpose": "grade", "grade_context": None},
     ],
 )
@@ -188,7 +189,7 @@ def make_error_info(**overrides):
 def test_error_envelope_round_trip():
     envelope = ErrorEnvelope.model_validate(
         {
-            "schema_version": "2.0",
+            "schema_version": "2.1",
             "request_id": "rq_" + "0" * 32,
             "error": make_error_info(check="correctness"),
         }

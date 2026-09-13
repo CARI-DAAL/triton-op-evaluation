@@ -1,5 +1,8 @@
 # Kernel Eval Service(昇腾)优化设计
 
+> Historical design. The active interface and deployment decisions are specified
+> in [the v2.1 cutover](../../architecture/evaluations-v21-contract.md). Compatibility windows described below are retired.
+
 - **日期**:2026-09-03
 - **状态**:Draft(待用户审阅)
 - **范围**:`triton-op-evaluation` 服务演进;对外部《Kernel Agent Evaluation Sandbox》技术规格的对比分析结论一并收录
