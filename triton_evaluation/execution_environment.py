@@ -7,6 +7,7 @@ exactly one card, and the torch/torch-npu/triton versions are read with
 ``importlib.metadata`` inside the worker process. It never includes hostname,
 card serial numbers, source code, or request inputs.
 """
+
 import importlib.metadata
 
 from triton_evaluation.api.contract import ExecutionEnvironment
@@ -20,6 +21,11 @@ def _optional_version(distribution: str) -> str | None:
         return None
 
 
+def _triton_version() -> str | None:
+    """Prefer the canonical ``triton`` dist; Ascend deploys publish ``triton_ascend``."""
+    return _optional_version("triton") or _optional_version("triton_ascend")
+
+
 def build_execution_environment(settings: Settings) -> ExecutionEnvironment:
     """Assemble the worker environment from attested settings plus local packages."""
     return ExecutionEnvironment(
@@ -29,6 +35,6 @@ def build_execution_environment(settings: Settings) -> ExecutionEnvironment:
         runtime_version=settings.worker_runtime_version,
         torch_version=_optional_version("torch"),
         torch_npu_version=_optional_version("torch-npu"),
-        triton_version=_optional_version("triton"),
+        triton_version=_triton_version(),
         toolchain_version=settings.worker_toolchain_version,
     )
