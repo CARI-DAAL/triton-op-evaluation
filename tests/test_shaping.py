@@ -419,6 +419,22 @@ def test_profile_op_complete_shapes_kernels_and_counts():
     assert case.kernels[1].percentage == pytest.approx(20.0)
 
 
+def test_profile_op_kernel_metrics_normalize_scales_and_drop_invalid():
+    result = shape_profile(load("profile-op-complete.json"))
+    (case,) = result.cases
+    dominant, secondary = case.kernels
+    # Pipe ratios are captured as fractions and pass through unchanged.
+    assert dominant.metrics.aic_cube_ratio == pytest.approx(0.72)
+    # Memory/L2 columns are percentages and are normalized to fractions.
+    assert dominant.metrics.gm_to_ub_usage == pytest.approx(0.55)
+    assert dominant.metrics.ub_to_gm_usage == pytest.approx(0.18)
+    assert dominant.metrics.aiv_l2_hit == pytest.approx(0.41)
+    # Unparsable and out-of-range values stay None instead of failing the case.
+    assert dominant.metrics.aic_l2_hit is None
+    assert secondary.metrics.aiv_vec_ratio is None
+    assert secondary.metrics.aiv_mte2_ratio is None
+
+
 def test_profile_op_partial_and_failed_cases_carry_typed_errors():
     result = shape_profile(load("profile-op-partial.json"))
     assert isinstance(result, OpProfileResult)

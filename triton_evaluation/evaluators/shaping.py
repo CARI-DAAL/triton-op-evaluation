@@ -49,6 +49,7 @@ from ..api.contract import (
     InputShape,
     MeasurementMethod,
     OpKernel,
+    OpKernelMetrics,
     OpProfileCase,
     OpProfileResult,
     PerformanceCase,
@@ -655,6 +656,51 @@ def _case_error(code: str, detail: object) -> ErrorInfo:
     )
 
 
+# msprof pipe-utilization columns are fractions; Memory.csv / L2Cache.csv
+# usage-rate and hit-rate columns are percentages. The contract exposes both
+# as fractions in [0, 1]; anything unparsable or out of range stays None.
+_PIPE_FRACTION_METRICS = (
+    "aic_cube_ratio",
+    "aic_mte2_ratio",
+    "aic_fixpipe_ratio",
+    "aiv_vec_ratio",
+    "aiv_mte2_ratio",
+    "aiv_mte3_ratio",
+)
+_PERCENT_FRACTION_METRICS = (
+    "gm_to_l1_usage",
+    "l0c_to_gm_usage",
+    "gm_to_ub_usage",
+    "ub_to_gm_usage",
+    "aic_l2_hit",
+    "aiv_l2_hit",
+)
+
+
+def _metric_fraction(value: object, *, scale: float) -> float | None:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    fraction = float(value) * scale
+    if not 0.0 <= fraction <= 1.0:
+        return None
+    return fraction
+
+
+def _kernel_metrics(kernel: _OpKernelRaw) -> OpKernelMetrics:
+    raw = kernel.metrics
+    fields: dict[str, float | None] = {
+        name: _metric_fraction(raw.get(name), scale=1.0)
+        for name in _PIPE_FRACTION_METRICS
+    }
+    fields.update(
+        {
+            name: _metric_fraction(raw.get(name), scale=1.0 / 100.0)
+            for name in _PERCENT_FRACTION_METRICS
+        }
+    )
+    return OpKernelMetrics(**fields)
+
+
 def _op_kernels(case: _ProfileCase) -> list[OpKernel]:
     durations: list[float] = []
     for kernel in case.kernels:
@@ -670,6 +716,7 @@ def _op_kernels(case: _ProfileCase) -> list[OpKernel]:
             op_name=kernel.name,
             time_ms=kernel.duration_us / 1000.0,
             percentage=kernel.duration_us / total * 100.0,
+            metrics=_kernel_metrics(kernel),
         )
         for kernel in case.kernels
     ]
