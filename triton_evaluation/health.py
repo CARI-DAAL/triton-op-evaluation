@@ -7,9 +7,11 @@ deliberately never automatic. All torch/triton imports are lazy; hardware
 actions only execute on NPU hosts. CardHealth owns the state and
 retry timing; callers never coordinate individual recovery rungs.
 """
+
 from __future__ import annotations
 
 import gc
+import linecache
 import logging
 import os
 import signal
@@ -81,8 +83,7 @@ class CardHealth:
         if (
             was_drained
             and self._last_probe_ms is not None
-            and self._clock() - self._last_probe_ms
-            < self._settings.canary_interval_seconds * 1000
+            and self._clock() - self._last_probe_ms < self._settings.canary_interval_seconds * 1000
         ):
             return False
         if self._probe():
@@ -98,9 +99,7 @@ class CardHealth:
                 budget_seconds=self._settings.canary_budget_seconds,
             )
         except Exception as error:  # noqa: BLE001 — unavailable is not healthy
-            logger.warning(
-                "card %s canary failed (%s)", self._device_id, type(error).__name__
-            )
+            logger.warning("card %s canary failed (%s)", self._device_id, type(error).__name__)
             healthy = False
         self._bump("card_canary_total", outcome="pass" if healthy else "fail")
         if healthy:
@@ -113,7 +112,8 @@ class CardHealth:
         if self._metrics is not None:
             try:
                 self._metrics.set_gauge(
-                    "card_health_state", {"card": str(self._device_id)},
+                    "card_health_state",
+                    {"card": str(self._device_id)},
                     value=0 if healthy else 1,
                 )
             except Exception as error:  # noqa: BLE001 — metrics cannot gate recovery
@@ -124,21 +124,23 @@ class CardHealth:
         now_ms = self._clock()
         if (
             self._last_recovery_ms is not None
-            and now_ms - self._last_recovery_ms
-            < self._settings.card_recovery_retry_seconds * 1000
+            and now_ms - self._last_recovery_ms < self._settings.card_recovery_retry_seconds * 1000
         ):
             return
         self._last_recovery_ms = now_ms
         for step in range(1, self._settings.card_recovery_max_step + 1):
             try:
                 name = self._recovery_step(
-                    step, card=self._device_id,
+                    step,
+                    card=self._device_id,
                     reset_command=self._settings.card_reset_command,
                 )
             except Exception as error:  # noqa: BLE001 — a failed rung escalates
                 logger.warning(
                     "card %s recovery step %s failed (%s)",
-                    self._device_id, step, type(error).__name__,
+                    self._device_id,
+                    step,
+                    type(error).__name__,
                 )
                 name = None
             if name is not None:
@@ -155,7 +157,7 @@ class CardHealth:
             logger.warning("metrics write failed (%s)", type(error).__name__)
 
 
-CANARY_ADD_KERNEL = '''
+CANARY_ADD_KERNEL = """
 import torch
 import triton
 import triton.language as tl
@@ -176,11 +178,32 @@ class ModelNew(torch.nn.Module):
         grid = lambda meta: (triton.cdiv(n, meta["BLOCK_SIZE"]),)
         _canary_add_kernel[grid](x, y, output, n, BLOCK_SIZE=1024)
         return output
-'''
+"""
 
 
 class CanaryBudgetExceeded(TimeoutError):
     pass
+
+
+def _canary_namespace() -> dict:
+    """Make generated source discoverable by Triton's inspect-based JIT.
+
+    Triton's ``@triton.jit`` reads kernel source through ``inspect.getsource``;
+    for a string-compiled canary that lookup fails unless the source is first
+    registered in ``linecache``. Without this, every card's canary raises
+    OSError during startup and the instance never becomes ready on Ascend
+    deployments (re-applies the fix 661bde5 that the health refactor dropped).
+    """
+    filename = "<triton-eval-canary>"
+    linecache.cache[filename] = (
+        len(CANARY_ADD_KERNEL),
+        None,
+        CANARY_ADD_KERNEL.splitlines(keepends=True),
+        filename,
+    )
+    namespace: dict = {}
+    exec(compile(CANARY_ADD_KERNEL, filename, "exec"), namespace)
+    return namespace
 
 
 def _cleanup_in_process() -> None:
@@ -214,8 +237,7 @@ def run_canary(*, device_id: int, budget_seconds: int) -> bool:
     signal.setitimer(signal.ITIMER_REAL, budget_seconds)
     try:
         torch.npu.set_device(0)  # pinned to the card via ASCEND_RT_VISIBLE_DEVICES
-        namespace: dict = {}
-        exec(compile(CANARY_ADD_KERNEL, "<canary>", "exec"), namespace)
+        namespace = _canary_namespace()
         model = namespace["ModelNew"]().npu()
         x = torch.randn(1024, device="npu")
         y = torch.randn(1024, device="npu")
@@ -241,8 +263,7 @@ def run_recovery_step(step: int, *, card: int, reset_command: str) -> str:
     if step == 2:
         if reset_command:
             command = reset_command.replace("{card}", str(card))
-            subprocess.run(command, shell=True, timeout=120, check=False,
-                           capture_output=True)
+            subprocess.run(command, shell=True, timeout=120, check=False, capture_output=True)
         return "reset"
     os.execv(sys.executable, [sys.executable, *sys.argv])
     raise AssertionError("unreachable after execv")
