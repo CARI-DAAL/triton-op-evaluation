@@ -1,49 +1,66 @@
 {
-  "profile_mode": "op",
-  "requested_case_idx": null,
-  "total_cases": 1,
-  "selected_cases": 1,
-  "completed_cases": 1,
-  "partial_cases": 0,
-  "failed_cases": 0,
-  "remaining_case_indices": [],
-  "timed_out": false,
-  "summary_text": "profile mode=op: complete=1, partial=0, failed=0, remaining=0",
-  "warnings": [],
-  "wallclock_sec": 12.5,
-  "per_case_results": [
+ "profile_mode": "op",
+ "requested_case_idx": null,
+ "total_cases": 1,
+ "selected_cases": 1,
+ "completed_cases": 1,
+ "partial_cases": 0,
+ "failed_cases": 0,
+ "remaining_case_indices": [],
+ "timed_out": false,
+ "summary_text": "profile mode=op: complete=1, partial=0, failed=0, remaining=0",
+ "warnings": [],
+ "wallclock_sec": 12.5,
+ "per_case_results": [
+  {
+   "status": "complete",
+   "target_kernel": "addmm_kernel",
+   "target_selection_metric": "OpBasicInfo",
+   "kernels": [
     {
-      "status": "complete",
-      "target_kernel": "addmm_kernel",
-      "target_selection_metric": "OpBasicInfo",
-      "kernels": [
-        {
-          "name": "addmm_kernel",
-          "op_type": "vector",
-          "duration_us": 400.0,
-          "metrics": {"task_duration_us": 400.0, "aiv_vec_ratio": 0.6},
-          "missing_metrics": []
-        },
-        {
-          "name": "bias_add",
-          "op_type": "vector",
-          "duration_us": 100.0,
-          "metrics": {"task_duration_us": 100.0, "aiv_vec_ratio": 0.4},
-          "missing_metrics": []
-        }
-      ],
-      "raw_metrics": {},
-      "bound": null,
-      "per_core": null,
-      "recommendations": [],
-      "missing_metrics": [],
-      "warnings": [],
-      "error": null,
-      "case_idx": 0,
-      "input_desc": [
-        {"type": "tensor", "shape": [16], "dtype": "torch.float32"}
-      ],
-      "msprof_wallclock_sec": 12.5
+     "name": "addmm_kernel",
+     "op_type": "vector",
+     "duration_us": 400.0,
+     "metrics": {
+      "task_duration_us": 400.0,
+      "aiv_vec_ratio": 0.6,
+      "aic_cube_ratio": 0.72,
+      "gm_to_ub_usage": 55.0,
+      "ub_to_gm_usage": 18.0,
+      "aiv_l2_hit": 41.0,
+      "aic_l2_hit": "NA"
+     },
+     "missing_metrics": []
+    },
+    {
+     "name": "bias_add",
+     "op_type": "vector",
+     "duration_us": 100.0,
+     "metrics": {
+      "task_duration_us": 100.0,
+      "aiv_vec_ratio": 7.5
+     },
+     "missing_metrics": []
     }
-  ]
+   ],
+   "raw_metrics": {},
+   "bound": null,
+   "per_core": null,
+   "recommendations": [],
+   "missing_metrics": [],
+   "warnings": [],
+   "error": null,
+   "case_idx": 0,
+   "input_desc": [
+    {
+     "type": "tensor",
+     "shape": [
+      16
+     ],
+     "dtype": "torch.float32"
+    }
+   ],
+   "msprof_wallclock_sec": 12.5
+  }
+ ]
 }

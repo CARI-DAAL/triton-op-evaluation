@@ -450,10 +450,34 @@ class ProfileCounts(StrictModel):
         return self
 
 
+class OpKernelMetrics(StrictModel):
+    """Per-kernel utilization ratios from the ``msprof op`` capture.
+
+    All values are fractions in [0, 1]. Pipe-utilization ratios are captured
+    as fractions by msprof; memory-bandwidth usage and L2 hit rates are
+    captured as percentages and normalized to fractions. A metric the capture
+    did not emit stays ``None``.
+    """
+
+    aic_cube_ratio: float | None = Field(default=None, ge=0, le=1)
+    aic_mte2_ratio: float | None = Field(default=None, ge=0, le=1)
+    aic_fixpipe_ratio: float | None = Field(default=None, ge=0, le=1)
+    aiv_vec_ratio: float | None = Field(default=None, ge=0, le=1)
+    aiv_mte2_ratio: float | None = Field(default=None, ge=0, le=1)
+    aiv_mte3_ratio: float | None = Field(default=None, ge=0, le=1)
+    gm_to_l1_usage: float | None = Field(default=None, ge=0, le=1)
+    l0c_to_gm_usage: float | None = Field(default=None, ge=0, le=1)
+    gm_to_ub_usage: float | None = Field(default=None, ge=0, le=1)
+    ub_to_gm_usage: float | None = Field(default=None, ge=0, le=1)
+    aic_l2_hit: float | None = Field(default=None, ge=0, le=1)
+    aiv_l2_hit: float | None = Field(default=None, ge=0, le=1)
+
+
 class OpKernel(StrictModel):
     op_name: str
     time_ms: Annotated[float, Field(ge=0)]
     percentage: Annotated[float, Field(ge=0)]
+    metrics: OpKernelMetrics = Field(default_factory=OpKernelMetrics)
 
 
 class OpProfileCase(StrictModel):

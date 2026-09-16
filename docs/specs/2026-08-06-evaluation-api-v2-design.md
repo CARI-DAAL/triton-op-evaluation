@@ -540,6 +540,24 @@ class OpKernel(StrictModel):
     op_name: str
     time_ms: float
     percentage: float
+    metrics: OpKernelMetrics = Field(default_factory=OpKernelMetrics)
+
+class OpKernelMetrics(StrictModel):
+    # msprof op 采集的逐 kernel 利用率,统一为 [0, 1] 分数:
+    # pipe 比率原样(采集即为分数),Memory/L2 带宽与命中率列名带 (%),
+    # 归一为分数;采集未产出的指标保持 None。
+    aic_cube_ratio: float | None = None
+    aic_mte2_ratio: float | None = None
+    aic_fixpipe_ratio: float | None = None
+    aiv_vec_ratio: float | None = None
+    aiv_mte2_ratio: float | None = None
+    aiv_mte3_ratio: float | None = None
+    gm_to_l1_usage: float | None = None
+    l0c_to_gm_usage: float | None = None
+    gm_to_ub_usage: float | None = None
+    ub_to_gm_usage: float | None = None
+    aic_l2_hit: float | None = None
+    aiv_l2_hit: float | None = None
 
 class OpProfileCase(StrictModel):
     case_idx: int

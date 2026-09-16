@@ -814,6 +814,40 @@ def test_op_kernel_rejects_negative_or_non_finite_values(kernel):
         OpKernel.model_validate(kernel)
 
 
+def test_op_kernel_metrics_are_optional_fraction_fields():
+    # Kernels without metrics (older producers) still parse.
+    bare = OpKernel.model_validate({"op_name": "k", "time_ms": 1.0, "percentage": 100.0})
+    assert bare.metrics.aic_cube_ratio is None
+    full = OpKernel.model_validate(
+        {
+            "op_name": "k",
+            "time_ms": 1.0,
+            "percentage": 100.0,
+            "metrics": {"aiv_vec_ratio": 0.5, "gm_to_ub_usage": None},
+        }
+    )
+    assert full.metrics.aiv_vec_ratio == 0.5
+    assert full.metrics.gm_to_ub_usage is None
+    with pytest.raises(ValidationError):
+        OpKernel.model_validate(
+            {
+                "op_name": "k",
+                "time_ms": 1.0,
+                "percentage": 100.0,
+                "metrics": {"aic_cube_ratio": 1.5},
+            }
+        )
+    with pytest.raises(ValidationError):
+        OpKernel.model_validate(
+            {
+                "op_name": "k",
+                "time_ms": 1.0,
+                "percentage": 100.0,
+                "metrics": {"unknown_ratio": 0.5},
+            }
+        )
+
+
 def test_deep_profile_counts_and_ratios():
     assert DeepProfileResult.model_validate(deep_profile_payload()).counts.partial == 1
     payload = deep_profile_payload()
