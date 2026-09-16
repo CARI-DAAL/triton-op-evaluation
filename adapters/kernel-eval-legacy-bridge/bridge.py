@@ -41,7 +41,6 @@ import time
 from pathlib import Path
 
 from aiohttp import ClientSession, ClientTimeout, web
-
 from legacy_contract import (
     EvalBudgetRegistry,
     envelope,

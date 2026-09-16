@@ -19,11 +19,11 @@ from pathlib import Path
 HERE = Path(__file__).parent
 sys.path.insert(0, str(HERE))
 
-import legacy_contract as lc  # noqa: E402
-
 # The ORIGINAL modules, vendored verbatim (Apache-2.0, see reference/
 # kernel-agent-52affcb9/LICENSE) and loaded by file path.
 from importlib.util import module_from_spec, spec_from_file_location  # noqa: E402
+
+import legacy_contract as lc  # noqa: E402
 
 _AGENT_ROOT = HERE / "reference" / "kernel-agent-52affcb9"
 
@@ -159,7 +159,7 @@ def test_v21_mapping() -> None:
     check(
         "verify_correct_envelope",
         obs.splitlines()[:5],
-        ["[kernel_eval]", f"action=verify", f"artifact_sha256={SHA}",
+        ["[kernel_eval]", "action=verify", f"artifact_sha256={SHA}",
          "eval_budget=1/18", "request_status=completed"],
     )
 
@@ -431,9 +431,8 @@ def resource(result: dict, state: str = "completed") -> dict:
 
 
 async def run_adapter_e2e() -> None:
-    from aiohttp import ClientSession, web
-
     import bridge as bridge_mod
+    from aiohttp import ClientSession, web
 
     correctness = {"status": "succeeded", "data": {
         "outcome": "correct", "passed": True,
