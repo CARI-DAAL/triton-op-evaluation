@@ -23,6 +23,7 @@ Shaping rules enforced here (design sections 4.2-4.5 and 5):
 * performance is recomputed from per-case measurements (never the engine
   aggregate) under ``geometric_mean_v1``.
 """
+
 import math
 import re
 from typing import Annotated, Literal
@@ -80,6 +81,27 @@ _PATH_TOKEN = re.compile(r"(?<!\S)/\S+")
 
 class ShapingError(ValueError):
     """An engine result cannot satisfy the stable v2 contract."""
+
+
+class UnattributedFailure(ShapingError):
+    """A case failed in a way the engine protocol cannot attribute.
+
+    The engine records non-accuracy case failures (framework-side crashes,
+    device errors, output-flattening TypeErrors) as ``kind=None`` with no
+    ``candidate_error``. That is not a protocol violation by the engine —
+    the private protocol simply has no attribution for them — so the caller
+    must project the check as a retryable measurement error instead of an
+    invalid engine output. Carries one bounded, single-line diagnostic so
+    the evaluation response remains debuggable.
+    """
+
+    def __init__(self, detail: str) -> None:
+        super().__init__("correctness result carries an unattributed failure")
+        # The detail flows into an ErrorInfo message (single line, no raw
+        # paths, bounded UTF-8); the engine's error_msg is none of those.
+        single_line = " ".join(detail.split())
+        single_line = _PATH_TOKEN.sub("<path>", single_line)
+        self.detail = single_line[:MAX_MESSAGE_BYTES]
 
 
 _SHAPING_METRICS = None  # optional RedisMetrics; wired by the deployment
@@ -358,8 +380,11 @@ def shape_correctness(raw: dict[str, object], decoy: bool) -> CorrectnessResult:
     failures = result.failures
     attributed = [f for f in failures if f.candidate_error is not None]
     mismatches = [f for f in failures if f.candidate_error is None]
-    if any(f.kind is None for f in mismatches):
-        raise ShapingError("correctness result carries an unattributed failure")
+    unattributed = [f for f in mismatches if f.kind is None]
+    if unattributed:
+        first = unattributed[0]
+        detail = f"{first.error_type or 'unknown'}: {first.error_msg or 'no message'}"
+        raise UnattributedFailure(detail)
 
     outcome = None
     domain_failure = None
@@ -367,15 +392,11 @@ def shape_correctness(raw: dict[str, object], decoy: bool) -> CorrectnessResult:
         phases = {f.candidate_error.phase for f in attributed}
         if "compile" in phases:
             if phases != {"compile"} or mismatches:
-                raise ShapingError(
-                    "compile attribution cannot mix with case results"
-                )
+                raise ShapingError("compile attribution cannot mix with case results")
             outcome = "compile_error"
         else:
             if len(attributed) != 1 or attributed[0] is not failures[-1]:
-                raise ShapingError(
-                    "candidate attribution must terminate the case sequence"
-                )
+                raise ShapingError("candidate attribution must terminate the case sequence")
             phase = attributed[0].candidate_error.phase
             outcome = "execution_timeout" if phase == "execution_timeout" else "runtime_error"
         domain_failure = _domain_failure(attributed)
@@ -530,9 +551,7 @@ def shape_performance(raw: dict[str, object]) -> PerformanceResult:
             selected_cases=selected,
             measured_cases=len(per_case),
             coverage=len(per_case) / selected,
-            measurement_method=(
-                result.measurement_method if per_case else None
-            ),
+            measurement_method=(result.measurement_method if per_case else None),
             per_case=per_case,
             unmeasured_cases=unmeasured,
         ),
@@ -615,9 +634,7 @@ class _ProfileEnvelope(StrictModel):
             raise ValueError("engine timeouts are check outcomes, not profile data")
         if self.remaining_case_indices:
             raise ValueError("a finished profile has no remaining cases")
-        if self.selected_cases != self.completed_cases + self.partial_cases + (
-            self.failed_cases
-        ):
+        if self.selected_cases != self.completed_cases + self.partial_cases + (self.failed_cases):
             raise ValueError("selected count must equal the status sum")
         if self.selected_cases != len(self.per_case_results):
             raise ValueError("selected count must equal the number of case results")
@@ -689,8 +706,7 @@ def _metric_fraction(value: object, *, scale: float) -> float | None:
 def _kernel_metrics(kernel: _OpKernelRaw) -> OpKernelMetrics:
     raw = kernel.metrics
     fields: dict[str, float | None] = {
-        name: _metric_fraction(raw.get(name), scale=1.0)
-        for name in _PIPE_FRACTION_METRICS
+        name: _metric_fraction(raw.get(name), scale=1.0) for name in _PIPE_FRACTION_METRICS
     }
     fields.update(
         {
@@ -743,9 +759,7 @@ def _op_case(case: _ProfileCase) -> OpProfileCase:
             kernels=kernels,
             error=_case_error("PROFILE_CASE_PARTIAL", detail),
         )
-    return OpProfileCase(
-        case_idx=case.case_idx, status="complete", kernels=kernels, error=None
-    )
+    return OpProfileCase(case_idx=case.case_idx, status="complete", kernels=kernels, error=None)
 
 
 def _spread_ratio(per_core: dict[str, object]) -> float:
@@ -785,11 +799,7 @@ def _deep_case(case: _ProfileCase) -> DeepProfileCase:
             raise ShapingError("failed profile case must explain the failure")
         error = _case_error("PROFILE_CASE_FAILED", case.error)
     elif case.status == "partial":
-        error = (
-            _case_error("PROFILE_CASE_PARTIAL", case.error)
-            if case.error is not None
-            else None
-        )
+        error = _case_error("PROFILE_CASE_PARTIAL", case.error) if case.error is not None else None
     else:
         if case.error is not None:
             raise ShapingError("complete profile case must not carry an error")

@@ -1,0 +1,24 @@
+{
+  "op_name": "addmm",
+  "total_cases": 2,
+  "passed_cases": 1,
+  "failed_cases": 1,
+  "failures": [
+    {
+      "case_idx": 2,
+      "input_desc": [
+        {
+          "type": "tensor",
+          "shape": [
+            4
+          ],
+          "dtype": "torch.float32"
+        }
+      ],
+      "error_type": "AssertionError",
+      "error_msg": "engine emitted an unmapped divergence kind",
+      "kind": "unmapped_failure_kind",
+      "sample": []
+    }
+  ]
+}
