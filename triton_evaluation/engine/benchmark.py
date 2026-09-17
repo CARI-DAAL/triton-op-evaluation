@@ -33,6 +33,7 @@ from dataclasses import dataclass, field
 # 确保同目录下的 _log_utils 可被导入（脚本可能从其他工作目录调用）
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from _log_utils import setup_logger as _setup_logger_shared  # noqa: E402	 
+from _common_utils import build_input_groups as _build_input_groups_shared  # noqa: E402
 from _common_utils import describe_input as _describe_input_shared  # noqa: E402
 from _common_utils import enforce_conv_fp32 as _enforce_conv_fp32  # noqa: E402
 from _common_utils import set_process_title as _set_process_title  # noqa: E402
@@ -265,7 +266,7 @@ def resolve_inputs(op_name: str, verify_dir: str):
     torch_module = importlib.import_module(f"{op_name}_torch")
 
     if hasattr(torch_module, "get_input_groups"):
-        return torch_module.get_input_groups()
+        return _build_input_groups_shared(torch_module)
     elif hasattr(torch_module, "get_inputs"):
         return [torch_module.get_inputs()]
     else:

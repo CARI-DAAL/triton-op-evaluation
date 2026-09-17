@@ -149,6 +149,7 @@ class InputSpec:
 # 确保同目录下的 _log_utils 可被导入（脚本可能从其他工作目录调用）
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from _log_utils import setup_logger as _setup_logger_shared  # noqa: E402	 
+from _common_utils import build_input_groups as _build_input_groups_shared  # noqa: E402
 from _common_utils import describe_input as _describe_input_shared  # noqa: E402
 from _common_utils import enforce_conv_fp32 as _enforce_conv_fp32  # noqa: E402
 from _common_utils import set_process_title as _set_process_title  # noqa: E402
@@ -438,35 +439,16 @@ def _infer_input_type(inputs):
     return input_type, top_dtype
 
 
-def _build_input_groups(torch_module):
-    """构造输入组；必要时切换到 NPU 环境上下文重试。
-
-    部分 reference 用「NPU 有 kernel、CPU 无 kernel」的算子/精度组合声明输入
-    （例如 torch.randn(shape, dtype=torch.int32)：torch_npu 在 NPU 上实现了整型
-    normal，CPU 侧抛 NotImplementedError("normal_kernel_cpu")）。沙箱阶段的验证
-    以 NPU 为环境设备运行，这类 reference 可正常构造输入；因此首次构造抛
-    NotImplementedError 时，改用 NPU 默认设备重试，而不是让整个评测失败。
-    """
-    try:
-        return torch_module.get_input_groups()
-    except NotImplementedError:
-        import torch
-
-        logger.info("输入构造在 CPU 上下文不可用，切换到 NPU 默认设备重试")
-        torch.set_default_device("npu")
-        return torch_module.get_input_groups()
-
-
 def resolve_input_provider(torch_module):
     """解析任务文件的输入提供方式。"""
     if hasattr(torch_module, "get_input_groups"):
-        groups = _build_input_groups(torch_module)
+        groups = _build_input_groups_shared(torch_module)
         return groups, len(groups)
     elif hasattr(torch_module, "get_inputs"):
         return [torch_module.get_inputs()], 1
     else:
         raise AttributeError(
-            f"模块必须提供 get_inputs() 或 get_input_groups() 方法"
+            "模块必须提供 get_inputs() 或 get_input_groups() 方法"
         )
 
 

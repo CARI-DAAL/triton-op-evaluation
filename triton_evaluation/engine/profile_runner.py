@@ -79,10 +79,28 @@ def build_runner_source() -> str:
                 torch.npu.manual_seed_all(0)
 
 
+        def build_input_groups(torch_module, torch):
+            """构造参考实现的输入组；CPU 缺 kernel 时切到 NPU 上下文重试。
+
+            部分 reference 用「NPU 有 kernel、CPU 无 kernel」的算子/精度组合声明
+            输入（例如 torch.randn(shape, dtype=torch.int32)：torch_npu 在 NPU 上
+            实现了整型 normal，CPU 侧抛 NotImplementedError）。沙箱阶段的验证以
+            NPU 为环境设备运行，这类 reference 可正常构造输入，因此首次构造失败
+            时改用 NPU 默认设备重试，而不是让整个评测失败。本函数随生成的 runner
+            源码一起下发，故与 engine 包内的同名工具各自独立。
+            """
+            try:
+                return torch_module.get_input_groups()
+            except NotImplementedError:
+                print("input construction unavailable on CPU; retrying on NPU")
+                torch.set_default_device("npu")
+                return torch_module.get_input_groups()
+
+
         def resolve_groups(reference, torch):
             seed(torch)
             if hasattr(reference, "get_input_groups"):
-                groups = list(reference.get_input_groups())
+                groups = list(build_input_groups(reference, torch))
                 if not groups:
                     raise RuntimeError("get_input_groups() returned no cases")
             elif hasattr(reference, "get_inputs"):

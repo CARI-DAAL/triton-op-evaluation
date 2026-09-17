@@ -107,3 +107,29 @@ def set_process_title(title: str) -> None:
         )
     except Exception:
         pass
+
+
+def build_input_groups(torch_module: Any) -> List[Any]:
+    """构造 reference 的输入组；CPU 缺 kernel 时切到 NPU 上下文重试。
+
+    部分 reference 用「NPU 有 kernel、CPU 无 kernel」的算子/精度组合声明输入
+    （例如 torch.randn(shape, dtype=torch.int32)：torch_npu 在 NPU 上实现了整型
+    normal，CPU 侧抛 NotImplementedError("normal_kernel_cpu")）。沙箱阶段的验证
+    以 NPU 为环境设备运行，这类 reference 可正常构造输入；因此构造抛
+    NotImplementedError 时改用 NPU 默认设备重试，而不是让整个评测失败。
+
+    只对 NotImplementedError 重试：其它异常（reference 本身写错等）保持原样
+    上抛，重试也不会掩盖真错误。
+    """
+    try:
+        return torch_module.get_input_groups()
+    except NotImplementedError:
+        import logging
+
+        logging.getLogger("triton_op_verifier").info(
+            "输入构造在 CPU 上下文不可用，切换到 NPU 默认设备重试"
+        )
+        import torch
+
+        torch.set_default_device("npu")
+        return torch_module.get_input_groups()
