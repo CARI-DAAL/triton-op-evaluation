@@ -149,6 +149,7 @@ class InputSpec:
 # 确保同目录下的 _log_utils 可被导入（脚本可能从其他工作目录调用）
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from _log_utils import setup_logger as _setup_logger_shared  # noqa: E402	 
+from _common_utils import build_input_groups as _build_input_groups_shared  # noqa: E402
 from _common_utils import describe_input as _describe_input_shared  # noqa: E402
 from _common_utils import enforce_conv_fp32 as _enforce_conv_fp32  # noqa: E402
 from _common_utils import set_process_title as _set_process_title  # noqa: E402
@@ -441,13 +442,13 @@ def _infer_input_type(inputs):
 def resolve_input_provider(torch_module):
     """解析任务文件的输入提供方式。"""
     if hasattr(torch_module, "get_input_groups"):
-        groups = torch_module.get_input_groups()
+        groups = _build_input_groups_shared(torch_module)
         return groups, len(groups)
     elif hasattr(torch_module, "get_inputs"):
         return [torch_module.get_inputs()], 1
     else:
         raise AttributeError(
-            f"模块必须提供 get_inputs() 或 get_input_groups() 方法"
+            "模块必须提供 get_inputs() 或 get_input_groups() 方法"
         )
 
 

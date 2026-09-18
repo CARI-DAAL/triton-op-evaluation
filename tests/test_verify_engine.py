@@ -392,3 +392,71 @@ def test_first_launch_compilation_error_is_attributed_compile(tmp_path, monkeypa
     assert failure["candidate_error"]["phase"] == "compile"
     assert failure["error_type"] == "_CandidateCompileError"
     assert "CompilationError" in failure["error_msg"]
+
+
+def test_input_groups_retry_on_npu_context_when_cpu_lacks_kernel(monkeypatch):
+    """References may declare inputs with NPU-only op/dtype combinations.
+
+    torch.randn(shape, dtype=torch.int32) has no CPU kernel; torch_npu
+    implements it on the NPU. The sandbox verification ran with the NPU as the
+    ambient device, so such a reference resolved its inputs there. Constructing
+    on CPU must not void the whole evaluation: retry in the NPU context.
+    """
+    calls = []
+    default_devices = []
+
+    class _Module:
+        def get_input_groups(self):
+            calls.append(None)
+            if len(calls) == 1:
+                raise NotImplementedError("normal_kernel_cpu not implemented for 'Int'")
+            return [[1], [2], [3]]
+
+    torch = _fake_torch_module()
+    torch.set_default_device = lambda name: default_devices.append(name)
+    monkeypatch.setitem(sys.modules, "torch", torch)
+
+    groups, total = verify.resolve_input_provider(_Module())
+
+    assert total == 3
+    assert groups == [[1], [2], [3]]
+    assert len(calls) == 2
+    assert default_devices == ["npu"]
+
+
+def test_input_groups_single_attempt_when_cpu_construction_succeeds(monkeypatch):
+    """The NPU retry stays a fallback: the common path runs exactly once."""
+    calls = []
+
+    class _Module:
+        def get_input_groups(self):
+            calls.append(None)
+            return [[1], [2]]
+
+    torch = _fake_torch_module()
+    torch.set_default_device = lambda name: pytest.fail("must not switch devices")
+    monkeypatch.setitem(sys.modules, "torch", torch)
+
+    groups, total = verify.resolve_input_provider(_Module())
+
+    assert (groups, total) == ([[1], [2]], 2)
+    assert len(calls) == 1
+
+
+def test_input_groups_other_errors_are_not_retried(monkeypatch):
+    """Only the missing-CPU-kernel signal triggers the NPU retry."""
+    calls = []
+
+    class _Module:
+        def get_input_groups(self):
+            calls.append(None)
+            raise ValueError("reference is malformed")
+
+    torch = _fake_torch_module()
+    torch.set_default_device = lambda name: pytest.fail("must not switch devices")
+    monkeypatch.setitem(sys.modules, "torch", torch)
+
+    with pytest.raises(ValueError, match="reference is malformed"):
+        verify.resolve_input_provider(_Module())
+
+    assert len(calls) == 1
