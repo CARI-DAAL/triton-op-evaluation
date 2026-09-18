@@ -16,7 +16,7 @@ import sys
 import textwrap
 from pathlib import Path
 
-from triton_evaluation.evaluators.verify import _COUNT_SNIPPET
+from triton_evaluation.evaluators.verify import _COUNT_RESULT_PREFIX, _COUNT_SNIPPET
 
 _HAS_TORCH_NPU = importlib.util.find_spec("torch_npu") is not None
 
@@ -32,8 +32,26 @@ def _run_snippet(tmp_path: Path, reference_source: str) -> subprocess.CompletedP
     )
 
 
+def _extract_count(stdout: str) -> int:
+    """The evaluator's parse rule, kept in lockstep with the implementation."""
+    marked = [line for line in stdout.splitlines() if line.startswith(_COUNT_RESULT_PREFIX)]
+    return json.loads(marked[-1][len(_COUNT_RESULT_PREFIX) :])["total_cases"]
+
+
 def test_snippet_is_valid_python():
     compile(_COUNT_SNIPPET, "<count-snippet>", "exec")
+
+
+def test_result_line_survives_cann_stdout_noise():
+    """CANN device init writes 'path string is NULL' noise to STDOUT, and it
+    lands AFTER the result line when the NPU retry runs. The sentinel scan
+    must find the result wherever the noise falls."""
+    stdout = (
+        "path string is NULL\n"
+        f'{_COUNT_RESULT_PREFIX}{{"total_cases": 50}}\n'
+        "path string is NULLpath string is NULL"
+    )
+    assert _extract_count(stdout) == 50
 
 
 def test_snippet_counts_plain_reference(tmp_path):
@@ -45,7 +63,7 @@ def test_snippet_counts_plain_reference(tmp_path):
         """,
     )
     assert result.returncode == 0, result.stderr
-    assert json.loads(result.stdout.strip().splitlines()[-1]) == {"total_cases": 3}
+    assert _extract_count(result.stdout) == 3
 
 
 def test_snippet_counts_get_inputs_reference_as_one_case(tmp_path):
@@ -57,7 +75,7 @@ def test_snippet_counts_get_inputs_reference_as_one_case(tmp_path):
         """,
     )
     assert result.returncode == 0, result.stderr
-    assert json.loads(result.stdout.strip().splitlines()[-1]) == {"total_cases": 1}
+    assert _extract_count(result.stdout) == 1
 
 
 def test_snippet_without_provider_exits_nonzero(tmp_path):

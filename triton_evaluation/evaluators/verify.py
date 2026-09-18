@@ -5,6 +5,7 @@ whether the engine produced trustworthy private JSON. Outer subprocess
 timeouts, missing output, and ambiguous exits are infrastructure failures and
 never receive candidate attribution (design section 5).
 """
+
 import json
 import re
 import sys
@@ -43,6 +44,9 @@ _ENGINE_WATCHDOG_EXIT_CODE = 3
 _ENGINE_OUTER_GRACE_SECONDS = 60  # mirrors engine/verify.py OUTER_GRACE_SECONDS
 _KILL_MARGIN_SECONDS = 30
 
+_COUNT_RESULT_PREFIX = "COUNT_RESULT:"
+
+
 _COUNT_SNIPPET = (
     "import importlib.util, json, sys\n"
     "spec = importlib.util.spec_from_file_location('reference_module', sys.argv[1])\n"
@@ -63,7 +67,7 @@ _COUNT_SNIPPET = (
     "    total = 1\n"
     "else:\n"
     "    raise SystemExit('reference module provides no input provider')\n"
-    "print(json.dumps({'total_cases': total}))\n"
+    "print('COUNT_RESULT:' + json.dumps({'total_cases': total}))\n"
 )
 
 
@@ -96,19 +100,13 @@ class VerifyEvaluator:
     ) -> EngineCheckResult:
         materialize(request, work_dir)
         if remaining_seconds(deadline_at) <= 0:
-            return engine_timeout(
-                "correctness", "resource deadline expired before correctness ran"
-            )
+            return engine_timeout("correctness", "resource deadline expired before correctness ran")
 
-        verdict = self._decoy_verdict(
-            request, work_dir, device_id, deadline_at, lease_valid
-        )
+        verdict = self._decoy_verdict(request, work_dir, device_id, deadline_at, lease_valid)
         if isinstance(verdict, EngineCheckResult):
             return verdict
         if verdict:
-            return self._decoy_result(
-                request, work_dir, device_id, deadline_at, lease_valid
-            )
+            return self._decoy_result(request, work_dir, device_id, deadline_at, lease_valid)
         return self._run_verify(request, work_dir, device_id, deadline_at, lease_valid)
 
     def _decoy_verdict(
@@ -160,9 +158,7 @@ class VerifyEvaluator:
         """Resolve the trusted reference input count without running the candidate."""
         remaining = remaining_seconds(deadline_at)
         if remaining <= 0:
-            return engine_timeout(
-                "correctness", "resource deadline expired before case counting"
-            )
+            return engine_timeout("correctness", "resource deadline expired before case counting")
         stem = safe_module_stem(request)
         reference = Path(work_dir) / f"{stem}_torch.py"
         outcome = run_script(
@@ -176,23 +172,21 @@ class VerifyEvaluator:
         if outcome.outcome == "fenced":
             raise LeaseLostError("reference case counting lost its lease")
         if outcome.outcome == "resource_deadline":
-            return engine_timeout(
-                "correctness", "resource deadline expired during case counting"
-            )
+            return engine_timeout("correctness", "resource deadline expired during case counting")
         if outcome.timed_out:
             return engine_failure("correctness", "reference case counting timed out")
         try:
-            line = outcome.stdout.strip().splitlines()[-1]
-            payload = json.loads(line)
+            marked = [
+                line
+                for line in outcome.stdout.splitlines()
+                if line.startswith(_COUNT_RESULT_PREFIX)
+            ]
+            payload = json.loads(marked[-1][len(_COUNT_RESULT_PREFIX) :])
             count = payload["total_cases"]
         except (IndexError, ValueError, KeyError, TypeError):
-            return engine_failure(
-                "correctness", "reference input count resolution failed"
-            )
+            return engine_failure("correctness", "reference input count resolution failed")
         if not isinstance(count, int) or isinstance(count, bool) or count < 1:
-            return engine_failure(
-                "correctness", "reference input count resolution failed"
-            )
+            return engine_failure("correctness", "reference input count resolution failed")
         return count
 
     def _decoy_result(
@@ -203,9 +197,7 @@ class VerifyEvaluator:
         deadline_at,
         lease_valid,
     ) -> EngineCheckResult:
-        count = self._reference_case_count(
-            request, work_dir, device_id, deadline_at, lease_valid
-        )
+        count = self._reference_case_count(request, work_dir, device_id, deadline_at, lease_valid)
         if isinstance(count, EngineCheckResult):
             return count
         return EngineCheckResult(
@@ -222,9 +214,7 @@ class VerifyEvaluator:
     ) -> EngineCheckResult:
         remaining = remaining_seconds(deadline_at)
         if remaining <= 0:
-            return engine_timeout(
-                "correctness", "resource deadline expired before correctness ran"
-            )
+            return engine_timeout("correctness", "resource deadline expired before correctness ran")
         budget = max(1, min(int(remaining), self.budget_cap_seconds))
         out_path = Path(work_dir) / "verify_result.json"
         cmd = [
@@ -249,36 +239,27 @@ class VerifyEvaluator:
             device_id,
             deadline_at,
             lease_valid,
-            budget_seconds=(
-                budget + _ENGINE_OUTER_GRACE_SECONDS + _KILL_MARGIN_SECONDS
-            ),
+            budget_seconds=(budget + _ENGINE_OUTER_GRACE_SECONDS + _KILL_MARGIN_SECONDS),
         )
         if outcome.outcome == "fenced":
             raise LeaseLostError("verify engine lost its lease")
         if outcome.timed_out or remaining_seconds(deadline_at) <= 0:
             # The outer kill is ambiguous: never a candidate execution timeout.
-            return engine_timeout(
-                "correctness", "correctness exceeded the resource deadline"
-            )
+            return engine_timeout("correctness", "correctness exceeded the resource deadline")
         result = read_json(str(out_path))
         if outcome.exit_code == _ENGINE_WATCHDOG_EXIT_CODE:
             # Whole-run watchdog: the legitimate workload outgrew the budget.
             # Not a crash, never retryable — raise the budget cap or deadline.
-            log_engine_crash(
-                "verify", outcome, result_file_exists=isinstance(result, dict)
-            )
+            log_engine_crash("verify", outcome, result_file_exists=isinstance(result, dict))
             return engine_timeout(
                 "correctness",
                 "verify engine whole-run watchdog expired "
                 "(raise deadline or verify budget cap, or trim cases)",
             )
         if not isinstance(result, dict):
-            log_engine_crash(
-                "verify", outcome, result_file_exists=False
-            )
+            log_engine_crash("verify", outcome, result_file_exists=False)
             return engine_failure(
                 "correctness",
-                f"verify engine produced no usable result (engine exit="
-                f"{outcome.exit_code})",
+                f"verify engine produced no usable result (engine exit={outcome.exit_code})",
             )
         return EngineCheckResult(status="succeeded", raw=result, error=None)
