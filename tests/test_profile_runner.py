@@ -44,7 +44,9 @@ def _write_fake_runtime(root: Path):
         "def describe_input(inputs):\n"
         "    def safe(value):\n"
         "        return value if isinstance(value, (int, float, str, bool)) else repr(value)\n"
-        "    return [{'type': 'scalar', 'value': safe(value)} for value in inputs]\n",
+        "    return [{'type': 'scalar', 'value': safe(value)} for value in inputs]\n"
+        "def ensure_npu_ambient_device(torch):\n"
+        "    return False\n",
         encoding="utf-8",
     )
 

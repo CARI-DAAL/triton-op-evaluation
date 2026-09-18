@@ -460,3 +460,66 @@ def test_input_groups_other_errors_are_not_retried(monkeypatch):
         verify.resolve_input_provider(_Module())
 
     assert len(calls) == 1
+
+
+def test_ensure_npu_ambient_device_is_the_single_invariant():
+    """The ambient-device invariant lives in exactly one implementation.
+
+    Engine entry points must route through _common_utils.ensure_npu_ambient_device
+    instead of inlining the probe — a diverging copy shipped a broken profile
+    runner (torch.npu evaluated before torch_npu import raises AttributeError
+    during argument evaluation, which hasattr does not swallow).
+    """
+    from triton_evaluation.engine import _common_utils, benchmark, verify
+
+    for module in (verify, benchmark):
+        source = module.__file__
+        text = open(source, encoding="utf-8").read()
+        assert "ensure_npu_ambient_device" in text
+        assert "set_default_device" not in text.replace(
+            "ensure_npu_ambient_device", ""
+        ), f"{module.__name__} must not inline the device switch"
+
+    assert hasattr(_common_utils, "ensure_npu_ambient_device")
+    # The generated profile runner source imports the same helper.
+    text = open(
+        _common_utils.__file__.replace("_common_utils.py", "profile_runner.py"),
+        encoding="utf-8",
+    ).read()
+    assert "from _common_utils import ensure_npu_ambient_device" in text
+
+
+def test_ensure_npu_ambient_device_guards_missing_npu():
+    """Attribute shapes that raised during argument evaluation historically."""
+    from types import ModuleType, SimpleNamespace
+
+    from triton_evaluation.engine._common_utils import ensure_npu_ambient_device
+
+    bare = ModuleType("torch_without_npu")  # no `npu` attribute at all
+    assert ensure_npu_ambient_device(bare) is False
+
+    # `npu` present but is_available absent (lazy attr not yet resolved).
+    partial = ModuleType("torch_partial")
+    partial.npu = SimpleNamespace()
+    assert ensure_npu_ambient_device(partial) is False
+
+    # is_available present but reports unavailable.
+    unavailable = ModuleType("torch_off")
+    unavailable.npu = SimpleNamespace(is_available=lambda: False)
+    switched = []
+    unavailable.set_default_device = switched.append
+    assert ensure_npu_ambient_device(unavailable) is False
+    assert switched == []
+
+
+def test_ensure_npu_ambient_device_switches_when_available(monkeypatch):
+    from triton_evaluation.engine._common_utils import ensure_npu_ambient_device
+
+    switched = []
+    torch = _fake_torch_module()
+    torch.npu.is_available = lambda: True
+    torch.set_default_device = switched.append
+    monkeypatch.setattr("sys.modules", __import__("sys").modules)
+
+    assert ensure_npu_ambient_device(torch) is True
+    assert switched == ["npu"]

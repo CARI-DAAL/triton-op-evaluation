@@ -150,6 +150,7 @@ class InputSpec:
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from _log_utils import setup_logger as _setup_logger_shared  # noqa: E402	 
 from _common_utils import build_input_groups as _build_input_groups_shared  # noqa: E402
+from _common_utils import ensure_npu_ambient_device as _ensure_npu_ambient_shared  # noqa: E402
 from _common_utils import describe_input as _describe_input_shared  # noqa: E402
 from _common_utils import enforce_conv_fp32 as _enforce_conv_fp32  # noqa: E402
 from _common_utils import set_process_title as _set_process_title  # noqa: E402
@@ -1288,12 +1289,8 @@ def verify_implementations(
     torch.manual_seed(0)
     torch.npu.manual_seed(0)
 
-    # 沙箱阶段的验证以 NPU 为环境设备运行：reference 无论是 get_input_groups()
-    # 还是 forward() 内部新建的张量都默认落在 NPU 上。引擎此前只搬移模型与
-    # 输入，forward 内新建的权重落在 CPU 默认设备，参考侧直接 device-mismatch
-    # 崩溃（conv 家族 reference 的惯用写法）。把 NPU 设为环境设备，与沙箱对齐。
-    if hasattr(torch.npu, "is_available") and torch.npu.is_available():
-        torch.set_default_device("npu")
+    # 执行环境不变量：与沙箱一致以 NPU 为环境设备（见 _common_utils）。
+    _ensure_npu_ambient_shared(torch)
 
     input_groups, total_cases = resolve_input_provider(modules["torch_module"])
     device = None if candidate_import_error is not None else torch.device("npu")
