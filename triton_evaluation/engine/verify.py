@@ -1288,6 +1288,13 @@ def verify_implementations(
     torch.manual_seed(0)
     torch.npu.manual_seed(0)
 
+    # 沙箱阶段的验证以 NPU 为环境设备运行：reference 无论是 get_input_groups()
+    # 还是 forward() 内部新建的张量都默认落在 NPU 上。引擎此前只搬移模型与
+    # 输入，forward 内新建的权重落在 CPU 默认设备，参考侧直接 device-mismatch
+    # 崩溃（conv 家族 reference 的惯用写法）。把 NPU 设为环境设备，与沙箱对齐。
+    if hasattr(torch.npu, "is_available") and torch.npu.is_available():
+        torch.set_default_device("npu")
+
     input_groups, total_cases = resolve_input_provider(modules["torch_module"])
     device = None if candidate_import_error is not None else torch.device("npu")
 

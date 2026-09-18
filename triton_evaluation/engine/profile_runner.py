@@ -147,6 +147,11 @@ def build_runner_source() -> str:
             import torch
             from _common_utils import describe_input, enforce_conv_fp32
 
+            # 与 verify.py 一致：沙箱阶段的验证以 NPU 为环境设备，
+            # reference 在 forward() 内新建的张量默认落在 NPU 上。
+            if hasattr(torch.npu, "is_available") and torch.npu.is_available():
+                torch.set_default_device("npu")
+
             reference = load_module(
                 f"{args.op_name}_torch",
                 os.path.join(args.verify_dir, f"{args.op_name}_torch.py"),
