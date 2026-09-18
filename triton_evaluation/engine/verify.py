@@ -656,7 +656,11 @@ def _compare_quant_fp_to_int(fw_finite, impl_finite, ctx):
     violation_count = int((diff > 1).sum().item())
     if violation_count == 0:
         return
-    max_diff = int(diff.max().item())
+    # Same double-domain rule as _compare_integer_compute: int64 quant
+    # differences exceed the RFC 8785 safe integer domain and the metric
+    # enters the response, where canonical serialization would raise
+    # IntegerDomainError and null out provenance.
+    max_diff = float(diff.max().item())
     violation_idx = torch.where(diff > 1)[0]
     num_to_show = min(10, len(violation_idx))
     detail = f"前 {num_to_show} 个量化误差超限位置:\n"
@@ -696,7 +700,11 @@ def _compare_integer_compute(fw_finite, impl_finite, ctx):
         return
     diff = (fw_finite.to(torch.int64) - impl_finite.to(torch.int64)).abs()
     violation_count = int((diff > 0).sum().item())
-    max_diff = int(diff.max().item())
+    # int64 differences reach 9.2e18: far outside the RFC 8785 safe integer
+    # domain. Emit the metric as a double so canonical serialization cannot
+    # raise IntegerDomainError and fail the whole evaluation with null
+    # provenance (observed as hardware-fingerprint mismatches downstream).
+    max_diff = float(diff.max().item())
     violation_idx = torch.where(diff > 0)[0]
     num_to_show = min(10, len(violation_idx))
     detail = f"前 {num_to_show} 个不一致位置:\n"
