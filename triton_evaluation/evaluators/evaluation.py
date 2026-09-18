@@ -28,6 +28,7 @@ from pathlib import Path
 from time import monotonic
 
 from ..api.contract import (
+    MAX_ERROR_MESSAGE_BYTES,
     Check,
     CheckFailed,
     CheckSkipped,
@@ -100,6 +101,12 @@ def _engine_outcome(check: Check, engine: EngineCheckResult, shape):
         # (kind=None, no candidate_error). That is a measurement gap, not a
         # protocol violation: project it as retryable so a transient device
         # error recovers on resubmission instead of voiding the evaluation.
+        # The prefix counts against ErrorInfo's 512-byte message cap: the
+        # detail alone is bounded to 512 by UnattributedFailure, so compose
+        # under the cap or ErrorInfo validation raises and the worker collapses
+        # the whole evaluation into a protocol failure.
+        prefix = "unattributed case failure: "
+        message = prefix + error.detail[: MAX_ERROR_MESSAGE_BYTES - len(prefix)]
         return CheckFailed(
             status="failed",
             error=ErrorInfo(
@@ -107,7 +114,7 @@ def _engine_outcome(check: Check, engine: EngineCheckResult, shape):
                 phase="execution",
                 check=check,
                 retryable=True,
-                message=f"unattributed case failure: {error.detail}",
+                message=message,
             ),
         )
     except ShapingError:
