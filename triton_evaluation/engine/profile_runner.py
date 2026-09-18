@@ -148,8 +148,13 @@ def build_runner_source() -> str:
             from _common_utils import describe_input, enforce_conv_fp32
 
             # 与 verify.py 一致：沙箱阶段的验证以 NPU 为环境设备，
-            # reference 在 forward() 内新建的张量默认落在 NPU 上。
-            if hasattr(torch.npu, "is_available") and torch.npu.is_available():
+            # reference 在 forward() 内新建的张量默认落在 NPU 上。此进程
+            # 尚未 import torch_npu，torch.npu 属性不存在时表达式本身会抛
+            # AttributeError（hasattr 不会吞掉参数求值的异常），先取属性再判。
+            _npu = getattr(torch, "npu", None)
+            if _npu is not None and getattr(
+                _npu, "is_available", lambda: False
+            )():
                 torch.set_default_device("npu")
 
             reference = load_module(
