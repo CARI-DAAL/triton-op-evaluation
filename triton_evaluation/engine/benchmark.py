@@ -841,6 +841,12 @@ def benchmark_implementations(config: BenchmarkConfig) -> BenchmarkResult:
 
     device = torch.device("npu")
 
+    # 与 verify.py 一致：沙箱阶段的验证以 NPU 为环境设备，reference 在
+    # forward() 内新建的张量默认落在 NPU 上；不设置则 conv 家族参考侧
+    # 直接 device-mismatch 崩溃。
+    if hasattr(torch.npu, "is_available") and torch.npu.is_available():
+        torch.set_default_device("npu")
+
     input_groups = resolve_inputs(config.op_name, config.verify_dir)
     total_cases = len(input_groups)
 
