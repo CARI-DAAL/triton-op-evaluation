@@ -21,6 +21,7 @@ Order and dependency rules (design section 5):
   decision: a completed, manifest-bound, trusted grade run with complete
   reward-relevant provenance. It is never a score.
 """
+
 from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
@@ -53,6 +54,7 @@ from .benchmark import BenchmarkEvaluator
 from .profile import ProfileEvaluator
 from .shaping import (
     ShapingError,
+    UnattributedFailure,
     shape_correctness,
     shape_performance,
     shape_profile,
@@ -93,6 +95,21 @@ def _engine_outcome(check: Check, engine: EngineCheckResult, shape):
         )
     try:
         data = shape(engine.raw)
+    except UnattributedFailure as error:
+        # The engine honestly recorded a case failure it cannot attribute
+        # (kind=None, no candidate_error). That is a measurement gap, not a
+        # protocol violation: project it as retryable so a transient device
+        # error recovers on resubmission instead of voiding the evaluation.
+        return CheckFailed(
+            status="failed",
+            error=ErrorInfo(
+                code="INTERNAL",
+                phase="execution",
+                check=check,
+                retryable=True,
+                message=f"unattributed case failure: {error.detail}",
+            ),
+        )
     except ShapingError:
         return CheckFailed(
             status="failed",
@@ -161,7 +178,8 @@ class EvaluationEvaluator:
         execution_environment: ExecutionEnvironment | None,
         pinned: PinnedProvenance,
         progress: ProgressSink,
-        *, precheck: Callable[[], str | None] | None = None,
+        *,
+        precheck: Callable[[], str | None] | None = None,
     ) -> EvaluationResult:
         """Run correctness, conditional performance, then independent profile."""
         requested = list(request.checks)
@@ -180,7 +198,8 @@ class EvaluationEvaluator:
             outcomes["compile"] = self._slot(
                 "compile",
                 compile_check,
-                lease_valid, progress,
+                lease_valid,
+                progress,
             )
             # Missing precheck evidence is independent of on-card execution.
             # It does not establish a broken worker environment or skip checks.
@@ -213,7 +232,10 @@ class EvaluationEvaluator:
                     lambda: _engine_outcome(
                         "performance",
                         self._benchmark_evaluator().run(
-                            request, work_dir, device_id, deadline_at,
+                            request,
+                            work_dir,
+                            device_id,
+                            deadline_at,
                             lease_valid,
                         ),
                         shape_performance,
@@ -240,9 +262,7 @@ class EvaluationEvaluator:
             if infra_broken:
                 profile = self._slot(
                     "profile",
-                    lambda: _skipped(
-                        "profile", "PRIOR_CHECK_FAILED", None, _PRIOR_FAILED_MESSAGE
-                    ),
+                    lambda: _skipped("profile", "PRIOR_CHECK_FAILED", None, _PRIOR_FAILED_MESSAGE),
                     lease_valid,
                     progress,
                 )
@@ -252,7 +272,10 @@ class EvaluationEvaluator:
                     lambda: _engine_outcome(
                         "profile",
                         self._profile_evaluator().run(
-                            request, work_dir, device_id, deadline_at,
+                            request,
+                            work_dir,
+                            device_id,
+                            deadline_at,
                             lease_valid,
                         ),
                         shape_profile,
@@ -263,6 +286,8 @@ class EvaluationEvaluator:
             outcomes["profile"] = profile
 
         return complete_evaluation(
-            requested_checks=requested, outcomes=outcomes, pinned=pinned,
+            requested_checks=requested,
+            outcomes=outcomes,
+            pinned=pinned,
             execution_environment=execution_environment,
         )

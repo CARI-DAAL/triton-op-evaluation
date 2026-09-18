@@ -6,6 +6,7 @@ profile, engine divergence names, sentinel strings for non-finite samples).
 The shaping layer is the only boundary allowed to read that protocol, and it
 must fail closed on anything outside it.
 """
+
 import copy
 import json
 import math
@@ -19,6 +20,7 @@ from triton_evaluation.api.contract import (
 )
 from triton_evaluation.evaluators.shaping import (
     ShapingError,
+    UnattributedFailure,
     shape_correctness,
     shape_performance,
     shape_profile,
@@ -171,9 +173,7 @@ def test_candidate_execute_error_fixture_keeps_earlier_mismatch():
 
 
 def test_candidate_execution_timeout_fixture():
-    result = shape_correctness(
-        load("verify-candidate-execution-timeout.json"), decoy=False
-    )
+    result = shape_correctness(load("verify-candidate-execution-timeout.json"), decoy=False)
     assert result.outcome == "execution_timeout"
     assert result.passed is False
     failure = result.domain_failure
@@ -184,8 +184,13 @@ def test_candidate_execution_timeout_fixture():
 
 
 def test_ambiguous_process_timeout_is_never_a_subject_timeout():
-    with pytest.raises(ShapingError):
+    with pytest.raises(UnattributedFailure) as raised:
         shape_correctness(load("verify-ambiguous-timeout.json"), decoy=False)
+    # The detail is carried redacted: single line, no raw paths, bounded.
+    assert isinstance(raised.value, ShapingError)
+    assert "\n" not in raised.value.detail
+    assert "/home" not in raised.value.detail
+    assert len(raised.value.detail.encode("utf-8")) <= 512
 
 
 def test_non_bool_decoy_flag_is_rejected():
@@ -239,13 +244,16 @@ def test_correctness_rejects_contradictory_counts():
 
 
 def test_correctness_rejects_ordinary_nan_and_inf_in_samples():
-    raw = mutated(
-        "verify-wrong-value.json", "failures", 0, "sample", 0, "diff", value=float("nan")
-    )
+    raw = mutated("verify-wrong-value.json", "failures", 0, "sample", 0, "diff", value=float("nan"))
     with pytest.raises(ShapingError):
         shape_correctness(raw, decoy=False)
     raw = mutated(
-        "verify-wrong-value.json", "failures", 0, "sample", 0, "reference",
+        "verify-wrong-value.json",
+        "failures",
+        0,
+        "sample",
+        0,
+        "reference",
         value=float("inf"),
     )
     with pytest.raises(ShapingError):
@@ -255,9 +263,7 @@ def test_correctness_rejects_ordinary_nan_and_inf_in_samples():
 def test_correctness_rejects_more_than_eight_samples():
     raw = load("verify-wrong-value.json")
     base = raw["failures"][0]["sample"][0]
-    raw["failures"][0]["sample"] = [
-        {**base, "idx": [0, 8 - i], "diff": 10.0 - i} for i in range(9)
-    ]
+    raw["failures"][0]["sample"] = [{**base, "idx": [0, 8 - i], "diff": 10.0 - i} for i in range(9)]
     with pytest.raises(ShapingError):
         shape_correctness(raw, decoy=False)
 
@@ -279,7 +285,10 @@ def test_correctness_rejects_unknown_divergence_kind():
 def test_correctness_rejects_traceback_in_attribution_message():
     raw = mutated(
         "verify-candidate-execute-error.json",
-        "failures", 1, "candidate_error", "message",
+        "failures",
+        1,
+        "candidate_error",
+        "message",
         value='Traceback (most recent call last):\n  File "/tmp/x.py", line 1',
     )
     with pytest.raises(ShapingError):
@@ -289,7 +298,10 @@ def test_correctness_rejects_traceback_in_attribution_message():
 def test_correctness_rejects_absolute_path_in_attribution_message():
     raw = mutated(
         "verify-candidate-execute-error.json",
-        "failures", 1, "candidate_error", "message",
+        "failures",
+        1,
+        "candidate_error",
+        "message",
         value="candidate failed at /tmp/eval/work/addmm_triton_ascend_impl.py",
     )
     with pytest.raises(ShapingError):
@@ -299,7 +311,10 @@ def test_correctness_rejects_absolute_path_in_attribution_message():
 def test_correctness_rejects_unknown_attribution_phase():
     raw = mutated(
         "verify-candidate-execute-error.json",
-        "failures", 1, "candidate_error", "phase",
+        "failures",
+        1,
+        "candidate_error",
+        "phase",
         value="reference",
     )
     with pytest.raises(ShapingError):
@@ -349,7 +364,11 @@ def test_benchmark_rejects_extra_key():
 def test_benchmark_rejects_compressed_string_input_shape():
     raw = mutated(
         "benchmark-mixed-coverage.json",
-        "per_shape_results", 0, "input_desc", 0, "shape",
+        "per_shape_results",
+        0,
+        "input_desc",
+        0,
+        "shape",
         value="[1024,512]",
     )
     with pytest.raises(ShapingError):
@@ -378,7 +397,10 @@ def test_benchmark_rejects_contradictory_counts():
 def test_benchmark_rejects_non_finite_latency():
     raw = mutated(
         "benchmark-mixed-coverage.json",
-        "per_shape_results", 0, "framework", "avg_latency_ms",
+        "per_shape_results",
+        0,
+        "framework",
+        "avg_latency_ms",
         value=float("inf"),
     )
     with pytest.raises(ShapingError):
@@ -490,14 +512,22 @@ def test_profile_rejects_duplicate_case():
 def test_profile_rejects_invalid_ratio():
     raw = mutated(
         "profile-deep-partial.json",
-        "per_case_results", 0, "bound", "ratios", "CUBE",
+        "per_case_results",
+        0,
+        "bound",
+        "ratios",
+        "CUBE",
         value=1.5,
     )
     with pytest.raises(ShapingError):
         shape_profile(raw)
     raw = mutated(
         "profile-deep-partial.json",
-        "per_case_results", 0, "bound", "ratios", "CUBE",
+        "per_case_results",
+        0,
+        "bound",
+        "ratios",
+        "CUBE",
         value=float("nan"),
     )
     with pytest.raises(ShapingError):
@@ -507,7 +537,10 @@ def test_profile_rejects_invalid_ratio():
 def test_profile_rejects_unknown_bound_name():
     raw = mutated(
         "profile-deep-partial.json",
-        "per_case_results", 0, "bound", "name",
+        "per_case_results",
+        0,
+        "bound",
+        "name",
         value="HBM BOUND",
     )
     with pytest.raises(ShapingError):
@@ -517,7 +550,11 @@ def test_profile_rejects_unknown_bound_name():
 def test_profile_rejects_invalid_kernel_percentage_basis():
     raw = mutated(
         "profile-op-complete.json",
-        "per_case_results", 0, "kernels", 0, "duration_us",
+        "per_case_results",
+        0,
+        "kernels",
+        0,
+        "duration_us",
         value=0.0,
     )
     raw["per_case_results"][0]["kernels"][1]["duration_us"] = 0.0
@@ -528,7 +565,11 @@ def test_profile_rejects_invalid_kernel_percentage_basis():
 def test_profile_rejects_negative_kernel_duration():
     raw = mutated(
         "profile-op-complete.json",
-        "per_case_results", 0, "kernels", 0, "duration_us",
+        "per_case_results",
+        0,
+        "kernels",
+        0,
+        "duration_us",
         value=-1.0,
     )
     with pytest.raises(ShapingError):
@@ -591,9 +632,7 @@ def test_stable_outputs_never_leak_engine_private_content():
 def test_finite_metric_values_stay_finite():
     # A non-finite MERE/max_abs_diff from the engine becomes null, never an
     # ordinary non-finite float in the stable contract.
-    raw = mutated(
-        "verify-wrong-value.json", "failures", 0, "metrics", "MERE", value=float("nan")
-    )
+    raw = mutated("verify-wrong-value.json", "failures", 0, "metrics", "MERE", value=float("nan"))
     result = shape_correctness(raw, decoy=False)
     assert result.failures[0].metrics.mere is None
     for value in result.failures[0].metrics.model_dump().values():
@@ -623,9 +662,7 @@ def test_benchmark_without_measurement_method_projects_none():
 
 
 def test_benchmark_rejects_unknown_measurement_method():
-    raw = mutated(
-        "benchmark-event-timing.json", "measurement_method", value="wall_clock_v1"
-    )
+    raw = mutated("benchmark-event-timing.json", "measurement_method", value="wall_clock_v1")
     with pytest.raises(ShapingError):
         shape_performance(raw)
 

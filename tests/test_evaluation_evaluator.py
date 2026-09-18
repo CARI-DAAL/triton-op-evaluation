@@ -6,6 +6,7 @@ a succeeded *and* correct subject outcome, keeps profile independent of the
 subject verdict, and fails closed when the lease or the engine output cannot
 be trusted.
 """
+
 import importlib.metadata
 import json
 from datetime import datetime, timedelta, timezone
@@ -161,9 +162,7 @@ def test_correct_kernel_runs_all_checks_in_fixed_order(tmp_path):
     harness = full_harness()
     sink = RecordingSink()
     # The request array order must not change execution semantics.
-    result = run_evaluation(
-        harness, ["profile", "performance", "correctness"], sink, tmp_path
-    )
+    result = run_evaluation(harness, ["profile", "performance", "correctness"], sink, tmp_path)
 
     assert sink.calls == [
         ("begin", "correctness"),
@@ -197,9 +196,7 @@ def test_unrequested_checks_stay_null(tmp_path):
 def test_wrong_subject_skips_performance_but_still_profiles(tmp_path):
     harness = full_harness("verify-wrong-value.json")
     sink = RecordingSink()
-    result = run_evaluation(
-        harness, ["correctness", "performance", "profile"], sink, tmp_path
-    )
+    result = run_evaluation(harness, ["correctness", "performance", "profile"], sink, tmp_path)
 
     assert result.correctness.data.outcome == "wrong"
     performance = result.performance
@@ -216,9 +213,7 @@ def test_wrong_subject_skips_performance_but_still_profiles(tmp_path):
 def test_decoy_is_wrong_with_full_counts_and_still_profiles(tmp_path):
     harness = full_harness("verify-decoy.json")
     sink = RecordingSink()
-    result = run_evaluation(
-        harness, ["correctness", "performance", "profile"], sink, tmp_path
-    )
+    result = run_evaluation(harness, ["correctness", "performance", "profile"], sink, tmp_path)
 
     data = result.correctness.data
     assert data.outcome == "wrong"
@@ -233,9 +228,7 @@ def test_decoy_is_wrong_with_full_counts_and_still_profiles(tmp_path):
 def test_compile_error_is_a_subject_outcome_not_an_infra_error(tmp_path):
     harness = full_harness("verify-candidate-compile-error.json")
     sink = RecordingSink()
-    result = run_evaluation(
-        harness, ["correctness", "performance", "profile"], sink, tmp_path
-    )
+    result = run_evaluation(harness, ["correctness", "performance", "profile"], sink, tmp_path)
 
     assert result.correctness.status == "succeeded"
     assert result.correctness.data.outcome == "compile_error"
@@ -247,9 +240,7 @@ def test_correctness_infra_failure_skips_dependents(tmp_path):
     harness = full_harness()
     harness.verify = StubCheck(engine_failure("correctness", "verify engine crashed"))
     sink = RecordingSink()
-    result = run_evaluation(
-        harness, ["correctness", "performance", "profile"], sink, tmp_path
-    )
+    result = run_evaluation(harness, ["correctness", "performance", "profile"], sink, tmp_path)
 
     assert result.correctness.status == "failed"
     assert result.correctness.error.code == "EVALUATOR_EXECUTION_FAILED"
@@ -275,11 +266,9 @@ def test_engine_process_timeout_is_never_a_subject_execution_timeout(tmp_path):
 
 
 def test_invalid_engine_output_fails_closed(tmp_path):
-    harness = full_harness("verify-ambiguous-timeout.json")
+    harness = full_harness("verify-unknown-kind.json")
     sink = RecordingSink()
-    result = run_evaluation(
-        harness, ["correctness", "performance", "profile"], sink, tmp_path
-    )
+    result = run_evaluation(harness, ["correctness", "performance", "profile"], sink, tmp_path)
 
     assert result.correctness.status == "failed"
     assert result.correctness.error.code == "INVALID_ENGINE_OUTPUT"
@@ -290,13 +279,35 @@ def test_invalid_engine_output_fails_closed(tmp_path):
     assert harness.profile.calls == 0
 
 
+def test_unattributed_case_failure_is_retryable_internal(tmp_path):
+    """kind=None failures without candidate_error are a measurement gap.
+
+    The engine records framework-side crashes, device errors, and output
+    flattening TypeErrors this way; they are not protocol violations, so the
+    check fails retryable instead of voiding the evaluation as invalid.
+    """
+    harness = full_harness("verify-ambiguous-timeout.json")
+    sink = RecordingSink()
+    result = run_evaluation(harness, ["correctness", "performance", "profile"], sink, tmp_path)
+
+    assert result.correctness.status == "failed"
+    assert result.correctness.error.code == "INTERNAL"
+    assert result.correctness.error.phase == "execution"
+    assert result.correctness.error.retryable is True
+    message = result.correctness.error.message
+    assert "unattributed case failure" in message
+    assert "\n" not in message
+    assert "TimeoutError" in message
+    assert result.performance.status == "skipped"
+    assert result.profile.status == "skipped"
+    assert harness.profile.calls == 0
+
+
 def test_performance_infra_failure_keeps_correctness_and_skips_profile(tmp_path):
     harness = full_harness()
     harness.bench = succeeded("benchmark-invalid-measurement.json")
     sink = RecordingSink()
-    result = run_evaluation(
-        harness, ["correctness", "performance", "profile"], sink, tmp_path
-    )
+    result = run_evaluation(harness, ["correctness", "performance", "profile"], sink, tmp_path)
 
     assert result.correctness.status == "succeeded"
     assert result.performance.status == "failed"
@@ -314,9 +325,7 @@ def test_performance_infra_failure_keeps_correctness_and_skips_profile(tmp_path)
 def test_rejected_begin_raises_lease_lost_before_any_engine_work(tmp_path):
     harness = full_harness()
     with pytest.raises(LeaseLostError):
-        run_evaluation(
-            harness, ["correctness"], RecordingSink(begin_ok=False), tmp_path
-        )
+        run_evaluation(harness, ["correctness"], RecordingSink(begin_ok=False), tmp_path)
     assert harness.verify.calls == 0
 
 
@@ -396,9 +405,7 @@ def test_grade_with_infra_failure_is_not_eligible(tmp_path):
 
 
 def test_trial_is_never_grade_eligible(tmp_path):
-    result = run_evaluation(
-        full_harness(), ["correctness"], RecordingSink(), tmp_path
-    )
+    result = run_evaluation(full_harness(), ["correctness"], RecordingSink(), tmp_path)
     assert result.provenance.grade_eligible is False
     assert result.provenance.manifest_id is None
     assert result.provenance.problem_id is None
@@ -475,8 +482,9 @@ def test_evaluator_outer_kill_fires_after_the_engine_grace(tmp_path, monkeypatch
 
     seen = {}
 
-    def fake_run_script(cmd, cwd, device_id, deadline_at=None, lease_valid=None,
-                      *, budget_seconds=None):
+    def fake_run_script(
+        cmd, cwd, device_id, deadline_at=None, lease_valid=None, *, budget_seconds=None
+    ):
         seen["cmd"] = cmd
         seen["budget"] = budget_seconds
         # validate pre-check yields no JSON verdict -> proceed to verify
@@ -503,9 +511,7 @@ def test_ambiguous_exit_past_deadline_is_timeout_never_attributed(tmp_path, monk
     # run(), decoy pre-check, and _run_verify's start see budget; the
     # post-run check observes the expired deadline.
     remaining = iter([100.0, 100.0, 100.0, -1.0])
-    monkeypatch.setattr(
-        verify_mod, "remaining_seconds", lambda deadline: next(remaining, -1.0)
-    )
+    monkeypatch.setattr(verify_mod, "remaining_seconds", lambda deadline: next(remaining, -1.0))
     monkeypatch.setattr(
         verify_mod,
         "run_script",
@@ -532,13 +538,25 @@ def test_compile_precheck_is_fenced_before_candidate_import(tmp_path):
         calls.append("import")
         return "precheck_passed"
 
-    request = EvaluationRequest.model_validate({
-        "schema_version": "2.1", "op_name": "addmm", "reference_code": "REF",
-        "kernel_code": "IMPL", "checks": ["compile", "correctness"],
-    })
+    request = EvaluationRequest.model_validate(
+        {
+            "schema_version": "2.1",
+            "op_name": "addmm",
+            "reference_code": "REF",
+            "kernel_code": "IMPL",
+            "checks": ["compile", "correctness"],
+        }
+    )
     result = harness.run(
-        request, tmp_path, 0, datetime.now(timezone.utc) + timedelta(minutes=1),
-        lambda: True, ENVIRONMENT, trial_pinned(), sink, precheck=precheck,
+        request,
+        tmp_path,
+        0,
+        datetime.now(timezone.utc) + timedelta(minutes=1),
+        lambda: True,
+        ENVIRONMENT,
+        trial_pinned(),
+        sink,
+        precheck=precheck,
     )
     assert calls == ["import"]
     assert result.compile.data.outcome == "compiled"
@@ -547,17 +565,28 @@ def test_compile_precheck_is_fenced_before_candidate_import(tmp_path):
 
 def test_correctness_does_not_execute_an_unrequested_compile_check(tmp_path):
     harness = Harness(verify=succeeded("verify-correct.json"))
-    request = EvaluationRequest.model_validate({
-        "schema_version": "2.1", "op_name": "addmm", "reference_code": "REF",
-        "kernel_code": "IMPL", "checks": ["correctness"],
-    })
+    request = EvaluationRequest.model_validate(
+        {
+            "schema_version": "2.1",
+            "op_name": "addmm",
+            "reference_code": "REF",
+            "kernel_code": "IMPL",
+            "checks": ["correctness"],
+        }
+    )
 
     def unexpected_precheck():
         raise AssertionError("compile was not requested")
 
     result = harness.run(
-        request, tmp_path, 0, datetime.now(timezone.utc) + timedelta(minutes=1),
-        lambda: True, ENVIRONMENT, trial_pinned(), RecordingSink(),
+        request,
+        tmp_path,
+        0,
+        datetime.now(timezone.utc) + timedelta(minutes=1),
+        lambda: True,
+        ENVIRONMENT,
+        trial_pinned(),
+        RecordingSink(),
         precheck=unexpected_precheck,
     )
     assert result.compile is None
