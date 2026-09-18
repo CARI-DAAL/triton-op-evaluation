@@ -303,6 +303,50 @@ def test_unattributed_case_failure_is_retryable_internal(tmp_path):
     assert harness.profile.calls == 0
 
 
+def test_unattributed_failure_with_traceback_detail_stays_in_message_budget(tmp_path):
+    """A long traceback detail must not overflow ErrorInfo's 512-byte cap.
+
+    UnattributedFailure bounds its detail to 512 bytes; the evaluator adds a
+    prefix on top. Composed over the cap, ErrorInfo validation raises inside
+    the worker and the whole evaluation collapses into a protocol failure —
+    observed on LV4 ConvTranspose2, whose unattributed failures carry
+    tracebacks and hit this on every evaluation.
+    """
+    from triton_evaluation.api.contract import MAX_ERROR_MESSAGE_BYTES
+
+    long_detail = "RuntimeError: " + "x" * 900
+    harness = full_harness()
+    harness.verify = StubCheck(
+        EngineCheckResult(
+            status="succeeded",
+            raw={
+                "op_name": "x",
+                "total_cases": 2,
+                "passed_cases": 1,
+                "failed_cases": 1,
+                "failures": [
+                    {
+                        "case_idx": 2,
+                        "input_desc": [],
+                        "error_type": "RuntimeError",
+                        "error_msg": long_detail,
+                        "kind": None,
+                        "sample": [],
+                    }
+                ],
+            },
+            error=None,
+        )
+    )
+    sink = RecordingSink()
+    result = run_evaluation(harness, ["correctness"], sink, tmp_path)
+
+    assert result.correctness.status == "failed"
+    message = result.correctness.error.message
+    assert message.startswith("unattributed case failure: RuntimeError:")
+    assert len(message.encode("utf-8")) <= MAX_ERROR_MESSAGE_BYTES
+
+
 def test_performance_infra_failure_keeps_correctness_and_skips_profile(tmp_path):
     harness = full_harness()
     harness.bench = succeeded("benchmark-invalid-measurement.json")
