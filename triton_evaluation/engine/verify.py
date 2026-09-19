@@ -43,6 +43,11 @@ OUTER_GRACE_SECONDS = 60
 REQUIRED_MATCHED_RATIO = 0.9
 
 # allclose 判定阈值 (atol, rtol)：|actual - golden| <= atol + rtol * |golden|
+
+# golden（参考输出）优先落在 CPU：fp32 精确计算、与 NPU 负载解耦；参考实现
+# 调 npu:: 专有算子、或 CPU 不支持该 dtype/格式时回退到 NPU 重试。只有回退
+# 后仍失败才判该用例失败；精度判定本身不受 golden 落点影响（沙箱语义）。
+GOLDEN_DEVICE_CPU = "cpu"
 ALLCLOSE_TOLS_STR = {
     "float32": (1e-3, 2**(-13)),  # 2**(-13)=1.220703125e-4
     "float16": (9e-2, 2**(-10)),  # 2**(-10)=9.765625e-4
@@ -130,9 +135,10 @@ class _CompareCtx:
 
 @dataclass
 class ModelPair:
-    """framework / impl 模型成对。"""
+    """framework / impl 模型成对，并记录 golden 实际所在 device。"""
     framework: object
     impl: object
+    golden_device: object = None
 
 
 @dataclass
@@ -153,6 +159,7 @@ from _common_utils import build_input_groups as _build_input_groups_shared  # no
 from _common_utils import ensure_npu_ambient_device as _ensure_npu_ambient_shared  # noqa: E402
 from _common_utils import describe_input as _describe_input_shared  # noqa: E402
 from _common_utils import enforce_conv_fp32 as _enforce_conv_fp32  # noqa: E402
+from _common_utils import invoke_model as _invoke_model_shared  # noqa: E402
 from _common_utils import set_process_title as _set_process_title  # noqa: E402
 from _divergence import classify_divergence as _classify_divergence  # noqa: E402
 
@@ -1035,7 +1042,7 @@ def _run_candidate_forward(impl_model, inputs, subject_budget_seconds):
     """
     if not subject_budget_seconds:
         try:
-            return impl_model(*inputs)
+            return _invoke_model_shared(impl_model, inputs)
         except Exception as exc:
             if _is_compile_error(exc):
                 raise _CandidateCompileError(
@@ -1047,7 +1054,7 @@ def _run_candidate_forward(impl_model, inputs, subject_budget_seconds):
     previous_handler = signal.signal(signal.SIGALRM, _subject_alarm_handler)
     signal.setitimer(signal.ITIMER_REAL, subject_budget_seconds)
     try:
-        return impl_model(*inputs)
+        return _invoke_model_shared(impl_model, inputs)
     except _CandidateExecutionTimeout:
         raise
     except Exception as exc:
@@ -1074,12 +1081,13 @@ def run_single_case(models: ModelPair, inputs, device, case_ctx: CaseContext, no
     # 推断输入类型（"float" / "int" / "no_tensor"）→ 决定输出整型时走整数计算 vs 量化
     input_type, input_dtype = _infer_input_type(inputs)
 
+    golden_device = models.golden_device or device
     inputs_for_impl = [
         x.to(device) if isinstance(x, torch.Tensor) else x
         for x in inputs
     ]
     inputs_for_framework = [
-        x.to(device) if isinstance(x, torch.Tensor) else x
+        x.to(golden_device) if isinstance(x, torch.Tensor) else x
         for x in inputs
     ]
 
@@ -1087,7 +1095,7 @@ def run_single_case(models: ModelPair, inputs, device, case_ctx: CaseContext, no
         impl_output = _run_candidate_forward(
             models.impl, inputs_for_impl, case_ctx.subject_budget_seconds
         )
-        framework_output = models.framework(*inputs_for_framework)
+        framework_output = _invoke_model_shared(models.framework, inputs_for_framework)
 
     if not isinstance(framework_output, (list, tuple)):
         framework_output = [framework_output]
@@ -1150,13 +1158,18 @@ def _load_verify_modules(op_name, verify_dir, triton_impl_name):
     }
 
 
-def _instantiate_models(framework_cls, impl_cls, get_init_inputs, device):
-    """同种子分别实例化 framework 与 impl 模型。"""
+def _instantiate_models(framework_cls, impl_cls, get_init_inputs, device,
+                        golden_device=None):
+    """同种子分别实例化 framework 与 impl 模型。
+
+    golden_device 给定时 framework 落在该设备（GOLDEN_DEVICE_CPU 策略），
+    否则与 impl 同 device。两者的构造顺序与消耗的随机数保持一致。
+    """
     import torch
     init_params = get_init_inputs()
     torch.manual_seed(0)
     torch.npu.manual_seed(0)
-    framework_model = framework_cls(*init_params).to(device)
+    framework_model = framework_cls(*init_params).to(golden_device or device)
     torch.manual_seed(0)
     torch.npu.manual_seed(0)
     try:
@@ -1190,8 +1203,9 @@ _CANDIDATE_ERROR_PHASES = (
 _CANDIDATE_ERROR_TYPES = tuple(cls for cls, _phase in _CANDIDATE_ERROR_PHASES)
 
 
-def _try_run_case(modules, case_ctx: CaseContext, inputs, device, non_compute=False):
-    """执行单个 case：成功返回 (True, None)；失败返回 (False, failure_dict)。"""
+def _attempt_case(modules, case_ctx: CaseContext, inputs, device,
+                   golden_device, non_compute):
+    """在指定 golden_device 上跑一遍；成功返回 None，失败把异常抛给调用方。"""
     framework_model = None
     impl_model = None
     try:
@@ -1200,11 +1214,41 @@ def _try_run_case(modules, case_ctx: CaseContext, inputs, device, non_compute=Fa
             modules["impl_cls"],
             modules["get_init_inputs"],
             device,
+            golden_device=golden_device,
         )
         run_single_case(
-            ModelPair(framework_model, impl_model), inputs, device,
+            ModelPair(framework_model, impl_model, golden_device), inputs, device,
             case_ctx, non_compute=non_compute,
         )
+    finally:
+        del framework_model
+        del impl_model
+        cleanup_npu_memory()
+
+
+def _try_run_case(modules, case_ctx: CaseContext, inputs, device, non_compute=False):
+    """执行单个 case：成功返回 (True, None)；失败返回 (False, failure_dict)。
+
+    golden 优先落 CPU；CPU 跑不起来（参考实现调 npu:: 专有算子、CPU 不支持
+    该 dtype/格式等）时回退 golden 到 NPU 重试，只有回退后仍失败才判失败。
+    AccuracyError / AssertionError / _ShapeMismatchError 是比对结论（golden
+    已成功运行），候选归因错误与 golden 落点无关 —— 三者都不重试。
+    """
+    try:
+        try:
+            _attempt_case(
+                modules, case_ctx, inputs, device, GOLDEN_DEVICE_CPU, non_compute
+            )
+            return True, None
+        except (AccuracyError, AssertionError) + _CANDIDATE_ERROR_TYPES:
+            raise
+        except Exception as cpu_error:
+            logger.info(
+                "  [用例 %d/%d] golden 落 CPU 时执行失败，回退 golden 到 NPU 重试: %s: %s",
+                case_ctx.case_idx, case_ctx.total_cases,
+                type(cpu_error).__name__, str(cpu_error)[:160],
+            )
+        _attempt_case(modules, case_ctx, inputs, device, device, non_compute)
         return True, None
     except _ShapeMismatchError as e:
         # 依赖 run_single_case 中的 except _ShapeMismatchError: raise 透传（否则会被展平为普通 AssertionError）。
@@ -1243,10 +1287,6 @@ def _try_run_case(modules, case_ctx: CaseContext, inputs, device, non_compute=Fa
                 failure["kind"] = div.get("kind")
                 failure["sample"] = div.get("sample", [])
         return False, failure
-    finally:
-        del framework_model
-        del impl_model
-        cleanup_npu_memory()
 
 
 def _write_verify_result(output_path, result):

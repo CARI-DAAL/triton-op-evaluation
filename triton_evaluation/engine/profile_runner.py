@@ -185,7 +185,9 @@ def build_runner_source() -> str:
             ).to("npu:0")
             inputs = [to_npu(value, torch) for value in groups[index]]
             with torch.no_grad():
-                model(*inputs)
+                from _common_utils import invoke_model
+
+                invoke_model(model, inputs)
             if hasattr(torch, "npu"):
                 torch.npu.synchronize()
             print(json.dumps({

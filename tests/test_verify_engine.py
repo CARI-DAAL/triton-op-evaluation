@@ -83,9 +83,7 @@ def _comparison_torch(bool_dtype):
     torch = ModuleType("torch")
     torch.Tensor = _FakeTensor
     torch.bool = bool_dtype
-    torch.isfinite = lambda tensor: _FakeMask(
-        math.isfinite(value) for value in tensor.values
-    )
+    torch.isfinite = lambda tensor: _FakeMask(math.isfinite(value) for value in tensor.values)
     return torch
 
 
@@ -100,9 +98,7 @@ def test_candidate_import_error_writes_compilation_failure(tmp_path, monkeypatch
         if name == "histc_torch":
             return reference
         if name == "histc_triton_ascend_impl":
-            raise TypeError(
-                "jit() got an unexpected keyword argument 'num_warps'"
-            )
+            raise TypeError("jit() got an unexpected keyword argument 'num_warps'")
         raise AssertionError(f"unexpected module import: {name}")
 
     monkeypatch.setitem(sys.modules, "torch", _fake_torch_module())
@@ -130,9 +126,7 @@ def test_candidate_import_error_writes_compilation_failure(tmp_path, monkeypatch
     assert "unexpected keyword argument" in failure["error_msg"]
 
 
-def test_candidate_missing_model_new_writes_compilation_failure(
-    tmp_path, monkeypatch
-):
+def test_candidate_missing_model_new_writes_compilation_failure(tmp_path, monkeypatch):
     reference = SimpleNamespace(
         Model=object,
         get_init_inputs=lambda: [],
@@ -185,12 +179,18 @@ def test_failure_divergence_computes_kind_and_sample():
     """_failure_divergence computes {kind, sample} from flat lists via the classifier."""
     reference = [1.0, 2.0, 3.0, 4.0]
     candidate = [6.0, 7.0, 8.0, 9.0]  # uniform +5 offset -> constant_offset
-    out = verify._failure_divergence(reference, candidate, (4,),
-                                     atol=1e-3, rtol=2 ** -13,
-                                     small_value_threshold=2 ** -14,
-                                     small_value_error=2 ** -30,
-                                     rel_threshold=2 ** -13,
-                                     small_count=0, normal_count=4)
+    out = verify._failure_divergence(
+        reference,
+        candidate,
+        (4,),
+        atol=1e-3,
+        rtol=2**-13,
+        small_value_threshold=2**-14,
+        small_value_error=2**-30,
+        rel_threshold=2**-13,
+        small_count=0,
+        normal_count=4,
+    )
     assert out["kind"] == "constant_offset"
     assert out["sample"] and out["sample"][0]["diff"] == 5.0
 
@@ -274,9 +274,7 @@ def test_nan_position_mismatch_is_structured_accuracy_error(monkeypatch):
 def test_try_run_case_projects_attached_divergence_into_failure(monkeypatch):
     divergence = {
         "kind": "constant_offset",
-        "sample": [
-            {"idx": [0], "candidate": 6.0, "reference": 1.0, "diff": 5.0}
-        ],
+        "sample": [{"idx": [0], "candidate": 6.0, "reference": 1.0, "diff": 5.0}],
     }
 
     def fail_case(*args, **kwargs):
@@ -285,7 +283,7 @@ def test_try_run_case_projects_attached_divergence_into_failure(monkeypatch):
             {"category": "integer_compute", "divergence": divergence},
         )
 
-    monkeypatch.setattr(verify, "_instantiate_models", lambda *args: (object(), object()))
+    monkeypatch.setattr(verify, "_instantiate_models", lambda *args, **kwargs: (object(), object()))
     monkeypatch.setattr(verify, "run_single_case", fail_case)
     monkeypatch.setattr(verify, "describe_input", lambda inputs: [])
     monkeypatch.setattr(verify, "cleanup_npu_memory", lambda: None)
@@ -476,9 +474,9 @@ def test_ensure_npu_ambient_device_is_the_single_invariant():
         source = module.__file__
         text = open(source, encoding="utf-8").read()
         assert "ensure_npu_ambient_device" in text
-        assert "set_default_device" not in text.replace(
-            "ensure_npu_ambient_device", ""
-        ), f"{module.__name__} must not inline the device switch"
+        assert "set_default_device" not in text.replace("ensure_npu_ambient_device", ""), (
+            f"{module.__name__} must not inline the device switch"
+        )
 
     assert hasattr(_common_utils, "ensure_npu_ambient_device")
     # The generated profile runner source imports the same helper.
@@ -523,3 +521,58 @@ def test_ensure_npu_ambient_device_switches_when_available(monkeypatch):
 
     assert ensure_npu_ambient_device(torch) is True
     assert switched == ["npu"]
+
+
+class _KwOnlyModel:
+    """Mimics lv4 references: forward(self, x1, x2, *, s1=None, s2=None)."""
+
+    def forward(self, x1, x2, *, s1=None, s2=None):
+        return (x1, x2, s1, s2)
+
+    __call__ = forward
+
+
+class _PlainModel:
+    def forward(self, x1, x2):
+        return x1 + x2
+
+    __call__ = forward
+
+
+class _VarArgsModel:
+    def forward(self, x1, *rest):
+        return (x1, rest)
+
+    __call__ = forward
+
+
+def test_invoke_model_binds_overflow_to_keyword_only_names():
+    """The engine must honor the declared signature: positional slots take the
+    leading inputs, the overflow binds to keyword-only parameter names."""
+    from triton_evaluation.engine._common_utils import invoke_model
+
+    out = invoke_model(_KwOnlyModel(), [1, 2, 3, 4])
+    assert out == (1, 2, 3, 4)
+
+
+def test_invoke_model_plain_signature_unchanged():
+    from triton_evaluation.engine._common_utils import invoke_model
+
+    assert invoke_model(_PlainModel(), [1, 2]) == 3
+
+
+def test_invoke_model_varargs_absorbs_positionally():
+    from triton_evaluation.engine._common_utils import invoke_model
+
+    assert invoke_model(_VarArgsModel(), [1, 2, 3]) == (1, (2, 3))
+
+
+def test_invoke_model_count_mismatch_falls_through_naturally():
+    """Overflow without matching keyword slots keeps Python's own error —
+    honest failure semantics are preserved for genuinely wrong inputs."""
+    import pytest as _pytest
+
+    from triton_evaluation.engine._common_utils import invoke_model
+
+    with _pytest.raises(TypeError):
+        invoke_model(_KwOnlyModel(), [1, 2, 3, 4, 5])
