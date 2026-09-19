@@ -133,3 +133,30 @@ def build_input_groups(torch_module: Any) -> List[Any]:
 
         torch.set_default_device("npu")
         return torch_module.get_input_groups()
+
+
+def ensure_npu_ambient_device(torch) -> bool:
+    """把 NPU 设为进程的环境默认设备 —— 沙箱阶段验证的执行环境不变量。
+
+    沙箱阶段的验证以 NPU 为环境设备运行：reference 无论在
+    get_input_groups() 还是 forward() 内部新建的张量（权重、掩码等）
+    都默认落在 NPU 上。所有执行 reference/模型代码的进程入口都必须在
+    执行前调用本函数，保持与沙箱相同的执行环境 —— 这是单一不变量，
+    不要在调用点复制实现（复制体分叉曾让 profile runner 崩了一个 PR 周期）。
+
+    入参是调用方已 import 的 torch 模块（本模块保持 stdlib-only，不直接
+    import torch）。进程可能尚未 import torch_npu —— torch.npu 属性不
+    存在时表达式求值本身会抛 AttributeError，必须用 getattr 解引用。
+
+    返回是否已切换。计数片段（decoy 快速通道）刻意不调用本函数而用
+    CPU-first + NotImplementedError 回退：decoy 是高频路径，每次都付
+    CANN 初始化的秒级代价不划算；引擎路径无此顾虑，一律切换。
+    """
+    npu = getattr(torch, "npu", None)
+    if npu is None:
+        return False
+    available = getattr(npu, "is_available", None)
+    if available is None or not available():
+        return False
+    torch.set_default_device("npu")
+    return True
