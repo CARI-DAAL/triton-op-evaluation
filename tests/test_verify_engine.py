@@ -283,7 +283,7 @@ def test_try_run_case_projects_attached_divergence_into_failure(monkeypatch):
             {"category": "integer_compute", "divergence": divergence},
         )
 
-    monkeypatch.setattr(verify, "_instantiate_models", lambda *args: (object(), object()))
+    monkeypatch.setattr(verify, "_instantiate_models", lambda *args, **kwargs: (object(), object()))
     monkeypatch.setattr(verify, "run_single_case", fail_case)
     monkeypatch.setattr(verify, "describe_input", lambda inputs: [])
     monkeypatch.setattr(verify, "cleanup_npu_memory", lambda: None)
