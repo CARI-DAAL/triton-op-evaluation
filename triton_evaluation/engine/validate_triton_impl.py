@@ -49,6 +49,15 @@ def _setup_logger() -> None:
 # 白名单：forward() 中允许的 torch 调用和 tensor 方法
 # ---------------------------------------------------------------------------
 
+# rng 状态操作不是计算操作（复刻 baseline 随机权重初始化所必需）。这类 API
+# 有合法用途；真正的作弊由 "是否借 nn.XXX/F.xxx 完成计算" 一族规则拦截，
+# 而不是靠禁 rng（与沙箱版校验器对齐 —— 该守卫在 vendoring 时丢失）。
+_ALLOWED_TORCH_RNG_FUNCS = {
+    "manual_seed", "seed", "initial_seed",
+    "get_rng_state", "set_rng_state",
+    "Generator",
+}
+
 ALLOWED_TORCH_FUNCS = {
     # buffer 分配
     "empty", "empty_like", "empty_strided",
@@ -364,6 +373,8 @@ def _violation_for_torch_qual(node, qual, attr):
     """处理 qual == 'torch' 的调用。"""
     if attr in ALLOWED_TORCH_FUNCS:
         return None
+    if attr in _ALLOWED_TORCH_RNG_FUNCS:
+        return None
     return {
         "line": node.lineno,
         "call": f"torch.{attr}",
@@ -381,7 +392,17 @@ def _violation_for_functional_qual(node, qual, attr):
 
 
 def _violation_for_tensor_method(node, qual, attr):
-    """处理被禁止的 tensor 方法调用。"""
+    """处理被禁止的 tensor 方法调用。
+
+    ⚠️ 只对**属性调用**（``x.min()``）成立。裸调用（``min(a, b)``）是 Python
+    内建或模块内自定义函数，不是 tensor 方法：host 侧的
+    ``min(128, ceil16(S_K))``、``grid = min(NUM_CORES, total_tasks)`` 等标准
+    tiling 写法必须放行（与沙箱版校验器对齐 —— 该守卫在 vendoring 时丢失，
+    导致 8/40 个 conv trial 因裸 ``min()``/``max()`` 被误判 decoy 清零）。
+    自定义函数里的主链计算由其它规则的跨函数扫描覆盖。
+    """
+    if qual is None:
+        return None
     if attr not in FORBIDDEN_TENSOR_METHODS:
         return None
     # 排除已知安全的 qual（torch/F/triton 已在上面处理）
