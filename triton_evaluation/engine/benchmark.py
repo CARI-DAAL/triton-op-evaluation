@@ -37,6 +37,7 @@ from _common_utils import build_input_groups as _build_input_groups_shared  # no
 from _common_utils import ensure_npu_ambient_device as _ensure_npu_ambient_shared  # noqa: E402
 from _common_utils import describe_input as _describe_input_shared  # noqa: E402
 from _common_utils import enforce_conv_fp32 as _enforce_conv_fp32  # noqa: E402
+from _common_utils import invoke_model as _invoke_model_shared  # noqa: E402
 from _common_utils import set_process_title as _set_process_title  # noqa: E402
 
 logger = logging.getLogger("triton_op_verifier.benchmark")
@@ -282,12 +283,12 @@ def prepare_model_fn(model: Any, inputs: List[Any], device: Any) -> callable:
     import torch_npu  # noqa: F401
 
     with torch.no_grad():
-        _ = model(*inputs)
+        _ = _invoke_model_shared(model, inputs)
     torch.npu.synchronize()
 
     def test_fn():
         with torch.no_grad():
-            _ = model(*inputs)
+            _ = _invoke_model_shared(model, inputs)
         torch.npu.synchronize()
 
     return test_fn

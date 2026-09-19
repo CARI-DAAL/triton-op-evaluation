@@ -153,6 +153,7 @@ from _common_utils import build_input_groups as _build_input_groups_shared  # no
 from _common_utils import ensure_npu_ambient_device as _ensure_npu_ambient_shared  # noqa: E402
 from _common_utils import describe_input as _describe_input_shared  # noqa: E402
 from _common_utils import enforce_conv_fp32 as _enforce_conv_fp32  # noqa: E402
+from _common_utils import invoke_model as _invoke_model_shared  # noqa: E402
 from _common_utils import set_process_title as _set_process_title  # noqa: E402
 from _divergence import classify_divergence as _classify_divergence  # noqa: E402
 
@@ -1035,7 +1036,7 @@ def _run_candidate_forward(impl_model, inputs, subject_budget_seconds):
     """
     if not subject_budget_seconds:
         try:
-            return impl_model(*inputs)
+            return _invoke_model_shared(impl_model, inputs)
         except Exception as exc:
             if _is_compile_error(exc):
                 raise _CandidateCompileError(
@@ -1047,7 +1048,7 @@ def _run_candidate_forward(impl_model, inputs, subject_budget_seconds):
     previous_handler = signal.signal(signal.SIGALRM, _subject_alarm_handler)
     signal.setitimer(signal.ITIMER_REAL, subject_budget_seconds)
     try:
-        return impl_model(*inputs)
+        return _invoke_model_shared(impl_model, inputs)
     except _CandidateExecutionTimeout:
         raise
     except Exception as exc:
@@ -1087,7 +1088,7 @@ def run_single_case(models: ModelPair, inputs, device, case_ctx: CaseContext, no
         impl_output = _run_candidate_forward(
             models.impl, inputs_for_impl, case_ctx.subject_budget_seconds
         )
-        framework_output = models.framework(*inputs_for_framework)
+        framework_output = _invoke_model_shared(models.framework, inputs_for_framework)
 
     if not isinstance(framework_output, (list, tuple)):
         framework_output = [framework_output]

@@ -160,3 +160,50 @@ def ensure_npu_ambient_device(torch) -> bool:
         return False
     torch.set_default_device("npu")
     return True
+
+
+def invoke_model(model, inputs):
+    """按模型声明的签名调用：位置槽传位置参数，溢出按参数名传 keyword-only。
+
+    沙箱阶段的某些 reference 用 keyword-only 参数声明可选输入
+    （``def forward(self, x1, x2, *, x1_scale=None, x2_scale=None)``），
+    而用例输入是一个有序列表。按签名契约，位置槽（POSITIONAL_*）接受前
+    N 个输入，其余输入应按声明顺序绑定到 keyword-only 参数名 —— 直接
+    ``model(*inputs)`` 会抛 "takes N positional arguments" TypeError，
+    该错误落在参考侧、无法归因，整题退化为 unscored。
+
+    适配条件严格受限：仅在签名确实声明了 keyword-only 参数、没有
+    ``*args``、且输入数量恰好等于位置槽 + keyword-only 槽数时改写调用；
+    其余一切情况原样调用，让 Python 的自然错误语义保持不变。
+    """
+    import inspect
+
+    try:
+        signature = inspect.signature(type(model).forward)
+    except (TypeError, ValueError):
+        return model(*inputs)
+
+    parameters = list(signature.parameters.values())
+    if parameters and parameters[0].name == "self":
+        parameters = parameters[1:]
+    kinds = {parameter.kind for parameter in parameters}
+    if inspect.Parameter.VAR_POSITIONAL in kinds:
+        return model(*inputs)
+
+    positional_slots = [
+        parameter
+        for parameter in parameters
+        if parameter.kind
+        in (inspect.Parameter.POSITIONAL_ONLY, inspect.Parameter.POSITIONAL_OR_KEYWORD)
+    ]
+    keyword_slots = [
+        parameter for parameter in parameters if parameter.kind is inspect.Parameter.KEYWORD_ONLY
+    ]
+    if not keyword_slots or len(inputs) != len(positional_slots) + len(keyword_slots):
+        return model(*inputs)
+
+    keywords = {
+        parameter.name: value
+        for parameter, value in zip(keyword_slots, inputs[len(positional_slots) :])
+    }
+    return model(*inputs[: len(positional_slots)], **keywords)

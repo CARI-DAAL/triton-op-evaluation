@@ -46,7 +46,9 @@ def _write_fake_runtime(root: Path):
         "        return value if isinstance(value, (int, float, str, bool)) else repr(value)\n"
         "    return [{'type': 'scalar', 'value': safe(value)} for value in inputs]\n"
         "def ensure_npu_ambient_device(torch):\n"
-        "    return False\n",
+        "    return False\n"
+        "def invoke_model(model, inputs):\n"
+        "    return model(*inputs)\n",
         encoding="utf-8",
     )
 
@@ -100,23 +102,19 @@ def test_runner_falls_back_to_single_get_inputs_case(tmp_path):
     _write_fake_runtime(tmp_path)
     _write_task(tmp_path)
     (tmp_path / "sample_torch.py").write_text(
-        "def get_init_inputs(): return []\n"
-        "def get_inputs(): return [33]\n",
+        "def get_init_inputs(): return []\ndef get_inputs(): return [33]\n",
         encoding="utf-8",
     )
     runner = profile.write_runner(str(tmp_path))
     cases = _discover(tmp_path, runner)
-    assert cases == [
-        {"case_idx": 0, "input_desc": [{"type": "scalar", "value": 33}]}
-    ]
+    assert cases == [{"case_idx": 0, "input_desc": [{"type": "scalar", "value": 33}]}]
 
 
 def test_runner_accepts_tuple_case_groups(tmp_path):
     _write_fake_runtime(tmp_path)
     _write_task(tmp_path)
     (tmp_path / "sample_torch.py").write_text(
-        "def get_init_inputs(): return []\n"
-        "def get_input_groups(): return ([11], (22,))\n",
+        "def get_init_inputs(): return []\ndef get_input_groups(): return ([11], (22,))\n",
         encoding="utf-8",
     )
     runner = profile.write_runner(str(tmp_path))
@@ -128,8 +126,7 @@ def test_runner_rejects_empty_input_groups(tmp_path):
     _write_fake_runtime(tmp_path)
     _write_task(tmp_path)
     (tmp_path / "sample_torch.py").write_text(
-        "def get_init_inputs(): return []\n"
-        "def get_input_groups(): return iter(())\n",
+        "def get_init_inputs(): return []\ndef get_input_groups(): return iter(())\n",
         encoding="utf-8",
     )
     runner = profile.write_runner(str(tmp_path))
