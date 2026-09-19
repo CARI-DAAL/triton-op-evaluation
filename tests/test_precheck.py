@@ -193,3 +193,71 @@ def test_successful_import_does_not_leave_candidate_children_running(
     assert precheck.run_precheck(store, precheck_settings, source, "impl") == "precheck_passed"
     time.sleep(0.5)
     assert not child_marker.exists()
+
+
+def _parse_validator_output(stdout):
+    """--json 输出是缩进多行 JSON；从首个 { 起整体解析。"""
+    import json as _j
+    text = stdout[stdout.find("{"):]
+    try:
+        return _j.loads(text)
+    except ValueError:
+        return None
+
+
+def test_bare_builtin_min_max_are_not_tensor_methods(tmp_path):
+    """裸 min()/max() 是 Python 内建（标准 tiling 写法），不是 tensor 方法。
+
+    沙箱版校验器有 qual-is-None 守卫并明确注释了原因；vendoring 时丢失，
+    导致 conv 任务里 ``grid = min(...)`` 之类写法被误判 Type-3 decoy。
+    属性形式 ``x.min()`` 仍然必须拒绝。
+    """
+    import subprocess, sys, json as _json
+    from pathlib import Path as _P
+    kernel = tmp_path / "kernel.py"
+    kernel.write_text(
+        "import torch\n"
+        "import torch.nn as nn\n"
+        "import triton\n"
+        "import triton.language as tl\n"
+        "\n"
+        "@triton.jit\n"
+        "def _k(o, n, B: tl.constexpr):\n"
+        "    p = tl.program_id(0)\n"
+        "    off = p * B + tl.arange(0, B)\n"
+        "    tl.store(o + off, tl.zeros((B,), dtype=tl.float32), mask=off < n)\n"
+        "\n"
+        "class ModelNew(nn.Module):\n"
+        "    def forward(self, a, b):\n"
+        "        out = torch.empty_like(a)\n"
+        "        grid = min(128, triton.cdiv(a.numel(), 1024))\n"
+        "        blocks = max(1, grid // 2)\n"
+        "        _k[(blocks,)](out, a.numel(), B=1024)\n"
+        "        return out\n",
+        encoding="utf-8",
+    )
+    engine = _P(__file__).resolve().parents[1] / "triton_evaluation" / "engine"
+    result = subprocess.run(
+        [sys.executable, str(engine / "validate_triton_impl.py"), str(kernel), "--json"],
+        capture_output=True, text=True, timeout=120,
+    )
+    payload = _parse_validator_output(result.stdout)
+    assert payload is not None, result.stdout[-300:]
+    assert payload["valid"] is True, payload.get("suggestion")
+
+    # 属性调用 x.min() 仍必须拒绝
+    bad = tmp_path / "bad.py"
+    bad.write_text(
+        kernel.read_text(encoding="utf-8").replace(
+            "blocks = max(1, grid // 2)", "blocks = a.min()"
+        ),
+        encoding="utf-8",
+    )
+    result = subprocess.run(
+        [sys.executable, str(engine / "validate_triton_impl.py"), str(bad), "--json"],
+        capture_output=True, text=True, timeout=120,
+    )
+    payload = _parse_validator_output(result.stdout)
+    assert payload is not None
+    assert payload["valid"] is False
+    assert payload["regression_type"] == 3
