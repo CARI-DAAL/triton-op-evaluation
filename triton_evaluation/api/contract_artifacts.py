@@ -6,6 +6,7 @@ RFC 8785 canonical JSON; the index pins every fixture and contract.json
 pins the schema and index. Rebuild consumers against these release digests.
 """
 import hashlib
+import json
 import math
 import os
 import tempfile
@@ -22,6 +23,43 @@ SCHEMA_ID = "urn:triton-evaluation:evaluation-api:2.1:schema"
 
 def canonical_json_bytes(value: object) -> bytes:
     return rfc8785.dumps(value)
+
+
+_SAFE_INT_MAX = 2**53 - 1
+
+
+def _parse_canonical_number(literal: str) -> int | float:
+    """Parse a canonical-JSON number literal with the serializer's own rule.
+
+    ``rfc8785.dumps`` writes every double below 1e21 in plain digit form --
+    including values far outside the 2^53 integer safe domain
+    (1.8517161196398838e+18 serializes as 1851716119639883800). A plain
+    ``json.loads`` reads that literal back as an **int**, and re-serializing
+    the reloaded structure then raises IntegerDomainError -- our canonical
+    output failed to round-trip through our own store.
+
+    Literals inside the safe domain stay exact ints; larger ones become the
+    nearest double (the only thing canonical serialization could have
+    produced); anything past the double domain is rejected. Mirrors the
+    platform-side rule in harbor.verifier.triton.json_contract.
+    """
+    value = int(literal)
+    if -_SAFE_INT_MAX <= value <= _SAFE_INT_MAX:
+        return value
+    as_double = float(literal)
+    if not math.isfinite(as_double):
+        raise ValueError(f"number outside the double domain: {literal}")
+    return as_double
+
+
+def load_canonical(data: bytes | str) -> object:
+    """Reload canonical JSON produced by :func:`canonical_json_bytes`.
+
+    Persisted canonical bytes must be parsed with the serializer's number
+    domain, otherwise the reload is lossy (digit-form doubles become ints)
+    and the next canonical write of the same structure fails.
+    """
+    return json.loads(data, parse_int=_parse_canonical_number)
 
 
 def sha256_hex(data: bytes) -> str:

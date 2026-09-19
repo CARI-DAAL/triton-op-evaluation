@@ -57,7 +57,11 @@ from triton_evaluation.api.contract import (
     EvaluationResult,
     dump_contract,
 )
-from triton_evaluation.api.contract_artifacts import canonical_json_bytes, sha256_hex
+from triton_evaluation.api.contract_artifacts import (
+    canonical_json_bytes,
+    load_canonical,
+    sha256_hex,
+)
 from triton_evaluation.config import Settings
 from triton_evaluation.models import (
     AlgorithmVersions,
@@ -278,7 +282,7 @@ class EvaluationStore:
         session_digest: str,
         accepted_ms: int,
     ) -> tuple[EvaluationResource, dict, int]:
-        payload = json.loads(command.admission.canonical_request)
+        payload = load_canonical(command.admission.canonical_request)
         deadline_seconds = int(payload["deadline_seconds"])
         deadline_ms = accepted_ms + deadline_seconds * 1000
         accepted_at = datetime.fromtimestamp(accepted_ms / 1000, tz=timezone.utc)
@@ -595,7 +599,7 @@ class EvaluationStore:
     def _card_for_attempt(stored: dict) -> bytes | None:
         """Resolve optional provenance without borrowing another attempt's card."""
         try:
-            binding = json.loads(stored.get(b"attempt_card", b""))
+            binding = load_canonical(stored.get(b"attempt_card", b""))
         except (ValueError, TypeError):
             return None
         if (
@@ -667,7 +671,11 @@ class EvaluationStore:
         resource_key = self._key(f"resource:{lease.evaluation_id}")
 
         def mutate(pipeline, stored, now_ms):
-            outcomes = json.loads(stored[b"check_outcomes"])
+            # Reload with the canonical number domain: digit-form doubles
+            # (values beyond 2^53) would otherwise come back as ints and the
+            # re-serialization below raises IntegerDomainError, failing the
+            # whole check with EVALUATOR_EXECUTION_FAILED.
+            outcomes = load_canonical(stored[b"check_outcomes"])
             outcomes[check] = outcome.model_dump(mode="json", exclude_none=False)
             pipeline.hset(resource_key, "check_outcomes", canonical_json_bytes(outcomes))
 
