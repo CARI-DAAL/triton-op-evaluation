@@ -139,6 +139,16 @@ device requirements. Bind changes to this execution environment to a new
 evaluator build; do not combine its measurements with a previous environment
 without declaring the change.
 
+Correctness defaults to the existing CPU-first reference with NPU fallback for
+reference execution errors. To declare an NPU reference experiment, set
+`TRITON_EVAL_REFERENCE_DEVICE_POLICY=npu-strict` on the API and every worker.
+This mode always selects the assigned NPU and never changes reference device
+after seeing a candidate outcome. It adds `:npu-strict-v1` to the published
+correctness algorithm identity automatically. Bind the policy to a new evaluator
+build and experiment; numerical rounding can differ even though the comparison
+formula and tolerances are unchanged. See [reference policy and observations](docs/architecture/reference-device-policy.md)
+for provenance, retention and admission checks.
+
 ## Recovery and caching
 
 Synchronous Redis AOF EXEC acknowledgement is the durability boundary. HTTP

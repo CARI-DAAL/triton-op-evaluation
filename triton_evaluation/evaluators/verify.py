@@ -86,9 +86,13 @@ def _extract_validate_json(text: str) -> dict | None:
 
 
 class VerifyEvaluator:
-    def __init__(self, engine_dir: str, budget_cap_seconds: int = 1500):
+    def __init__(self, engine_dir: str, budget_cap_seconds: int = 1500,
+                 reference_device_policy: str = "cpu-first"):
+        if reference_device_policy not in {"cpu-first", "npu-strict"}:
+            raise ValueError("unsupported reference_device_policy")
         self.engine_dir = engine_dir
         self.budget_cap_seconds = budget_cap_seconds
+        self.reference_device_policy = reference_device_policy
 
     def run(
         self,
@@ -230,6 +234,8 @@ class VerifyEvaluator:
             str(budget),
             "--output",
             str(out_path),
+            "--reference-device-policy",
+            self.reference_device_policy,
         ]
         if request.non_compute:
             cmd.append("--non-compute")

@@ -39,6 +39,8 @@ services:
       # (or an explicitly reviewed git:<40-hex> dev build).
       TRITON_EVAL_IMAGE: ${TRITON_EVAL_IMAGE}
       TRITON_EVAL_EVALUATOR_BUILD: ${TRITON_EVAL_EVALUATOR_BUILD:?must equal the image sha256 digest}
+      TRITON_EVAL_REFERENCE_DEVICE_POLICY: ${TRITON_EVAL_REFERENCE_DEVICE_POLICY:-cpu-first}
+      TRITON_EVAL_REFERENCE_DIAGNOSTICS_DIR: /opt/triton-eval/logs/reference-diagnostics
       # Whole-run engine budgets (deployment-tunable; see the K3 watchdog report).
       TRITON_EVAL_VERIFY_BUDGET_CAP_SECONDS: ${TRITON_EVAL_VERIFY_BUDGET_CAP_SECONDS:-1500}
       TRITON_EVAL_BENCHMARK_TIMEOUT_SECONDS: ${TRITON_EVAL_BENCHMARK_TIMEOUT_SECONDS:-600}

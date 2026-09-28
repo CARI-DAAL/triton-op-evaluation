@@ -1,5 +1,6 @@
 import os
 from pathlib import Path
+from typing import Literal
 
 from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -30,6 +31,8 @@ class Settings(BaseSettings):
     # Isolated durable state for the v2.1-only release.
     redis_prefix: str = Field(default="triton-eval:v2.1", min_length=1)
     engine_dir: str = _DEFAULT_ENGINE_DIR
+    reference_device_policy: Literal["cpu-first", "npu-strict"] = "cpu-first"
+    reference_diagnostics_dir: Path | None = None
     # Compile-only attempts use CPU capacity; mixed checks stay on one NPU worker.
     cpu_workers: int = Field(default=1, ge=0, le=32)
     api_poll_interval_seconds: float = Field(default=0.25, ge=0.05, le=5)
@@ -119,8 +122,17 @@ class Settings(BaseSettings):
     catalog_root: Path | None = None
     catalog_manifest_path: Path | None = None
 
+    @property
+    def effective_correctness_algorithm_version(self) -> str:
+        """Reference placement is part of the correctness protocol identity."""
+        if self.reference_device_policy == "npu-strict":
+            return self.correctness_algorithm_version + ":npu-strict-v1"
+        return self.correctness_algorithm_version
+
     @model_validator(mode="after")
     def _durable_core_windows(self):
+        if len(self.effective_correctness_algorithm_version) > 128:
+            raise ValueError("effective correctness algorithm version exceeds 128 characters")
         if self.max_recovery_age_seconds > self.retention_seconds:
             raise ValueError("max_recovery_age_seconds must not exceed retention_seconds")
         if self.heartbeat_interval_seconds >= self.lease_seconds:

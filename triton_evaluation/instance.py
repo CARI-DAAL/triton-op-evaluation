@@ -45,7 +45,7 @@ class EvaluationInstance:
         self.metrics = metrics
         self.artifacts_verified = artifacts_verified
         self._algorithms = AlgorithmVersions(
-            correctness=settings.correctness_algorithm_version,
+            correctness=settings.effective_correctness_algorithm_version,
             decoy=settings.decoy_algorithm_version,
             benchmark=settings.benchmark_algorithm_version,
             profiler=settings.profiler_algorithm_version,

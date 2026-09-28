@@ -160,6 +160,7 @@ def test_same_compose_supports_single_or_multiple_cards(cards):
 
 
 @pytest.mark.parametrize("field, value, expected", [
+    ("reference_device_policy", "npu-strict", "npu-strict"),
     ("verify_budget_cap_seconds", "900", 900),
     ("benchmark_timeout_seconds", "120", 120),
     ("device_hold_mb", "0", 0),
