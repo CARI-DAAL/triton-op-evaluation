@@ -151,7 +151,7 @@ class ProfileEvaluator:
             return engine_timeout("profile", "profile exceeded the resource deadline")
         if remaining_seconds(deadline_at) <= 0:
             return engine_timeout("profile", "profile exceeded the resource deadline")
-        result = read_json(str(out_path))
+        result = read_json(out_path, root=work_dir)
         if outcome.exit_code == 0 and isinstance(result, dict):
             return EngineCheckResult(status="succeeded", raw=result, error=None)
         return engine_failure("profile", "profile engine produced no usable result")

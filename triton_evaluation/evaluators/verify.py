@@ -252,7 +252,7 @@ class VerifyEvaluator:
         if outcome.timed_out or remaining_seconds(deadline_at) <= 0:
             # The outer kill is ambiguous: never a candidate execution timeout.
             return engine_timeout("correctness", "correctness exceeded the resource deadline")
-        result = read_json(str(out_path))
+        result = read_json(out_path, root=work_dir)
         if outcome.exit_code == _ENGINE_WATCHDOG_EXIT_CODE:
             # Whole-run watchdog: the legitimate workload outgrew the budget.
             # Not a crash, never retryable — raise the budget cap or deadline.

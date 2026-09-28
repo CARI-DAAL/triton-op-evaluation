@@ -79,7 +79,7 @@ class BenchmarkEvaluator:
             return engine_failure(
                 "performance", "benchmark verify gate rejected the run"
             )
-        result = read_json(str(out_path))
+        result = read_json(out_path, root=work_dir)
         if outcome.exit_code == 0 and isinstance(result, dict):
             return EngineCheckResult(status="succeeded", raw=result, error=None)
         log_engine_crash(

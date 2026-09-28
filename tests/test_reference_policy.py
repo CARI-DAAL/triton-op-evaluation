@@ -56,7 +56,7 @@ def test_settings_reaches_engine_command(tmp_path, monkeypatch):
         return ScriptOutcome(0, "", "", False, "exited")
 
     monkeypatch.setattr(evaluator_module, "run_script", run)
-    monkeypatch.setattr(evaluator_module, "read_json", lambda _: {})
+    monkeypatch.setattr(evaluator_module, "read_json", lambda _, **_kwargs: {})
     settings = Settings(reference_device_policy="npu-strict")
     evaluator = EvaluationEvaluator("unused", settings)._verify_evaluator()
     evaluator._run_verify(

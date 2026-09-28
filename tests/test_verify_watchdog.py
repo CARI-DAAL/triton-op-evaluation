@@ -36,7 +36,7 @@ def test_watchdog_exit_code_maps_to_deadline_exceeded(tmp_path, monkeypatch):
     monkeypatch.setattr(
         verify_mod, "run_script", _fake_run_script(seen, exit_code=3)
     )
-    monkeypatch.setattr(verify_mod, "read_json", lambda path: None)
+    monkeypatch.setattr(verify_mod, "read_json", lambda path, **_kwargs: None)
 
     evaluator = VerifyEvaluator("unused")
     result = evaluator.run(make_request(), tmp_path, 0, _deadline())
@@ -53,7 +53,7 @@ def test_other_exit_codes_still_fail_closed(tmp_path, monkeypatch):
     monkeypatch.setattr(
         verify_mod, "run_script", _fake_run_script(seen, exit_code=1)
     )
-    monkeypatch.setattr(verify_mod, "read_json", lambda path: None)
+    monkeypatch.setattr(verify_mod, "read_json", lambda path, **_kwargs: None)
 
     evaluator = VerifyEvaluator("unused")
     result = evaluator.run(make_request(), tmp_path, 0, _deadline())
@@ -74,7 +74,7 @@ def test_verify_budget_cap_comes_from_settings(tmp_path, monkeypatch):
     )
     monkeypatch.setattr(
         verify_mod, "read_json",
-        lambda path: {"decoy": True, "total_cases": 1},  # any dict short-circuits
+        lambda path, **_kwargs: {"decoy": True, "total_cases": 1},  # any dict short-circuits
     )
 
     settings = Settings(engine_dir="unused", verify_budget_cap_seconds=1500)
@@ -98,7 +98,7 @@ def test_benchmark_timeout_comes_from_settings(tmp_path, monkeypatch):
     monkeypatch.setattr(
         benchmark_mod, "run_script", _fake_run_script(seen, exit_code=0)
     )
-    monkeypatch.setattr(benchmark_mod, "read_json", lambda path: {"cases": []})
+    monkeypatch.setattr(benchmark_mod, "read_json", lambda path, **_kwargs: {"cases": []})
 
     settings = Settings(engine_dir="unused", benchmark_timeout_seconds=600)
     evaluator = EvaluationEvaluator("unused", settings=settings)

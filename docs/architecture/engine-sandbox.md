@@ -68,6 +68,18 @@ Capabilities are dropped and the root mount is read-only. Invocation deadline,
 lease loss and process termination retain the existing cleanup path; the private
 PID namespace also kills descendants that create a new session.
 
+The host's result collection is part of this boundary. Correctness, benchmark
+and profile outputs are read relative to the trusted attempt directory using
+directory descriptors and `O_NOFOLLOW` for every parent and the final file.
+Parent traversal, symlinked roots or parents, symlinked results and nonregular
+files are unusable engine output. The host never follows a candidate-created
+result link into another attempt or a host file. Descriptor-relative traversal
+also prevents replacing an already checked parent from redirecting the read.
+Restaging the frozen reference and implementation for a later check writes fresh
+files and replaces entries relative to the same trusted directory descriptor.
+Existing symbolic links or hard links therefore cannot redirect a host write or
+modify another file when the modules are restored.
+
 Ascend devices can retain ownership by a live mount namespace after the last
 device file descriptor closes. A historical idle container can therefore make
 a fresh engine sandbox fail with `EBUSY` at `/dev/davinciN` while host execution

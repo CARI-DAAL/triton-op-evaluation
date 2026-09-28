@@ -535,7 +535,9 @@ def test_evaluator_outer_kill_fires_after_the_engine_grace(tmp_path, monkeypatch
         return ScriptOutcome(0, "", "", False)
 
     monkeypatch.setattr(verify_mod, "run_script", fake_run_script)
-    monkeypatch.setattr(verify_mod, "read_json", lambda path: load("verify-correct.json"))
+    monkeypatch.setattr(
+        verify_mod, "read_json", lambda path, **_kwargs: load("verify-correct.json"),
+    )
 
     evaluator = verify_mod.VerifyEvaluator("unused")
     deadline = datetime.now(timezone.utc) + timedelta(seconds=120)
@@ -561,7 +563,7 @@ def test_ambiguous_exit_past_deadline_is_timeout_never_attributed(tmp_path, monk
         "run_script",
         lambda *args, **kwargs: ScriptOutcome(1, "", "", False),
     )
-    monkeypatch.setattr(verify_mod, "read_json", lambda path: None)
+    monkeypatch.setattr(verify_mod, "read_json", lambda path, **_kwargs: None)
 
     evaluator = verify_mod.VerifyEvaluator("unused")
     deadline = datetime.now(timezone.utc) + timedelta(seconds=100)
