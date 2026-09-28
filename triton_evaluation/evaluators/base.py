@@ -21,6 +21,7 @@ from typing import Literal, Protocol
 
 from ..api.contract import Check, CheckOutcome, ErrorInfo, EvaluationRequest
 from ..api.contract_artifacts import canonical_json_bytes, sha256_hex
+from .sandbox import isolate_command
 
 logger = logging.getLogger(__name__)
 
@@ -143,6 +144,7 @@ def run_script(
     env = dict(os.environ)
     # A CPU precheck must not inherit the parent's NPU assignment.
     env["ASCEND_RT_VISIBLE_DEVICES"] = "" if device_id is None else str(device_id)
+    cmd, env = isolate_command(cmd, cwd, device_id, env)
     with tempfile.TemporaryFile(mode="w+") as out_file, tempfile.TemporaryFile(
         mode="w+"
     ) as err_file:

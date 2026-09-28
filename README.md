@@ -2,7 +2,7 @@
 
 Durable Triton-Ascend evaluation over one HTTP interface. The service owns
 admission, leases, recovery, execution and typed evidence. The consumer owns
-session, instance selection and scoring. Workers run isolated evaluation
+session, instance selection and scoring. Workers run separate evaluation
 subprocesses: CPU workers for compile-only requests and one NPU worker per
 configured card for all other evaluations.
 
@@ -128,6 +128,16 @@ For host execution, install `.[npu]` in an isolated environment, configure
 `.env.example`, then use `scripts/start.sh` / `scripts/stop.sh`. Supply Redis
 with `--appendonly yes --appendfsync always`, as Compose does. The engine is
 bundled and needs no external checkout.
+
+Candidate code needs an operating-system boundary when evaluations must not
+read other attempts or service credentials. Subprocesses alone do not provide
+that boundary. Set `TRITON_EVAL_ENGINE_SANDBOX_CONFIG` on each worker to an
+operator-owned runtime manifest, and pin its digest with
+`TRITON_EVAL_ENGINE_SANDBOX_SHA256`, to enable the fail-closed Linux engine sandbox.
+See [engine isolation](docs/architecture/engine-sandbox.md) for deployment and
+device requirements. Bind changes to this execution environment to a new
+evaluator build; do not combine its measurements with a previous environment
+without declaring the change.
 
 ## Recovery and caching
 
