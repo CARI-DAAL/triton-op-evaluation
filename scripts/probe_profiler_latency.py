@@ -193,6 +193,9 @@ def probe(output: Path, physical_device: int, samples: int = 8) -> int:
                         "msprof_sha256",
                     )
                 )
+                valid_trace = valid_trace and traces[0].get("cann_runtime") == expected.get(
+                    "cann_runtime"
+                )
                 valid_trace = valid_trace and all(
                     traces[0].get(key) == value
                     for key, value in {

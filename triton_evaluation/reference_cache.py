@@ -122,7 +122,13 @@ class CacheDeployment(BaseModel):
             if sha256(Path(path).read_bytes()) != expected:
                 raise ReferenceCacheError("cache runtime file changed")
         engine_dir = engine_dir or Path(__file__).parent / "engine"
-        from .profiler_runtime import DIGEST_ENV, MANIFEST_ENV, RUNTIME_ENV_KEYS, load_runtime
+        from .profiler_runtime import (
+            DIGEST_ENV,
+            MANIFEST_ENV,
+            RUNTIME_ENV_KEYS,
+            load_runtime,
+            read_cann_environment,
+        )
 
         if any(key in os.environ for key in RUNTIME_ENV_KEYS):
             if "../profiler_runtime.py" not in self.algorithm_files:
@@ -142,6 +148,13 @@ class CacheDeployment(BaseModel):
                 required_runtime[str(getattr(profiler, field + "_path"))] = getattr(
                     profiler, field + "_sha256"
                 )
+            cann = read_cann_environment(profiler)
+            if cann is not None:
+                for field in ("cann_set_env", "cann_environment"):
+                    required_runtime[str(getattr(profiler, field + "_path"))] = getattr(
+                        profiler, field + "_sha256"
+                    )
+                required_runtime.update(cann.runtime_files)
             if any(
                 self.runtime_files.get(path) != digest for path, digest in required_runtime.items()
             ):

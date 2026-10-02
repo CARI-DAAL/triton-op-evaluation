@@ -15,10 +15,15 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from ..profiler_runtime import (
+    CANN_ENV_KEYS,
+    derive_cann_environment,
+    read_cann_environment,
+    read_runtime,
+)
 from ..profiler_runtime import DIGEST_ENV as PROFILER_DIGEST_ENV
 from ..profiler_runtime import MANIFEST_ENV as PROFILER_MANIFEST_ENV
 from ..profiler_runtime import RUNTIME_ENV_KEYS as PROFILER_RUNTIME_ENV_KEYS
-from ..profiler_runtime import read_runtime
 from ..reference_cache import (
     BINDING_ENV,
     CACHE_ENV,
@@ -100,6 +105,9 @@ class EngineSandbox(BaseModel):
                 model.consumer_path,
                 model.msprof_path,
             ]
+            cann = read_cann_environment(model)
+            if cann is not None:
+                required += [cann.cann_root, cann.cann_root.parent / "driver"]
             for path in required:
                 visible = any(
                     (path == destination or destination in path.parents)
@@ -268,9 +276,22 @@ def apply_runtime_overlay(
     environment[REFERENCE_POLICY_ENV] = policy
     mounts = list(sandbox.readonly_mounts)
     required: list[Path] = []
+    cann_evidence: dict[str, Any] | None = None
     if overlay.environment.keys() & PROFILER_RUNTIME_ENV_KEYS:
         config = environment[PROFILER_MANIFEST_ENV]
         runtime = read_runtime(config, environment[PROFILER_DIGEST_ENV], check_resolution=False)
+        environment.update(derive_cann_environment(runtime, environment))
+        cann = read_cann_environment(runtime)
+        if cann is not None:
+            required += [cann.cann_root, cann.cann_root.parent / "driver"]
+            cann_evidence = {
+                "cann_root": str(cann.cann_root),
+                "cann_set_env_path": str(runtime.cann_set_env_path),
+                "cann_set_env_sha256": runtime.cann_set_env_sha256,
+                "cann_environment_path": str(runtime.cann_environment_path),
+                "cann_environment_sha256": runtime.cann_environment_sha256,
+                "directories": cann.directories,
+            }
         required += [
             Path(config).parent,
             runtime.library_path,
@@ -343,6 +364,13 @@ def apply_runtime_overlay(
     environment["PYTHONPATH"] = str(package.parent) + (
         os.pathsep + environment["PYTHONPATH"] if environment.get("PYTHONPATH") else ""
     )
+    if cann_evidence is not None:
+        cann_evidence["effective_environment"] = {
+            key: environment[key] for key in sorted(CANN_ENV_KEYS)
+        }
+        cann_evidence["effective_environment_sha256"] = hashlib.sha256(
+            json.dumps(cann_evidence["effective_environment"], sort_keys=True).encode()
+        ).hexdigest()
     for path in required:
         if not _covered(path, mounts):
             mounts.append((path, path))
@@ -363,6 +391,7 @@ def apply_runtime_overlay(
         "effective_environment_keys": sorted(environment),
         "readonly_mounts": [[str(a), str(b)] for a, b in derived.readonly_mounts],
         "reference_cache_state_dir": str(state) if state is not None else None,
+        "cann_runtime": cann_evidence,
     }
 
 

@@ -147,7 +147,7 @@ def test_green_requires_all_eight_original_profiler_contexts_and_median(
     assert report["admission_evidence"] is False
 
 
-@pytest.mark.parametrize("trace_kind", ["valid", "missing", "wrong-consumer"])
+@pytest.mark.parametrize("trace_kind", ["valid", "missing", "wrong-consumer", "wrong-cann-env"])
 def test_configured_probe_requires_actual_pinned_callback_not_only_environment(
     tmp_path, monkeypatch, controlled_measurement, trace_kind
 ):
@@ -158,6 +158,7 @@ def test_configured_probe_requires_actual_pinned_callback_not_only_environment(
         "manifest_path": str(tmp_path / "runtime/manifest.json"),
         "manifest_sha256": "a" * 64,
         "base_ld_sha256": "b" * 64,
+        "cann_runtime": {"cann_set_env_sha256": "e" * 64, "effective_environment_sha256": "f" * 64},
     }
     for name in ("alias", "library", "consumer", "msprof"):
         expected[name + "_path"] = str(tmp_path / "runtime" / name)
@@ -191,6 +192,11 @@ def test_configured_probe_requires_actual_pinned_callback_not_only_environment(
             }
             if trace_kind == "wrong-consumer":
                 trace["consumer_sha256"] = "d" * 64
+            if trace_kind == "wrong-cann-env":
+                trace["cann_runtime"] = {
+                    **expected["cann_runtime"],
+                    "effective_environment_sha256": "0" * 64,
+                }
             (directory / "profiler-runtime.json").write_text(json.dumps(trace))
         return {"matrix_product": 20.0}, 0.02, 1.0
 

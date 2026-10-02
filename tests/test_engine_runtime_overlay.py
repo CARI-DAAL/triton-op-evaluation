@@ -26,7 +26,7 @@ def anchored_overlay(tmp_path, monkeypatch, deployed_runtime):  # noqa: F811
     # Model the original manifest: no runtime pair and no new service source.
     original = {
         "readonly_mounts": mounts,
-        "environment": {"PATH": str(model.msprof_path.parent) + ":/usr/bin:/bin"},
+        "environment": {"PATH": "/usr/bin:/bin"},
     }
     base = tmp_path / "original-sandbox.json"
     base.write_text(json.dumps(original))
@@ -118,8 +118,9 @@ def test_old_engine_override_and_host_scripts_are_refused(anchored_overlay, monk
     assert boundary["engine_script_sha256"] == profiler_runtime.sha(attempt_script)
 
 
+@pytest.mark.parametrize("original_path", ["missing-msprof", "wrong-msprof"])
 def test_real_bwrap_child_loads_pinned_alias_and_new_helper_without_host_canary(
-    tmp_path, monkeypatch, anchored_overlay
+    tmp_path, monkeypatch, anchored_overlay, original_path
 ):
     if not shutil.which("bwrap"):
         pytest.skip("real bwrap binary is absent")
@@ -150,6 +151,18 @@ def test_real_bwrap_child_loads_pinned_alias_and_new_helper_without_host_canary(
         pytest.skip("this host denies real namespace creation")
     assert available.returncode == 0, available.stderr.decode(errors="replace")
     base, original, _overlay, work, model = anchored_overlay
+    if original_path == "wrong-msprof":
+        wrong_dir = tmp_path / "old-tool-bin"
+        wrong_dir.mkdir()
+        wrong = wrong_dir / "msprof"
+        wrong.write_text("#!/bin/sh\nexit 79\n")
+        wrong.chmod(0o755)
+        raw = json.loads(original)
+        raw["readonly_mounts"].append([str(wrong), str(wrong)])
+        raw["environment"]["PATH"] = str(wrong_dir) + ":/usr/bin:/bin"
+        base.write_text(json.dumps(raw))
+        original = base.read_bytes()
+        monkeypatch.setenv(sandbox.DIGEST_ENV, hashlib.sha256(original).hexdigest())
     canary = tmp_path / "host-canary"
     canary.write_text("must remain outside the boundary")
     monkeypatch.setenv("HQ_SENTINEL_SECRET", "must-not-cross")
@@ -158,6 +171,7 @@ def test_real_bwrap_child_loads_pinned_alias_and_new_helper_without_host_canary(
         "import json,os,stat,subprocess,sys\nfrom pathlib import Path\n"
         "from triton_evaluation import profiler_runtime as r\n"
         "m=r.load_runtime()\n"
+        "observed=r.describe_runtime()\n"
         "with r.profiler_export_runtime() as trace:\n"
         # CANN starts a new exporter process. ELF loaders do not re-read
         # LD_LIBRARY_PATH for in-process dlopen after Python starts.
@@ -169,6 +183,8 @@ def test_real_bwrap_child_loads_pinned_alias_and_new_helper_without_host_canary(
         "'alias_mode':stat.S_IMODE(m.alias_path.parent.stat().st_mode),\n"
         "'manifest_mode':stat.S_IMODE(Path(os.environ[r.MANIFEST_ENV]).parent.stat().st_mode),\n"
         "'policy':os.environ.get('TRITON_EVAL_REFERENCE_DEVICE_POLICY'),\n"
+        "'resolved_msprof_path':observed['resolved_msprof_path'],\n"
+        "'resolved_msprof_sha256':observed['resolved_msprof_sha256'],\n"
         "'helper_path':r.__file__,'trace':trace}))\n"
     )
     result = run_script([sys.executable, str(probe)], work, None, budget_seconds=10)
@@ -178,6 +194,8 @@ def test_real_bwrap_child_loads_pinned_alias_and_new_helper_without_host_canary(
     assert actual["alias_mode"] == actual["manifest_mode"] == 0o555
     assert actual["helper_path"] == profiler_runtime.__file__
     assert actual["policy"] == "npu-strict"
+    assert actual["resolved_msprof_path"] == str(model.msprof_path)
+    assert actual["resolved_msprof_sha256"] == model.msprof_sha256
     assert actual["trace"]["helper_path"] == profiler_runtime.__file__
     assert actual["trace"]["reference_device_policy"] == "npu-strict"
     assert actual["trace"]["helper_sha256"] == profiler_runtime.sha(Path(profiler_runtime.__file__))

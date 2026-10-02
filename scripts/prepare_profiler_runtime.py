@@ -26,6 +26,8 @@ def main() -> int:
     parser.add_argument("--sqlite-consumer-sha256", required=True)
     parser.add_argument("--msprof", required=True, type=Path)
     parser.add_argument("--msprof-sha256", required=True)
+    parser.add_argument("--cann-set-env", type=Path)
+    parser.add_argument("--cann-set-env-sha256")
     args = parser.parse_args()
     target = prepare_runtime(
         args.output,
@@ -35,6 +37,8 @@ def main() -> int:
         args.sqlite_consumer_sha256,
         args.msprof,
         args.msprof_sha256,
+        args.cann_set_env,
+        args.cann_set_env_sha256,
     )
     print(json.dumps({"manifest_path": str(target), "manifest_sha256": sha(target)}))
     return 0
