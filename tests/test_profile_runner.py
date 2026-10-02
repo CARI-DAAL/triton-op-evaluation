@@ -47,6 +47,8 @@ def _write_fake_runtime(root: Path):
         "    return [{'type': 'scalar', 'value': safe(value)} for value in inputs]\n"
         "def ensure_npu_ambient_device(torch):\n"
         "    return False\n"
+        "def prepare_candidate_inputs(reference_model, inputs):\n"
+        "    return list(inputs)\n"
         "def invoke_model(model, inputs):\n"
         "    return model(*inputs)\n",
         encoding="utf-8",
@@ -282,3 +284,64 @@ def test_runner_registers_path_modules_before_execution(tmp_path):
     )
     assert outcome.exit_code == 0, outcome.stderr
     assert kernel_marker.read_text() == "7"
+
+
+def test_profile_child_uses_real_default_preparation_before_candidate_call(tmp_path):
+    from triton_evaluation.engine import _common_utils
+
+    _write_fake_runtime(tmp_path)
+    # Keep this test's NPU stub but execute the real shared invocation/default
+    # functions in the separate profile child, not a mocked preparation route.
+    import inspect
+
+    common = tmp_path / "_common_utils.py"
+    common.write_text(
+        common.read_text()
+        + "\n"
+        + inspect.getsource(_common_utils.prepare_candidate_inputs)
+        + "\n"
+        + inspect.getsource(_common_utils.invoke_model)
+    )
+    (tmp_path / "sample_torch.py").write_text(
+        "_ADAPTER_VERSION = 'official-task-v1'\n"
+        "_PARAM_ORDER = ('x', 'scale', 'flag')\n"
+        "_ABSENT = object()\n"
+        "def run(x, scale=7, *, flag=True): return x * scale\n"
+        "class Model:\n"
+        "    def forward(self, *inputs): pass\n"
+        "def get_init_inputs(): return []\n"
+        "def get_input_groups(): return [[3, _ABSENT, _ABSENT]]\n"
+    )
+    (tmp_path / "sample_triton_ascend_impl.py").write_text(
+        "import os\n"
+        "class ModelNew:\n"
+        "    def to(self, device): return self\n"
+        "    def forward(self, x, scale=99, *, flag=False):\n"
+        "        assert scale == 7 and flag is True\n"
+        "        open(os.environ['KERNEL_MARKER'], 'w').write(str(x * scale))\n"
+        "    def __call__(self, *args, **kwargs): return self.forward(*args, **kwargs)\n"
+    )
+    marker = tmp_path / "kernel.txt"
+    environment = {**os.environ, "PYTHONPATH": str(tmp_path), "KERNEL_MARKER": str(marker)}
+    runner = profile.write_runner(str(tmp_path))
+    outcome = profile.run_command(
+        [
+            sys.executable,
+            runner,
+            "--engine-dir",
+            str(tmp_path),
+            "--verify-dir",
+            str(tmp_path),
+            "--op-name",
+            "sample",
+            "--triton-impl-name",
+            "triton_ascend_impl",
+            "--case-idx",
+            "0",
+        ],
+        cwd=str(tmp_path),
+        env=environment,
+        timeout=30,
+    )
+    assert outcome.exit_code == 0, outcome.stderr
+    assert marker.read_text() == "21"

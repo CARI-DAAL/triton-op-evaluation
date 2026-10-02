@@ -145,6 +145,7 @@ class ModelPair:
     framework: object
     impl: object
     golden_device: object = None
+    reference_input_model: object = None
 
 
 @dataclass
@@ -165,6 +166,7 @@ from _common_utils import build_input_groups as _build_input_groups_shared  # no
 from _common_utils import ensure_npu_ambient_device as _ensure_npu_ambient_shared  # noqa: E402
 from _common_utils import describe_input as _describe_input_shared  # noqa: E402
 from _common_utils import enforce_conv_fp32 as _enforce_conv_fp32  # noqa: E402
+from _common_utils import prepare_candidate_inputs as _prepare_candidate_inputs_shared  # noqa: E402
 from _common_utils import invoke_model as _invoke_model_shared  # noqa: E402
 from _common_utils import set_process_title as _set_process_title  # noqa: E402
 from _divergence import classify_divergence as _classify_divergence  # noqa: E402
@@ -1088,9 +1090,13 @@ def run_single_case(models: ModelPair, inputs, device, case_ctx: CaseContext, no
     input_type, input_dtype = _infer_input_type(inputs)
 
     golden_device = models.golden_device or device
+    trace = case_ctx.reference_trace[-1] if case_ctx.reference_trace else None
+    candidate_inputs = _prepare_candidate_inputs_shared(
+        models.reference_input_model or models.framework, inputs, trace=trace,
+    )
     inputs_for_impl = [
         x.to(device) if isinstance(x, torch.Tensor) else x
-        for x in inputs
+        for x in candidate_inputs
     ]
     inputs_for_framework = None
     if case_ctx.cached_reference is None:
@@ -1269,7 +1275,7 @@ def _attempt_case(modules, case_ctx: CaseContext, inputs, device,
                     f"candidate initialization failed: {type(exc).__name__}"
                 ) from exc
         run_single_case(
-            ModelPair(framework_model, impl_model, golden_device), inputs, device,
+            ModelPair(framework_model, impl_model, golden_device, modules.get("framework_cls")), inputs, device,
             case_ctx, non_compute=non_compute,
         )
     finally:

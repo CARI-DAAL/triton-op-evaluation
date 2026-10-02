@@ -212,10 +212,10 @@ def build_runner_source() -> str:
             model = implementation.ModelNew(
                 *reference.get_init_inputs()
             ).to("npu:0")
-            inputs = [to_npu(value, torch) for value in groups[index]]
+            from _common_utils import invoke_model, prepare_candidate_inputs
+            raw_inputs = groups[index]
+            inputs = [to_npu(value, torch) for value in prepare_candidate_inputs(getattr(reference, "Model", None), raw_inputs)]
             with torch.no_grad():
-                from _common_utils import invoke_model
-
                 invoke_model(model, inputs)
             if hasattr(torch, "npu"):
                 torch.npu.synchronize()

@@ -191,6 +191,49 @@ def ensure_npu_ambient_device(torch) -> bool:
     return True
 
 
+def prepare_candidate_inputs(reference_model, inputs, *, trace=None):
+    """Bind omitted official parameters to the defaults of the pinned run().
+
+    The raw workload retains its adapter-owned sentinel for reference execution
+    and cache binding. Only the candidate receives this derived positional list.
+    Neither candidate defaults nor a copied sentinel define official semantics.
+    A reference class suffices on cache hits; it is never instantiated here.
+    """
+    import inspect
+
+    namespace = getattr(getattr(reference_model, "forward", None), "__globals__", {})
+    if namespace.get("_ADAPTER_VERSION") != "official-task-v1":
+        return list(inputs)
+    order = namespace.get("_PARAM_ORDER")
+    run = namespace.get("run")
+    if not isinstance(order, (list, tuple)) or not callable(run) or "_ABSENT" not in namespace:
+        raise ValueError("official candidate inputs require the bound adapter contract")
+    if len(inputs) != len(order):
+        raise ValueError("official candidate input count differs from parameter order")
+    parameters = inspect.signature(run).parameters
+    absent = namespace["_ABSENT"]
+    candidate_inputs = []
+    defaulted = []
+    for name, value in zip(order, inputs):
+        if name not in parameters:
+            raise ValueError("official candidate parameter is absent from run signature")
+        if value is absent:
+            value = parameters[name].default
+            if value is inspect.Parameter.empty:
+                raise ValueError("official workload omitted a required parameter: " + name)
+            defaulted.append(name)
+        candidate_inputs.append(value)
+    if trace is not None:
+        from triton_evaluation.reference_cache import value_sha256
+        trace.update(
+            candidate_input_semantics="official-run-defaults-v1",
+            candidate_defaulted_parameters=defaulted,
+            raw_input_sha256=value_sha256(inputs, input_value=True),
+            candidate_input_sha256=value_sha256(candidate_inputs, input_value=True),
+        )
+    return candidate_inputs
+
+
 def invoke_model(model, inputs):
     """按模型声明的签名调用：位置槽传位置参数，溢出按参数名传 keyword-only。
 

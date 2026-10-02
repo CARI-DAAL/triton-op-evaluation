@@ -36,6 +36,10 @@ class _CaseReference(_PrivateModel):
     selected_reference_device: _Device
     reference_completed: bool
     output_devices: list[_OutputDevice]
+    candidate_input_semantics: Literal["official-run-defaults-v1"] | None = None
+    candidate_defaulted_parameters: list[str] | None = None
+    raw_input_sha256: Annotated[str, Field(pattern=r"^[0-9a-f]{64}$")] | None = None
+    candidate_input_sha256: Annotated[str, Field(pattern=r"^[0-9a-f]{64}$")] | None = None
     reference_cache_status: Literal["hit", "miss"] | None = None
     reference_manifest_sha256: Annotated[str, Field(pattern=r"^[0-9a-f]{64}$")] | None = None
     reference_binding_sha256: Annotated[str, Field(pattern=r"^[0-9a-f]{64}$")] | None = None

@@ -37,6 +37,7 @@ from _common_utils import build_input_groups as _build_input_groups_shared  # no
 from _common_utils import ensure_npu_ambient_device as _ensure_npu_ambient_shared  # noqa: E402
 from _common_utils import describe_input as _describe_input_shared  # noqa: E402
 from _common_utils import enforce_conv_fp32 as _enforce_conv_fp32  # noqa: E402
+from _common_utils import prepare_candidate_inputs as _prepare_candidate_inputs_shared  # noqa: E402
 from _common_utils import invoke_model as _invoke_model_shared  # noqa: E402
 from _common_utils import set_process_title as _set_process_title  # noqa: E402
 
@@ -118,6 +119,7 @@ class ModelPair:
     """framework / impl 模型成对。"""
     framework: Any
     impl: Any
+    reference_input_model: Any = None
 
 
 @dataclass
@@ -627,7 +629,10 @@ def run_single_benchmark(
     total_cases = case_ctx.total_cases
     logger.info("  测试第 %d/%d 组输入...", case_idx, total_cases)
 
-    inputs_impl = _move_inputs_to_device(inputs, device)
+    candidate_inputs = _prepare_candidate_inputs_shared(
+        models.reference_input_model or models.framework, inputs,
+    )
+    inputs_impl = _move_inputs_to_device(candidate_inputs, device)
 
     framework_operators, framework_latency_ms, framework_peak_memory = _measure_framework(
         models.framework, inputs, config, device, case_idx,
@@ -821,7 +826,7 @@ def _run_shape_case(config, model_spec: BenchmarkModelSpec,
                     skip_framework=True,
                 )
             fw_perf, impl_perf, speedup = run_single_benchmark(
-                ModelPair(framework_model, impl_model), inputs, config, device, case_ctx,
+                ModelPair(framework_model, impl_model, model_spec.framework_cls), inputs, config, device, case_ctx,
             )
             return SingleShapeResult(
                 case_idx=case_idx,
