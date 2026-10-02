@@ -24,7 +24,10 @@ Create one `CacheDeployment` JSON for all workers in the frozen generation:
 - `runtime_files`: absolute CANN/driver version-file paths and their SHA256 hashes,
   checked at reuse. A label alone does not satisfy this binding.
 - `algorithm_files`: engine basenames and their SHA256 hashes, including at least
-  `verify.py`, `benchmark.py`, `_common_utils.py`.
+  `verify.py`, `benchmark.py`, `_common_utils.py`. A configured
+  [profiler runtime](profiler-runtime.md) additionally requires the fixed key
+  `../profiler_runtime.py`; no other sibling traversal is allowed. Its actual
+  manifest/dependency files also belong in the immutable runtime closure.
 - `device_conditions`: physical card IDs mapped to the operator's admitted hardware
   and measurement conditions. Admission validates this declaration; the cache does
   not independently discover hardware or room conditions.

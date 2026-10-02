@@ -79,7 +79,7 @@ class CacheDeployment(BaseModel):
     runtime_versions: dict[str, str] = Field(min_length=1)
     # Operator supplies the actual immutable CANN/driver version files, not labels alone.
     runtime_files: dict[str, str] = Field(min_length=1)
-    # Relative paths under service/triton_evaluation/engine, SHA of implementation bytes.
+    # Engine basenames, plus the one explicitly named sibling runtime helper.
     algorithm_files: dict[str, str] = Field(min_length=1)
     device_conditions: dict[str, dict[str, str]] = Field(min_length=1)
     measurement: CacheMeasurement
@@ -90,7 +90,10 @@ class CacheDeployment(BaseModel):
             if not Path(path).is_absolute() or not _DIGEST.fullmatch(digest):
                 raise ValueError("runtime files require absolute paths and SHA256")
         for path, digest in self.algorithm_files.items():
-            if Path(path).name != path or not _DIGEST.fullmatch(digest):
+            if (
+                (Path(path).name != path or path in {".", ".."})
+                and path != "../profiler_runtime.py"
+            ) or not _DIGEST.fullmatch(digest):
                 raise ValueError("algorithm files require engine basenames and SHA256")
         if not {"verify.py", "benchmark.py", "_common_utils.py"} <= self.algorithm_files.keys():
             raise ValueError("verify, benchmark and common algorithms must all be pinned")
@@ -119,8 +122,46 @@ class CacheDeployment(BaseModel):
             if sha256(Path(path).read_bytes()) != expected:
                 raise ReferenceCacheError("cache runtime file changed")
         engine_dir = engine_dir or Path(__file__).parent / "engine"
+        from .profiler_runtime import DIGEST_ENV, MANIFEST_ENV, RUNTIME_ENV_KEYS, load_runtime
+
+        if any(key in os.environ for key in RUNTIME_ENV_KEYS):
+            if "../profiler_runtime.py" not in self.algorithm_files:
+                raise ReferenceCacheError(
+                    "cache must pin the configured profiler runtime algorithm"
+                )
+            try:
+                profiler = load_runtime()
+            except (OSError, ValueError) as exc:
+                raise ReferenceCacheError(
+                    "cache profiler runtime configuration is invalid"
+                ) from exc
+            if profiler is None:
+                raise ReferenceCacheError("cache profiler runtime configuration is absent")
+            required_runtime = {os.environ[MANIFEST_ENV]: os.environ[DIGEST_ENV]}
+            for field in ("library", "consumer", "msprof", "alias", "elf_observations"):
+                required_runtime[str(getattr(profiler, field + "_path"))] = getattr(
+                    profiler, field + "_sha256"
+                )
+            if any(
+                self.runtime_files.get(path) != digest for path, digest in required_runtime.items()
+            ):
+                raise ReferenceCacheError("cache must pin every configured profiler runtime file")
         for name, expected in self.algorithm_files.items():
-            if sha256((engine_dir / name).read_bytes()) != expected:
+            algorithm = engine_dir / name
+            if name == "../profiler_runtime.py":
+                # This is the one fixed service-owned sibling, never a general
+                # traversal permission or part of candidate material.
+                root = engine_dir.parent.resolve(strict=True)
+                algorithm = engine_dir.parent / "profiler_runtime.py"
+                if (
+                    engine_dir.resolve(strict=True) != engine_dir.absolute()
+                    or algorithm.is_symlink()
+                    or algorithm.resolve(strict=True) != root / "profiler_runtime.py"
+                ):
+                    raise ReferenceCacheError(
+                        "profiler runtime algorithm must stay in service root"
+                    )
+            if sha256(algorithm.read_bytes()) != expected:
                 raise ReferenceCacheError(f"cache algorithm changed: {name}")
 
 

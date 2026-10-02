@@ -38,6 +38,11 @@ class Settings(BaseSettings):
     reference_cache_binding: Path | None = None
     reference_cache_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
     reference_cache_state_dir: Path | None = None
+    # Service-owned immutable loader compatibility, separate from six anchors.
+    profiler_runtime_manifest: Path | None = None
+    profiler_runtime_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    engine_runtime_overlay_config: Path | None = None
+    engine_runtime_overlay_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
     # Compile-only attempts use CPU capacity; mixed checks stay on one NPU worker.
     cpu_workers: int = Field(default=1, ge=0, le=32)
     api_poll_interval_seconds: float = Field(default=0.25, ge=0.05, le=5)
@@ -153,6 +158,26 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def _durable_core_windows(self):
+        overlay_values = (self.engine_runtime_overlay_config, self.engine_runtime_overlay_sha256)
+        if any(value is not None for value in overlay_values) and not all(
+            value is not None for value in overlay_values
+        ):
+            raise ValueError("engine runtime overlay config and SHA must be configured together")
+        if self.engine_runtime_overlay_config is not None and (
+            not self.engine_runtime_overlay_config.is_absolute()
+            or ".." in self.engine_runtime_overlay_config.parts
+        ):
+            raise ValueError("engine runtime overlay config must be absolute without traversal")
+        profiler_values = (self.profiler_runtime_manifest, self.profiler_runtime_sha256)
+        if any(value is not None for value in profiler_values) and not all(
+            value is not None for value in profiler_values
+        ):
+            raise ValueError("profiler runtime manifest and SHA must be configured together")
+        if (
+            self.profiler_runtime_manifest is not None
+            and not self.profiler_runtime_manifest.is_absolute()
+        ):
+            raise ValueError("profiler runtime manifest must be absolute")
         tls = (self.api_tls_port, self.api_tls_certfile, self.api_tls_keyfile)
         if any(value is not None for value in tls) and not all(value is not None for value in tls):
             raise ValueError("native HTTPS requires port, certfile and keyfile together")

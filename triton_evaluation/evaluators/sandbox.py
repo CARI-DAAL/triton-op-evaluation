@@ -6,15 +6,35 @@ directory, its assigned devices and a fresh process/network namespace.
 """
 
 import hashlib
+import json
 import os
+import re
+import time
 from pathlib import Path
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from ..reference_cache import CACHE_ENV_KEYS, DEVICE_ENV, STATE_ENV
+from ..profiler_runtime import DIGEST_ENV as PROFILER_DIGEST_ENV
+from ..profiler_runtime import MANIFEST_ENV as PROFILER_MANIFEST_ENV
+from ..profiler_runtime import RUNTIME_ENV_KEYS as PROFILER_RUNTIME_ENV_KEYS
+from ..profiler_runtime import read_runtime
+from ..reference_cache import (
+    BINDING_ENV,
+    CACHE_ENV,
+    CACHE_ENV_KEYS,
+    DEVICE_ENV,
+    STATE_ENV,
+    CacheIndex,
+)
+from ..reference_cache import DIGEST_ENV as CACHE_DIGEST_ENV
 
 CONFIG_ENV = "TRITON_EVAL_ENGINE_SANDBOX_CONFIG"
 DIGEST_ENV = "TRITON_EVAL_ENGINE_SANDBOX_SHA256"
+OVERLAY_CONFIG_ENV = "TRITON_EVAL_ENGINE_RUNTIME_OVERLAY_CONFIG"
+OVERLAY_DIGEST_ENV = "TRITON_EVAL_ENGINE_RUNTIME_OVERLAY_SHA256"
+OVERLAY_ENV_KEYS = frozenset({OVERLAY_CONFIG_ENV, OVERLAY_DIGEST_ENV})
+REFERENCE_POLICY_ENV = "TRITON_EVAL_REFERENCE_DEVICE_POLICY"
 RUNTIME_ENV = frozenset(
     {
         "PATH",
@@ -35,6 +55,7 @@ RUNTIME_ENV = frozenset(
         "OMP_NUM_THREADS",
         "OPENBLAS_NUM_THREADS",
         *CACHE_ENV_KEYS,
+        *PROFILER_RUNTIME_ENV_KEYS,
         "TRITON_EVAL_REFERENCE_DEVICE_POLICY",
     }
 )
@@ -63,6 +84,32 @@ class EngineSandbox(BaseModel):
                 raise ValueError("runtime mounts must not contain parent traversal")
             if source.resolve() in forbidden or destination in forbidden:
                 raise ValueError("whole host state directories are not runtime mounts")
+        profiler_keys = self.environment.keys() & PROFILER_RUNTIME_ENV_KEYS
+        if profiler_keys and profiler_keys != PROFILER_RUNTIME_ENV_KEYS:
+            raise ValueError("sandbox requires both pinned profiler runtime variables")
+        if profiler_keys:
+            config = self.environment[PROFILER_MANIFEST_ENV]
+            model = read_runtime(
+                config, self.environment[PROFILER_DIGEST_ENV], check_resolution=False
+            )
+            required = [
+                # Preserve real 0555 artifact directory modes in the child;
+                # file-only binds would create writable-looking 0755 parents.
+                Path(config).parent,
+                model.library_path,
+                model.consumer_path,
+                model.msprof_path,
+            ]
+            for path in required:
+                visible = any(
+                    (path == destination or destination in path.parents)
+                    and (source / path.relative_to(destination)).resolve() == path.resolve()
+                    for source, destination in self.readonly_mounts
+                )
+                if not visible:
+                    raise ValueError(
+                        f"profiler runtime path needs an explicit read-only mount: {path}"
+                    )
         cache_keys = self.environment.keys() & CACHE_ENV_KEYS
         if cache_keys and cache_keys != CACHE_ENV_KEYS:
             raise ValueError("sandbox requires every reference cache deployment variable")
@@ -92,7 +139,9 @@ class EngineSandbox(BaseModel):
                 raise ValueError("only shared Ascend control devices may be configured")
         return self
 
-    def wrap(self, command: list, cwd: Path, device_id: int | None) -> tuple[list, dict]:
+    def wrap(
+        self, command: list[str], cwd: Path, device_id: int | None
+    ) -> tuple[list[str], dict[str, str]]:
         work = cwd.resolve(strict=True)
         if work in {Path(p) for p in ("/", "/home", "/root", "/tmp", "/run")}:
             raise ValueError("engine needs a dedicated attempt directory")
@@ -158,11 +207,172 @@ class EngineSandbox(BaseModel):
         return [*args, "--remount-ro", "/", "--", *command], {"PATH": "/usr/bin:/bin"}
 
 
-def isolate_command(command: list, cwd, device_id: int | None, env: dict) -> tuple[list, dict]:
+class EngineRuntimeOverlay(BaseModel):
+    """Pinned sparse input; runtime/source mounts are derived by service code."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    schema_version: Literal["engine-runtime-overlay-v1"] = "engine-runtime-overlay-v1"
+    environment: dict[str, str] = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def check_environment(self):
+        allowed = CACHE_ENV_KEYS | PROFILER_RUNTIME_ENV_KEYS
+        if self.environment.keys() - allowed:
+            raise ValueError("runtime overlay permits only profiler and reference-cache variables")
+        for group in (CACHE_ENV_KEYS, PROFILER_RUNTIME_ENV_KEYS):
+            present = self.environment.keys() & group
+            if present and present != group:
+                raise ValueError("runtime overlay requires complete profiler/cache variable groups")
+        return self
+
+
+def read_runtime_overlay(config: str, digest: str) -> EngineRuntimeOverlay:
+    path = Path(config)
+    if not path.is_absolute() or path.resolve(strict=True) != path:
+        raise ValueError("runtime overlay must be an absolute service-owned file without aliases")
+    raw = path.read_bytes()
+    if hashlib.sha256(raw).hexdigest() != digest:
+        raise ValueError("runtime overlay differs from its explicit SHA pin")
+    return EngineRuntimeOverlay.model_validate_json(raw)
+
+
+def _covered(path: Path, mounts: list[tuple[Path, Path]]) -> bool:
+    return any(
+        (path == destination or destination in path.parents)
+        and (source / path.relative_to(destination)).resolve() == path.resolve()
+        for source, destination in mounts
+    )
+
+
+def apply_runtime_overlay(
+    sandbox: EngineSandbox, overlay: EngineRuntimeOverlay
+) -> tuple[EngineSandbox, dict[str, Any]]:
+    """Derive narrow bindings without mutating the anchored base manifest."""
+    environment = dict(sandbox.environment)
+    for key, value in overlay.environment.items():
+        if key in environment and environment[key] != value:
+            raise ValueError("runtime overlay cannot override an existing anchored value")
+        if key in os.environ and os.environ[key] != value:
+            raise ValueError("runtime overlay differs from the worker's declared runtime")
+        environment[key] = value
+    # The immutable worker anchor retains its original value. Benchmark's
+    # cache binding reads it from the child environment (verify has a CLI
+    # argument), so --clearenv must not silently select a different default.
+    policy = os.environ.get(
+        REFERENCE_POLICY_ENV, environment.get(REFERENCE_POLICY_ENV, "cpu-first")
+    )
+    if policy not in {"cpu-first", "npu-strict"}:
+        raise ValueError("runtime overlay requires the existing valid reference policy anchor")
+    if REFERENCE_POLICY_ENV in environment and environment[REFERENCE_POLICY_ENV] != policy:
+        raise ValueError("runtime overlay cannot override an existing reference policy anchor")
+    environment[REFERENCE_POLICY_ENV] = policy
+    mounts = list(sandbox.readonly_mounts)
+    required: list[Path] = []
+    if overlay.environment.keys() & PROFILER_RUNTIME_ENV_KEYS:
+        config = environment[PROFILER_MANIFEST_ENV]
+        runtime = read_runtime(config, environment[PROFILER_DIGEST_ENV], check_resolution=False)
+        required += [
+            Path(config).parent,
+            runtime.library_path,
+            runtime.consumer_path,
+            runtime.msprof_path,
+        ]
+    state = sandbox.reference_cache_state_dir
+    if overlay.environment.keys() & CACHE_ENV_KEYS:
+        cache_root = Path(environment[CACHE_ENV])
+        index_path = Path(environment[BINDING_ENV])
+        state = Path(environment[STATE_ENV])
+        for path in (cache_root, index_path, state):
+            if not path.is_absolute() or ".." in path.parts or path.resolve(strict=True) != path:
+                raise ValueError("runtime overlay cache paths must be absolute without aliases")
+        raw = index_path.read_bytes()
+        if hashlib.sha256(raw).hexdigest() != environment[CACHE_DIGEST_ENV]:
+            raise ValueError("runtime overlay cache index differs from its pin")
+        index = CacheIndex.model_validate_json(raw)
+        if not cache_root.is_dir():
+            raise ValueError("runtime overlay cache root must be a dedicated artifact directory")
+        # Expose only the two content-addressed artifact namespaces, rather
+        # than the containing operator directory or its neighboring evidence.
+        for path in (cache_root / "cases", cache_root / "blobs"):
+            if path.exists():
+                if not path.is_dir() or path.resolve(strict=True) != path:
+                    raise ValueError(
+                        "runtime overlay cache artifact namespaces must not be aliases"
+                    )
+                required.append(path)
+        required.append(index_path)
+        if not state.is_dir() or any(
+            path.is_symlink()
+            or (
+                path.is_dir()
+                and (path.parent != state or not re.fullmatch(r"[0-9a-f]{64}", path.name))
+            )
+            or (
+                path.is_file()
+                and (
+                    path.parent.parent != state
+                    or not re.fullmatch(r"card-[0-9]+\.invalid\.json", path.name)
+                )
+            )
+            for path in state.rglob("*")
+        ):
+            raise ValueError("runtime overlay requires a dedicated reference-cache state directory")
+        for config, digest in index.deployment.runtime_files.items():
+            path = Path(config)
+            if not path.is_file() or hashlib.sha256(path.read_bytes()).hexdigest() != digest:
+                raise ValueError("runtime overlay cache dependency differs from its pin")
+            required.append(path)
+    # Source is the executing service package, never a caller-supplied path.
+    package = Path(__file__).absolute().parents[1]
+    if package.resolve(strict=True) != package:
+        raise ValueError("runtime overlay service source must not traverse aliases")
+    source_files = {
+        str(path.relative_to(package)): hashlib.sha256(path.read_bytes()).hexdigest()
+        for path in sorted(package.rglob("*.py"))
+    }
+    if not source_files or any(path.is_symlink() for path in package.rglob("*")):
+        raise ValueError("runtime overlay needs factual service source without file aliases")
+    required.append(package)
+    # One tracked service-owned diagnostic is allowed alongside actual engine
+    # scripts; its path is derived here and never supplied by the overlay.
+    probe = package.parent / "scripts" / "probe_profiler_latency.py"
+    if probe.is_file():
+        if probe.resolve(strict=True) != probe:
+            raise ValueError("service-owned profiler probe must not traverse aliases")
+        required.append(probe)
+    environment["PYTHONPATH"] = str(package.parent) + (
+        os.pathsep + environment["PYTHONPATH"] if environment.get("PYTHONPATH") else ""
+    )
+    for path in required:
+        if not _covered(path, mounts):
+            mounts.append((path, path))
+    derived = EngineSandbox(
+        readonly_mounts=mounts,
+        environment=environment,
+        shared_npu_devices=sandbox.shared_npu_devices,
+        executable=sandbox.executable,
+        reference_cache_state_dir=state,
+    )
+    return derived, {
+        "service_package_path": str(package),
+        "service_source_sha256": source_files,
+        "effective_sandbox_sha256": hashlib.sha256(derived.model_dump_json().encode()).hexdigest(),
+        "effective_environment_sha256": hashlib.sha256(
+            json.dumps(environment, sort_keys=True).encode()
+        ).hexdigest(),
+        "effective_environment_keys": sorted(environment),
+        "readonly_mounts": [[str(a), str(b)] for a, b in derived.readonly_mounts],
+        "reference_cache_state_dir": str(state) if state is not None else None,
+    }
+
+
+def isolate_command(
+    command: list[str], cwd: Path, device_id: int | None, env: dict[str, str]
+) -> tuple[list[str], dict[str, str]]:
     config = os.environ.get(CONFIG_ENV)
     expected_digest = os.environ.get(DIGEST_ENV)
     if config is None:
-        if expected_digest is not None:
+        if expected_digest is not None or any(key in os.environ for key in OVERLAY_ENV_KEYS):
             raise ValueError("sandbox manifest path is required with its digest")
         # Existing deployments remain explicitly host-executed until configured.
         return command, env
@@ -172,4 +382,56 @@ def isolate_command(command: list, cwd, device_id: int | None, env: dict) -> tup
     if hashlib.sha256(manifest).hexdigest() != expected_digest:
         raise ValueError("sandbox manifest digest differs from the pinned deployment")
     sandbox = EngineSandbox.model_validate_json(manifest)
-    return sandbox.wrap(command, Path(cwd), device_id)
+    overlay_path, overlay_digest = (
+        os.environ.get(OVERLAY_CONFIG_ENV),
+        os.environ.get(OVERLAY_DIGEST_ENV),
+    )
+    if overlay_path is None and overlay_digest is None:
+        if any(
+            key in os.environ and sandbox.environment.get(key) != os.environ[key]
+            for key in CACHE_ENV_KEYS | PROFILER_RUNTIME_ENV_KEYS
+        ):
+            raise ValueError("declared runtime needs a pinned engine overlay before --clearenv")
+        return sandbox.wrap(command, Path(cwd), device_id)
+    if overlay_path is None or overlay_digest is None:
+        raise ValueError("runtime overlay requires config and SHA together")
+    overlay = read_runtime_overlay(overlay_path, overlay_digest)
+    if any(
+        key in os.environ
+        and key not in overlay.environment
+        and sandbox.environment.get(key) != os.environ[key]
+        for key in CACHE_ENV_KEYS | PROFILER_RUNTIME_ENV_KEYS
+    ):
+        raise ValueError("runtime overlay must include every declared worker runtime group")
+    sandbox, evidence = apply_runtime_overlay(sandbox, overlay)
+    package = Path(evidence["service_package_path"])
+    configured_engine = os.environ.get("TRITON_EVAL_ENGINE_DIR")
+    if configured_engine is not None and Path(configured_engine).resolve() != package / "engine":
+        raise ValueError("runtime overlay refuses an engine directory from another service source")
+    if len(command) > 1 and str(command[1]).endswith(".py"):
+        script = Path(command[1]).resolve(strict=True)
+        probe = package.parent / "scripts" / "probe_profiler_latency.py"
+        attempt = Path(cwd).resolve(strict=True)
+        if script.parent != package / "engine" and script != probe and script.parent != attempt:
+            raise ValueError("runtime overlay refuses a script from another service source")
+        if Path(command[1]).absolute() != script:
+            raise ValueError("runtime overlay refuses a script reached through aliases")
+        evidence["engine_script_path"] = str(script)
+        evidence["engine_script_sha256"] = hashlib.sha256(script.read_bytes()).hexdigest()
+    wrapped, outer = sandbox.wrap(command, Path(cwd), device_id)
+    evidence.update(
+        schema_version="engine-runtime-boundary-v1",
+        state="prepared",
+        executed=False,
+        base_manifest_path=config,
+        base_manifest_sha256=expected_digest,
+        overlay_path=overlay_path,
+        overlay_sha256=overlay_digest,
+        sandbox_helper_path=str(Path(__file__)),
+        sandbox_helper_sha256=hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
+        command_sha256=hashlib.sha256(json.dumps(wrapped).encode()).hexdigest(),
+    )
+    (Path(cwd) / f"engine-runtime-boundary-{time.time_ns()}.json").write_text(
+        json.dumps(evidence, indent=2) + "\n"
+    )
+    return wrapped, outer

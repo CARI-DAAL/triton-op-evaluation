@@ -376,6 +376,16 @@ def run_profiler_with_config(test_fn: callable, warmup: int, repeats: int, profi
     import torch
     import torch_npu
     import triton.runtime as runtime
+    from triton_evaluation.profiler_runtime import (
+        load_runtime as _load_profiler_runtime,
+        check_synchronous_handler as _check_profiler_sync,
+        profiler_export_runtime as _profiler_export_runtime,
+    )
+
+    # Runtime compatibility is operator-pinned and scoped to this engine
+    # process. Keep the original synchronous torch_npu callback and formula.
+    if _load_profiler_runtime() is not None:
+        _check_profiler_sync(torch_npu.profiler.tensorboard_trace_handler)
 
     # 手动 warmup（执行一次）
     test_fn()
@@ -406,7 +416,7 @@ def run_profiler_with_config(test_fn: callable, warmup: int, repeats: int, profi
         torch.npu.synchronize()
 
     # 无 schedule，用 with 上下文 + for 循环
-    with torch_npu.profiler.profile(
+    with _profiler_export_runtime() as runtime_evidence, torch_npu.profiler.profile(
         activities=[torch_npu.profiler.ProfilerActivity.NPU],
         on_trace_ready=torch_npu.profiler.tensorboard_trace_handler(profile_path),
         record_shapes=False,
@@ -422,6 +432,10 @@ def run_profiler_with_config(test_fn: callable, warmup: int, repeats: int, profi
                 torch.npu.synchronize()
             test_fn()
             torch.npu.synchronize()
+
+    if runtime_evidence.get("enabled"):
+        with open(os.path.join(profile_path, "profiler-runtime.json"), "w") as runtime_record:
+            json.dump(runtime_evidence, runtime_record, sort_keys=True)
 
     if clear_l2_cache:
         del buffer

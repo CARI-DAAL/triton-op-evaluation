@@ -15,7 +15,6 @@ import hashlib
 import json
 import math
 import os
-import re
 import shutil
 import signal
 import subprocess
@@ -29,79 +28,11 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
+from triton_evaluation.profiler_runtime import inspect_sqlite_binding  # noqa: E402
+
 
 def sha(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
-
-
-def inspect_sqlite_binding(
-    library: Path, digest: str, consumer: Path, consumer_digest: str
-) -> dict:
-    """Inspect actual ELF metadata and required symbols; never load either ELF."""
-    library = library.resolve(strict=True)
-    consumer = consumer.resolve(strict=True)
-    if sha(library) != digest or sha(consumer) != consumer_digest:
-        raise ValueError("SQLite library/consumer SHA does not match the explicit pin")
-
-    def elf(path):
-        observed = {}
-        for name, flag in (("header", "-h"), ("dynamic", "-d"), ("symbols", "--dyn-syms")):
-            result = subprocess.run(
-                ["readelf", "--wide", flag, str(path)],
-                capture_output=True,
-                text=True,
-                timeout=5,
-                check=True,
-                env={**os.environ, "LC_ALL": "C"},
-            )
-            observed[name] = result.stdout
-        return observed
-
-    target = elf(library)
-    source = elf(consumer)
-
-    def abi(header):
-        return {
-            key: match.group(1).strip()
-            for key in ("Class", "Data", "Machine")
-            if (match := re.search(rf"^\s*{key}:\s*(.+)$", header, re.MULTILINE))
-        }
-
-    target_abi = abi(target["header"])
-    if len(target_abi) != 3 or target_abi != abi(source["header"]):
-        raise ValueError("SQLite target and CANN consumer ELF class/data/machine differ")
-    if "Shared library: [libsqlite3.so]" not in source["dynamic"]:
-        raise ValueError("Pinned CANN consumer does not require the missing libsqlite3.so")
-    if "Library soname: [libsqlite3.so.0]" not in target["dynamic"]:
-        raise ValueError("Expected the existing libsqlite3.so.0 library, without replacement")
-
-    def sqlite_symbols(text, undefined):
-        result = set()
-        for line in text.splitlines():
-            fields = line.split()
-            if len(fields) >= 8 and (fields[6] == "UND") == undefined:
-                symbol = fields[7].split("@")[0]
-                if symbol.startswith("sqlite3_"):
-                    result.add(symbol)
-        return result
-
-    required = sqlite_symbols(source["symbols"], True)
-    available = sqlite_symbols(target["symbols"], False)
-    if not required or not required <= available:
-        raise ValueError(
-            f"Existing SQLite library lacks required symbols: {sorted(required - available)}"
-        )
-    return {
-        "library_path": str(library),
-        "library_sha256": digest,
-        "consumer_path": str(consumer),
-        "consumer_sha256": consumer_digest,
-        "elf_abi": target_abi,
-        "needed": "libsqlite3.so",
-        "target_soname": "libsqlite3.so.0",
-        "required_sqlite_symbols": sorted(required),
-        "readelf_observations": {"library": target, "consumer": source},
-    }
 
 
 def verified_capture(report_path: Path, report_sha256: str) -> tuple[dict, list[tuple[Path, str]]]:
@@ -238,6 +169,7 @@ def replay(
             for name in (
                 "scripts/replay_profiler_export.py",
                 "triton_evaluation/engine/benchmark.py",
+                "triton_evaluation/profiler_runtime.py",
             )
         },
         "msprof_path": str(executable),

@@ -143,6 +143,10 @@ device requirements. Bind changes to this execution environment to a new
 evaluator build; do not combine its measurements with a previous environment
 without declaring the change.
 
+For a deployed CANN profiler with a missing `libsqlite3.so` name, see
+[the pinned profiler runtime](docs/profiler-runtime.md). Preparation, immutable
+file binding and the actual worker/device gates are separate steps.
+
 Correctness defaults to the existing CPU-first reference with NPU fallback for
 reference execution errors. To declare an NPU reference experiment, set
 `TRITON_EVAL_REFERENCE_DEVICE_POLICY=npu-strict` on the API and every worker.

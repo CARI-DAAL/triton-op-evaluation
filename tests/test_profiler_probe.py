@@ -1,7 +1,9 @@
 """Controlled feedback-loop checks; these never establish NPU profiler health."""
 
+import hashlib
 import importlib.util
 import json
+import os
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -143,3 +145,129 @@ def test_green_requires_all_eight_original_profiler_contexts_and_median(
     assert report["median_ms"] == pytest.approx(0.045)
     assert report["is_independent_sample"] is False
     assert report["admission_evidence"] is False
+
+
+@pytest.mark.parametrize("trace_kind", ["valid", "missing", "wrong-consumer"])
+def test_configured_probe_requires_actual_pinned_callback_not_only_environment(
+    tmp_path, monkeypatch, controlled_measurement, trace_kind
+):
+    from triton_evaluation import profiler_runtime
+
+    expected = {
+        "enabled": True,
+        "manifest_path": str(tmp_path / "runtime/manifest.json"),
+        "manifest_sha256": "a" * 64,
+        "base_ld_sha256": "b" * 64,
+    }
+    for name in ("alias", "library", "consumer", "msprof"):
+        expected[name + "_path"] = str(tmp_path / "runtime" / name)
+        expected[name + "_sha256"] = "c" * 64
+    monkeypatch.setattr(profiler_runtime, "describe_runtime", lambda: expected)
+    calls = []
+
+    def measure(ctx, **_kwargs):
+        calls.append(ctx)
+        if trace_kind != "missing":
+            directory = Path.cwd() / f"{ctx.profile_name}_controlled"
+            directory.mkdir()
+            trace = {
+                **expected,
+                "callback_scope_completed": True,
+                "base_ld_restored": True,
+                "main_thread": True,
+                "process_id": os.getpid(),
+                "helper_sha256": hashlib.sha256(
+                    (probe.ROOT / "triton_evaluation/profiler_runtime.py").read_bytes()
+                ).hexdigest(),
+                "helper_path": str(probe.ROOT / "triton_evaluation/profiler_runtime.py"),
+                "service_package_path": str(probe.ROOT / "triton_evaluation"),
+                "physical_device": "8",
+                "visible_devices": "8",
+                "reference_device_policy": os.environ.get(
+                    "TRITON_EVAL_REFERENCE_DEVICE_POLICY", "cpu-first"
+                ),
+                "effective_ld_prefix": str(Path(expected["alias_path"]).parent),
+                "previous_ld_sha256": expected["base_ld_sha256"],
+            }
+            if trace_kind == "wrong-consumer":
+                trace["consumer_sha256"] = "d" * 64
+            (directory / "profiler-runtime.json").write_text(json.dumps(trace))
+        return {"matrix_product": 20.0}, 0.02, 1.0
+
+    monkeypatch.setattr(controlled_measurement, "measure_single", measure)
+    output = tmp_path / trace_kind
+    assert probe.probe(output, 8) == (0 if trace_kind == "valid" else 1)
+    report = json.loads((output / "report.json").read_bytes())
+    assert len(report["samples"]) == (8 if trace_kind == "valid" else 1)
+    # A completed measurement is retained even when proof invalidates the run.
+    assert report["samples"][0]["latency_ms"] == 0.02
+    assert report["samples"][0]["runtime_evidence_valid"] is (trace_kind == "valid")
+    assert report["state"] == ("passed" if trace_kind == "valid" else "failed")
+
+
+@pytest.mark.parametrize("valid", [True, False])
+def test_isolated_wrapper_uses_actual_boundary_and_rejects_missing_measurements(
+    tmp_path, monkeypatch, valid
+):
+    from triton_evaluation.evaluators import base, sandbox
+
+    for key in (
+        sandbox.CONFIG_ENV,
+        sandbox.DIGEST_ENV,
+        sandbox.OVERLAY_CONFIG_ENV,
+        sandbox.OVERLAY_DIGEST_ENV,
+    ):
+        monkeypatch.setenv(key, "controlled-not-an-actual-device-pin")
+    calls = []
+
+    def execute(command, cwd, device_id, *, budget_seconds):
+        calls.append((command, cwd, device_id, budget_seconds))
+        native = cwd / "native"
+        native.mkdir()
+        (native / "report.json").write_text(
+            json.dumps(
+                {
+                    "state": "passed",
+                    "physical_device": 8,
+                    "process_id": 2,
+                    "profiler_runtime": {"enabled": True},
+                    "median_ms": 0.02,
+                    "samples": [
+                        {
+                            "passed": True,
+                            "runtime_evidence_valid": True,
+                            "latency_ms": 0.02 if valid else None,
+                        }
+                    ]
+                    * 8,
+                    "native_tensor_proof": {
+                        "input_device": "npu:0",
+                        "output_device": "npu:0",
+                        "finite": True,
+                    },
+                }
+            )
+        )
+        return base.ScriptOutcome(0, "controlled stdout", "", False)
+
+    monkeypatch.setattr(base, "run_script", execute)
+    output = tmp_path / "wrapper"
+    assert probe.isolated_probe(output, 8) == (0 if valid else 1)
+    assert calls[0][2:] == (8, 180)
+    assert calls[0][0][1] == str(SCRIPT)
+    observed = json.loads((output / "sandbox-probe.json").read_bytes())
+    assert observed["admission_evidence"] is observed["is_independent_sample"] is False
+    assert (
+        observed["native_report_sha256"]
+        == hashlib.sha256((output / "native/report.json").read_bytes()).hexdigest()
+    )
+
+
+def test_cli_sandbox_option_selects_boundary_callback(tmp_path, monkeypatch):
+    called = []
+    monkeypatch.setattr(
+        sys, "argv", [str(SCRIPT), "--output", str(tmp_path), "--device", "8", "--sandbox"]
+    )
+    monkeypatch.setattr(probe, "isolated_probe", lambda *args: called.append(args) or 7)
+    assert probe.main() == 7
+    assert called == [(tmp_path, 8)]
