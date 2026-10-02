@@ -29,6 +29,61 @@ def test_accepts_actual_numeric_profiler_scalar():
     assert probe.valid_latency(np.float64(0.001))
 
 
+def test_numpy_profiler_latency_produces_native_boolean_and_json_report(tmp_path):
+    import numpy as np
+
+    latency = np.float64(0.00471)
+    accepted = probe.valid_latency(latency)
+    assert type(accepted) is bool
+    output = tmp_path / "report.json"
+    probe.write_report(output, {"samples": [{"latency_ms": float(latency), "passed": accepted}]})
+    saved = json.loads(output.read_bytes())
+    assert saved["samples"][0]["passed"] is True
+
+
+@pytest.mark.parametrize("kind", ["nan", "inf", "zero", "negative", "bool"])
+def test_numpy_invalid_latencies_remain_native_false(kind):
+    import numpy as np
+
+    value = {
+        "nan": np.float64("nan"),
+        "inf": np.float64("inf"),
+        "zero": np.float64(0),
+        "negative": np.float64(-1),
+        "bool": np.bool_(True),
+    }[kind]
+    assert probe.valid_latency(value) is False
+
+
+def test_report_rejects_nonfinite_and_unknown_values(tmp_path):
+    output = tmp_path / "invalid-report.json"
+    with pytest.raises(ValueError, match="JSON compliant"):
+        probe.write_report(output, {"latency_ms": float("nan")})
+    with pytest.raises(TypeError, match="not JSON serializable"):
+        probe.write_report(output, {"unknown": object()})
+    assert not output.exists()
+
+
+def test_eight_actual_numpy_timings_are_written_without_a_scalar_serializer(
+    tmp_path, monkeypatch, controlled_measurement
+):
+    import numpy as np
+
+    monkeypatch.setattr(
+        controlled_measurement,
+        "measure_single",
+        lambda *_args, **_kwargs: (
+            {"aclnnMatmul": np.float64(4.94)},
+            np.float64(0.00471),
+            np.float64(1.0),
+        ),
+    )
+    assert probe.probe(tmp_path / "numpy-timings", 8) == 0
+    saved = json.loads((tmp_path / "numpy-timings/report.json").read_bytes())
+    assert saved["state"] == "passed" and len(saved["samples"]) == 8
+    assert all(row["passed"] is True for row in saved["samples"])
+
+
 def test_wrong_mask_cannot_create_device_evidence(tmp_path, monkeypatch):
     monkeypatch.setenv("ASCEND_RT_VISIBLE_DEVICES", "0,8")
     output = tmp_path / "new"

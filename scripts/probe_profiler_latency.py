@@ -27,7 +27,7 @@ sys.path.insert(0, str(ROOT))
 
 
 def valid_latency(value: Any) -> bool:
-    return (
+    return bool(
         not isinstance(value, bool)
         and isinstance(value, Real)
         and math.isfinite(value)
