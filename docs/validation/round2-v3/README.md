@@ -1,16 +1,24 @@
-# Controlled local official-catalog checks
+# Controlled local round2 service checks
 
-These reports describe the assembler at service revision
-`430109fccd29b8b417567f12acaefc039475694e`. They show 20 official tasks,
-1046 cases, byte-identical reassembly and the transition from the original
-staging adapter to this unfrozen v1 implementation. The official input
-digests and case counts did not change. Reference source digests changed
-with loader fixes and the single-case interface.
+The catalog reports bind the assembler file SHA recorded in
+[the digest transition](adapter-digest-transition-local.json). They describe
+the same assembler code committed with these reports: 20 official tasks,
+1046 cases, byte-identical reassembly, and changes from the original staging
+adapter to the unfrozen v1 loader. Official input digests and counts did not
+change. Reference digests changed with declared loader fixes, bounded-memory
+single-case iteration and pure case counting.
 
-These are CPU assembly/catalog checks, not NPU correctness, timing or
-whole-case admission. A later reference-source change requires new reports
-and W3 audits before final freeze; do not bind these intermediate reference
-digests as device acceptance for a different revision.
+These are CPU assembly/catalog checks. Earlier machine2 revision 430109f
+passed 71 native-environment structural tests; its source differs from this
+final loader and must not substitute for W3 against the final revision.
+
+The full controlled CPU regression used:
+`python -m pytest -q -m 'not npu and not release_gate'`
+and passed 1197 tests, with 11 skipped and 6 deselected. This includes 23
+canonical historical renderer goldens, four synthetic missing branches,
+durable native-route/budget/ownership tests and real local HTTP/TLS handshake
+plus fail-closed listener cleanup. It establishes no NPU A/B equality,
+throughput improvement, 1046-case device acceptance, or live cutover.
 
 - [Registration](catalog-registration-local.json)
 - [Replay](catalog-replay-local.json)

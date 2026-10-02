@@ -1,0 +1,1489 @@
+{
+ "correct": true,
+ "correctness_raw": {
+  "decoy": false,
+  "domain_failure": null,
+  "failures": [],
+  "outcome": "correct",
+  "passed": true,
+  "passed_cases": 50,
+  "total_cases": 50
+ },
+ "decoy": false,
+ "speedup": 1.142181478886764,
+ "compiled": true,
+ "error": null,
+ "error_class": null,
+ "max_abs_err": null,
+ "mean_abs_err": null,
+ "pass_rate": null,
+ "infra_error": false,
+ "total_cases": 50,
+ "passed_cases": 50,
+ "failures": [],
+ "benchmark_available": true,
+ "benchmark": {
+  "speedup_vs_torch": 1.142181478886764,
+  "total_cases": 50,
+  "passed_cases": 50,
+  "coverage": 1,
+  "per_shape_results": [
+   {
+    "case_idx": 0,
+    "input_desc": [
+     {
+      "input_index": 0,
+      "dimensions": [
+       32,
+       64
+      ],
+      "dtype": "torch.float32"
+     },
+     {
+      "input_index": 1,
+      "dimensions": [
+       32,
+       128
+      ],
+      "dtype": "torch.float32"
+     }
+    ],
+    "status": "pass",
+    "framework": {
+     "avg_latency_ms": 0.0024
+    },
+    "implementation": {
+     "avg_latency_ms": 0.0019
+    },
+    "speedup_vs_torch": 1.263157894736842
+   },
+   {
+    "case_idx": 1,
+    "input_desc": [
+     {
+      "input_index": 0,
+      "dimensions": [
+       64,
+       128
+      ],
+      "dtype": "torch.float32"
+     },
+     {
+      "input_index": 1,
+      "dimensions": [
+       64,
+       256
+      ],
+      "dtype": "torch.float32"
+     }
+    ],
+    "status": "pass",
+    "framework": {
+     "avg_latency_ms": 0.0035
+    },
+    "implementation": {
+     "avg_latency_ms": 0.0029
+    },
+    "speedup_vs_torch": 1.2068965517241381
+   },
+   {
+    "case_idx": 2,
+    "input_desc": [
+     {
+      "input_index": 0,
+      "dimensions": [
+       128,
+       256
+      ],
+      "dtype": "torch.float32"
+     },
+     {
+      "input_index": 1,
+      "dimensions": [
+       128,
+       512
+      ],
+      "dtype": "torch.float32"
+     }
+    ],
+    "status": "pass",
+    "framework": {
+     "avg_latency_ms": 0.0043
+    },
+    "implementation": {
+     "avg_latency_ms": 0.0042
+    },
+    "speedup_vs_torch": 1.023809523809524
+   },
+   {
+    "case_idx": 3,
+    "input_desc": [
+     {
+      "input_index": 0,
+      "dimensions": [
+       256,
+       512
+      ],
+      "dtype": "torch.float32"
+     },
+     {
+      "input_index": 1,
+      "dimensions": [
+       256,
+       1024
+      ],
+      "dtype": "torch.float32"
+     }
+    ],
+    "status": "pass",
+    "framework": {
+     "avg_latency_ms": 0.0094
+    },
+    "implementation": {
+     "avg_latency_ms": 0.0104
+    },
+    "speedup_vs_torch": 0.903846153846154
+   },
+   {
+    "case_idx": 4,
+    "input_desc": [
+     {
+      "input_index": 0,
+      "dimensions": [
+       32,
+       64
+      ],
+      "dtype": "torch.float16"
+     },
+     {
+      "input_index": 1,
+      "dimensions": [
+       32,
+       128
+      ],
+      "dtype": "torch.float16"
+     }
+    ],
+    "status": "pass",
+    "framework": {
+     "avg_latency_ms": 0.0023
+    },
+    "implementation": {
+     "avg_latency_ms": 0.0016
+    },
+    "speedup_vs_torch": 1.4375
+   },
+   {
+    "case_idx": 5,
+    "input_desc": [
+     {
+      "input_index": 0,
+      "dimensions": [
+       64,
+       128
+      ],
+      "dtype": "torch.float16"
+     },
+     {
+      "input_index": 1,
+      "dimensions": [
+       64,
+       256
+      ],
+      "dtype": "torch.float16"
+     }
+    ],
+    "status": "pass",
+    "framework": {
+     "avg_latency_ms": 0.0036
+    },
+    "implementation": {
+     "avg_latency_ms": 0.0021
+    },
+    "speedup_vs_torch": 1.7142857142857144
+   },
+   {
+    "case_idx": 6,
+    "input_desc": [
+     {
+      "input_index": 0,
+      "dimensions": [
+       128,
+       256
+      ],
+      "dtype": "torch.float16"
+     },
+     {
+      "input_index": 1,
+      "dimensions": [
+       128,
+       512
+      ],
+      "dtype": "torch.float16"
+     }
+    ],
+    "status": "pass",
+    "framework": {
+     "avg_latency_ms": 0.0042
+    },
+    "implementation": {
+     "avg_latency_ms": 0.0028
+    },
+    "speedup_vs_torch": 1.5
+   },
+   {
+    "case_idx": 7,
+    "input_desc": [
+     {
+      "input_index": 0,
+      "dimensions": [
+       256,
+       512
+      ],
+      "dtype": "torch.float16"
+     },
+     {
+      "input_index": 1,
+      "dimensions": [
+       256,
+       1024
+      ],
+      "dtype": "torch.float16"
+     }
+    ],
+    "status": "pass",
+    "framework": {
+     "avg_latency_ms": 0.0056
+    },
+    "implementation": {
+     "avg_latency_ms": 0.0062
+    },
+    "speedup_vs_torch": 0.9032258064516129
+   },
+   {
+    "case_idx": 8,
+    "input_desc": [
+     {
+      "input_index": 0,
+      "dimensions": [
+       32,
+       64
+      ],
+      "dtype": "torch.bfloat16"
+     },
+     {
+      "input_index": 1,
+      "dimensions": [
+       32,
+       128
+      ],
+      "dtype": "torch.bfloat16"
+     }
+    ],
+    "status": "pass",
+    "framework": {
+     "avg_latency_ms": 0.0022
+    },
+    "implementation": {
+     "avg_latency_ms": 0.0016
+    },
+    "speedup_vs_torch": 1.375
+   },
+   {
+    "case_idx": 9,
+    "input_desc": [
+     {
+      "input_index": 0,
+      "dimensions": [
+       64,
+       128
+      ],
+      "dtype": "torch.bfloat16"
+     },
+     {
+      "input_index": 1,
+      "dimensions": [
+       64,
+       256
+      ],
+      "dtype": "torch.bfloat16"
+     }
+    ],
+    "status": "pass",
+    "framework": {
+     "avg_latency_ms": 0.0035
+    },
+    "implementation": {
+     "avg_latency_ms": 0.0021
+    },
+    "speedup_vs_torch": 1.6666666666666667
+   },
+   {
+    "case_idx": 10,
+    "input_desc": [
+     {
+      "input_index": 0,
+      "dimensions": [
+       128,
+       256
+      ],
+      "dtype": "torch.bfloat16"
+     },
+     {
+      "input_index": 1,
+      "dimensions": [
+       128,
+       512
+      ],
+      "dtype": "torch.bfloat16"
+     }
+    ],
+    "status": "pass",
+    "framework": {
+     "avg_latency_ms": 0.0041
+    },
+    "implementation": {
+     "avg_latency_ms": 0.0029
+    },
+    "speedup_vs_torch": 1.413793103448276
+   },
+   {
+    "case_idx": 11,
+    "input_desc": [
+     {
+      "input_index": 0,
+      "dimensions": [
+       256,
+       512
+      ],
+      "dtype": "torch.bfloat16"
+     },
+     {
+      "input_index": 1,
+      "dimensions": [
+       256,
+       1024
+      ],
+      "dtype": "torch.bfloat16"
+     }
+    ],
+    "status": "pass",
+    "framework": {
+     "avg_latency_ms": 0.0055
+    },
+    "implementation": {
+     "avg_latency_ms": 0.0061
+    },
+    "speedup_vs_torch": 0.901639344262295
+   },
+   {
+    "case_idx": 12,
+    "input_desc": [
+     {
+      "input_index": 0,
+      "dimensions": [
+       1,
+       1
+      ],
+      "dtype": "torch.float32"
+     },
+     {
+      "input_index": 1,
+      "dimensions": [
+       1,
+       1
+      ],
+      "dtype": "torch.float32"
+     }
+    ],
+    "status": "pass",
+    "framework": {
+     "avg_latency_ms": 0.0015
+    },
+    "implementation": {
+     "avg_latency_ms": 0.0013
+    },
+    "speedup_vs_torch": 1.153846153846154
+   },
+   {
+    "case_idx": 13,
+    "input_desc": [
+     {
+      "input_index": 0,
+      "dimensions": [
+       2,
+       2
+      ],
+      "dtype": "torch.float32"
+     },
+     {
+      "input_index": 1,
+      "dimensions": [
+       2,
+       2
+      ],
+      "dtype": "torch.float32"
+     }
+    ],
+    "status": "pass",
+    "framework": {
+     "avg_latency_ms": 0.0022
+    },
+    "implementation": {
+     "avg_latency_ms": 0.0016
+    },
+    "speedup_vs_torch": 1.375
+   },
+   {
+    "case_idx": 14,
+    "input_desc": [
+     {
+      "input_index": 0,
+      "dimensions": [
+       4,
+       4
+      ],
+      "dtype": "torch.float32"
+     },
+     {
+      "input_index": 1,
+      "dimensions": [
+       4,
+       4
+      ],
+      "dtype": "torch.float32"
+     }
+    ],
+    "status": "pass",
+    "framework": {
+     "avg_latency_ms": 0.0016
+    },
+    "implementation": {
+     "avg_latency_ms": 0.0016
+    },
+    "speedup_vs_torch": 1
+   },
+   {
+    "case_idx": 15,
+    "input_desc": [
+     {
+      "input_index": 0,
+      "dimensions": [
+       8,
+       8
+      ],
+      "dtype": "torch.float32"
+     },
+     {
+      "input_index": 1,
+      "dimensions": [
+       8,
+       8
+      ],
+      "dtype": "torch.float32"
+     }
+    ],
+    "status": "pass",
+    "framework": {
+     "avg_latency_ms": 0.0015
+    },
+    "implementation": {
+     "avg_latency_ms": 0.0019
+    },
+    "speedup_vs_torch": 0.7894736842105263
+   },
+   {
+    "case_idx": 16,
+    "input_desc": [
+     {
+      "input_index": 0,
+      "dimensions": [
+       1,
+       1
+      ],
+      "dtype": "torch.float16"
+     },
+     {
+      "input_index": 1,
+      "dimensions": [
+       1,
+       1
+      ],
+      "dtype": "torch.float16"
+     }
+    ],
+    "status": "pass",
+    "framework": {
+     "avg_latency_ms": 0.0014
+    },
+    "implementation": {
+     "avg_latency_ms": 0.0014
+    },
+    "speedup_vs_torch": 1
+   },
+   {
+    "case_idx": 17,
+    "input_desc": [
+     {
+      "input_index": 0,
+      "dimensions": [
+       2,
+       2
+      ],
+      "dtype": "torch.float16"
+     },
+     {
+      "input_index": 1,
+      "dimensions": [
+       2,
+       2
+      ],
+      "dtype": "torch.float16"
+     }
+    ],
+    "status": "pass",
+    "framework": {
+     "avg_latency_ms": 0.0022
+    },
+    "implementation": {
+     "avg_latency_ms": 0.0016
+    },
+    "speedup_vs_torch": 1.375
+   },
+   {
+    "case_idx": 18,
+    "input_desc": [
+     {
+      "input_index": 0,
+      "dimensions": [
+       4,
+       4
+      ],
+      "dtype": "torch.float16"
+     },
+     {
+      "input_index": 1,
+      "dimensions": [
+       4,
+       4
+      ],
+      "dtype": "torch.float16"
+     }
+    ],
+    "status": "pass",
+    "framework": {
+     "avg_latency_ms": 0.0016
+    },
+    "implementation": {
+     "avg_latency_ms": 0.0016
+    },
+    "speedup_vs_torch": 1
+   },
+   {
+    "case_idx": 19,
+    "input_desc": [
+     {
+      "input_index": 0,
+      "dimensions": [
+       8,
+       8
+      ],
+      "dtype": "torch.float16"
+     },
+     {
+      "input_index": 1,
+      "dimensions": [
+       8,
+       8
+      ],
+      "dtype": "torch.float16"
+     }
+    ],
+    "status": "pass",
+    "framework": {
+     "avg_latency_ms": 0.0017
+    },
+    "implementation": {
+     "avg_latency_ms": 0.002
+    },
+    "speedup_vs_torch": 0.85
+   },
+   {
+    "case_idx": 20,
+    "input_desc": [
+     {
+      "input_index": 0,
+      "dimensions": [
+       1,
+       1
+      ],
+      "dtype": "torch.bfloat16"
+     },
+     {
+      "input_index": 1,
+      "dimensions": [
+       1,
+       1
+      ],
+      "dtype": "torch.bfloat16"
+     }
+    ],
+    "status": "pass",
+    "framework": {
+     "avg_latency_ms": 0.0023
+    },
+    "implementation": {
+     "avg_latency_ms": 0.0014
+    },
+    "speedup_vs_torch": 1.6428571428571428
+   },
+   {
+    "case_idx": 21,
+    "input_desc": [
+     {
+      "input_index": 0,
+      "dimensions": [
+       2,
+       2
+      ],
+      "dtype": "torch.bfloat16"
+     },
+     {
+      "input_index": 1,
+      "dimensions": [
+       2,
+       2
+      ],
+      "dtype": "torch.bfloat16"
+     }
+    ],
+    "status": "pass",
+    "framework": {
+     "avg_latency_ms": 0.0022
+    },
+    "implementation": {
+     "avg_latency_ms": 0.0016
+    },
+    "speedup_vs_torch": 1.375
+   },
+   {
+    "case_idx": 22,
+    "input_desc": [
+     {
+      "input_index": 0,
+      "dimensions": [
+       4,
+       4
+      ],
+      "dtype": "torch.bfloat16"
+     },
+     {
+      "input_index": 1,
+      "dimensions": [
+       4,
+       4
+      ],
+      "dtype": "torch.bfloat16"
+     }
+    ],
+    "status": "pass",
+    "framework": {
+     "avg_latency_ms": 0.0016
+    },
+    "implementation": {
+     "avg_latency_ms": 0.0016
+    },
+    "speedup_vs_torch": 1
+   },
+   {
+    "case_idx": 23,
+    "input_desc": [
+     {
+      "input_index": 0,
+      "dimensions": [
+       8,
+       8
+      ],
+      "dtype": "torch.bfloat16"
+     },
+     {
+      "input_index": 1,
+      "dimensions": [
+       8,
+       8
+      ],
+      "dtype": "torch.bfloat16"
+     }
+    ],
+    "status": "pass",
+    "framework": {
+     "avg_latency_ms": 0.0017
+    },
+    "implementation": {
+     "avg_latency_ms": 0.002
+    },
+    "speedup_vs_torch": 0.85
+   },
+   {
+    "case_idx": 24,
+    "input_desc": [
+     {
+      "input_index": 0,
+      "dimensions": [
+       16,
+       32
+      ],
+      "dtype": "torch.float32"
+     },
+     {
+      "input_index": 1,
+      "dimensions": [
+       16,
+       16
+      ],
+      "dtype": "torch.float32"
+     }
+    ],
+    "status": "pass",
+    "framework": {
+     "avg_latency_ms": 0.0018
+    },
+    "implementation": {
+     "avg_latency_ms": 0.0015
+    },
+    "speedup_vs_torch": 1.2
+   },
+   {
+    "case_idx": 25,
+    "input_desc": [
+     {
+      "input_index": 0,
+      "dimensions": [
+       32,
+       16
+      ],
+      "dtype": "torch.float32"
+     },
+     {
+      "input_index": 1,
+      "dimensions": [
+       32,
+       64
+      ],
+      "dtype": "torch.float32"
+     }
+    ],
+    "status": "pass",
+    "framework": {
+     "avg_latency_ms": 0.0016
+    },
+    "implementation": {
+     "avg_latency_ms": 0.0015
+    },
+    "speedup_vs_torch": 1.0666666666666667
+   },
+   {
+    "case_idx": 26,
+    "input_desc": [
+     {
+      "input_index": 0,
+      "dimensions": [
+       64,
+       32
+      ],
+      "dtype": "torch.float32"
+     },
+     {
+      "input_index": 1,
+      "dimensions": [
+       64,
+       128
+      ],
+      "dtype": "torch.float32"
+     }
+    ],
+    "status": "pass",
+    "framework": {
+     "avg_latency_ms": 0.0024
+    },
+    "implementation": {
+     "avg_latency_ms": 0.002
+    },
+    "speedup_vs_torch": 1.2
+   },
+   {
+    "case_idx": 27,
+    "input_desc": [
+     {
+      "input_index": 0,
+      "dimensions": [
+       128,
+       64
+      ],
+      "dtype": "torch.float32"
+     },
+     {
+      "input_index": 1,
+      "dimensions": [
+       128,
+       256
+      ],
+      "dtype": "torch.float32"
+     }
+    ],
+    "status": "pass",
+    "framework": {
+     "avg_latency_ms": 0.0036
+    },
+    "implementation": {
+     "avg_latency_ms": 0.0026
+    },
+    "speedup_vs_torch": 1.3846153846153846
+   },
+   {
+    "case_idx": 28,
+    "input_desc": [
+     {
+      "input_index": 0,
+      "dimensions": [
+       16,
+       32
+      ],
+      "dtype": "torch.float16"
+     },
+     {
+      "input_index": 1,
+      "dimensions": [
+       16,
+       16
+      ],
+      "dtype": "torch.float16"
+     }
+    ],
+    "status": "pass",
+    "framework": {
+     "avg_latency_ms": 0.0018
+    },
+    "implementation": {
+     "avg_latency_ms": 0.002
+    },
+    "speedup_vs_torch": 0.8999999999999999
+   },
+   {
+    "case_idx": 29,
+    "input_desc": [
+     {
+      "input_index": 0,
+      "dimensions": [
+       32,
+       16
+      ],
+      "dtype": "torch.float16"
+     },
+     {
+      "input_index": 1,
+      "dimensions": [
+       32,
+       64
+      ],
+      "dtype": "torch.float16"
+     }
+    ],
+    "status": "pass",
+    "framework": {
+     "avg_latency_ms": 0.0015
+    },
+    "implementation": {
+     "avg_latency_ms": 0.002
+    },
+    "speedup_vs_torch": 0.75
+   },
+   {
+    "case_idx": 30,
+    "input_desc": [
+     {
+      "input_index": 0,
+      "dimensions": [
+       64,
+       32
+      ],
+      "dtype": "torch.float16"
+     },
+     {
+      "input_index": 1,
+      "dimensions": [
+       64,
+       128
+      ],
+      "dtype": "torch.float16"
+     }
+    ],
+    "status": "pass",
+    "framework": {
+     "avg_latency_ms": 0.0017
+    },
+    "implementation": {
+     "avg_latency_ms": 0.0017
+    },
+    "speedup_vs_torch": 1
+   },
+   {
+    "case_idx": 31,
+    "input_desc": [
+     {
+      "input_index": 0,
+      "dimensions": [
+       128,
+       64
+      ],
+      "dtype": "torch.float16"
+     },
+     {
+      "input_index": 1,
+      "dimensions": [
+       128,
+       256
+      ],
+      "dtype": "torch.float16"
+     }
+    ],
+    "status": "pass",
+    "framework": {
+     "avg_latency_ms": 0.0036
+    },
+    "implementation": {
+     "avg_latency_ms": 0.0021
+    },
+    "speedup_vs_torch": 1.7142857142857144
+   },
+   {
+    "case_idx": 32,
+    "input_desc": [
+     {
+      "input_index": 0,
+      "dimensions": [
+       16,
+       32
+      ],
+      "dtype": "torch.bfloat16"
+     },
+     {
+      "input_index": 1,
+      "dimensions": [
+       16,
+       16
+      ],
+      "dtype": "torch.bfloat16"
+     }
+    ],
+    "status": "pass",
+    "framework": {
+     "avg_latency_ms": 0.0018
+    },
+    "implementation": {
+     "avg_latency_ms": 0.002
+    },
+    "speedup_vs_torch": 0.8999999999999999
+   },
+   {
+    "case_idx": 33,
+    "input_desc": [
+     {
+      "input_index": 0,
+      "dimensions": [
+       32,
+       16
+      ],
+      "dtype": "torch.bfloat16"
+     },
+     {
+      "input_index": 1,
+      "dimensions": [
+       32,
+       64
+      ],
+      "dtype": "torch.bfloat16"
+     }
+    ],
+    "status": "pass",
+    "framework": {
+     "avg_latency_ms": 0.0015
+    },
+    "implementation": {
+     "avg_latency_ms": 0.002
+    },
+    "speedup_vs_torch": 0.75
+   },
+   {
+    "case_idx": 34,
+    "input_desc": [
+     {
+      "input_index": 0,
+      "dimensions": [
+       64,
+       32
+      ],
+      "dtype": "torch.bfloat16"
+     },
+     {
+      "input_index": 1,
+      "dimensions": [
+       64,
+       128
+      ],
+      "dtype": "torch.bfloat16"
+     }
+    ],
+    "status": "pass",
+    "framework": {
+     "avg_latency_ms": 0.0017
+    },
+    "implementation": {
+     "avg_latency_ms": 0.0017
+    },
+    "speedup_vs_torch": 1
+   },
+   {
+    "case_idx": 35,
+    "input_desc": [
+     {
+      "input_index": 0,
+      "dimensions": [
+       128,
+       64
+      ],
+      "dtype": "torch.bfloat16"
+     },
+     {
+      "input_index": 1,
+      "dimensions": [
+       128,
+       256
+      ],
+      "dtype": "torch.bfloat16"
+     }
+    ],
+    "status": "pass",
+    "framework": {
+     "avg_latency_ms": 0.0034
+    },
+    "implementation": {
+     "avg_latency_ms": 0.0021
+    },
+    "speedup_vs_torch": 1.619047619047619
+   },
+   {
+    "case_idx": 36,
+    "input_desc": [
+     {
+      "input_index": 0,
+      "dimensions": [
+       16,
+       64
+      ],
+      "dtype": "torch.float32"
+     },
+     {
+      "input_index": 1,
+      "dimensions": [
+       16,
+       32
+      ],
+      "dtype": "torch.float32"
+     }
+    ],
+    "status": "pass",
+    "framework": {
+     "avg_latency_ms": 0.0017
+    },
+    "implementation": {
+     "avg_latency_ms": 0.0016
+    },
+    "speedup_vs_torch": 1.0625
+   },
+   {
+    "case_idx": 37,
+    "input_desc": [
+     {
+      "input_index": 0,
+      "dimensions": [
+       32,
+       128
+      ],
+      "dtype": "torch.float32"
+     },
+     {
+      "input_index": 1,
+      "dimensions": [
+       32,
+       64
+      ],
+      "dtype": "torch.float32"
+     }
+    ],
+    "status": "pass",
+    "framework": {
+     "avg_latency_ms": 0.0018
+    },
+    "implementation": {
+     "avg_latency_ms": 0.0019
+    },
+    "speedup_vs_torch": 0.9473684210526315
+   },
+   {
+    "case_idx": 38,
+    "input_desc": [
+     {
+      "input_index": 0,
+      "dimensions": [
+       64,
+       256
+      ],
+      "dtype": "torch.float32"
+     },
+     {
+      "input_index": 1,
+      "dimensions": [
+       64,
+       128
+      ],
+      "dtype": "torch.float32"
+     }
+    ],
+    "status": "pass",
+    "framework": {
+     "avg_latency_ms": 0.0035
+    },
+    "implementation": {
+     "avg_latency_ms": 0.0028
+    },
+    "speedup_vs_torch": 1.25
+   },
+   {
+    "case_idx": 39,
+    "input_desc": [
+     {
+      "input_index": 0,
+      "dimensions": [
+       128,
+       512
+      ],
+      "dtype": "torch.float32"
+     },
+     {
+      "input_index": 1,
+      "dimensions": [
+       128,
+       256
+      ],
+      "dtype": "torch.float32"
+     }
+    ],
+    "status": "pass",
+    "framework": {
+     "avg_latency_ms": 0.0044
+    },
+    "implementation": {
+     "avg_latency_ms": 0.0041
+    },
+    "speedup_vs_torch": 1.0731707317073171
+   },
+   {
+    "case_idx": 40,
+    "input_desc": [
+     {
+      "input_index": 0,
+      "dimensions": [
+       16,
+       64
+      ],
+      "dtype": "torch.float16"
+     },
+     {
+      "input_index": 1,
+      "dimensions": [
+       16,
+       32
+      ],
+      "dtype": "torch.float16"
+     }
+    ],
+    "status": "pass",
+    "framework": {
+     "avg_latency_ms": 0.0016
+    },
+    "implementation": {
+     "avg_latency_ms": 0.0016
+    },
+    "speedup_vs_torch": 1
+   },
+   {
+    "case_idx": 41,
+    "input_desc": [
+     {
+      "input_index": 0,
+      "dimensions": [
+       32,
+       128
+      ],
+      "dtype": "torch.float16"
+     },
+     {
+      "input_index": 1,
+      "dimensions": [
+       32,
+       64
+      ],
+      "dtype": "torch.float16"
+     }
+    ],
+    "status": "pass",
+    "framework": {
+     "avg_latency_ms": 0.0017
+    },
+    "implementation": {
+     "avg_latency_ms": 0.0016
+    },
+    "speedup_vs_torch": 1.0625
+   },
+   {
+    "case_idx": 42,
+    "input_desc": [
+     {
+      "input_index": 0,
+      "dimensions": [
+       64,
+       256
+      ],
+      "dtype": "torch.float16"
+     },
+     {
+      "input_index": 1,
+      "dimensions": [
+       64,
+       128
+      ],
+      "dtype": "torch.float16"
+     }
+    ],
+    "status": "pass",
+    "framework": {
+     "avg_latency_ms": 0.0034
+    },
+    "implementation": {
+     "avg_latency_ms": 0.002
+    },
+    "speedup_vs_torch": 1.7
+   },
+   {
+    "case_idx": 43,
+    "input_desc": [
+     {
+      "input_index": 0,
+      "dimensions": [
+       128,
+       512
+      ],
+      "dtype": "torch.float16"
+     },
+     {
+      "input_index": 1,
+      "dimensions": [
+       128,
+       256
+      ],
+      "dtype": "torch.float16"
+     }
+    ],
+    "status": "pass",
+    "framework": {
+     "avg_latency_ms": 0.0042
+    },
+    "implementation": {
+     "avg_latency_ms": 0.0029
+    },
+    "speedup_vs_torch": 1.4482758620689655
+   },
+   {
+    "case_idx": 44,
+    "input_desc": [
+     {
+      "input_index": 0,
+      "dimensions": [
+       16,
+       64
+      ],
+      "dtype": "torch.bfloat16"
+     },
+     {
+      "input_index": 1,
+      "dimensions": [
+       16,
+       32
+      ],
+      "dtype": "torch.bfloat16"
+     }
+    ],
+    "status": "pass",
+    "framework": {
+     "avg_latency_ms": 0.0016
+    },
+    "implementation": {
+     "avg_latency_ms": 0.0016
+    },
+    "speedup_vs_torch": 1
+   },
+   {
+    "case_idx": 45,
+    "input_desc": [
+     {
+      "input_index": 0,
+      "dimensions": [
+       32,
+       128
+      ],
+      "dtype": "torch.bfloat16"
+     },
+     {
+      "input_index": 1,
+      "dimensions": [
+       32,
+       64
+      ],
+      "dtype": "torch.bfloat16"
+     }
+    ],
+    "status": "pass",
+    "framework": {
+     "avg_latency_ms": 0.0018
+    },
+    "implementation": {
+     "avg_latency_ms": 0.0016
+    },
+    "speedup_vs_torch": 1.125
+   },
+   {
+    "case_idx": 46,
+    "input_desc": [
+     {
+      "input_index": 0,
+      "dimensions": [
+       64,
+       256
+      ],
+      "dtype": "torch.bfloat16"
+     },
+     {
+      "input_index": 1,
+      "dimensions": [
+       64,
+       128
+      ],
+      "dtype": "torch.bfloat16"
+     }
+    ],
+    "status": "pass",
+    "framework": {
+     "avg_latency_ms": 0.0033
+    },
+    "implementation": {
+     "avg_latency_ms": 0.002
+    },
+    "speedup_vs_torch": 1.65
+   },
+   {
+    "case_idx": 47,
+    "input_desc": [
+     {
+      "input_index": 0,
+      "dimensions": [
+       128,
+       512
+      ],
+      "dtype": "torch.bfloat16"
+     },
+     {
+      "input_index": 1,
+      "dimensions": [
+       128,
+       256
+      ],
+      "dtype": "torch.bfloat16"
+     }
+    ],
+    "status": "pass",
+    "framework": {
+     "avg_latency_ms": 0.0043
+    },
+    "implementation": {
+     "avg_latency_ms": 0.0029
+    },
+    "speedup_vs_torch": 1.4827586206896552
+   },
+   {
+    "case_idx": 48,
+    "input_desc": [
+     {
+      "input_index": 0,
+      "dimensions": [
+       16,
+       16
+      ],
+      "dtype": "torch.float32"
+     },
+     {
+      "input_index": 1,
+      "dimensions": [
+       16,
+       32
+      ],
+      "dtype": "torch.float32"
+     }
+    ],
+    "status": "pass",
+    "framework": {
+     "avg_latency_ms": 0.0015
+    },
+    "implementation": {
+     "avg_latency_ms": 0.0015
+    },
+    "speedup_vs_torch": 1
+   },
+   {
+    "case_idx": 49,
+    "input_desc": [
+     {
+      "input_index": 0,
+      "dimensions": [
+       16,
+       16
+      ],
+      "dtype": "torch.float16"
+     },
+     {
+      "input_index": 1,
+      "dimensions": [
+       16,
+       32
+      ],
+      "dtype": "torch.float16"
+     }
+    ],
+    "status": "pass",
+    "framework": {
+     "avg_latency_ms": 0.0016
+    },
+    "implementation": {
+     "avg_latency_ms": 0.0021
+    },
+    "speedup_vs_torch": 0.761904761904762
+   }
+  ]
+ },
+ "action": "benchmark",
+ "artifact_sha256": "d7de07e6acdd28b4f2b659f279c90edda28de6939b988dab1964a162b284f3d8",
+ "eval_turn": 1,
+ "eval_budget": "1/18",
+ "request_status": "completed",
+ "observation": "[kernel_eval]\naction=benchmark\nartifact_sha256=d7de07e6acdd28b4f2b659f279c90edda28de6939b988dab1964a162b284f3d8\neval_budget=1/18\nrequest_status=completed\n[kernel_eval][benchmark][measured] verify_cases=50/50 speedup_geomean=1.142x\nbenchmark={\"coverage\": 1, \"passed_cases\": 50, \"per_shape_results\": [{\"case_idx\": 0, \"framework\": {\"avg_latency_ms\": 0.0024}, \"implementation\": {\"avg_latency_ms\": 0.0019}, \"input_desc\": [{\"dimensions\": [32, 64], \"dtype\": \"torch.float32\", \"input_index\": 0}, {\"dimensions\": [32, 128], \"dtype\": \"torch.float32\", \"input_index\": 1}], \"speedup_vs_torch\": 1.263157894736842, \"status\": \"pass\"}, {\"case_idx\": 1, \"framework\": {\"avg_latency_ms\": 0.0035}, \"implementation\": {\"avg_latency_ms\": 0.0029}, \"input_desc\": [{\"dimensions\": [64, 128], \"dtype\": \"torch.float32\", \"input_index\": 0}, {\"dimensions\": [64, 256], \"dtype\": \"torch.float32\", \"input_index\": 1}], \"speedup_vs_torch\": 1.2068965517241381, \"status\": \"pass\"}, {\"case_idx\": 2, \"framework\": {\"avg_latency_ms\": 0.0043}, \"implementation\": {\"avg_latency_ms\": 0.0042}, \"input_desc\": [{\"dimensions\": [128, 256], \"dtype\": \"torch.float32\", \"input_index\": 0}, {\"dimensions\": [128, 512], \"dtype\": \"torch.float32\", \"input_index\": 1}], \"speedup_vs_torch\": 1.023809523809524, \"status\": \"pass\"}, {\"case_idx\": 3, \"framework\": {\"avg_latency_ms\": 0.0094}, \"implementation\": {\"avg_latency_ms\": 0.0104}, \"input_desc\": [{\"dimensions\": [256, 512], \"dtype\": \"torch.float32\", \"input_index\": 0}, {\"dimensions\": [256, 1024], \"dtype\": \"torch.float32\", \"input_index\": 1}], \"speedup_vs_torch\": 0.903846153846154, \"status\": \"pass\"}, {\"case_idx\": 4, \"framework\": {\"avg_latency_ms\": 0.0023}, \"implementation\": {\"avg_latency_ms\": 0.0016}, \"input_desc\": [{\"dimensions\": [32, 64], \"dtype\": \"torch.fl\n…[truncated]…"
+}

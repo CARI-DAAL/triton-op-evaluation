@@ -23,7 +23,7 @@ import sys
 import time
 import traceback
 from typing import Dict, List, Optional, Tuple, Any
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 
 # ============================================================================
@@ -79,6 +79,10 @@ class BenchmarkConfig:
     max_retries: int = 3          # 采集失败时的最大重试次数
     measurement_method: str = MEASUREMENT_METHOD_DEFAULT  # event | profiler
     cv_threshold: float = CV_THRESHOLD_DEFAULT  # event 时延稳定性门限（变异系数）
+    # Populated only from an operator-pinned cache, never public request fields.
+    reference_latencies_ms: object = None
+    reference_measure_eight: bool = False
+    reference_cache_trace: object = None
 
 
 @dataclass
@@ -518,6 +522,20 @@ def _measure_framework(
     case_idx: int,
 ) -> Tuple[Dict[str, float], Optional[float], float]:
     """测量 framework 端时延 / 显存 / 算子分项；skip_framework 时直接返回参考值。"""
+    if config.reference_latencies_ms is not None:
+        return {}, config.reference_latencies_ms[case_idx], 0.0
+    if config.reference_measure_eight:
+        live = replace(config, reference_measure_eight=False)
+        measurements = [_measure_framework(framework_model, inputs, live, device, case_idx)
+                        for _ in range(8)]
+        latencies = [measurement[1] for measurement in measurements]
+        if any(value is None or not math.isfinite(value) or value <= 0 for value in latencies):
+            raise RuntimeError("reference remeasurement requires eight valid positive samples")
+        operators = {}
+        for measurement in measurements:
+            for name, latency in measurement[0].items():
+                operators[name] = operators.get(name, 0.0) + latency / 8
+        return operators, _median(latencies), max(measurement[2] for measurement in measurements)
     if config.skip_framework:
         logger.info("    跳过 Framework 测试，使用参考延迟: %.4f ms", config.framework_latency_ms)
         return {}, config.framework_latency_ms, 0.0
@@ -759,13 +777,13 @@ def _load_benchmark_modules(config: BenchmarkConfig):
     return torch_module.Model, impl_module.ModelNew, torch_module.get_init_inputs
 
 
-def _instantiate_bench_models(framework_cls, impl_cls, get_init_inputs, device):
+def _instantiate_bench_models(framework_cls, impl_cls, get_init_inputs, device, skip_framework=False):
     """同种子分别实例化 framework 与 impl 模型。"""
     import torch
     init_params = get_init_inputs()
     torch.manual_seed(0)
     torch.npu.manual_seed(0)
-    framework_model = framework_cls(*init_params).to(device)
+    framework_model = None if skip_framework else framework_cls(*init_params).to(device)
     torch.manual_seed(0)
     torch.npu.manual_seed(0)
     impl_model = impl_cls(*init_params).to(device)
@@ -793,9 +811,15 @@ def _run_shape_case(config, model_spec: BenchmarkModelSpec,
         framework_model = None
         impl_model = None
         try:
-            framework_model, impl_model = _instantiate_bench_models(
-                model_spec.framework_cls, model_spec.impl_cls, model_spec.get_init_inputs, device,
-            )
+            if config.reference_latencies_ms is None:
+                framework_model, impl_model = _instantiate_bench_models(
+                    model_spec.framework_cls, model_spec.impl_cls, model_spec.get_init_inputs, device,
+                )
+            else:
+                framework_model, impl_model = _instantiate_bench_models(
+                    model_spec.framework_cls, model_spec.impl_cls, model_spec.get_init_inputs, device,
+                    skip_framework=True,
+                )
             fw_perf, impl_perf, speedup = run_single_benchmark(
                 ModelPair(framework_model, impl_model), inputs, config, device, case_ctx,
             )
@@ -836,6 +860,85 @@ def _run_shape_case(config, model_spec: BenchmarkModelSpec,
     )
 
 
+def _configure_reference_cache(config, model_spec, input_groups, device):
+    """Measure a real reference sentinel before candidate timing, then choose denominators.
+
+    Drift invalidation is monotone for this card and deployment generation. Missing
+    entries execute the complete reference; they are never called cache hits.
+    """
+    from pathlib import Path
+    from triton_evaluation.reference_cache import (
+        ReferenceCache, ReferenceCacheMiss, official_source_metadata,
+        canonical_bytes, sha256,
+    )
+    config.reference_latencies_ms = None
+    config.reference_measure_eight = False
+    config.reference_cache_trace = None
+    cache = ReferenceCache.from_environment()
+    if cache is None:
+        return
+    source = Path(config.verify_dir, f"{config.op_name}_torch.py").read_text(encoding="utf-8")
+    if official_source_metadata(source) is None:
+        return
+    if config.skip_framework:
+        raise RuntimeError("reference cache cannot be combined with an unbound skip-framework value")
+    cache.check_measurement(config)
+    policy = os.environ.get("TRITON_EVAL_REFERENCE_DEVICE_POLICY", "cpu-first")
+    trace = {"deployment_sha256": cache.deployment.digest, "device_id": cache.device_id,
+             "status": "miss", "manifests": [], "reference_memory_measured": False}
+    manifests = []
+    for case_idx, inputs in enumerate(input_groups, start=1):
+        try:
+            manifests.append(cache.load_case(source, case_idx, inputs,
+                                            reference_device_policy=policy))
+        except ReferenceCacheMiss:
+            # Preserve complete execution when an audited task/card pair is absent.
+            config.reference_measure_eight = True
+            config.reference_cache_trace = trace
+            return
+    if not manifests:
+        raise RuntimeError("reference cache cannot benchmark an empty task")
+    trace["manifests"] = [sha256(canonical_bytes(manifest.model_dump(mode="json")))
+                          for manifest in manifests]
+    # First case is the frozen sentinel. It runs on EVERY evaluation, including a
+    # card already invalidated earlier in this generation.
+    import torch
+    torch.manual_seed(0)
+    torch.npu.manual_seed(0)
+    init_params = model_spec.get_init_inputs()
+    torch.manual_seed(0)
+    torch.npu.manual_seed(0)
+    reference_model = model_spec.framework_cls(*init_params).to(device)
+    try:
+        live = replace(config, reference_latencies_ms=None, reference_measure_eight=True)
+        _, measured_ms, _ = _measure_framework(reference_model, input_groups[0], live, device, 1)
+    finally:
+        reference_model = None
+        cleanup_npu_memory()
+    cached_ms = manifests[0].reference_latency_median_ms
+    remeasure = cache.needs_remeasurement(cached_ms, measured_ms)
+    trace.update(status="remeasured" if remeasure else "hit", sentinel_case_idx=1,
+                 sentinel_cached_ms=cached_ms, sentinel_measured_ms=measured_ms,
+                 sentinel_relative_drift=abs(measured_ms / cached_ms - 1.0))
+    if remeasure:
+        config.reference_measure_eight = True
+        trace["reference_memory_measured"] = True
+    else:
+        config.reference_latencies_ms = {manifest.binding.case_idx: manifest.reference_latency_median_ms
+                                        for manifest in manifests}
+    config.reference_cache_trace = trace
+
+
+def _write_reference_cache_trace(config):
+    if config.reference_cache_trace is None:
+        return
+    from pathlib import Path
+    path = Path(config.verify_dir) / "verify_reference.json"
+    record = json.loads(path.read_text(encoding="utf-8"))
+    record["performance_cache"] = config.reference_cache_trace
+    path.write_text(json.dumps(record, indent=2, allow_nan=False), encoding="utf-8")
+
+
 def benchmark_implementations(config: BenchmarkConfig) -> BenchmarkResult:
     """执行完整的性能测试，支持多组输入。每个 shape 独立 try/except。"""
     import torch
@@ -846,11 +949,16 @@ def benchmark_implementations(config: BenchmarkConfig) -> BenchmarkResult:
     # 执行环境不变量：与沙箱一致以 NPU 为环境设备（见 _common_utils）。
     _ensure_npu_ambient_shared(torch)
 
+    # Correctness and performance use identical seed-zero input bytes.
+    torch.manual_seed(0)
+    torch.npu.manual_seed(0)
     input_groups = resolve_inputs(config.op_name, config.verify_dir)
     total_cases = len(input_groups)
 
     framework_cls, impl_cls, get_init_inputs = _load_benchmark_modules(config)
     model_spec = BenchmarkModelSpec(framework_cls, impl_cls, get_init_inputs)
+    _configure_reference_cache(config, model_spec, input_groups, device)
+    _write_reference_cache_trace(config)
 
     per_shape_results: List[SingleShapeResult] = [
         _run_shape_case(
@@ -1194,5 +1302,5 @@ def main():
 
 
 if __name__ == "__main__":
-    _set_process_title("TritonEvalWork")
+    _set_process_title("EvalEngine")
     main()

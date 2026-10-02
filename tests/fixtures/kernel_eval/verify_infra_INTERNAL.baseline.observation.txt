@@ -1,0 +1,6 @@
+[kernel_eval]
+action=verify
+artifact_sha256=d00374d656e6c8974c55e725534e853052bae0f756f28a4915d311159fbcf24a
+eval_budget=1/18
+request_status=infra_error
+error=INTERNAL: unattributed case failure: RuntimeError: Traceback (most recent call last): File "/home/e84381970/open-evo-work/service-result-collection-fb90951/triton_evaluation/engine/verify.py", line 1263, in _try_run_case _attempt_case(modules, case_ctx, inputs, device, device, non_compute) File "/home/e84381970/open-evo-work/service-result-collection-fb90951/triton_evaluation/engine/verify.py", line 1239, in _attempt_case run_single_case( File "/home/e84381970/open-evo-work/service-result-collection-fb90951/triton_ev

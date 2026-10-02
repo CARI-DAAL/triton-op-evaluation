@@ -1,0 +1,74 @@
+{
+ "origin": {
+  "redis_key": "triton-eval:v2.1:resource:ev_4ae0af878c0140d685d34491edbfe2fa",
+  "branch": "benchmark_decoy"
+ },
+ "params": {
+  "action": "benchmark",
+  "kernel_code": "\"\"\"Triton implementation of ``matmul(A.T, B.T)`` for Ascend NPU.\n\nFor 2D inputs ``A`` of shape ``(m, n)`` and ``B`` of shape ``(k, p)`` with\n``p == m`` the reference computes ``A.T @ B.T``, giving ``(n, k)``:\n\n    out[i, j] = sum_l A[l, i] * B[j, l]\n\nEach program owns a ``(BN, BK)`` tile of ``out`` (a ``(BN, BK)`` tile of the\n``(i, j)`` plane) and scans the contraction dimension ``l`` in ``BM`` steps.\nBoth inputs are read in their natural row-major order -- the contiguous axis\nof each tile is the tile's last axis, which keeps the global loads 2D\ncontiguous DMAs -- and the two tiles are transposed only when feeding\n``tl.dot``, i.e. as part of the layout conversion the cube operands need\nanyway.  The accumulator is kept fp32 and written straight into the\n``(N, K)`` output, so the result is a plain contiguous tensor.\n\nBlock geometry is deliberately small and fixed (one JIT specialisation per\ninput dtype): 64x64x64 fp32 tiles need ~48 KB of UB, comfortably inside the\n192 KB of Atlas A2/A3 even with the compiler's double buffering, and every\nboundary is masked.\n\"\"\"\n\nimport torch\nimport torch.nn as nn\nimport triton\nimport triton.language as tl\n\n_BM = 64  # contraction (l) tile\n_BN = 64  # output row (i / n) tile\n_BK = 64  # output column (j / k) tile\n\n\n@triton.jit\ndef _mm_tt_kernel(\n    a_ptr, b_ptr, c_ptr,\n    M, N, K,\n    stride_am, stride_an,\n    stride_bk, stride_bp,\n    stride_cn, stride_ck,\n    BM: tl.constexpr, BN: tl.constexpr, BK: tl.constexpr,\n):\n    \"\"\"``c[i, j] = sum_l a[l, i] * b[j, l]`` for a (M, N), b (K, M), c (N, K).\"\"\"\n    pid_n = tl.program_id(0)\n    pid_k = tl.program_id(1)\n\n    offs_n = pid_n * BN + tl.arange(0, BN)\n    offs_k = pid_k * BK + tl.arange(0, BK)\n    offs_m = tl.arange(0, BM)\n\n    n_mask = offs_n < N\n    k_mask = offs_k < K\n\n    acc = tl.zeros((BN, BK), dtype=tl.float32)\n\n    for m0 in range(0, M, BM):\n        m_idx = m0 + offs_m\n        m_mask = m_idx < M\n\n        # a_tile[l, i] -- contiguous along i (the tile's last axis).\n        a_ptrs = a_ptr + m_idx[:, None] * stride_am + offs_n[None, :] * stride_an\n        a_tile = tl.load(a_ptrs, mask=m_mask[:, None] & n_mask[None, :], other=0.0)\n\n        # b_tile[j, l] -- contiguous along l (the tile's last axis).\n        b_ptrs = b_ptr + offs_k[:, None] * stride_bk + m_idx[None, :] * stride_bp\n        b_tile = tl.load(b_ptrs, mask=k_mask[:, None] & m_mask[None, :], other=0.0)\n\n        # (BN, BM) @ (BM, BK) -> acc[i, j]\n        acc = tl.dot(tl.trans(a_tile), tl.trans(b_tile), acc)\n\n    c_ptrs = c_ptr + offs_n[:, None] * stride_cn + offs_k[None, :] * stride_ck\n    tl.store(\n        c_ptrs,\n        acc.to(c_ptr.dtype.element_ty),\n        mask=n_mask[:, None] & k_mask[None, :],\n    )\n\n\ndef _mm_tt_into(a: torch.Tensor, b: torch.Tensor, c: torch.Tensor) -> None:\n    \"\"\"Launch the kernel for one 2D problem: a (m, n) and b (p, k) -> c (n, k).\"\"\"\n    m, n = a.shape\n    k = b.shape[0]\n    grid = ((n + _BN - 1) // _BN, (k + _BK - 1) // _BK)\n    _mm_tt_kernel[grid](\n        a, b, c,\n        m, n, k,\n        a.stride(0), a.stride(1),\n        b.stride(0), b.stride(1),\n        c.stride(0), c.stride(1),\n        BM=_BM, BN=_BN, BK=_BK,\n    )\n\n\nclass ModelNew(nn.Module):\n    \"\"\"``matmul(A.T, B.T)`` implemented with a Triton kernel.\"\"\"\n\n    def __init__(self):\n        super(ModelNew, self).__init__()\n\n    def forward(self, A: torch.Tensor, B: torch.Tensor) -> torch.Tensor:\n        if A.dim() == 2 and B.dim() == 2:\n            out = torch.empty(\n                (A.shape[1], B.shape[0]), dtype=A.dtype, device=A.device\n            )\n            if out.numel() != 0:\n                _mm_tt_into(A, B, out)\n            return out\n\n        # Batched fallback: broadcast the leading dimensions and launch one\n        # kernel per batch element (host-side routing only, no tensor math).\n        # The kernel already consumes A (m, n) and B (k, p) directly and\n        # produces out (n, k), so no transpose is needed here.\n        batch = torch.broadcast_shapes(A.shape[:-2], B.shape[:-2])\n        av = torch.broadcast_to(A, batch + A.shape[-2:])\n        bv = torch.broadcast_to(B, batch + B.shape[-2:])\n        out = torch.empty(\n            batch + (A.shape[-1], B.shape[-2]), dtype=A.dtype, device=A.device\n        )\n        count = 1\n        for size in batch:\n            count *= size\n        av = av.reshape(count, av.shape[-2], av.shape[-1])\n        bv = bv.reshape(count, bv.shape[-2], bv.shape[-1])\n        of = out.reshape(count, out.shape[-2], out.shape[-1])\n        if count:\n            for index in range(count):\n                _mm_tt_into(av[index], bv[index], of[index])\n        return out\n\n\nModel = ModelNew\n",
+  "eval_turn": 1,
+  "eval_budget": "1/18"
+ },
+ "resource": {
+  "created_at": "2026-09-29T19:52:22.763000Z",
+  "deadline_at": "2026-09-29T20:22:22.763000Z",
+  "evaluation_id": "ev_4ae0af878c0140d685d34491edbfe2fa",
+  "finished_at": "2026-09-29T19:52:28.642000Z",
+  "reference_digest": "1f2fd5bd17e81c34510441eb87fba770aad508c00995ce46dc81951a547429c8",
+  "request_digest": "a6ce1bf823ce7dcfbcb594db8045f0d190294565d87a4ea69c15f15ba8556c1f",
+  "result": {
+   "compile": null,
+   "correctness": {
+    "data": {
+     "decoy": true,
+     "domain_failure": null,
+     "failures": [],
+     "outcome": "wrong",
+     "passed": false,
+     "passed_cases": 50,
+     "total_cases": 50
+    },
+    "error": null,
+    "reason": null,
+    "status": "succeeded"
+   },
+   "performance": {
+    "data": null,
+    "error": null,
+    "reason": {
+     "code": "DEPENDENCY_NOT_PASSED",
+     "depends_on": "correctness",
+     "message": "correctness did not pass"
+    },
+    "status": "skipped"
+   },
+   "profile": null,
+   "provenance": {
+    "benchmark_algorithm": "geometric-mean-v1",
+    "correctness_algorithm": "correctness-v1:npu-strict-v1",
+    "decoy_algorithm": "decoy-v1",
+    "evaluator_build": "sha256:d3232fdf45295e489d2e135753a007a2ce11b94a5c9de95191df29560d88c447",
+    "execution_environment": {
+     "driver_version": "25.5.1",
+     "hardware_count": 1,
+     "hardware_model": "Ascend910",
+     "runtime_version": "CANN-8.5.2",
+     "toolchain_version": "CANN 8.5.2 / torch 2.9.0 / torch_npu 2.9.0 / triton_ascend 3.2.0",
+     "torch_npu_version": "2.9.0",
+     "torch_version": "2.9.0",
+     "triton_version": "3.2.0"
+    },
+    "grade_eligible": true,
+    "manifest_id": "npukernelbench-machine2-v1",
+    "problem_id": "kernelbench_l3_3_MatmulBothTrans",
+    "profiler_algorithm": "profiler-v1",
+    "schema_version": "2.1"
+   }
+  },
+  "revision": 3,
+  "schema_version": "2.1",
+  "started_at": "2026-09-29T19:52:23.006000Z",
+  "state": "completed",
+  "updated_at": "2026-09-29T19:52:28.642000Z"
+ }
+}

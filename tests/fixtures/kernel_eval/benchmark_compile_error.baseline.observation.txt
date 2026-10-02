@@ -1,0 +1,7 @@
+[kernel_eval]
+action=benchmark
+artifact_sha256=2a2e5c7b4cfd240d4cc7e30f6e5ee3cd46062d0737ddede215d53e5e6647751b
+eval_budget=1/18
+request_status=completed
+[kernel_eval][benchmark][jit_compile_error]
+error=[case None] CompilationError: candidate compilation raised CompilationError

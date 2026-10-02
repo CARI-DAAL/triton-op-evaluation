@@ -156,6 +156,7 @@ class TestComposedModule:
         assert hasattr(mod, "Model") and hasattr(mod, "get_input_groups")
         assert hasattr(mod, "get_init_inputs") and callable(mod.run)
         assert mod.get_init_inputs() == []
+        assert mod.get_case_count() == 2
 
     def test_case_count_and_tensor_spec(self):
         groups = self._module().get_input_groups()

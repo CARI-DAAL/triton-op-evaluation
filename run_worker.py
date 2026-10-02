@@ -14,14 +14,14 @@ from triton_evaluation.worker import Worker
 logger = logging.getLogger(__name__)
 
 # Process title shown in `npu-smi info` / ps; 15-char /proc/<pid>/comm limit.
-_PROCESS_TITLE = "TritonEval"
+_PROCESS_TITLE = "EvalWorker"
 
 # Keeps the startup device-hold tensor alive for the process lifetime.
 _DEVICE_HOLD = None
 
 
 def set_process_title() -> None:
-    """Rename the worker so npu-smi shows `TritonEval` instead of `python`.
+    """Rename the worker so npu-smi shows `EvalWorker` instead of `python`.
     Best effort: missing setproctitle only keeps the default name."""
     try:
         from setproctitle import setproctitle

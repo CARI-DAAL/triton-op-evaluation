@@ -1,0 +1,93 @@
+{
+ "origin": {
+  "redis_key": "triton-eval:v2.1:resource:ev_02029bf00f6147cd971470226517ebb9",
+  "branch": "profile_complete"
+ },
+ "params": {
+  "action": "profile",
+  "kernel_code": "\"\"\"Batch matrix multiplication (torch.bmm) implemented as a Triton kernel.\n\nA: (batch, M, N), B: (batch, N, P) -> C: (batch, M, P), with fp32 accumulation.\n\"\"\"\n\nimport torch\nimport torch.nn as nn\nimport triton\nimport triton.language as tl\n\n\n@triton.jit\ndef _bmm_kernel(\n    A, B, C,\n    M, N, P,\n    stride_ab, stride_am, stride_an,\n    stride_bb, stride_bn, stride_bp,\n    stride_cb, stride_cm, stride_cp,\n    BLOCK_M: tl.constexpr,\n    BLOCK_N: tl.constexpr,\n    BLOCK_P: tl.constexpr,\n):\n    pid = tl.program_id(0)\n    num_pid_p = tl.cdiv(P, BLOCK_P)\n    pid_m = pid // num_pid_p\n    pid_p = pid - pid_m * num_pid_p\n    batch = tl.program_id(1)\n\n    rm = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)\n    rp = pid_p * BLOCK_P + tl.arange(0, BLOCK_P)\n    rn = tl.arange(0, BLOCK_N)\n\n    m_mask = rm < M\n    p_mask = rp < P\n\n    a_ptrs = A + batch * stride_ab + rm[:, None] * stride_am + rn[None, :] * stride_an\n    b_ptrs = B + batch * stride_bb + rn[:, None] * stride_bn + rp[None, :] * stride_bp\n\n    acc = tl.zeros((BLOCK_M, BLOCK_P), dtype=tl.float32)\n    for k in range(0, tl.cdiv(N, BLOCK_N)):\n        n_mask = (k * BLOCK_N + rn) < N\n        a = tl.load(a_ptrs, mask=m_mask[:, None] & n_mask[None, :], other=0.0)\n        b = tl.load(b_ptrs, mask=n_mask[:, None] & p_mask[None, :], other=0.0)\n        acc = tl.dot(a, b, acc)\n        a_ptrs += BLOCK_N * stride_an\n        b_ptrs += BLOCK_N * stride_bn\n\n    c_ptrs = C + batch * stride_cb + rm[:, None] * stride_cm + rp[None, :] * stride_cp\n    tl.store(c_ptrs, acc.to(C.dtype.element_ty), mask=m_mask[:, None] & p_mask[None, :])\n\n\n_MIN_BLOCK = 16\n\n\ndef _block_for(dim, cap=64):\n    b = triton.next_power_of_2(max(int(dim), _MIN_BLOCK))\n    return max(_MIN_BLOCK, min(cap, b))\n\n\ndef _plan(M, N, P, batch):\n    \"\"\"Pick tile sizes; pure metadata, no device work.\"\"\"\n    bm = _block_for(M)\n    bp = _block_for(P)\n    bn = _block_for(N, cap=64)\n\n    num_m = (M + bm - 1) // bm\n    num_p = (P + bp - 1) // bp\n    # Only shrink tiles when the problem is tiny and we would otherwise\n    # leave most of the device idle.\n    while bm > 32 and bp > 32 and batch * num_m * num_p < 8:\n        if bm >= bp:\n            bm //= 2\n            num_m = (M + bm - 1) // bm\n        else:\n            bp //= 2\n            num_p = (P + bp - 1) // bp\n    return bm, bn, bp, num_m * num_p\n\n\nclass ModelNew(nn.Module):\n    def __init__(self):\n        super(ModelNew, self).__init__()\n\n    def forward(self, A: torch.Tensor, B: torch.Tensor) -> torch.Tensor:\n        if not A.is_contiguous():\n            A = A.contiguous()\n        if not B.is_contiguous():\n            B = B.contiguous()\n\n        batch, M, N = A.shape\n        P = B.shape[2]\n\n        C = torch.empty((batch, M, P), device=A.device, dtype=A.dtype)\n\n        bm, bn, bp, tiles = _plan(M, N, P, batch)\n        num_p = (P + bp - 1) // bp\n        grid = (tiles, batch)\n\n        _bmm_kernel[grid](\n            A, B, C,\n            M, N, P,\n            A.stride(0), A.stride(1), A.stride(2),\n            B.stride(0), B.stride(1), B.stride(2),\n            C.stride(0), C.stride(1), C.stride(2),\n            BLOCK_M=bm, BLOCK_N=bn, BLOCK_P=bp,\n        )\n        return C\n",
+  "eval_turn": 1,
+  "eval_budget": "1/18"
+ },
+ "resource": {
+  "created_at": "2026-09-29T04:16:17.965000Z",
+  "deadline_at": "2026-09-29T04:31:17.965000Z",
+  "evaluation_id": "ev_02029bf00f6147cd971470226517ebb9",
+  "finished_at": "2026-09-29T04:17:00.299000Z",
+  "reference_digest": "adb9e8a450670341c2be7785386fac1e8cec85cdd62a2a634ecbf68bc3aa949d",
+  "request_digest": "acaaa0ebaf2b540057cb3811af9819917ba1f9bbd59a8703fc7181362b5c99d3",
+  "result": {
+   "compile": null,
+   "correctness": null,
+   "performance": null,
+   "profile": {
+    "data": {
+     "cases": [
+      {
+       "case_idx": 0,
+       "error": null,
+       "kernels": [
+        {
+         "metrics": {
+          "aic_cube_ratio": 0.013611,
+          "aic_fixpipe_ratio": 0.049907,
+          "aic_l2_hit": 0.7073170500000001,
+          "aic_mte2_ratio": 0.539365,
+          "aiv_l2_hit": null,
+          "aiv_mte2_ratio": null,
+          "aiv_mte3_ratio": null,
+          "aiv_vec_ratio": null,
+          "gm_to_l1_usage": 0.00477219,
+          "gm_to_ub_usage": null,
+          "l0c_to_gm_usage": 0.00050234,
+          "ub_to_gm_usage": null
+         },
+         "op_name": "_bmm_kernel",
+         "percentage": 100,
+         "time_ms": 0.00282
+        }
+       ],
+       "status": "complete"
+      }
+     ],
+     "counts": {
+      "complete": 1,
+      "failed": 0,
+      "partial": 0,
+      "selected": 1
+     },
+     "mode": "op"
+    },
+    "error": null,
+    "reason": null,
+    "status": "succeeded"
+   },
+   "provenance": {
+    "benchmark_algorithm": "geometric-mean-v1",
+    "correctness_algorithm": "correctness-v1:npu-strict-v1",
+    "decoy_algorithm": "decoy-v1",
+    "evaluator_build": "sha256:d3232fdf45295e489d2e135753a007a2ce11b94a5c9de95191df29560d88c447",
+    "execution_environment": {
+     "driver_version": "25.5.1",
+     "hardware_count": 1,
+     "hardware_model": "Ascend910",
+     "runtime_version": "CANN-8.5.2",
+     "toolchain_version": "CANN 8.5.2 / torch 2.9.0 / torch_npu 2.9.0 / triton_ascend 3.2.0",
+     "torch_npu_version": "2.9.0",
+     "torch_version": "2.9.0",
+     "triton_version": "3.2.0"
+    },
+    "grade_eligible": false,
+    "manifest_id": null,
+    "problem_id": null,
+    "profiler_algorithm": "profiler-v1",
+    "schema_version": "2.1"
+   }
+  },
+  "revision": 3,
+  "schema_version": "2.1",
+  "started_at": "2026-09-29T04:16:18.411000Z",
+  "state": "completed",
+  "updated_at": "2026-09-29T04:17:00.299000Z"
+ }
+}

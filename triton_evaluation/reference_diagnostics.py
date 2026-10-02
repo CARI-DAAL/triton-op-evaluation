@@ -36,11 +36,28 @@ class _CaseReference(_PrivateModel):
     selected_reference_device: _Device
     reference_completed: bool
     output_devices: list[_OutputDevice]
+    reference_cache_status: Literal["hit", "miss"] | None = None
+    reference_manifest_sha256: Annotated[str, Field(pattern=r"^[0-9a-f]{64}$")] | None = None
+    reference_binding_sha256: Annotated[str, Field(pattern=r"^[0-9a-f]{64}$")] | None = None
+    reference_output_sha256: Annotated[str, Field(pattern=r"^[0-9a-f]{64}$")] | None = None
+
+
+class _PerformanceCache(_PrivateModel):
+    deployment_sha256: Annotated[str, Field(pattern=r"^[0-9a-f]{64}$")]
+    device_id: Annotated[str, Field(pattern=r"^[0-9]+$")]
+    status: Literal["hit", "miss", "remeasured"]
+    manifests: list[Annotated[str, Field(pattern=r"^[0-9a-f]{64}$")]]
+    reference_memory_measured: bool
+    sentinel_case_idx: Annotated[int, Field(ge=1)] | None = None
+    sentinel_cached_ms: Annotated[float, Field(gt=0, allow_inf_nan=False)] | None = None
+    sentinel_measured_ms: Annotated[float, Field(gt=0, allow_inf_nan=False)] | None = None
+    sentinel_relative_drift: Annotated[float, Field(ge=0, allow_inf_nan=False)] | None = None
 
 
 class _ReferenceTrace(_PrivateModel):
     reference_device_policy: Literal["cpu-first", "npu-strict"]
     cases: list[_CaseReference]
+    performance_cache: _PerformanceCache | None = None
 
 
 def _read_trace(path: Path, policy: str) -> dict:
@@ -59,7 +76,7 @@ def _read_trace(path: Path, policy: str) -> dict:
         trace = _ReferenceTrace.model_validate_json(data)
         if trace.reference_device_policy != policy:
             raise ValueError("reference telemetry policy mismatch")
-        return {"status": "recorded", "observations": trace.model_dump()}
+        return {"status": "recorded", "observations": trace.model_dump(exclude_none=True)}
     except (OSError, ValueError):
         return {"status": "invalid", "observations": None}
 

@@ -1,0 +1,13 @@
+{
+ "task_status": "TIMEOUT",
+ "profile_state": "timeout",
+ "result": null,
+ "error": "resource deadline expired",
+ "infra_error": false,
+ "action": "profile",
+ "artifact_sha256": "6c7f7a0752ce4255770c3acf0f731c38fc1e3462aeba79d464032da0d02945a6",
+ "eval_turn": 1,
+ "eval_budget": "1/18",
+ "request_status": "completed",
+ "observation": "[kernel_eval]\naction=profile\nartifact_sha256=6c7f7a0752ce4255770c3acf0f731c38fc1e3462aeba79d464032da0d02945a6\neval_budget=1/18\nrequest_status=completed\n[kernel_eval][profile][timeout] task_status=TIMEOUT\nerror=resource deadline expired"
+}

@@ -78,11 +78,17 @@ def _materialize(spec):
         return (torch.rand(shape) * (rng[1] - rng[0]) + rng[0]).to(td)
     return torch.randn(shape, dtype=td)
 
-def _iter_input_groups():
+def _get_case_specs():
     cases = _json.loads(
         __CASES_LITERAL__
     )
-    for case in cases:
+    return cases
+
+def get_case_count():
+    return len(_get_case_specs())
+
+def _iter_input_groups():
+    for case in _get_case_specs():
         by_name = {i["name"]: i for i in case["inputs"]}
         vals = []
         for name in _PARAM_ORDER:

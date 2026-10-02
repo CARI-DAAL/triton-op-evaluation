@@ -109,6 +109,31 @@ def set_process_title(title: str) -> None:
         pass
 
 
+class _OfficialInputGroups:
+    """Seed-zero random access without retaining all official workload tensors."""
+    def __init__(self, module):
+        self.module = module
+        self.total = module.get_case_count()
+        if type(self.total) is not int or self.total < 1:
+            raise ValueError("official task must declare a positive case count")
+
+    def __len__(self):
+        return self.total
+
+    def __getitem__(self, index):
+        if type(index) is not int or index < 0 or index >= self.total:
+            raise IndexError("official case index is out of range")
+        import torch
+        torch.manual_seed(0)
+        if hasattr(torch, "npu"):
+            torch.npu.manual_seed(0)
+        return self.module.get_input_group(index)
+
+    def __iter__(self):
+        for index in range(self.total):
+            yield self[index]
+
+
 def build_input_groups(torch_module: Any) -> List[Any]:
     """构造 reference 的输入组；CPU 缺 kernel 时切到 NPU 上下文重试。
 
@@ -121,6 +146,10 @@ def build_input_groups(torch_module: Any) -> List[Any]:
     只对 NotImplementedError 重试：其它异常（reference 本身写错等）保持原样
     上抛，重试也不会掩盖真错误。
     """
+    if (hasattr(torch_module, "_ADAPTER_VERSION")
+            and hasattr(torch_module, "get_input_group")
+            and hasattr(torch_module, "get_case_count")):
+        return _OfficialInputGroups(torch_module)
     try:
         return torch_module.get_input_groups()
     except NotImplementedError:

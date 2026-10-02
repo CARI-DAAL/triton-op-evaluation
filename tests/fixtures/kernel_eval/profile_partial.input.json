@@ -1,0 +1,91 @@
+{
+ "origin": {
+  "redis_key": "triton-eval:v2.1:resource:ev_9115fbb71cf34d2aa587ead1ed177a05",
+  "branch": "profile_partial"
+ },
+ "params": {
+  "action": "profile",
+  "kernel_code": "import torch\nimport torch.nn as nn\nimport triton\nimport triton.language as tl\n\n\n@triton.jit\ndef _matmul_both_trans_kernel(\n    A_ptr, B_ptr, C_ptr,\n    T, R, S,\n    stride_at, stride_ar,\n    stride_bs, stride_bt,\n    stride_cr, stride_cc,\n    BLOCK_R: tl.constexpr,\n    BLOCK_S: tl.constexpr,\n    BLOCK_T: tl.constexpr,\n):\n    \"\"\"C[r, s] = sum_t A[t, r] * B[s, t].\n\n    A is (T, R), B is (S, T), C is (R, S).  Both inputs are read with fully\n    contiguous row-major tiles; the required transposes are applied to the\n    loaded tiles so the dot product sees standard (R, T) x (T, S) operands.\n    \"\"\"\n    pid_r = tl.program_id(0)\n    pid_s = tl.program_id(1)\n\n    offs_r = pid_r * BLOCK_R + tl.arange(0, BLOCK_R)\n    offs_s = pid_s * BLOCK_S + tl.arange(0, BLOCK_S)\n    offs_t = tl.arange(0, BLOCK_T)\n\n    mask_r = offs_r < R\n    mask_s = offs_s < S\n\n    acc = tl.zeros((BLOCK_R, BLOCK_S), dtype=tl.float32)\n\n    for t0 in range(0, T, BLOCK_T):\n        offs_t_cur = t0 + offs_t\n        mask_t = offs_t_cur < T\n\n        a_ptrs = A_ptr + offs_t_cur[:, None] * stride_at + offs_r[None, :] * stride_ar\n        a = tl.load(a_ptrs, mask=mask_t[:, None] & mask_r[None, :], other=0.0)\n\n        b_ptrs = B_ptr + offs_s[:, None] * stride_bs + offs_t_cur[None, :] * stride_bt\n        b = tl.load(b_ptrs, mask=mask_s[:, None] & mask_t[None, :], other=0.0)\n\n        acc += tl.dot(tl.trans(a), tl.trans(b))\n\n    c_ptrs = C_ptr + offs_r[:, None] * stride_cr + offs_s[None, :] * stride_cc\n    tl.store(c_ptrs, acc, mask=mask_r[:, None] & mask_s[None, :])\n\n\ndef _select_blocks(R, S, target_programs=12):\n    \"\"\"Pick power-of-two output tiles that give enough parallel programs.\"\"\"\n    candidates = ((128, 256), (128, 128), (64, 64))\n    for br, bs in candidates:\n        if triton.cdiv(R, br) * triton.cdiv(S, bs) >= target_programs:\n            return br, bs\n    return 64, 64\n\n\nclass ModelNew(nn.Module):\n    \"\"\"Matrix multiplication with both operands transposed: matmul(A.T, B.T).\"\"\"\n\n    def __init__(self):\n        super(ModelNew, self).__init__()\n\n    def forward(self, A: torch.Tensor, B: torch.Tensor) -> torch.Tensor:\n        A = A.contiguous()\n        B = B.contiguous()\n\n        T, R = A.shape\n        S = B.shape[0]\n\n        C = torch.empty((R, S), device=A.device, dtype=A.dtype)\n\n        BLOCK_R, BLOCK_S = _select_blocks(R, S)\n        BLOCK_T = 64\n\n        grid = (triton.cdiv(R, BLOCK_R), triton.cdiv(S, BLOCK_S))\n        _matmul_both_trans_kernel[grid](\n            A, B, C,\n            T, R, S,\n            A.stride(0), A.stride(1),\n            B.stride(0), B.stride(1),\n            C.stride(0), C.stride(1),\n            BLOCK_R=BLOCK_R,\n            BLOCK_S=BLOCK_S,\n            BLOCK_T=BLOCK_T,\n        )\n        return C\n",
+  "eval_turn": 1,
+  "eval_budget": "1/18"
+ },
+ "resource": {
+  "created_at": "2026-09-30T15:05:24.642000Z",
+  "deadline_at": "2026-09-30T15:20:24.642000Z",
+  "evaluation_id": "ev_9115fbb71cf34d2aa587ead1ed177a05",
+  "finished_at": "2026-09-30T15:08:30.813000Z",
+  "reference_digest": "1f2fd5bd17e81c34510441eb87fba770aad508c00995ce46dc81951a547429c8",
+  "request_digest": "3b5ac4fc50d83600b1786788d5a4abed5d2aaad4770b4400d8fa23bbb8d18037",
+  "result": {
+   "compile": null,
+   "correctness": null,
+   "performance": null,
+   "profile": {
+    "data": {
+     "cases": [
+      {
+       "bound": null,
+       "case_idx": 45,
+       "error": null,
+       "missing_metrics": [
+        "PipeUtilization.PUSHQ",
+        "PipeUtilization.SCALARLDST"
+       ],
+       "per_core_spread_ratio": 0.45941159106563034,
+       "ratios": {
+        "cube": null,
+        "fixp": null,
+        "mte2": null,
+        "mte3": null,
+        "scalar": null,
+        "vec": null
+       },
+       "recommendations": [],
+       "status": "partial",
+       "target_kernel": "_matmul_both_trans_kernel",
+       "warnings": [
+        "insufficient canonical pipe fields for Bound classification"
+       ]
+      }
+     ],
+     "counts": {
+      "complete": 0,
+      "failed": 0,
+      "partial": 1,
+      "selected": 1
+     },
+     "mode": "deep"
+    },
+    "error": null,
+    "reason": null,
+    "status": "succeeded"
+   },
+   "provenance": {
+    "benchmark_algorithm": "geometric-mean-v1",
+    "correctness_algorithm": "correctness-v1:npu-strict-v1",
+    "decoy_algorithm": "decoy-v1",
+    "evaluator_build": "sha256:d3232fdf45295e489d2e135753a007a2ce11b94a5c9de95191df29560d88c447",
+    "execution_environment": {
+     "driver_version": "25.5.1",
+     "hardware_count": 1,
+     "hardware_model": "Ascend910",
+     "runtime_version": "CANN-8.5.2",
+     "toolchain_version": "CANN 8.5.2 / torch 2.9.0 / torch_npu 2.9.0 / triton_ascend 3.2.0",
+     "torch_npu_version": "2.9.0",
+     "torch_version": "2.9.0",
+     "triton_version": "3.2.0"
+    },
+    "grade_eligible": false,
+    "manifest_id": null,
+    "problem_id": null,
+    "profiler_algorithm": "profiler-v1",
+    "schema_version": "2.1"
+   }
+  },
+  "revision": 3,
+  "schema_version": "2.1",
+  "started_at": "2026-09-30T15:05:25.520000Z",
+  "state": "completed",
+  "updated_at": "2026-09-30T15:08:30.813000Z"
+ }
+}

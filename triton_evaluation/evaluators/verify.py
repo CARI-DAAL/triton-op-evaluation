@@ -52,7 +52,10 @@ _COUNT_SNIPPET = (
     "spec = importlib.util.spec_from_file_location('reference_module', sys.argv[1])\n"
     "module = importlib.util.module_from_spec(spec)\n"
     "spec.loader.exec_module(module)\n"
-    "if hasattr(module, 'get_input_groups'):\n"
+    "if getattr(module, '_ADAPTER_VERSION', None) == 'official-task-v1' "
+    "and callable(getattr(module, 'get_case_count', None)):\n"
+    "    total = module.get_case_count()\n"
+    "elif hasattr(module, 'get_input_groups'):\n"
     "    try:\n"
     "        total = len(module.get_input_groups())\n"
     "    except NotImplementedError:\n"
@@ -86,8 +89,12 @@ def _extract_validate_json(text: str) -> dict | None:
 
 
 class VerifyEvaluator:
-    def __init__(self, engine_dir: str, budget_cap_seconds: int = 1500,
-                 reference_device_policy: str = "cpu-first"):
+    def __init__(
+        self,
+        engine_dir: str,
+        budget_cap_seconds: int = 1500,
+        reference_device_policy: str = "cpu-first",
+    ):
         if reference_device_policy not in {"cpu-first", "npu-strict"}:
             raise ValueError("unsupported reference_device_policy")
         self.engine_dir = engine_dir

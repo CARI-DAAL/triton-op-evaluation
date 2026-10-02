@@ -1,0 +1,54 @@
+{
+ "origin": {
+  "redis_key": "triton-eval:v2.1:resource:ev_47a0e047e6a1474c9e68724199d55ab5",
+  "branch": "profile_timeout"
+ },
+ "params": {
+  "action": "profile",
+  "kernel_code": "import torch\nimport triton\nimport triton.language as tl\n\n\n# Computes  C = matmul(A.T, B.T)\n#   A: (M, N) row-major   (M = contraction length, N = output rows)\n#   B: (K, M) row-major   (K = output cols, M = contraction length)\n#   C: (N, K)\n#\n#   C[i, j] = sum_t A[t, i] * B[j, t]\n#\n# Tile shapes:\n#   a_tile : (BLOCK_N, BLOCK_M)   a[i, t] = A[t, i]\n#   b_tile : (BLOCK_M, BLOCK_K)   b[t, j] = B[j, t]\n#   acc    : (BLOCK_N, BLOCK_K)\n@triton.jit\ndef _mm_att_btt_kernel(\n    a_ptr, b_ptr, c_ptr,\n    M, N, K,\n    stride_am, stride_an,\n    stride_bk, stride_bp,\n    stride_cn, stride_ck,\n    BLOCK_M: tl.constexpr,\n    BLOCK_N: tl.constexpr,\n    BLOCK_K: tl.constexpr,\n):\n    pid_n = tl.program_id(0)\n    pid_k = tl.program_id(1)\n\n    offs_n = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)\n    offs_k = pid_k * BLOCK_K + tl.arange(0, BLOCK_K)\n    offs_m = tl.arange(0, BLOCK_M)\n\n    n_mask = offs_n < N\n    k_mask = offs_k < K\n\n    # A tile: rows = i (output row), cols = t (contraction)\n    a_ptrs = a_ptr + offs_n[:, None] * stride_an + offs_m[None, :] * stride_am\n    # B tile: rows = t (contraction), cols = j (output col)\n    b_ptrs = b_ptr + offs_m[:, None] * stride_bp + offs_k[None, :] * stride_bk\n\n    acc = tl.zeros((BLOCK_N, BLOCK_K), dtype=tl.float32)\n    for t0 in range(0, M, BLOCK_M):\n        m_mask = (t0 + offs_m) < M\n        a = tl.load(a_ptrs, mask=n_mask[:, None] & m_mask[None, :], other=0.0)\n        b = tl.load(b_ptrs, mask=m_mask[:, None] & k_mask[None, :], other=0.0)\n        acc = tl.dot(a, b, acc)\n        a_ptrs += BLOCK_M * stride_am\n        b_ptrs += BLOCK_M * stride_bp\n\n    c_ptrs = c_ptr + offs_n[:, None] * stride_cn + offs_k[None, :] * stride_ck\n    tl.store(c_ptrs, acc.to(c_ptr.dtype.element_ty),\n             mask=n_mask[:, None] & k_mask[None, :])\n\n\ndef _pick_blocks(m, n, k):\n    block_m = 64 if m <= 64 else 128\n    block_n = 128 if n > 64 else 64\n    block_k = 128 if k > 64 else 64\n    return block_m, block_n, block_k\n\n\nclass ModelNew(torch.nn.Module):\n    \"\"\"Simple model that performs matrix multiplication with both A and B transposed.\"\"\"\n\n    def __init__(self):\n        super(ModelNew, self).__init__()\n\n    def forward(self, A: torch.Tensor, B: torch.Tensor) -> torch.Tensor:\n        m, n = A.shape[-2], A.shape[-1]\n        k, p = B.shape[-2], B.shape[-1]\n\n        C = torch.empty((n, k), dtype=A.dtype, device=A.device)\n\n        block_m, block_n, block_k = _pick_blocks(m, n, k)\n        grid = (triton.cdiv(n, block_n), triton.cdiv(k, block_k))\n\n        _mm_att_btt_kernel[grid](\n            A, B, C,\n            m, n, k,\n            A.stride(0), A.stride(1),\n            B.stride(0), B.stride(1),\n            C.stride(0), C.stride(1),\n            BLOCK_M=block_m, BLOCK_N=block_n, BLOCK_K=block_k,\n        )\n        return C\n",
+  "eval_turn": 1,
+  "eval_budget": "1/18"
+ },
+ "resource": {
+  "created_at": "2026-09-29T16:49:25.661000Z",
+  "deadline_at": "2026-09-29T17:04:25.661000Z",
+  "evaluation_id": "ev_47a0e047e6a1474c9e68724199d55ab5",
+  "finished_at": "2026-09-29T17:04:25.728000Z",
+  "reference_digest": "1f2fd5bd17e81c34510441eb87fba770aad508c00995ce46dc81951a547429c8",
+  "request_digest": "ba0d6cb6f72bfdd2694229e08352b8767726949e037d9f0bf8fb2b7b51d9911c",
+  "result": {
+   "compile": null,
+   "correctness": null,
+   "performance": null,
+   "profile": {
+    "data": null,
+    "error": {
+     "check": "profile",
+     "code": "DEADLINE_EXCEEDED",
+     "message": "resource deadline expired",
+     "phase": "deadline",
+     "retryable": false
+    },
+    "reason": null,
+    "status": "timeout"
+   },
+   "provenance": {
+    "benchmark_algorithm": "geometric-mean-v1",
+    "correctness_algorithm": "correctness-v1:npu-strict-v1",
+    "decoy_algorithm": "decoy-v1",
+    "evaluator_build": "sha256:d3232fdf45295e489d2e135753a007a2ce11b94a5c9de95191df29560d88c447",
+    "execution_environment": null,
+    "grade_eligible": false,
+    "manifest_id": null,
+    "problem_id": null,
+    "profiler_algorithm": "profiler-v1",
+    "schema_version": "2.1"
+   }
+  },
+  "revision": 3,
+  "schema_version": "2.1",
+  "started_at": "2026-09-29T16:49:26.345000Z",
+  "state": "timed_out",
+  "updated_at": "2026-09-29T17:04:25.728000Z"
+ }
+}

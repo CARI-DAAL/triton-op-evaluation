@@ -1,0 +1,621 @@
+{
+ "task_status": "SUCCEEDED",
+ "profile_state": "failed",
+ "result": {
+  "selected_cases": 50,
+  "failed_cases": 50,
+  "partial_cases": 0,
+  "remaining_case_indices": [],
+  "timed_out": false,
+  "cases": [
+   {
+    "case_idx": 0,
+    "error": {
+     "check": "profile",
+     "code": "PROFILE_CASE_FAILED",
+     "message": "no matching custom Triton kernel with a valid duration was parsed",
+     "phase": "execution",
+     "retryable": false
+    },
+    "kernels": [],
+    "status": "failed"
+   },
+   {
+    "case_idx": 1,
+    "error": {
+     "check": "profile",
+     "code": "PROFILE_CASE_FAILED",
+     "message": "no matching custom Triton kernel with a valid duration was parsed",
+     "phase": "execution",
+     "retryable": false
+    },
+    "kernels": [],
+    "status": "failed"
+   },
+   {
+    "case_idx": 2,
+    "error": {
+     "check": "profile",
+     "code": "PROFILE_CASE_FAILED",
+     "message": "no matching custom Triton kernel with a valid duration was parsed",
+     "phase": "execution",
+     "retryable": false
+    },
+    "kernels": [],
+    "status": "failed"
+   },
+   {
+    "case_idx": 3,
+    "error": {
+     "check": "profile",
+     "code": "PROFILE_CASE_FAILED",
+     "message": "no matching custom Triton kernel with a valid duration was parsed",
+     "phase": "execution",
+     "retryable": false
+    },
+    "kernels": [],
+    "status": "failed"
+   },
+   {
+    "case_idx": 4,
+    "error": {
+     "check": "profile",
+     "code": "PROFILE_CASE_FAILED",
+     "message": "no matching custom Triton kernel with a valid duration was parsed",
+     "phase": "execution",
+     "retryable": false
+    },
+    "kernels": [],
+    "status": "failed"
+   },
+   {
+    "case_idx": 5,
+    "error": {
+     "check": "profile",
+     "code": "PROFILE_CASE_FAILED",
+     "message": "no matching custom Triton kernel with a valid duration was parsed",
+     "phase": "execution",
+     "retryable": false
+    },
+    "kernels": [],
+    "status": "failed"
+   },
+   {
+    "case_idx": 6,
+    "error": {
+     "check": "profile",
+     "code": "PROFILE_CASE_FAILED",
+     "message": "no matching custom Triton kernel with a valid duration was parsed",
+     "phase": "execution",
+     "retryable": false
+    },
+    "kernels": [],
+    "status": "failed"
+   },
+   {
+    "case_idx": 7,
+    "error": {
+     "check": "profile",
+     "code": "PROFILE_CASE_FAILED",
+     "message": "no matching custom Triton kernel with a valid duration was parsed",
+     "phase": "execution",
+     "retryable": false
+    },
+    "kernels": [],
+    "status": "failed"
+   },
+   {
+    "case_idx": 8,
+    "error": {
+     "check": "profile",
+     "code": "PROFILE_CASE_FAILED",
+     "message": "no matching custom Triton kernel with a valid duration was parsed",
+     "phase": "execution",
+     "retryable": false
+    },
+    "kernels": [],
+    "status": "failed"
+   },
+   {
+    "case_idx": 9,
+    "error": {
+     "check": "profile",
+     "code": "PROFILE_CASE_FAILED",
+     "message": "no matching custom Triton kernel with a valid duration was parsed",
+     "phase": "execution",
+     "retryable": false
+    },
+    "kernels": [],
+    "status": "failed"
+   },
+   {
+    "case_idx": 10,
+    "error": {
+     "check": "profile",
+     "code": "PROFILE_CASE_FAILED",
+     "message": "no matching custom Triton kernel with a valid duration was parsed",
+     "phase": "execution",
+     "retryable": false
+    },
+    "kernels": [],
+    "status": "failed"
+   },
+   {
+    "case_idx": 11,
+    "error": {
+     "check": "profile",
+     "code": "PROFILE_CASE_FAILED",
+     "message": "no matching custom Triton kernel with a valid duration was parsed",
+     "phase": "execution",
+     "retryable": false
+    },
+    "kernels": [],
+    "status": "failed"
+   },
+   {
+    "case_idx": 12,
+    "error": {
+     "check": "profile",
+     "code": "PROFILE_CASE_FAILED",
+     "message": "no matching custom Triton kernel with a valid duration was parsed",
+     "phase": "execution",
+     "retryable": false
+    },
+    "kernels": [],
+    "status": "failed"
+   },
+   {
+    "case_idx": 13,
+    "error": {
+     "check": "profile",
+     "code": "PROFILE_CASE_FAILED",
+     "message": "no matching custom Triton kernel with a valid duration was parsed",
+     "phase": "execution",
+     "retryable": false
+    },
+    "kernels": [],
+    "status": "failed"
+   },
+   {
+    "case_idx": 14,
+    "error": {
+     "check": "profile",
+     "code": "PROFILE_CASE_FAILED",
+     "message": "no matching custom Triton kernel with a valid duration was parsed",
+     "phase": "execution",
+     "retryable": false
+    },
+    "kernels": [],
+    "status": "failed"
+   },
+   {
+    "case_idx": 15,
+    "error": {
+     "check": "profile",
+     "code": "PROFILE_CASE_FAILED",
+     "message": "no matching custom Triton kernel with a valid duration was parsed",
+     "phase": "execution",
+     "retryable": false
+    },
+    "kernels": [],
+    "status": "failed"
+   },
+   {
+    "case_idx": 16,
+    "error": {
+     "check": "profile",
+     "code": "PROFILE_CASE_FAILED",
+     "message": "no matching custom Triton kernel with a valid duration was parsed",
+     "phase": "execution",
+     "retryable": false
+    },
+    "kernels": [],
+    "status": "failed"
+   },
+   {
+    "case_idx": 17,
+    "error": {
+     "check": "profile",
+     "code": "PROFILE_CASE_FAILED",
+     "message": "no matching custom Triton kernel with a valid duration was parsed",
+     "phase": "execution",
+     "retryable": false
+    },
+    "kernels": [],
+    "status": "failed"
+   },
+   {
+    "case_idx": 18,
+    "error": {
+     "check": "profile",
+     "code": "PROFILE_CASE_FAILED",
+     "message": "no matching custom Triton kernel with a valid duration was parsed",
+     "phase": "execution",
+     "retryable": false
+    },
+    "kernels": [],
+    "status": "failed"
+   },
+   {
+    "case_idx": 19,
+    "error": {
+     "check": "profile",
+     "code": "PROFILE_CASE_FAILED",
+     "message": "no matching custom Triton kernel with a valid duration was parsed",
+     "phase": "execution",
+     "retryable": false
+    },
+    "kernels": [],
+    "status": "failed"
+   },
+   {
+    "case_idx": 20,
+    "error": {
+     "check": "profile",
+     "code": "PROFILE_CASE_FAILED",
+     "message": "no matching custom Triton kernel with a valid duration was parsed",
+     "phase": "execution",
+     "retryable": false
+    },
+    "kernels": [],
+    "status": "failed"
+   },
+   {
+    "case_idx": 21,
+    "error": {
+     "check": "profile",
+     "code": "PROFILE_CASE_FAILED",
+     "message": "no matching custom Triton kernel with a valid duration was parsed",
+     "phase": "execution",
+     "retryable": false
+    },
+    "kernels": [],
+    "status": "failed"
+   },
+   {
+    "case_idx": 22,
+    "error": {
+     "check": "profile",
+     "code": "PROFILE_CASE_FAILED",
+     "message": "no matching custom Triton kernel with a valid duration was parsed",
+     "phase": "execution",
+     "retryable": false
+    },
+    "kernels": [],
+    "status": "failed"
+   },
+   {
+    "case_idx": 23,
+    "error": {
+     "check": "profile",
+     "code": "PROFILE_CASE_FAILED",
+     "message": "no matching custom Triton kernel with a valid duration was parsed",
+     "phase": "execution",
+     "retryable": false
+    },
+    "kernels": [],
+    "status": "failed"
+   },
+   {
+    "case_idx": 24,
+    "error": {
+     "check": "profile",
+     "code": "PROFILE_CASE_FAILED",
+     "message": "no matching custom Triton kernel with a valid duration was parsed",
+     "phase": "execution",
+     "retryable": false
+    },
+    "kernels": [],
+    "status": "failed"
+   },
+   {
+    "case_idx": 25,
+    "error": {
+     "check": "profile",
+     "code": "PROFILE_CASE_FAILED",
+     "message": "no matching custom Triton kernel with a valid duration was parsed",
+     "phase": "execution",
+     "retryable": false
+    },
+    "kernels": [],
+    "status": "failed"
+   },
+   {
+    "case_idx": 26,
+    "error": {
+     "check": "profile",
+     "code": "PROFILE_CASE_FAILED",
+     "message": "no matching custom Triton kernel with a valid duration was parsed",
+     "phase": "execution",
+     "retryable": false
+    },
+    "kernels": [],
+    "status": "failed"
+   },
+   {
+    "case_idx": 27,
+    "error": {
+     "check": "profile",
+     "code": "PROFILE_CASE_FAILED",
+     "message": "no matching custom Triton kernel with a valid duration was parsed",
+     "phase": "execution",
+     "retryable": false
+    },
+    "kernels": [],
+    "status": "failed"
+   },
+   {
+    "case_idx": 28,
+    "error": {
+     "check": "profile",
+     "code": "PROFILE_CASE_FAILED",
+     "message": "no matching custom Triton kernel with a valid duration was parsed",
+     "phase": "execution",
+     "retryable": false
+    },
+    "kernels": [],
+    "status": "failed"
+   },
+   {
+    "case_idx": 29,
+    "error": {
+     "check": "profile",
+     "code": "PROFILE_CASE_FAILED",
+     "message": "no matching custom Triton kernel with a valid duration was parsed",
+     "phase": "execution",
+     "retryable": false
+    },
+    "kernels": [],
+    "status": "failed"
+   },
+   {
+    "case_idx": 30,
+    "error": {
+     "check": "profile",
+     "code": "PROFILE_CASE_FAILED",
+     "message": "no matching custom Triton kernel with a valid duration was parsed",
+     "phase": "execution",
+     "retryable": false
+    },
+    "kernels": [],
+    "status": "failed"
+   },
+   {
+    "case_idx": 31,
+    "error": {
+     "check": "profile",
+     "code": "PROFILE_CASE_FAILED",
+     "message": "no matching custom Triton kernel with a valid duration was parsed",
+     "phase": "execution",
+     "retryable": false
+    },
+    "kernels": [],
+    "status": "failed"
+   },
+   {
+    "case_idx": 32,
+    "error": {
+     "check": "profile",
+     "code": "PROFILE_CASE_FAILED",
+     "message": "no matching custom Triton kernel with a valid duration was parsed",
+     "phase": "execution",
+     "retryable": false
+    },
+    "kernels": [],
+    "status": "failed"
+   },
+   {
+    "case_idx": 33,
+    "error": {
+     "check": "profile",
+     "code": "PROFILE_CASE_FAILED",
+     "message": "no matching custom Triton kernel with a valid duration was parsed",
+     "phase": "execution",
+     "retryable": false
+    },
+    "kernels": [],
+    "status": "failed"
+   },
+   {
+    "case_idx": 34,
+    "error": {
+     "check": "profile",
+     "code": "PROFILE_CASE_FAILED",
+     "message": "no matching custom Triton kernel with a valid duration was parsed",
+     "phase": "execution",
+     "retryable": false
+    },
+    "kernels": [],
+    "status": "failed"
+   },
+   {
+    "case_idx": 35,
+    "error": {
+     "check": "profile",
+     "code": "PROFILE_CASE_FAILED",
+     "message": "no matching custom Triton kernel with a valid duration was parsed",
+     "phase": "execution",
+     "retryable": false
+    },
+    "kernels": [],
+    "status": "failed"
+   },
+   {
+    "case_idx": 36,
+    "error": {
+     "check": "profile",
+     "code": "PROFILE_CASE_FAILED",
+     "message": "no matching custom Triton kernel with a valid duration was parsed",
+     "phase": "execution",
+     "retryable": false
+    },
+    "kernels": [],
+    "status": "failed"
+   },
+   {
+    "case_idx": 37,
+    "error": {
+     "check": "profile",
+     "code": "PROFILE_CASE_FAILED",
+     "message": "no matching custom Triton kernel with a valid duration was parsed",
+     "phase": "execution",
+     "retryable": false
+    },
+    "kernels": [],
+    "status": "failed"
+   },
+   {
+    "case_idx": 38,
+    "error": {
+     "check": "profile",
+     "code": "PROFILE_CASE_FAILED",
+     "message": "no matching custom Triton kernel with a valid duration was parsed",
+     "phase": "execution",
+     "retryable": false
+    },
+    "kernels": [],
+    "status": "failed"
+   },
+   {
+    "case_idx": 39,
+    "error": {
+     "check": "profile",
+     "code": "PROFILE_CASE_FAILED",
+     "message": "no matching custom Triton kernel with a valid duration was parsed",
+     "phase": "execution",
+     "retryable": false
+    },
+    "kernels": [],
+    "status": "failed"
+   },
+   {
+    "case_idx": 40,
+    "error": {
+     "check": "profile",
+     "code": "PROFILE_CASE_FAILED",
+     "message": "no matching custom Triton kernel with a valid duration was parsed",
+     "phase": "execution",
+     "retryable": false
+    },
+    "kernels": [],
+    "status": "failed"
+   },
+   {
+    "case_idx": 41,
+    "error": {
+     "check": "profile",
+     "code": "PROFILE_CASE_FAILED",
+     "message": "no matching custom Triton kernel with a valid duration was parsed",
+     "phase": "execution",
+     "retryable": false
+    },
+    "kernels": [],
+    "status": "failed"
+   },
+   {
+    "case_idx": 42,
+    "error": {
+     "check": "profile",
+     "code": "PROFILE_CASE_FAILED",
+     "message": "no matching custom Triton kernel with a valid duration was parsed",
+     "phase": "execution",
+     "retryable": false
+    },
+    "kernels": [],
+    "status": "failed"
+   },
+   {
+    "case_idx": 43,
+    "error": {
+     "check": "profile",
+     "code": "PROFILE_CASE_FAILED",
+     "message": "no matching custom Triton kernel with a valid duration was parsed",
+     "phase": "execution",
+     "retryable": false
+    },
+    "kernels": [],
+    "status": "failed"
+   },
+   {
+    "case_idx": 44,
+    "error": {
+     "check": "profile",
+     "code": "PROFILE_CASE_FAILED",
+     "message": "no matching custom Triton kernel with a valid duration was parsed",
+     "phase": "execution",
+     "retryable": false
+    },
+    "kernels": [],
+    "status": "failed"
+   },
+   {
+    "case_idx": 45,
+    "error": {
+     "check": "profile",
+     "code": "PROFILE_CASE_FAILED",
+     "message": "no matching custom Triton kernel with a valid duration was parsed",
+     "phase": "execution",
+     "retryable": false
+    },
+    "kernels": [],
+    "status": "failed"
+   },
+   {
+    "case_idx": 46,
+    "error": {
+     "check": "profile",
+     "code": "PROFILE_CASE_FAILED",
+     "message": "no matching custom Triton kernel with a valid duration was parsed",
+     "phase": "execution",
+     "retryable": false
+    },
+    "kernels": [],
+    "status": "failed"
+   },
+   {
+    "case_idx": 47,
+    "error": {
+     "check": "profile",
+     "code": "PROFILE_CASE_FAILED",
+     "message": "no matching custom Triton kernel with a valid duration was parsed",
+     "phase": "execution",
+     "retryable": false
+    },
+    "kernels": [],
+    "status": "failed"
+   },
+   {
+    "case_idx": 48,
+    "error": {
+     "check": "profile",
+     "code": "PROFILE_CASE_FAILED",
+     "message": "no matching custom Triton kernel with a valid duration was parsed",
+     "phase": "execution",
+     "retryable": false
+    },
+    "kernels": [],
+    "status": "failed"
+   },
+   {
+    "case_idx": 49,
+    "error": {
+     "check": "profile",
+     "code": "PROFILE_CASE_FAILED",
+     "message": "no matching custom Triton kernel with a valid duration was parsed",
+     "phase": "execution",
+     "retryable": false
+    },
+    "kernels": [],
+    "status": "failed"
+   }
+  ]
+ },
+ "error": null,
+ "infra_error": false,
+ "action": "profile",
+ "artifact_sha256": "b646f07d0dfd82240e9a0240729bccdab0a99df36a226b9b6e071c644daef768",
+ "eval_turn": 1,
+ "eval_budget": "1/18",
+ "request_status": "completed",
+ "observation": "[kernel_eval]\naction=profile\nartifact_sha256=b646f07d0dfd82240e9a0240729bccdab0a99df36a226b9b6e071c644daef768\neval_budget=1/18\nrequest_status=completed\n[kernel_eval][profile][failed] task_status=SUCCEEDED\nresult={\"cases\": [{\"case_idx\": 0, \"error\": {\"check\": \"profile\", \"code\": \"PROFILE_CASE_FAILED\", \"message\": \"no matching custom Triton kernel with a valid duration was parsed\", \"phase\": \"execution\", \"retryable\": false}, \"kernels\": [], \"status\": \"failed\"}, {\"case_idx\": 1, \"error\": {\"check\": \"profile\", \"code\": \"PROFILE_CASE_FAILED\", \"message\": \"no matching custom Triton kernel with a valid duration was parsed\", \"phase\": \"execution\", \"retryable\": false}, \"kernels\": [], \"status\": \"failed\"}, {\"case_idx\": 2, \"error\": {\"check\": \"profile\", \"code\": \"PROFILE_CASE_FAILED\", \"message\": \"no matching custom Triton kernel with a valid duration was parsed\", \"phase\": \"execution\", \"retryable\": false}, \"kernels\": [], \"status\": \"failed\"}, {\"case_idx\": 3, \"error\": {\"check\": \"profile\", \"code\": \"PROFILE_CASE_FAILED\", \"message\": \"no matching custom Triton kernel with a valid duration was parsed\", \"phase\": \"execution\", \"retryable\": false}, \"kernels\": [], \"status\": \"failed\"}, {\"case_idx\": 4, \"error\": {\"check\": \"profile\", \"code\": \"PROFILE_CASE_FAILED\", \"message\": \"no matching custom Triton kernel with a valid duration was parsed\", \"phase\": \"execution\", \"retryable\": false}, \"kernels\": [], \"status\": \"failed\"}, {\"case_idx\": 5, \"error\": {\"check\": \"profile\", \"code\": \"PROFILE_CASE_FAILED\", \"message\": \"no matching custom Triton kernel with a valid duration was parsed\", \"phase\": \"execution\", \"retryable\": false}, \"kernels\": [], \"status\": \"failed\"}, {\"case_idx\": 6, \"error\": {\"check\": \"profile\", \"code\": \"PROFILE_CASE_FAILE\n…[truncated]…"
+}

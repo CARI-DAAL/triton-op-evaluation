@@ -8,7 +8,7 @@ configured card for all other evaluations.
 
 ## Interface
 
-The only supported evaluation protocol is **v2.1**:
+The durable evaluation protocol is **v2.1**:
 
 - `POST /evaluations?wait_seconds=0..60` requires `Authorization: Bearer`,
   `X-Session-ID` and `Idempotency-Key`. HTTP 200 contains a terminal resource;
@@ -21,6 +21,10 @@ The only supported evaluation protocol is **v2.1**:
   the execution capacity needed by their requested checks.
 - `/internal/metrics`: observer-authenticated metrics.
 
+The optional [native kernel_eval facade](docs/kernel-eval-native.md) serves
+`POST /verify`, `/benchmark` and `/profile` for task-agent tools. It resolves
+official task IDs from the service catalog and uses one `KERNEL_EVAL_TOKEN`.
+
 | Caller intent | `checks` |
 | --- | --- |
 | Correctness | `["correctness"]` |
@@ -28,8 +32,8 @@ The only supported evaluation protocol is **v2.1**:
 | Profiling | `["profile"]` |
 | Syntax/import precheck | `["compile"]` |
 
-There is no benchmark HTTP verb. `performance.method` defaults to `event`;
-callers may explicitly select `profiler`. Results identify the measurement
+Timing uses the `performance` check in v2.1. `performance.method` defaults to
+`event`; callers may explicitly select `profiler`. Results identify the measurement
 method; consumers must not mix methods silently. Compile-only precheck does
 not prove that every input shape can compile on the device.
 

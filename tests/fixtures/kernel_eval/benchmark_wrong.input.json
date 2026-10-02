@@ -1,0 +1,1794 @@
+{
+ "origin": {
+  "redis_key": "triton-eval:v2.1:resource:ev_1e83f73f0ead42e8bd9cd2d6652809df",
+  "branch": "benchmark_wrong"
+ },
+ "params": {
+  "action": "benchmark",
+  "kernel_code": "\"\"\"Triton kernel for ``C = A^T B`` with the contraction over the leading axis.\n\nA has shape ``(..., m, n)``, B has shape ``(..., m, k)`` and the result is\n``(..., n, k)``: ``C[..., i, j] = sum_p A[..., p, i] * B[..., p, j]``.\n\nThe launch uses a three dimensional grid ``(n_tiles, k_tiles, batch)`` so the\nwhole computation is expressed as a single kernel launch -- no host side\niteration is involved, and the leading (contiguous) axis of both operands is\nloaded unmasked-in-stride and transposed on chip before the cube consumes it.\n\"\"\"\n\nimport torch\nimport torch.nn as nn\nimport triton\nimport triton.language as tl\n\n\n@triton.jit\ndef _trans_a_kernel(\n    A_ptr,\n    B_ptr,\n    C_ptr,\n    M,              # contraction length: A.shape[-2] == B.shape[-2]\n    N,              # rows of the output: A.shape[-1]\n    K,              # columns of the output: B.shape[-1]\n    stride_ab,\n    stride_am,\n    stride_an,\n    stride_bb,\n    stride_bm,\n    stride_bn,\n    stride_cb,\n    stride_cm,\n    stride_cn,\n    BLOCK_M: tl.constexpr,\n    BLOCK_N: tl.constexpr,\n    BLOCK_K: tl.constexpr,\n):\n    pid_n = tl.program_id(0)\n    pid_k = tl.program_id(1)\n    pid_b = tl.program_id(2)\n\n    A_ptr += pid_b * stride_ab\n    B_ptr += pid_b * stride_bb\n    C_ptr += pid_b * stride_cb\n\n    offs_n = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)\n    offs_k = pid_k * BLOCK_K + tl.arange(0, BLOCK_K)\n\n    acc = tl.zeros((BLOCK_N, BLOCK_K), dtype=tl.float32)\n\n    for m0 in range(0, M, BLOCK_M):\n        offs_m = m0 + tl.arange(0, BLOCK_M)\n        # Contiguous leading axis -> [BLOCK_M, BLOCK_N] tile, transposed below.\n        a_raw = tl.load(\n            A_ptr + offs_n[:, None] * stride_an + offs_m[None, :] * stride_am,\n            mask=(offs_n[:, None] < N) & (offs_m[None, :] < M),\n            other=0.0,\n        )\n        tl.compile_hint(a_raw, \"dot_pad_only_k\")\n        b = tl.load(\n            B_ptr + offs_m[:, None] * stride_bm + offs_k[None, :] * stride_bn,\n            mask=(offs_m[:, None] < M) & (offs_k[None, :] < K),\n            other=0.0,\n        )\n        tl.compile_hint(b, \"dot_pad_only_k\")\n        acc = tl.dot(a_raw, b, acc)\n\n    c_mask = (offs_n[:, None] < N) & (offs_k[None, :] < K)\n    tl.store(\n        C_ptr + offs_n[:, None] * stride_cm + offs_k[None, :] * stride_cn,\n        acc.to(C_ptr.dtype.element_ty),\n        mask=c_mask,\n    )\n\n\ndef _tile_size(n, k, m, elem_size):\n    \"\"\"Pick one square tile size for the M/N/K tiling of a single launch.\"\"\"\n    if n <= 32 or k <= 32 or m <= 32:\n        return 32\n    if elem_size <= 2 and n >= 128 and k >= 128:\n        return 128\n    return 64\n\n\nclass ModelNew(nn.Module):\n    def __init__(self):\n        super().__init__()\n\n    def forward(self, A, B):\n        if not A.is_contiguous():\n            A = A.contiguous()\n        if not B.is_contiguous():\n            B = B.contiguous()\n        if A.dtype != B.dtype:\n            B = B.to(A.dtype)\n\n        m = A.shape[-2]\n        n = A.shape[-1]\n        k = B.shape[-1]\n\n        if n == 0 or k == 0:\n            return torch.empty(A.shape[:-2] + (n, k), device=A.device, dtype=A.dtype)\n\n        blk = _tile_size(n, k, m, A.element_size())\n\n        if A.dim() > 2:\n            A = A.reshape(-1, m, n)\n            B = B.reshape(-1, m, k)\n            batch = A.shape[0]\n            C = torch.empty(A.shape[:-2] + (n, k), device=A.device, dtype=A.dtype)\n            _trans_a_kernel[(triton.cdiv(n, blk), triton.cdiv(k, blk), batch)](\n                A, B, C, m, n, k,\n                A.stride(0), A.stride(1), A.stride(2),\n                B.stride(0), B.stride(1), B.stride(2),\n                C.stride(0), C.stride(1), C.stride(2),\n                BLOCK_M=blk, BLOCK_N=blk, BLOCK_K=blk,\n            )\n            return C\n\n        C = torch.empty((n, k), device=A.device, dtype=A.dtype)\n        _trans_a_kernel[(triton.cdiv(n, blk), triton.cdiv(k, blk), 1)](\n            A, B, C, m, n, k,\n            0, A.stride(0), A.stride(1),\n            0, B.stride(0), B.stride(1),\n            0, C.stride(0), C.stride(1),\n            BLOCK_M=blk, BLOCK_N=blk, BLOCK_K=blk,\n        )\n        return C\n",
+  "eval_turn": 1,
+  "eval_budget": "1/18"
+ },
+ "resource": {
+  "created_at": "2026-09-29T00:18:11.373000Z",
+  "deadline_at": "2026-09-29T00:33:11.373000Z",
+  "evaluation_id": "ev_1e83f73f0ead42e8bd9cd2d6652809df",
+  "finished_at": "2026-09-29T00:19:20.528000Z",
+  "reference_digest": "f1baa57ac4e9b075d2d0342eedcc23765dd57fcae7ac3cce09e88ecac328b299",
+  "request_digest": "32b15633a6786714d4d07bba6a7b75baddfe6687b3895dc2f64f2e31a0a2db61",
+  "result": {
+   "compile": null,
+   "correctness": {
+    "data": {
+     "decoy": false,
+     "domain_failure": null,
+     "failures": [
+      {
+       "case_idx": 5,
+       "kind": "non_finite_mismatch",
+       "metrics": {
+        "atol": null,
+        "matched_ratio": null,
+        "max_abs_diff": null,
+        "mere": null,
+        "normal_count": null,
+        "rtol": null,
+        "small_count": null
+       },
+       "sample": [
+        {
+         "candidate": "nan",
+         "diff": "nan",
+         "idx": [
+          0,
+          0
+         ],
+         "reference": -2.888671875
+        },
+        {
+         "candidate": "nan",
+         "diff": "nan",
+         "idx": [
+          0,
+          1
+         ],
+         "reference": 9.234375
+        },
+        {
+         "candidate": "nan",
+         "diff": "nan",
+         "idx": [
+          0,
+          2
+         ],
+         "reference": 7.4921875
+        },
+        {
+         "candidate": "nan",
+         "diff": "nan",
+         "idx": [
+          0,
+          3
+         ],
+         "reference": -7.08203125
+        },
+        {
+         "candidate": "nan",
+         "diff": "nan",
+         "idx": [
+          0,
+          4
+         ],
+         "reference": 10.96875
+        },
+        {
+         "candidate": "nan",
+         "diff": "nan",
+         "idx": [
+          0,
+          5
+         ],
+         "reference": -1.1923828125
+        },
+        {
+         "candidate": "nan",
+         "diff": "nan",
+         "idx": [
+          0,
+          6
+         ],
+         "reference": -1.0283203125
+        },
+        {
+         "candidate": "nan",
+         "diff": "nan",
+         "idx": [
+          0,
+          7
+         ],
+         "reference": -2.693359375
+        }
+       ]
+      },
+      {
+       "case_idx": 9,
+       "kind": "value_mismatch",
+       "metrics": {
+        "atol": 0.1,
+        "matched_ratio": 0.11126708984375,
+        "max_abs_diff": 170989.75,
+        "mere": 29.829517364501953,
+        "normal_count": 32754,
+        "rtol": 0.0078125,
+        "small_count": 14
+       },
+       "sample": [
+        {
+         "candidate": -171008,
+         "diff": -170989.75,
+         "idx": [
+          43,
+          48
+         ],
+         "reference": -18.25
+        },
+        {
+         "candidate": 32512,
+         "diff": 32514.21875,
+         "idx": [
+          11,
+          48
+         ],
+         "reference": -2.21875
+        },
+        {
+         "candidate": 26752,
+         "diff": 26745.71875,
+         "idx": [
+          43,
+          117
+         ],
+         "reference": 6.28125
+        },
+        {
+         "candidate": 13376,
+         "diff": 13377.6796875,
+         "idx": [
+          14,
+          51
+         ],
+         "reference": -1.6796875
+        },
+        {
+         "candidate": -9088,
+         "diff": -9088.9453125,
+         "idx": [
+          36,
+          75
+         ],
+         "reference": 0.9453125
+        },
+        {
+         "candidate": 6240,
+         "diff": 6233.4375,
+         "idx": [
+          92,
+          51
+         ],
+         "reference": 6.5625
+        },
+        {
+         "candidate": -5888,
+         "diff": -5883.8125,
+         "idx": [
+          43,
+          53
+         ],
+         "reference": -4.1875
+        },
+        {
+         "candidate": 5248,
+         "diff": 5237.125,
+         "idx": [
+          55,
+          51
+         ],
+         "reference": 10.875
+        }
+       ]
+      },
+      {
+       "case_idx": 13,
+       "kind": "value_mismatch",
+       "metrics": {
+        "atol": 0.001,
+        "matched_ratio": 0,
+        "max_abs_diff": 2.164956569671631,
+        "mere": 2.065570116043091,
+        "normal_count": 4,
+        "rtol": 0.0001220703125,
+        "small_count": 0
+       },
+       "sample": [
+        {
+         "candidate": -2.744821786880493,
+         "diff": -2.1649566888809204,
+         "idx": [
+          0,
+          1
+         ],
+         "reference": -0.5798650979995728
+        },
+        {
+         "candidate": 0.6532276272773743,
+         "diff": 1.4917306900024414,
+         "idx": [
+          0,
+          0
+         ],
+         "reference": -0.8385030627250671
+        },
+        {
+         "candidate": 2.2220566272735596,
+         "diff": 1.02919602394104,
+         "idx": [
+          1,
+          1
+         ],
+         "reference": 1.1928606033325195
+        },
+        {
+         "candidate": -0.47827666997909546,
+         "diff": -1.0175487995147705,
+         "idx": [
+          1,
+          0
+         ],
+         "reference": 0.539272129535675
+        }
+       ]
+      },
+      {
+       "case_idx": 14,
+       "kind": "value_mismatch",
+       "metrics": {
+        "atol": 0.001,
+        "matched_ratio": 0,
+        "max_abs_diff": 8.563347816467285,
+        "mere": 3.2172982692718506,
+        "normal_count": 16,
+        "rtol": 0.0001220703125,
+        "small_count": 0
+       },
+       "sample": [
+        {
+         "candidate": 9.110175132751465,
+         "diff": 8.563347399234772,
+         "idx": [
+          3,
+          1
+         ],
+         "reference": 0.5468277335166931
+        },
+        {
+         "candidate": -12.288546562194824,
+         "diff": -7.426493167877197,
+         "idx": [
+          0,
+          2
+         ],
+         "reference": -4.862053394317627
+        },
+        {
+         "candidate": -8.171278953552246,
+         "diff": -7.3526164293289185,
+         "idx": [
+          2,
+          3
+         ],
+         "reference": -0.8186625242233276
+        },
+        {
+         "candidate": 4.4795684814453125,
+         "diff": 5.570294737815857,
+         "idx": [
+          3,
+          0
+         ],
+         "reference": -1.0907262563705444
+        },
+        {
+         "candidate": 6.261967182159424,
+         "diff": 5.240986347198486,
+         "idx": [
+          3,
+          3
+         ],
+         "reference": 1.0209808349609375
+        },
+        {
+         "candidate": -2.4898130893707275,
+         "diff": -2.1122067272663116,
+         "idx": [
+          0,
+          1
+         ],
+         "reference": -0.3776063621044159
+        },
+        {
+         "candidate": 2.0015482902526855,
+         "diff": -1.882323980331421,
+         "idx": [
+          1,
+          2
+         ],
+         "reference": 3.8838722705841064
+        },
+        {
+         "candidate": -1.8941702842712402,
+         "diff": -1.5634455680847168,
+         "idx": [
+          2,
+          2
+         ],
+         "reference": -0.33072471618652344
+        }
+       ]
+      },
+      {
+       "case_idx": 15,
+       "kind": "value_mismatch",
+       "metrics": {
+        "atol": 0.001,
+        "matched_ratio": 0,
+        "max_abs_diff": 15.252290725708008,
+        "mere": 12.022564888000488,
+        "normal_count": 64,
+        "rtol": 0.0001220703125,
+        "small_count": 0
+       },
+       "sample": [
+        {
+         "candidate": -15.846318244934082,
+         "diff": -15.252291083335876,
+         "idx": [
+          0,
+          5
+         ],
+         "reference": -0.5940271615982056
+        },
+        {
+         "candidate": 13.599156379699707,
+         "diff": 12.346767783164978,
+         "idx": [
+          0,
+          0
+         ],
+         "reference": 1.252388596534729
+        },
+        {
+         "candidate": -6.8002471923828125,
+         "diff": -11.399574756622314,
+         "idx": [
+          3,
+          1
+         ],
+         "reference": 4.599327564239502
+        },
+        {
+         "candidate": -13.914533615112305,
+         "diff": -11.291770696640015,
+         "idx": [
+          5,
+          3
+         ],
+         "reference": -2.62276291847229
+        },
+        {
+         "candidate": -12.611784934997559,
+         "diff": -9.783427238464355,
+         "idx": [
+          5,
+          6
+         ],
+         "reference": -2.828357696533203
+        },
+        {
+         "candidate": -12.419662475585938,
+         "diff": -9.314181566238403,
+         "idx": [
+          3,
+          2
+         ],
+         "reference": -3.105480909347534
+        },
+        {
+         "candidate": 9.15096664428711,
+         "diff": 9.21024913340807,
+         "idx": [
+          2,
+          1
+         ],
+         "reference": -0.059282489120960236
+        },
+        {
+         "candidate": 11.407878875732422,
+         "diff": 8.069296836853027,
+         "idx": [
+          4,
+          6
+         ],
+         "reference": 3.3385820388793945
+        }
+       ]
+      },
+      {
+       "case_idx": 17,
+       "kind": "value_mismatch",
+       "metrics": {
+        "atol": 0.09,
+        "matched_ratio": 0,
+        "max_abs_diff": 33.7734375,
+        "mere": 12.524308204650879,
+        "normal_count": 4,
+        "rtol": 0.0009765625,
+        "small_count": 0
+       },
+       "sample": [
+        {
+         "candidate": 31.625,
+         "diff": 33.7734375,
+         "idx": [
+          0,
+          0
+         ],
+         "reference": -2.1484375
+        },
+        {
+         "candidate": 15,
+         "diff": 15.7578125,
+         "idx": [
+          1,
+          1
+         ],
+         "reference": -0.7578125
+        },
+        {
+         "candidate": 10.6328125,
+         "diff": 9.53515625,
+         "idx": [
+          0,
+          1
+         ],
+         "reference": 1.09765625
+        },
+        {
+         "candidate": -10.46875,
+         "diff": -8.693359375,
+         "idx": [
+          1,
+          0
+         ],
+         "reference": -1.775390625
+        }
+       ]
+      },
+      {
+       "case_idx": 18,
+       "kind": "value_mismatch",
+       "metrics": {
+        "atol": 0.09,
+        "matched_ratio": 0,
+        "max_abs_diff": 88.5732421875,
+        "mere": 64.15701293945312,
+        "normal_count": 16,
+        "rtol": 0.0009765625,
+        "small_count": 0
+       },
+       "sample": [
+        {
+         "candidate": 88.3125,
+         "diff": 88.5732421875,
+         "idx": [
+          2,
+          0
+         ],
+         "reference": -0.2607421875
+        },
+        {
+         "candidate": 36.4375,
+         "diff": 36.886962890625,
+         "idx": [
+          3,
+          1
+         ],
+         "reference": -0.449462890625
+        },
+        {
+         "candidate": 26.234375,
+         "diff": 27.01708984375,
+         "idx": [
+          0,
+          0
+         ],
+         "reference": -0.78271484375
+        },
+        {
+         "candidate": 26.484375,
+         "diff": 26.55926513671875,
+         "idx": [
+          2,
+          1
+         ],
+         "reference": -0.07489013671875
+        },
+        {
+         "candidate": 20.140625,
+         "diff": 19.59423828125,
+         "idx": [
+          1,
+          3
+         ],
+         "reference": 0.54638671875
+        },
+        {
+         "candidate": -17.5625,
+         "diff": -18.578125,
+         "idx": [
+          2,
+          3
+         ],
+         "reference": 1.015625
+        },
+        {
+         "candidate": 15,
+         "diff": 15.68603515625,
+         "idx": [
+          0,
+          1
+         ],
+         "reference": -0.68603515625
+        },
+        {
+         "candidate": -16.8125,
+         "diff": -15.484375,
+         "idx": [
+          3,
+          3
+         ],
+         "reference": -1.328125
+        }
+       ]
+      },
+      {
+       "case_idx": 19,
+       "kind": "value_mismatch",
+       "metrics": {
+        "atol": 0.09,
+        "matched_ratio": 0,
+        "max_abs_diff": 46.25390625,
+        "mere": 15.47978687286377,
+        "normal_count": 64,
+        "rtol": 0.0009765625,
+        "small_count": 0
+       },
+       "sample": [
+        {
+         "candidate": -48.71875,
+         "diff": -46.25390625,
+         "idx": [
+          2,
+          7
+         ],
+         "reference": -2.46484375
+        },
+        {
+         "candidate": -45.875,
+         "diff": -43.591796875,
+         "idx": [
+          4,
+          0
+         ],
+         "reference": -2.283203125
+        },
+        {
+         "candidate": 39.96875,
+         "diff": 40.365234375,
+         "idx": [
+          5,
+          4
+         ],
+         "reference": -0.396484375
+        },
+        {
+         "candidate": 41.5625,
+         "diff": 37.31640625,
+         "idx": [
+          0,
+          0
+         ],
+         "reference": 4.24609375
+        },
+        {
+         "candidate": 37.15625,
+         "diff": 35.796875,
+         "idx": [
+          7,
+          4
+         ],
+         "reference": 1.359375
+        },
+        {
+         "candidate": -37.375,
+         "diff": -34.18359375,
+         "idx": [
+          1,
+          3
+         ],
+         "reference": -3.19140625
+        },
+        {
+         "candidate": -35.65625,
+         "diff": -31.83984375,
+         "idx": [
+          0,
+          4
+         ],
+         "reference": -3.81640625
+        },
+        {
+         "candidate": -27.03125,
+         "diff": -28.728515625,
+         "idx": [
+          4,
+          2
+         ],
+         "reference": 1.697265625
+        }
+       ]
+      },
+      {
+       "case_idx": 21,
+       "kind": "value_mismatch",
+       "metrics": {
+        "atol": 0.1,
+        "matched_ratio": 0,
+        "max_abs_diff": 6.35546875,
+        "mere": 4.73915958404541,
+        "normal_count": 4,
+        "rtol": 0.0078125,
+        "small_count": 0
+       },
+       "sample": [
+        {
+         "candidate": 7.21875,
+         "diff": 6.35546875,
+         "idx": [
+          0,
+          0
+         ],
+         "reference": 0.86328125
+        },
+        {
+         "candidate": 4.875,
+         "diff": 5.609375,
+         "idx": [
+          1,
+          1
+         ],
+         "reference": -0.734375
+        },
+        {
+         "candidate": 1.234375,
+         "diff": 1.712890625,
+         "idx": [
+          0,
+          1
+         ],
+         "reference": -0.478515625
+        },
+        {
+         "candidate": 0.69140625,
+         "diff": -0.41796875,
+         "idx": [
+          1,
+          0
+         ],
+         "reference": 1.109375
+        }
+       ]
+      },
+      {
+       "case_idx": 22,
+       "kind": "value_mismatch",
+       "metrics": {
+        "atol": 0.1,
+        "matched_ratio": 0,
+        "max_abs_diff": 12.0703125,
+        "mere": 19.136863708496094,
+        "normal_count": 16,
+        "rtol": 0.0078125,
+        "small_count": 0
+       },
+       "sample": [
+        {
+         "candidate": -11.5625,
+         "diff": -12.0703125,
+         "idx": [
+          2,
+          1
+         ],
+         "reference": 0.5078125
+        },
+        {
+         "candidate": 11,
+         "diff": 11.1376953125,
+         "idx": [
+          0,
+          3
+         ],
+         "reference": -0.1376953125
+        },
+        {
+         "candidate": -7.84375,
+         "diff": -8.4375,
+         "idx": [
+          0,
+          0
+         ],
+         "reference": 0.59375
+        },
+        {
+         "candidate": 8.25,
+         "diff": 8.375,
+         "idx": [
+          2,
+          2
+         ],
+         "reference": -0.125
+        },
+        {
+         "candidate": -4.28125,
+         "diff": -6.375,
+         "idx": [
+          3,
+          1
+         ],
+         "reference": 2.09375
+        },
+        {
+         "candidate": 4.21875,
+         "diff": 5.13671875,
+         "idx": [
+          1,
+          1
+         ],
+         "reference": -0.91796875
+        },
+        {
+         "candidate": -4.6875,
+         "diff": -4.76123046875,
+         "idx": [
+          2,
+          0
+         ],
+         "reference": 0.07373046875
+        },
+        {
+         "candidate": -1.84375,
+         "diff": -3.703125,
+         "idx": [
+          0,
+          2
+         ],
+         "reference": 1.859375
+        }
+       ]
+      },
+      {
+       "case_idx": 23,
+       "kind": "value_mismatch",
+       "metrics": {
+        "atol": 0.1,
+        "matched_ratio": 0,
+        "max_abs_diff": 11.8671875,
+        "mere": 5.605386734008789,
+        "normal_count": 64,
+        "rtol": 0.0078125,
+        "small_count": 0
+       },
+       "sample": [
+        {
+         "candidate": -12.5,
+         "diff": -11.8671875,
+         "idx": [
+          1,
+          5
+         ],
+         "reference": -0.6328125
+        },
+        {
+         "candidate": -8.8125,
+         "diff": -9.875,
+         "idx": [
+          3,
+          5
+         ],
+         "reference": 1.0625
+        },
+        {
+         "candidate": -6.53125,
+         "diff": -9.734375,
+         "idx": [
+          2,
+          1
+         ],
+         "reference": 3.203125
+        },
+        {
+         "candidate": -8.25,
+         "diff": -8.455078125,
+         "idx": [
+          7,
+          1
+         ],
+         "reference": 0.205078125
+        },
+        {
+         "candidate": -7.09375,
+         "diff": -8.4296875,
+         "idx": [
+          3,
+          2
+         ],
+         "reference": 1.3359375
+        },
+        {
+         "candidate": 6.25,
+         "diff": 8.359375,
+         "idx": [
+          6,
+          5
+         ],
+         "reference": -2.109375
+        },
+        {
+         "candidate": 3.140625,
+         "diff": 8.046875,
+         "idx": [
+          5,
+          5
+         ],
+         "reference": -4.90625
+        },
+        {
+         "candidate": 8.5625,
+         "diff": 7.83984375,
+         "idx": [
+          4,
+          6
+         ],
+         "reference": 0.72265625
+        }
+       ]
+      },
+      {
+       "case_idx": 24,
+       "kind": "value_mismatch",
+       "metrics": {
+        "atol": 0.001,
+        "matched_ratio": 0,
+        "max_abs_diff": 16.18259620666504,
+        "mere": 3.920966148376465,
+        "normal_count": 512,
+        "rtol": 0.0001220703125,
+        "small_count": 0
+       },
+       "sample": [
+        {
+         "candidate": 18.509639739990234,
+         "diff": 16.18259572982788,
+         "idx": [
+          2,
+          14
+         ],
+         "reference": 2.3270440101623535
+        },
+        {
+         "candidate": -11.36345100402832,
+         "diff": -14.357036590576172,
+         "idx": [
+          25,
+          1
+         ],
+         "reference": 2.9935855865478516
+        },
+        {
+         "candidate": 8.220641136169434,
+         "diff": 12.409782886505127,
+         "idx": [
+          26,
+          0
+         ],
+         "reference": -4.189141750335693
+        },
+        {
+         "candidate": 10.830474853515625,
+         "diff": 11.201677411794662,
+         "idx": [
+          17,
+          9
+         ],
+         "reference": -0.3712025582790375
+        },
+        {
+         "candidate": -10.230302810668945,
+         "diff": -10.92038756608963,
+         "idx": [
+          27,
+          0
+         ],
+         "reference": 0.6900847554206848
+        },
+        {
+         "candidate": -5.6406989097595215,
+         "diff": -10.899972915649414,
+         "idx": [
+          6,
+          4
+         ],
+         "reference": 5.259274005889893
+        },
+        {
+         "candidate": -16.191377639770508,
+         "diff": -10.599451541900635,
+         "idx": [
+          25,
+          0
+         ],
+         "reference": -5.591926097869873
+        },
+        {
+         "candidate": 7.36944580078125,
+         "diff": 10.468634366989136,
+         "idx": [
+          22,
+          9
+         ],
+         "reference": -3.0991885662078857
+        }
+       ]
+      },
+      {
+       "case_idx": 28,
+       "kind": "non_finite_mismatch",
+       "metrics": {
+        "atol": null,
+        "matched_ratio": null,
+        "max_abs_diff": null,
+        "mere": null,
+        "normal_count": null,
+        "rtol": null,
+        "small_count": null
+       },
+       "sample": [
+        {
+         "candidate": "-inf",
+         "diff": "-inf",
+         "idx": [
+          0,
+          0
+         ],
+         "reference": 5.87109375
+        },
+        {
+         "candidate": "inf",
+         "diff": "inf",
+         "idx": [
+          1,
+          0
+         ],
+         "reference": 2.67578125
+        },
+        {
+         "candidate": "inf",
+         "diff": "inf",
+         "idx": [
+          1,
+          12
+         ],
+         "reference": -1.4150390625
+        },
+        {
+         "candidate": "nan",
+         "diff": "nan",
+         "idx": [
+          0,
+          6
+         ],
+         "reference": 2.4921875
+        },
+        {
+         "candidate": "nan",
+         "diff": "nan",
+         "idx": [
+          0,
+          10
+         ],
+         "reference": -4.5859375
+        },
+        {
+         "candidate": "nan",
+         "diff": "nan",
+         "idx": [
+          0,
+          14
+         ],
+         "reference": -3.83203125
+        },
+        {
+         "candidate": "nan",
+         "diff": "nan",
+         "idx": [
+          1,
+          6
+         ],
+         "reference": -0.375
+        },
+        {
+         "candidate": "nan",
+         "diff": "nan",
+         "idx": [
+          1,
+          10
+         ],
+         "reference": 2.845703125
+        }
+       ]
+      },
+      {
+       "case_idx": 32,
+       "kind": "non_finite_mismatch",
+       "metrics": {
+        "atol": null,
+        "matched_ratio": null,
+        "max_abs_diff": null,
+        "mere": null,
+        "normal_count": null,
+        "rtol": null,
+        "small_count": null
+       },
+       "sample": [
+        {
+         "candidate": 1.389043255595237e+38,
+         "diff": 1.389043255595237e+38,
+         "idx": [
+          1,
+          1
+         ],
+         "reference": -1.3671875
+        },
+        {
+         "candidate": -1.2893511559113684e+38,
+         "diff": -1.2893511559113684e+38,
+         "idx": [
+          1,
+          7
+         ],
+         "reference": -2.890625
+        },
+        {
+         "candidate": -7.34398467671166e+37,
+         "diff": -7.34398467671166e+37,
+         "idx": [
+          3,
+          9
+         ],
+         "reference": -3.1875
+        },
+        {
+         "candidate": -1.7363040694940464e+37,
+         "diff": -1.7363040694940464e+37,
+         "idx": [
+          1,
+          13
+         ],
+         "reference": 6.875
+        },
+        {
+         "candidate": 1.0343055342201377e+37,
+         "diff": 1.0343055342201377e+37,
+         "idx": [
+          1,
+          2
+         ],
+         "reference": -9.625
+        },
+        {
+         "candidate": 6.687678353792858e+36,
+         "diff": 6.687678353792858e+36,
+         "idx": [
+          5,
+          10
+         ],
+         "reference": 3.578125
+        },
+        {
+         "candidate": "-inf",
+         "diff": "-inf",
+         "idx": [
+          3,
+          11
+         ],
+         "reference": -5.15625
+        },
+        {
+         "candidate": "inf",
+         "diff": "inf",
+         "idx": [
+          1,
+          0
+         ],
+         "reference": 7.34375
+        }
+       ]
+      },
+      {
+       "case_idx": 36,
+       "kind": "value_mismatch",
+       "metrics": {
+        "atol": 0.001,
+        "matched_ratio": 0.00048828125,
+        "max_abs_diff": 64.9900894165039,
+        "mere": 5.35711669921875,
+        "normal_count": 2048,
+        "rtol": 0.0001220703125,
+        "small_count": 0
+       },
+       "sample": [
+        {
+         "candidate": 64.23933410644531,
+         "diff": 64.99008649587631,
+         "idx": [
+          40,
+          12
+         ],
+         "reference": -0.7507523894309998
+        },
+        {
+         "candidate": -59.611114501953125,
+         "diff": -57.755650758743286,
+         "idx": [
+          40,
+          8
+         ],
+         "reference": -1.8554637432098389
+        },
+        {
+         "candidate": 46.989776611328125,
+         "diff": 46.949916802346706,
+         "idx": [
+          40,
+          30
+         ],
+         "reference": 0.03985980898141861
+        },
+        {
+         "candidate": -36.935081481933594,
+         "diff": -43.65346670150757,
+         "idx": [
+          40,
+          25
+         ],
+         "reference": 6.718385219573975
+        },
+        {
+         "candidate": 40.60710906982422,
+         "diff": 41.97341001033783,
+         "idx": [
+          5,
+          11
+         ],
+         "reference": -1.3663009405136108
+        },
+        {
+         "candidate": -40.45503234863281,
+         "diff": -39.157700300216675,
+         "idx": [
+          40,
+          1
+         ],
+         "reference": -1.2973320484161377
+        },
+        {
+         "candidate": 29.450950622558594,
+         "diff": 33.79974985122681,
+         "idx": [
+          40,
+          29
+         ],
+         "reference": -4.348799228668213
+        },
+        {
+         "candidate": -32.48508071899414,
+         "diff": -32.40546106547117,
+         "idx": [
+          40,
+          17
+         ],
+         "reference": -0.07961965352296829
+        }
+       ]
+      },
+      {
+       "case_idx": 40,
+       "kind": "non_finite_mismatch",
+       "metrics": {
+        "atol": null,
+        "matched_ratio": null,
+        "max_abs_diff": null,
+        "mere": null,
+        "normal_count": null,
+        "rtol": null,
+        "small_count": null
+       },
+       "sample": [
+        {
+         "candidate": "-inf",
+         "diff": "-inf",
+         "idx": [
+          0,
+          6
+         ],
+         "reference": -2.4921875
+        },
+        {
+         "candidate": "-inf",
+         "diff": "-inf",
+         "idx": [
+          0,
+          12
+         ],
+         "reference": 3.404296875
+        },
+        {
+         "candidate": "-inf",
+         "diff": "-inf",
+         "idx": [
+          0,
+          14
+         ],
+         "reference": -3.12890625
+        },
+        {
+         "candidate": "inf",
+         "diff": "inf",
+         "idx": [
+          0,
+          0
+         ],
+         "reference": 0.6337890625
+        },
+        {
+         "candidate": "inf",
+         "diff": "inf",
+         "idx": [
+          0,
+          8
+         ],
+         "reference": -3.04296875
+        },
+        {
+         "candidate": "nan",
+         "diff": "nan",
+         "idx": [
+          0,
+          4
+         ],
+         "reference": 4.88671875
+        },
+        {
+         "candidate": "nan",
+         "diff": "nan",
+         "idx": [
+          0,
+          10
+         ],
+         "reference": -7.47265625
+        },
+        {
+         "candidate": "nan",
+         "diff": "nan",
+         "idx": [
+          0,
+          16
+         ],
+         "reference": 5.33203125
+        }
+       ]
+      },
+      {
+       "case_idx": 42,
+       "kind": "non_finite_mismatch",
+       "metrics": {
+        "atol": null,
+        "matched_ratio": null,
+        "max_abs_diff": null,
+        "mere": null,
+        "normal_count": null,
+        "rtol": null,
+        "small_count": null
+       },
+       "sample": [
+        {
+         "candidate": "nan",
+         "diff": "nan",
+         "idx": [
+          0,
+          0
+         ],
+         "reference": -0.6025390625
+        },
+        {
+         "candidate": "nan",
+         "diff": "nan",
+         "idx": [
+          0,
+          1
+         ],
+         "reference": 5.046875
+        },
+        {
+         "candidate": "nan",
+         "diff": "nan",
+         "idx": [
+          0,
+          2
+         ],
+         "reference": 2.796875
+        },
+        {
+         "candidate": "nan",
+         "diff": "nan",
+         "idx": [
+          0,
+          3
+         ],
+         "reference": 5.375
+        },
+        {
+         "candidate": "nan",
+         "diff": "nan",
+         "idx": [
+          0,
+          4
+         ],
+         "reference": 6.18359375
+        },
+        {
+         "candidate": "nan",
+         "diff": "nan",
+         "idx": [
+          0,
+          5
+         ],
+         "reference": -6.6953125
+        },
+        {
+         "candidate": "nan",
+         "diff": "nan",
+         "idx": [
+          0,
+          6
+         ],
+         "reference": -0.485107421875
+        },
+        {
+         "candidate": "nan",
+         "diff": "nan",
+         "idx": [
+          0,
+          7
+         ],
+         "reference": 3.306640625
+        }
+       ]
+      },
+      {
+       "case_idx": 44,
+       "kind": "non_finite_mismatch",
+       "metrics": {
+        "atol": null,
+        "matched_ratio": null,
+        "max_abs_diff": null,
+        "mere": null,
+        "normal_count": null,
+        "rtol": null,
+        "small_count": null
+       },
+       "sample": [
+        {
+         "candidate": "-inf",
+         "diff": "-inf",
+         "idx": [
+          10,
+          30
+         ],
+         "reference": -5.625
+        },
+        {
+         "candidate": "-inf",
+         "diff": "-inf",
+         "idx": [
+          13,
+          16
+         ],
+         "reference": 0.478515625
+        },
+        {
+         "candidate": "-inf",
+         "diff": "-inf",
+         "idx": [
+          15,
+          31
+         ],
+         "reference": 1.625
+        },
+        {
+         "candidate": "inf",
+         "diff": "inf",
+         "idx": [
+          10,
+          11
+         ],
+         "reference": -1.3515625
+        },
+        {
+         "candidate": "inf",
+         "diff": "inf",
+         "idx": [
+          10,
+          25
+         ],
+         "reference": 0.89453125
+        },
+        {
+         "candidate": "inf",
+         "diff": "inf",
+         "idx": [
+          13,
+          12
+         ],
+         "reference": 0.57421875
+        },
+        {
+         "candidate": "inf",
+         "diff": "inf",
+         "idx": [
+          15,
+          29
+         ],
+         "reference": 2.609375
+        },
+        {
+         "candidate": "inf",
+         "diff": "inf",
+         "idx": [
+          17,
+          14
+         ],
+         "reference": 3.265625
+        }
+       ]
+      },
+      {
+       "case_idx": 46,
+       "kind": "non_finite_mismatch",
+       "metrics": {
+        "atol": null,
+        "matched_ratio": null,
+        "max_abs_diff": null,
+        "mere": null,
+        "normal_count": null,
+        "rtol": null,
+        "small_count": null
+       },
+       "sample": [
+        {
+         "candidate": "-inf",
+         "diff": "-inf",
+         "idx": [
+          5,
+          14
+         ],
+         "reference": -7.0625
+        },
+        {
+         "candidate": "-inf",
+         "diff": "-inf",
+         "idx": [
+          5,
+          18
+         ],
+         "reference": -6.40625
+        },
+        {
+         "candidate": "-inf",
+         "diff": "-inf",
+         "idx": [
+          5,
+          22
+         ],
+         "reference": 7.9375
+        },
+        {
+         "candidate": "inf",
+         "diff": "inf",
+         "idx": [
+          5,
+          15
+         ],
+         "reference": 3.96875
+        },
+        {
+         "candidate": "inf",
+         "diff": "inf",
+         "idx": [
+          5,
+          25
+         ],
+         "reference": 9.1875
+        },
+        {
+         "candidate": "inf",
+         "diff": "inf",
+         "idx": [
+          5,
+          29
+         ],
+         "reference": 4.59375
+        },
+        {
+         "candidate": "inf",
+         "diff": "inf",
+         "idx": [
+          5,
+          31
+         ],
+         "reference": 9.3125
+        },
+        {
+         "candidate": "inf",
+         "diff": "inf",
+         "idx": [
+          5,
+          48
+         ],
+         "reference": -1.4609375
+        }
+       ]
+      },
+      {
+       "case_idx": 48,
+       "kind": "value_mismatch",
+       "metrics": {
+        "atol": 0.001,
+        "matched_ratio": 0,
+        "max_abs_diff": 14.057863235473633,
+        "mere": 3.5800697803497314,
+        "normal_count": 512,
+        "rtol": 0.0001220703125,
+        "small_count": 0
+       },
+       "sample": [
+        {
+         "candidate": -11.640124320983887,
+         "diff": -14.057862997055054,
+         "idx": [
+          11,
+          14
+         ],
+         "reference": 2.417738676071167
+        },
+        {
+         "candidate": -14.847662925720215,
+         "diff": -13.076259851455688,
+         "idx": [
+          15,
+          30
+         ],
+         "reference": -1.7714030742645264
+        },
+        {
+         "candidate": 12.36397933959961,
+         "diff": 12.767310976982117,
+         "idx": [
+          1,
+          14
+         ],
+         "reference": -0.4033316373825073
+        },
+        {
+         "candidate": -9.422389030456543,
+         "diff": -12.276705980300903,
+         "idx": [
+          4,
+          23
+         ],
+         "reference": 2.8543169498443604
+        },
+        {
+         "candidate": -12.314469337463379,
+         "diff": -11.71830803155899,
+         "idx": [
+          12,
+          10
+         ],
+         "reference": -0.5961613059043884
+        },
+        {
+         "candidate": -10.68305492401123,
+         "diff": -11.237757444381714,
+         "idx": [
+          14,
+          14
+         ],
+         "reference": 0.5547025203704834
+        },
+        {
+         "candidate": 8.49935245513916,
+         "diff": 11.069835424423218,
+         "idx": [
+          10,
+          4
+         ],
+         "reference": -2.5704829692840576
+        },
+        {
+         "candidate": 8.385438919067383,
+         "diff": 10.94479513168335,
+         "idx": [
+          11,
+          17
+         ],
+         "reference": -2.559356212615967
+        }
+       ]
+      },
+      {
+       "case_idx": 49,
+       "kind": "non_finite_mismatch",
+       "metrics": {
+        "atol": null,
+        "matched_ratio": null,
+        "max_abs_diff": null,
+        "mere": null,
+        "normal_count": null,
+        "rtol": null,
+        "small_count": null
+       },
+       "sample": [
+        {
+         "candidate": "nan",
+         "diff": "nan",
+         "idx": [
+          1,
+          0
+         ],
+         "reference": -0.442138671875
+        },
+        {
+         "candidate": "nan",
+         "diff": "nan",
+         "idx": [
+          1,
+          1
+         ],
+         "reference": 1.6591796875
+        },
+        {
+         "candidate": "nan",
+         "diff": "nan",
+         "idx": [
+          1,
+          2
+         ],
+         "reference": -2.44140625
+        },
+        {
+         "candidate": "nan",
+         "diff": "nan",
+         "idx": [
+          1,
+          3
+         ],
+         "reference": 10.234375
+        },
+        {
+         "candidate": "nan",
+         "diff": "nan",
+         "idx": [
+          1,
+          4
+         ],
+         "reference": 7.31640625
+        },
+        {
+         "candidate": "nan",
+         "diff": "nan",
+         "idx": [
+          1,
+          5
+         ],
+         "reference": -6.91796875
+        },
+        {
+         "candidate": "nan",
+         "diff": "nan",
+         "idx": [
+          1,
+          6
+         ],
+         "reference": -0.341796875
+        },
+        {
+         "candidate": "nan",
+         "diff": "nan",
+         "idx": [
+          1,
+          7
+         ],
+         "reference": 5.0703125
+        }
+       ]
+      }
+     ],
+     "outcome": "wrong",
+     "passed": false,
+     "passed_cases": 29,
+     "total_cases": 50
+    },
+    "error": null,
+    "reason": null,
+    "status": "succeeded"
+   },
+   "performance": {
+    "data": null,
+    "error": null,
+    "reason": {
+     "code": "DEPENDENCY_NOT_PASSED",
+     "depends_on": "correctness",
+     "message": "correctness did not pass"
+    },
+    "status": "skipped"
+   },
+   "profile": null,
+   "provenance": {
+    "benchmark_algorithm": "geometric-mean-v1",
+    "correctness_algorithm": "correctness-v1:npu-strict-v1",
+    "decoy_algorithm": "decoy-v1",
+    "evaluator_build": "sha256:d3232fdf45295e489d2e135753a007a2ce11b94a5c9de95191df29560d88c447",
+    "execution_environment": {
+     "driver_version": "25.5.1",
+     "hardware_count": 1,
+     "hardware_model": "Ascend910",
+     "runtime_version": "CANN-8.5.2",
+     "toolchain_version": "CANN 8.5.2 / torch 2.9.0 / torch_npu 2.9.0 / triton_ascend 3.2.0",
+     "torch_npu_version": "2.9.0",
+     "torch_version": "2.9.0",
+     "triton_version": "3.2.0"
+    },
+    "grade_eligible": false,
+    "manifest_id": null,
+    "problem_id": null,
+    "profiler_algorithm": "profiler-v1",
+    "schema_version": "2.1"
+   }
+  },
+  "revision": 3,
+  "schema_version": "2.1",
+  "started_at": "2026-09-29T00:18:12.110000Z",
+  "state": "completed",
+  "updated_at": "2026-09-29T00:19:20.528000Z"
+ }
+}

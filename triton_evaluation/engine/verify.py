@@ -124,6 +124,9 @@ class CaseContext:
     subject_budget_seconds: object = None
     # Private device observations; never input/output values or public verdict data.
     reference_trace: object = None
+    # A pinned manifest and independently owned CPU output, or None on a real miss.
+    cached_reference: object = None
+    reference_cache_status: object = None
 
 
 @dataclass
@@ -1089,21 +1092,26 @@ def run_single_case(models: ModelPair, inputs, device, case_ctx: CaseContext, no
         x.to(device) if isinstance(x, torch.Tensor) else x
         for x in inputs
     ]
-    inputs_for_framework = [
-        x.to(golden_device) if isinstance(x, torch.Tensor) else x
-        for x in inputs
-    ]
+    inputs_for_framework = None
+    if case_ctx.cached_reference is None:
+        inputs_for_framework = [
+            x.to(golden_device) if isinstance(x, torch.Tensor) else x
+            for x in inputs
+        ]
 
     with torch.no_grad():
         impl_output = _run_candidate_forward(
             models.impl, inputs_for_impl, case_ctx.subject_budget_seconds
         )
-        framework_output = _invoke_model_shared(models.framework, inputs_for_framework)
+        if case_ctx.cached_reference is None:
+            framework_output = _invoke_model_shared(models.framework, inputs_for_framework)
+        else:
+            framework_output = case_ctx.cached_reference[1]
 
     if case_ctx.reference_trace is not None:
         outputs = framework_output if isinstance(framework_output, (list, tuple)) else [framework_output]
         case_ctx.reference_trace[-1].update({
-            "reference_completed": True,
+            "reference_completed": case_ctx.cached_reference is None,
             "output_devices": [
                 {"output_index": i, "device": str(value.device)}
                 for i, value in enumerate(outputs) if isinstance(value, torch.Tensor)
@@ -1228,14 +1236,38 @@ def _attempt_case(modules, case_ctx: CaseContext, inputs, device,
             "reference_completed": False,
             "output_devices": [],
         })
+    if case_ctx.reference_trace is not None and case_ctx.reference_cache_status is not None:
+        case_ctx.reference_trace[-1]["reference_cache_status"] = case_ctx.reference_cache_status
+        if case_ctx.cached_reference is not None:
+            from triton_evaluation.reference_cache import canonical_bytes, sha256
+            manifest = case_ctx.cached_reference[0]
+            case_ctx.reference_trace[-1].update({
+                "reference_manifest_sha256": sha256(canonical_bytes(manifest.model_dump(mode="json"))),
+                "reference_binding_sha256": manifest.binding.key,
+                "reference_output_sha256": manifest.output_sha256,
+            })
     try:
-        framework_model, impl_model = _instantiate_models(
-            modules["framework_cls"],
-            modules["impl_cls"],
-            modules["get_init_inputs"],
-            device,
-            golden_device=golden_device,
-        )
+        if case_ctx.cached_reference is None:
+            framework_model, impl_model = _instantiate_models(
+                modules["framework_cls"],
+                modules["impl_cls"],
+                modules["get_init_inputs"],
+                device,
+                golden_device=golden_device,
+            )
+        else:
+            # Do not instantiate or execute the reference on a cache hit. The candidate
+            # receives the exact same seed and initialization contract as the live path.
+            import torch
+            init_params = modules["get_init_inputs"]()
+            torch.manual_seed(0)
+            torch.npu.manual_seed(0)
+            try:
+                impl_model = modules["impl_cls"](*init_params).to(device)
+            except Exception as exc:
+                raise _CandidateInitializeError(
+                    f"candidate initialization failed: {type(exc).__name__}"
+                ) from exc
         run_single_case(
             ModelPair(framework_model, impl_model, golden_device), inputs, device,
             case_ctx, non_compute=non_compute,
@@ -1259,6 +1291,10 @@ def _try_run_case(modules, case_ctx: CaseContext, inputs, device, non_compute=Fa
     if reference_device_policy not in {"cpu-first", "npu-strict"}:
         raise ValueError("unsupported reference_device_policy")
     try:
+        if case_ctx.cached_reference is not None:
+            _attempt_case(modules, case_ctx, inputs, device,
+                          case_ctx.cached_reference[0].selected_reference_device, non_compute)
+            return True, None
         if reference_device_policy == "npu-strict":
             _attempt_case(modules, case_ctx, inputs, device, device, non_compute)
             return True, None
@@ -1350,6 +1386,17 @@ def verify_implementations(
     import torch
     import torch_npu  # noqa: F401
 
+    from pathlib import Path
+    from triton_evaluation.reference_cache import (
+        ReferenceCache, ReferenceCacheMiss, official_source_metadata,
+    )
+    reference_source = None
+    reference_cache = ReferenceCache.from_environment()
+    if reference_cache is not None:
+        reference_source = Path(verify_dir, f"{op_name}_torch.py").read_text(encoding="utf-8")
+        if official_source_metadata(reference_source) is None:
+            reference_cache = None
+
     candidate_import_error = None
     try:
         modules = _load_verify_modules(op_name, verify_dir, triton_impl_name)
@@ -1383,14 +1430,29 @@ def verify_implementations(
                 ),
             })
             continue
+        cached_reference = None
+        cache_status = None
+        if reference_cache is not None:
+            try:
+                manifest = reference_cache.load_case(
+                    reference_source, case_idx, inputs,
+                    reference_device_policy=reference_device_policy,
+                )
+                cached_reference = (manifest, reference_cache.outputs(manifest))
+                cache_status = "hit"
+            except ReferenceCacheMiss:
+                cache_status = "miss"
+        case_ctx = CaseContext(
+            case_idx=case_idx,
+            total_cases=total_cases,
+            subject_budget_seconds=subject_budget_seconds,
+            reference_trace=reference_trace,
+            cached_reference=cached_reference,
+            reference_cache_status=cache_status,
+        )
         ok, failure = _try_run_case(
             modules,
-            CaseContext(
-                case_idx=case_idx,
-                total_cases=total_cases,
-                subject_budget_seconds=subject_budget_seconds,
-                reference_trace=reference_trace,
-            ),
+            case_ctx,
             inputs, device, non_compute=non_compute,
             reference_device_policy=reference_device_policy,
         )
@@ -1448,7 +1510,7 @@ def _terminate_expired_subprocess(proc, waited_seconds: int) -> None:
 
 
 if __name__ == "__main__":
-    _set_process_title("TritonEvalWork")
+    _set_process_title("EvalEngine")
     _setup_logger()
     parser = argparse.ArgumentParser(description="算子验证脚本")
     parser.add_argument("--op_name", required=True, help="算子名称")

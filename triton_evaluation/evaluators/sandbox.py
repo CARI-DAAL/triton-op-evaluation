@@ -11,6 +11,8 @@ from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from ..reference_cache import CACHE_ENV_KEYS, DEVICE_ENV, STATE_ENV
+
 CONFIG_ENV = "TRITON_EVAL_ENGINE_SANDBOX_CONFIG"
 DIGEST_ENV = "TRITON_EVAL_ENGINE_SANDBOX_SHA256"
 RUNTIME_ENV = frozenset(
@@ -32,6 +34,8 @@ RUNTIME_ENV = frozenset(
         "TORCH_DEVICE_BACKEND_AUTOLOAD",
         "OMP_NUM_THREADS",
         "OPENBLAS_NUM_THREADS",
+        *CACHE_ENV_KEYS,
+        "TRITON_EVAL_REFERENCE_DEVICE_POLICY",
     }
 )
 
@@ -43,6 +47,7 @@ class EngineSandbox(BaseModel):
     environment: dict[str, str] = Field(default_factory=dict)
     shared_npu_devices: list[Path] = Field(default_factory=list)
     executable: Path = Path("/usr/bin/bwrap")
+    reference_cache_state_dir: Path | None = None
 
     @model_validator(mode="after")
     def check_manifest(self):
@@ -58,6 +63,26 @@ class EngineSandbox(BaseModel):
                 raise ValueError("runtime mounts must not contain parent traversal")
             if source.resolve() in forbidden or destination in forbidden:
                 raise ValueError("whole host state directories are not runtime mounts")
+        cache_keys = self.environment.keys() & CACHE_ENV_KEYS
+        if cache_keys and cache_keys != CACHE_ENV_KEYS:
+            raise ValueError("sandbox requires every reference cache deployment variable")
+        if cache_keys:
+            if self.reference_cache_state_dir is None:
+                raise ValueError(
+                    "sandbox cache invalidation needs an explicit writable state mount"
+                )
+            state = self.reference_cache_state_dir
+            if not state.is_absolute() or ".." in state.parts or state.resolve() in forbidden:
+                raise ValueError("cache state mount must be an absolute dedicated directory")
+            if self.environment[STATE_ENV] != str(state):
+                raise ValueError("cache state environment must identify its declared state mount")
+            if any(
+                state == source or state in source.parents or source in state.parents
+                for source, _ in self.readonly_mounts
+            ):
+                raise ValueError("cache state mount must not overlap immutable runtime mounts")
+        elif self.reference_cache_state_dir is not None:
+            raise ValueError("cache state mount requires cache configuration")
         for device in self.shared_npu_devices:
             if device not in {
                 Path("/dev/davinci_manager"),
@@ -90,6 +115,11 @@ class EngineSandbox(BaseModel):
             if destination == work or destination in work.parents or work in destination.parents:
                 raise ValueError("runtime mounts must not overlay attempt state")
             args += ["--ro-bind", str(source), str(destination)]
+        if self.reference_cache_state_dir is not None:
+            state = self.reference_cache_state_dir.resolve(strict=True)
+            if state == work or state in work.parents or work in state.parents:
+                raise ValueError("cache state mount must not overlap attempt state")
+            args += ["--bind", str(state), str(self.reference_cache_state_dir)]
         # Match host runtime aliases without exposing their containing directories.
         for alias in ("/bin", "/sbin", "/lib", "/lib64"):
             path = Path(alias)
@@ -120,6 +150,8 @@ class EngineSandbox(BaseModel):
             # Ascend renumbers the sole device inside a fresh mount namespace to
             # logical zero; reusing a physical id here rejects every card > 0.
             "ASCEND_RT_VISIBLE_DEVICES": "" if device_id is None else "0",
+            # Preserve the host physical assignment while the runtime uses logical zero.
+            DEVICE_ENV: "" if device_id is None else str(device_id),
         }
         for key, value in sorted(env.items()):
             args += ["--setenv", key, value]
