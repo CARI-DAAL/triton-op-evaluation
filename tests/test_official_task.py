@@ -171,6 +171,24 @@ class TestComposedModule:
         x1 = self._module().get_input_groups()[0][0]
         assert int(x1.min()) >= -3 and int(x1.max()) <= 3
 
+    def test_single_case_preserves_seed0_full_inventory_rng(self):
+        mod = self._module()
+        torch.manual_seed(0)
+        expected = mod.get_input_groups()
+        for index, group in enumerate(expected):
+            torch.manual_seed(0)
+            actual = mod.get_input_group(index)
+            for before, after in zip(group, actual, strict=True):
+                if isinstance(before, torch.Tensor):
+                    assert torch.equal(before, after)
+                else:
+                    assert before is after or before == after
+
+    @pytest.mark.parametrize("index", [-1, 2, True, "0"])
+    def test_single_case_rejects_invalid_index(self, index):
+        with pytest.raises(IndexError):
+            self._module().get_input_group(index)
+
     def test_absent_params_get_sentinel_and_forward_kwargs_only(self):
         mod = self._module()
         case2 = mod.get_input_groups()[1]

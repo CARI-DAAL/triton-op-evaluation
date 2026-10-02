@@ -61,6 +61,10 @@ uses `rand > 0.5`. Scalar/custom values pass through, including explicit `None`.
 An absent parameter uses a distinct sentinel so `run()` applies its own Python
 default. The engine controls the ambient device and seed. No uint8 inputs occur
 in the current B1 selection; its policy is covered by a CPU structural test.
+The optional `get_input_group(zero_based_index)` interface lets a case audit
+materialize preceding cases in order and release them as it advances, preserving
+the full inventory's RNG consumption while keeping memory bounded by a few
+cases. It is checked against seed-0 `get_input_groups()` on CPU.
 
 Run controlled CPU checks with:
 

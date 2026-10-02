@@ -78,19 +78,29 @@ def _materialize(spec):
         return (torch.rand(shape) * (rng[1] - rng[0]) + rng[0]).to(td)
     return torch.randn(shape, dtype=td)
 
-def get_input_groups():
+def _iter_input_groups():
     cases = _json.loads(
         __CASES_LITERAL__
     )
-    input_groups = []
     for case in cases:
         by_name = {i["name"]: i for i in case["inputs"]}
         vals = []
         for name in _PARAM_ORDER:
             spec = by_name.get(name)
             vals.append(_materialize(spec) if spec is not None else _ABSENT)
-        input_groups.append(vals)
-    return input_groups
+        yield vals
+
+def get_input_groups():
+    return list(_iter_input_groups())
+
+def get_input_group(case_index):
+    """Zero-based case; preserve preceding-case RNG consumption, bounded memory."""
+    if not isinstance(case_index, int) or isinstance(case_index, bool) or case_index < 0:
+        raise IndexError("official adapter case index must be a nonnegative integer")
+    for index, inputs in enumerate(_iter_input_groups()):
+        if index == case_index:
+            return inputs
+    raise IndexError("official adapter case index is out of range")
 
 def get_init_inputs():
     return []
