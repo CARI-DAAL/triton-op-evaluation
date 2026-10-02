@@ -3,6 +3,8 @@
 import builtins
 import importlib.util
 import json
+import shutil
+import subprocess
 import sys
 from pathlib import Path
 
@@ -168,7 +170,7 @@ def test_running_attempt_and_actual_pid_are_persisted_before_wait(tmp_path, monk
     actual_run = replay.run_export
     output = tmp_path / "replay"
 
-    def inspect(command, timeout_seconds, on_started):
+    def inspect(command, timeout_seconds, on_started, env):
         initial = evidence(output)
         assert initial["state"] == "running"
         assert initial["command"] == command
@@ -179,7 +181,7 @@ def test_running_attempt_and_actual_pid_are_persisted_before_wait(tmp_path, monk
             assert running["state"] == "running"
             assert running["pid"] == running["process_group"] == pid
 
-        return actual_run(command, timeout_seconds, inspect_started)
+        return actual_run(command, timeout_seconds, inspect_started, env)
 
     monkeypatch.setattr(replay, "run_export", inspect)
     assert replay.replay(report, digest, output) == 1
@@ -194,3 +196,126 @@ def test_existing_replay_attempt_is_never_overwritten(tmp_path, monkeypatch, cap
     with pytest.raises(FileExistsError):
         replay.replay(report, digest, output)
     assert (output / "old.json").read_text() == "old attempt"
+
+
+@pytest.fixture
+def elf_binding(tmp_path):
+    """Build real controlled ELF files; this is not the CANN binary or NPU acceptance."""
+    compiler = shutil.which("cc")
+    if compiler is None or shutil.which("readelf") is None:
+        pytest.skip("ELF seam test requires the local C compiler and readelf")
+    stub = tmp_path / "link-only"
+    stub.mkdir()
+    sqlite_source = tmp_path / "sqlite.c"
+    sqlite_source.write_text("int sqlite3_compatibility_fixture(void) { return 42; }\n")
+    source = tmp_path / "consumer.c"
+    source.write_text(
+        "extern int sqlite3_compatibility_fixture(void);\n"
+        "int fixture(void) { return sqlite3_compatibility_fixture(); }\n"
+    )
+    library = tmp_path / "libsqlite3.so.0"
+    consumer = tmp_path / "consumer.so"
+    for command in (
+        [compiler, "-shared", "-fPIC", "-o", str(stub / "libsqlite3.so"), str(sqlite_source)],
+        [
+            compiler,
+            "-shared",
+            "-fPIC",
+            "-Wl,-soname,libsqlite3.so.0",
+            "-o",
+            str(library),
+            str(sqlite_source),
+        ],
+        [
+            compiler,
+            "-shared",
+            "-fPIC",
+            "-o",
+            str(consumer),
+            str(source),
+            f"-L{stub}",
+            "-l:libsqlite3.so",
+        ],
+    ):
+        subprocess.run(command, check=True, capture_output=True)
+    return library, replay.sha(library), consumer, replay.sha(consumer)
+
+
+def test_private_exact_elf_alias_changes_only_export_child_loader_and_restores_data(
+    tmp_path, monkeypatch, capture, elf_binding
+):
+    report, digest, _ = capture
+    library, library_sha, consumer, consumer_sha = elf_binding
+    fake_msprof(
+        tmp_path,
+        monkeypatch,
+        "import ctypes\n"
+        "try:\n"
+        f"    loaded = ctypes.CDLL({str(consumer)!r})\n"
+        "except OSError as error:\n"
+        "    print(str(error), file=sys.stderr)\n"
+        "else:\n"
+        "    assert loaded.fixture() == 42\n"
+        "    (root / 'op_summary.csv').write_text('Op Name,Task Duration(us)\\nmatmul,20\\n')\n",
+    )
+    monkeypatch.setenv("LD_LIBRARY_PATH", "/controlled/original")
+    monkeypatch.setenv("TRITON_EVAL_LD_LIBRARY_PATH", "/immutable/anchor")
+    assert replay.replay(report, digest, tmp_path / "without-alias") == 1
+    output = tmp_path / "with-alias"
+    assert (
+        replay.replay(
+            report,
+            digest,
+            output,
+            sqlite_library=library,
+            sqlite_library_sha256=library_sha,
+            sqlite_consumer=consumer,
+            sqlite_consumer_sha256=consumer_sha,
+        )
+        == 0
+    )
+    result = evidence(output)
+    assert result["state"] == "exported_text_data"
+    assert result["sqlite_alias"]["required_sqlite_symbols"] == ["sqlite3_compatibility_fixture"]
+    assert result["sqlite_alias"]["target_soname"] == "libsqlite3.so.0"
+    assert set(result["environment_diff"]) == {"LD_LIBRARY_PATH"}
+    assert replay.os.environ["LD_LIBRARY_PATH"] == "/controlled/original"
+    assert replay.os.environ["TRITON_EVAL_LD_LIBRARY_PATH"] == "/immutable/anchor"
+    assert result["sqlite_sources_unchanged"] is True
+    assert result["original_artifacts_unchanged"] is True
+    assert replay.sha(output / "private-library-alias/libsqlite3.so") == library_sha
+    assert result["kernel_details_parseable"] is False
+
+
+def test_sqlite_binding_refuses_unpinned_or_incomplete_sources(tmp_path, capture, elf_binding):
+    report, digest, _ = capture
+    library, library_sha, consumer, consumer_sha = elf_binding
+    with pytest.raises(ValueError, match="explicit source pins"):
+        replay.replay(report, digest, tmp_path / "invalid", sqlite_library=library)
+    with pytest.raises(ValueError, match="explicit pin"):
+        replay.inspect_sqlite_binding(library, "0" * 64, consumer, consumer_sha)
+    assert not (tmp_path / "invalid").exists()
+    assert replay.sha(library) == library_sha
+
+
+def test_actual_elf_metadata_refuses_target_without_the_required_sqlite_exports(
+    tmp_path, elf_binding
+):
+    library, _library_sha, consumer, consumer_sha = elf_binding
+    replacement_source = tmp_path / "empty.c"
+    replacement_source.write_text("int unrelated(void) { return 0; }\n")
+    subprocess.run(
+        [
+            shutil.which("cc"),
+            "-shared",
+            "-fPIC",
+            "-Wl,-soname,libsqlite3.so.0",
+            "-o",
+            str(library),
+            str(replacement_source),
+        ],
+        check=True,
+        capture_output=True,
+    )
+    with pytest.raises(ValueError, match="lacks required symbols"):
+        replay.inspect_sqlite_binding(library, replay.sha(library), consumer, consumer_sha)

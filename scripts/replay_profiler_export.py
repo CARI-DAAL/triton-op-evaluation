@@ -15,6 +15,7 @@ import hashlib
 import json
 import math
 import os
+import re
 import shutil
 import signal
 import subprocess
@@ -31,6 +32,76 @@ sys.path.insert(0, str(ROOT))
 
 def sha(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def inspect_sqlite_binding(
+    library: Path, digest: str, consumer: Path, consumer_digest: str
+) -> dict:
+    """Inspect actual ELF metadata and required symbols; never load either ELF."""
+    library = library.resolve(strict=True)
+    consumer = consumer.resolve(strict=True)
+    if sha(library) != digest or sha(consumer) != consumer_digest:
+        raise ValueError("SQLite library/consumer SHA does not match the explicit pin")
+
+    def elf(path):
+        observed = {}
+        for name, flag in (("header", "-h"), ("dynamic", "-d"), ("symbols", "--dyn-syms")):
+            result = subprocess.run(
+                ["readelf", "--wide", flag, str(path)],
+                capture_output=True,
+                text=True,
+                timeout=5,
+                check=True,
+                env={**os.environ, "LC_ALL": "C"},
+            )
+            observed[name] = result.stdout
+        return observed
+
+    target = elf(library)
+    source = elf(consumer)
+
+    def abi(header):
+        return {
+            key: match.group(1).strip()
+            for key in ("Class", "Data", "Machine")
+            if (match := re.search(rf"^\s*{key}:\s*(.+)$", header, re.MULTILINE))
+        }
+
+    target_abi = abi(target["header"])
+    if len(target_abi) != 3 or target_abi != abi(source["header"]):
+        raise ValueError("SQLite target and CANN consumer ELF class/data/machine differ")
+    if "Shared library: [libsqlite3.so]" not in source["dynamic"]:
+        raise ValueError("Pinned CANN consumer does not require the missing libsqlite3.so")
+    if "Library soname: [libsqlite3.so.0]" not in target["dynamic"]:
+        raise ValueError("Expected the existing libsqlite3.so.0 library, without replacement")
+
+    def sqlite_symbols(text, undefined):
+        result = set()
+        for line in text.splitlines():
+            fields = line.split()
+            if len(fields) >= 8 and (fields[6] == "UND") == undefined:
+                symbol = fields[7].split("@")[0]
+                if symbol.startswith("sqlite3_"):
+                    result.add(symbol)
+        return result
+
+    required = sqlite_symbols(source["symbols"], True)
+    available = sqlite_symbols(target["symbols"], False)
+    if not required or not required <= available:
+        raise ValueError(
+            f"Existing SQLite library lacks required symbols: {sorted(required - available)}"
+        )
+    return {
+        "library_path": str(library),
+        "library_sha256": digest,
+        "consumer_path": str(consumer),
+        "consumer_sha256": consumer_digest,
+        "elf_abi": target_abi,
+        "needed": "libsqlite3.so",
+        "target_soname": "libsqlite3.so.0",
+        "required_sqlite_symbols": sorted(required),
+        "readelf_observations": {"library": target, "consumer": source},
+    }
 
 
 def verified_capture(report_path: Path, report_sha256: str) -> tuple[dict, list[tuple[Path, str]]]:
@@ -66,12 +137,15 @@ def verified_capture(report_path: Path, report_sha256: str) -> tuple[dict, list[
 
 
 def run_export(
-    command: list[str], timeout_seconds: int, on_started: Callable[[int], None] | None = None
+    command: list[str],
+    timeout_seconds: int,
+    on_started: Callable[[int], None] | None = None,
+    env: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     """Own a separate process group; timeout is an executed, retained attempt."""
     started = time.monotonic_ns()
     process = subprocess.Popen(
-        command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, start_new_session=True
+        command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, start_new_session=True, env=env
     )
     signals = []
     timed_out = False
@@ -102,12 +176,25 @@ def run_export(
 
 
 def replay(
-    capture_report: Path, report_sha256: str, output: Path, timeout_seconds: int = 45
+    capture_report: Path,
+    report_sha256: str,
+    output: Path,
+    timeout_seconds: int = 45,
+    sqlite_library: Path | None = None,
+    sqlite_library_sha256: str | None = None,
+    sqlite_consumer: Path | None = None,
+    sqlite_consumer_sha256: str | None = None,
 ) -> int:
     if not 1 <= timeout_seconds <= 60:
         raise ValueError("Offline export timeout must be between one and sixty seconds")
     capture_report = capture_report.resolve()
     original, pinned = verified_capture(capture_report, report_sha256)
+    sqlite_args = (sqlite_library, sqlite_library_sha256, sqlite_consumer, sqlite_consumer_sha256)
+    sqlite = None
+    if any(sqlite_args):
+        if not all(sqlite_args):
+            raise ValueError("SQLite diagnostic alias requires all four explicit source pins")
+        sqlite = inspect_sqlite_binding(*sqlite_args)
     output = output.resolve()
     if output == capture_report.parent or capture_report.parent in output.parents:
         raise ValueError("Replay output must be outside the original capture")
@@ -159,6 +246,28 @@ def replay(
         "timeout_seconds": timeout_seconds,
         "started_unix_ns": time.time_ns(),
     }
+    child_env = None
+    if sqlite is not None:
+        alias_dir = output / "private-library-alias"
+        alias_dir.mkdir()
+        alias = alias_dir / "libsqlite3.so"
+        shutil.copy2(sqlite["library_path"], alias)
+        if sha(alias) != sqlite["library_sha256"]:
+            raise RuntimeError("Private SQLite alias copy does not match the pinned library")
+        old_ld = os.environ.get("LD_LIBRARY_PATH")
+        new_ld = str(alias_dir) + (os.pathsep + old_ld if old_ld else "")
+        child_env = {**os.environ, "LD_LIBRARY_PATH": new_ld}
+        evidence["sqlite_alias"] = {**sqlite, "private_alias_path": str(alias)}
+        evidence["environment_diff"] = {
+            "LD_LIBRARY_PATH": {
+                "original_present": old_ld is not None,
+                "original_sha256": hashlib.sha256((old_ld or "").encode()).hexdigest(),
+                "child_sha256": hashlib.sha256(new_ld.encode()).hexdigest(),
+                "child_prefix": str(alias_dir),
+            }
+        }
+    else:
+        evidence["environment_diff"] = {}
     target = output / "report.json"
 
     def persist() -> None:
@@ -170,7 +279,7 @@ def replay(
 
     persist()
     try:
-        result = run_export(command, timeout_seconds, on_started=started)
+        result = run_export(command, timeout_seconds, on_started=started, env=child_env)
         (output / "export.stdout").write_bytes(result.pop("stdout"))
         (output / "export.stderr").write_bytes(result.pop("stderr"))
         evidence.update(result)
@@ -215,6 +324,14 @@ def replay(
     finally:
         _, after = verified_capture(capture_report, report_sha256)
         evidence["original_artifacts_unchanged"] = after == pinned
+        if sqlite is not None:
+            unchanged = (
+                sha(Path(sqlite["library_path"])) == sqlite["library_sha256"]
+                and sha(Path(sqlite["consumer_path"])) == sqlite["consumer_sha256"]
+            )
+            evidence["sqlite_sources_unchanged"] = unchanged
+            if not unchanged:
+                evidence.update(state="error", error="Pinned SQLite source changed during replay")
         evidence["finished_unix_ns"] = time.time_ns()
         evidence["artifacts"] = [
             {
@@ -235,8 +352,20 @@ def main() -> int:
     parser.add_argument("--capture-report", required=True, type=Path)
     parser.add_argument("--capture-report-sha256", required=True)
     parser.add_argument("--output", required=True, type=Path)
+    parser.add_argument("--sqlite-library", type=Path)
+    parser.add_argument("--sqlite-library-sha256")
+    parser.add_argument("--sqlite-consumer", type=Path)
+    parser.add_argument("--sqlite-consumer-sha256")
     args = parser.parse_args()
-    return replay(args.capture_report, args.capture_report_sha256, args.output)
+    return replay(
+        args.capture_report,
+        args.capture_report_sha256,
+        args.output,
+        sqlite_library=args.sqlite_library,
+        sqlite_library_sha256=args.sqlite_library_sha256,
+        sqlite_consumer=args.sqlite_consumer,
+        sqlite_consumer_sha256=args.sqlite_consumer_sha256,
+    )
 
 
 if __name__ == "__main__":
