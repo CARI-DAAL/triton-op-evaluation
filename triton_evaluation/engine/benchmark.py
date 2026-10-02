@@ -336,13 +336,15 @@ def parse_operator_latency(
                 break
 
     if kernel_details_file is None or not os.path.exists(kernel_details_file):
-        cleanup_profile_path(profile_path)
+        if not keep_res:
+            cleanup_profile_path(profile_path)
         return None, None
 
     try:
         df = pd.read_csv(kernel_details_file)
     except Exception:
-        cleanup_profile_path(profile_path)
+        if not keep_res:
+            cleanup_profile_path(profile_path)
         return None, None
 
     # 按 Name groupby，统计每个 kernel 在 active 阶段的平均耗时
