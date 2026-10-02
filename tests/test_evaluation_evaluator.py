@@ -486,7 +486,7 @@ def test_build_execution_environment_reads_optional_versions_in_process():
 
     assert env.torch_version == expected("torch")
     assert env.torch_npu_version == expected("torch-npu")
-    assert env.triton_version == expected("triton")
+    assert env.triton_version == (expected("triton") or expected("triton_ascend"))
 
 
 def test_execution_environment_never_carries_host_or_card_identity():
@@ -536,7 +536,9 @@ def test_evaluator_outer_kill_fires_after_the_engine_grace(tmp_path, monkeypatch
 
     monkeypatch.setattr(verify_mod, "run_script", fake_run_script)
     monkeypatch.setattr(
-        verify_mod, "read_json", lambda path, **_kwargs: load("verify-correct.json"),
+        verify_mod,
+        "read_json",
+        lambda path, **_kwargs: load("verify-correct.json"),
     )
 
     evaluator = verify_mod.VerifyEvaluator("unused")
