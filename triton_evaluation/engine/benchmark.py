@@ -22,6 +22,7 @@ import shutil
 import sys
 import time
 import traceback
+from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Any
 from dataclasses import dataclass, field, replace
 
@@ -80,9 +81,19 @@ class BenchmarkConfig:
     max_retries: int = 3          # 采集失败时的最大重试次数
     measurement_method: str = MEASUREMENT_METHOD_DEFAULT  # event | profiler
     cv_threshold: float = CV_THRESHOLD_DEFAULT  # event 时延稳定性门限（变异系数）
+    # 1-based original case indices to benchmark; None means the full task.
+    case_indices: Optional[List[int]] = None
     # Populated only from an operator-pinned cache, never public request fields.
     reference_latencies_ms: object = None
     reference_measure_eight: bool = False
+    # {case_idx: eight historical samples} from the pinned cache manifests.
+    reference_cache_samples: object = None
+    # Honest label for the sample evidence served with reference_latencies_ms:
+    # cached_manifest (same-deployment cache hit) or historical_validated
+    # (owner-approved cross-runtime timing-reuse policy).
+    reference_evidence_source: Optional[str] = None
+    # Policy digest proving the historical_validated authorization.
+    reference_evidence_proof: Optional[str] = None
     reference_cache_trace: object = None
 
 
@@ -159,6 +170,13 @@ class PerformanceResult:
     avg_latency_ms: float
     peak_memory_mb: float
     operators: Dict[str, float]
+    # Reference-side evidence only: the eight per-measurement latencies behind
+    # avg_latency_ms, their source (fresh_measurements | cached_manifest |
+    # historical_validated) and, for historical reuse, the policy digest that
+    # authorized it. None when no sample evidence exists (single scalar).
+    latency_samples_ms: Optional[List[float]] = None
+    latency_samples_source: Optional[str] = None
+    latency_samples_proof_sha256: Optional[str] = None
 
 
 @dataclass
@@ -199,6 +217,10 @@ class BenchmarkResult:
     passed_cases: int = 0
     failed_cases: int = 0
     max_retries: int = 3
+    # 1-based original case identities actually benchmarked; None means the
+    # full contiguous task (legacy shape). With a selection the identities are
+    # sparse but never reindexed.
+    case_indices: Optional[List[int]] = None
     nan_indices: List[int] = field(default_factory=list)
     inf_indices: List[int] = field(default_factory=list)
     zero_indices: List[int] = field(default_factory=list)
@@ -538,10 +560,19 @@ def _measure_framework(
     config: BenchmarkConfig,
     device: Any,
     case_idx: int,
-) -> Tuple[Dict[str, float], Optional[float], float]:
-    """测量 framework 端时延 / 显存 / 算子分项；skip_framework 时直接返回参考值。"""
+) -> Tuple[Dict[str, float], Optional[float], float, Optional[Tuple[List[float], str, Optional[str]]]]:
+    """测量 framework 端时延 / 显存 / 算子分项；返回值末位为参考样本证据。
+
+    样本证据是 (八个时延样本, 来源标签, 授权策略摘要)；无样本证据（单次测量或
+    预设参考值）时为 None。
+    """
     if config.reference_latencies_ms is not None:
-        return {}, config.reference_latencies_ms[case_idx], 0.0
+        samples = None
+        if config.reference_cache_samples is not None:
+            samples = config.reference_cache_samples.get(case_idx)
+        source = config.reference_evidence_source or "cached_manifest"
+        evidence = (samples, source, config.reference_evidence_proof) if samples else None
+        return {}, config.reference_latencies_ms[case_idx], 0.0, evidence
     if config.reference_measure_eight:
         live = replace(config, reference_measure_eight=False)
         measurements = [_measure_framework(framework_model, inputs, live, device, case_idx)
@@ -553,10 +584,11 @@ def _measure_framework(
         for measurement in measurements:
             for name, latency in measurement[0].items():
                 operators[name] = operators.get(name, 0.0) + latency / 8
-        return operators, _median(latencies), max(measurement[2] for measurement in measurements)
+        return (operators, _median(latencies), max(measurement[2] for measurement in measurements),
+                (latencies, "fresh_measurements", None))
     if config.skip_framework:
         logger.info("    跳过 Framework 测试，使用参考延迟: %.4f ms", config.framework_latency_ms)
-        return {}, config.framework_latency_ms, 0.0
+        return {}, config.framework_latency_ms, 0.0, None
 
     inputs_framework = _move_inputs_to_device(inputs, device)
     logger.info("    测试 Framework (warmup=%d, active=%d)...", config.warmup, config.repeats)
@@ -574,7 +606,7 @@ def _measure_framework(
         clear_l2_cache=config.clear_l2_cache,
         keep_res=config.keep_res,
     )
-    return operators or {}, latency_ms, peak_memory
+    return operators or {}, latency_ms, peak_memory, None
 
 
 def _measure_impl(
@@ -613,13 +645,18 @@ def _compute_speedup(framework_latency_ms: float, impl_latency_ms: float) -> flo
 def _build_perf_pair(
     framework: Measurement,
     impl: Measurement,
+    reference_evidence: Optional[Tuple[List[float], str, Optional[str]]] = None,
 ) -> Tuple[PerformanceResult, PerformanceResult]:
     """把 framework / impl 的三元测量结果打包成两份 PerformanceResult。"""
+    samples, source, proof = reference_evidence if reference_evidence else (None, None, None)
     return (
         PerformanceResult(
             avg_latency_ms=round(framework.latency_ms, 4),
             peak_memory_mb=round(framework.peak_memory, 2),
             operators=framework.operators,
+            latency_samples_ms=samples,
+            latency_samples_source=source,
+            latency_samples_proof_sha256=proof,
         ),
         PerformanceResult(
             avg_latency_ms=round(impl.latency_ms, 4),
@@ -650,7 +687,7 @@ def run_single_benchmark(
     )
     inputs_impl = _move_inputs_to_device(candidate_inputs, device)
 
-    framework_operators, framework_latency_ms, framework_peak_memory = _measure_framework(
+    framework_operators, framework_latency_ms, framework_peak_memory, reference_evidence = _measure_framework(
         models.framework, inputs, config, device, case_idx,
     )
     impl_operators, impl_latency_ms, impl_peak_memory = _measure_impl(
@@ -666,6 +703,7 @@ def run_single_benchmark(
     fw_perf, impl_perf = _build_perf_pair(
         Measurement(framework_operators, framework_latency_ms, framework_peak_memory),
         Measurement(impl_operators, impl_latency_ms, impl_peak_memory),
+        reference_evidence,
     )
     return fw_perf, impl_perf, round(speedup, 4)
 
@@ -881,48 +919,62 @@ def _run_shape_case(config, model_spec: BenchmarkModelSpec,
     )
 
 
-def _configure_reference_cache(config, model_spec, input_groups, device):
-    """Measure a real reference sentinel before candidate timing, then choose denominators.
+def _resolve_selected_indices(case_indices, total_cases):
+    """把 1-based 选择解析成有序去重列表；None 表示全部用例。"""
+    if case_indices is None:
+        return list(range(1, total_cases + 1))
+    indices = sorted(set(int(index) for index in case_indices))
+    if not indices:
+        raise RuntimeError("performance case selection is empty")
+    if indices[0] < 1 or indices[-1] > total_cases:
+        raise RuntimeError(
+            f"performance case selection out of range 1..{total_cases}")
+    return indices
 
-    Drift invalidation is monotone for this card and deployment generation. Missing
-    entries execute the complete reference; they are never called cache hits.
+
+def _try_validated_timing_reuse(config, model_spec, input_groups, case_indices, device):
+    """Apply the owner-pinned historical timing-reuse policy when eligible.
+
+    Timing evidence only: an exact per-case binding match (same reference,
+    inputs, case, physical device and validated 8x warmup/repeats profiler
+    contract) serves the REAL old eight samples and their median, labeled
+    historical_validated with the policy digest as proof. The existing
+    sentinel contract is retained: a fresh eight-sample measurement of the
+    first selected case is compared with the historical median, and any drift
+    beyond 3% (monotone for the source generation and card) forces the
+    original fresh measurement path. Any miss leaves the engine on its
+    original execution path.
     """
-    from pathlib import Path
-    from triton_evaluation.reference_cache import (
-        ReferenceCache, ReferenceCacheMiss, official_source_metadata,
-        canonical_bytes, sha256,
-    )
-    config.reference_latencies_ms = None
-    config.reference_measure_eight = False
-    config.reference_cache_trace = None
-    cache = ReferenceCache.from_environment()
-    if cache is None:
-        return
-    source = Path(config.verify_dir, f"{config.op_name}_torch.py").read_text(encoding="utf-8")
-    if official_source_metadata(source) is None:
-        return
     if config.skip_framework:
-        raise RuntimeError("reference cache cannot be combined with an unbound skip-framework value")
-    cache.check_measurement(config)
+        return False
+    from pathlib import Path
+
+    from triton_evaluation.reference_timing_reuse import (
+        current_device_id,
+        load_validated_timing_reuse,
+    )
+    reuse = load_validated_timing_reuse()
+    if reuse is None:
+        return False
+    device_id = current_device_id()
     policy = os.environ.get("TRITON_EVAL_REFERENCE_DEVICE_POLICY", "cpu-first")
-    trace = {"deployment_sha256": cache.deployment.digest, "device_id": cache.device_id,
-             "status": "miss", "manifests": [], "reference_memory_measured": False}
-    manifests = []
-    for case_idx, inputs in enumerate(input_groups, start=1):
-        try:
-            manifests.append(cache.load_case(source, case_idx, inputs,
-                                            reference_device_policy=policy))
-        except ReferenceCacheMiss:
-            # Preserve complete execution when an audited task/card pair is absent.
-            config.reference_measure_eight = True
-            config.reference_cache_trace = trace
-            return
-    if not manifests:
-        raise RuntimeError("reference cache cannot benchmark an empty task")
-    trace["manifests"] = [sha256(canonical_bytes(manifest.model_dump(mode="json")))
-                          for manifest in manifests]
-    # First case is the frozen sentinel. It runs on EVERY evaluation, including a
-    # card already invalidated earlier in this generation.
+    source = Path(config.verify_dir, f"{config.op_name}_torch.py").read_text(encoding="utf-8")
+    cache = reuse.source_cache_for(device_id)
+    manifests = reuse.reuse_timings(
+        config=config,
+        reference_source=source,
+        reference_device_policy=policy,
+        device_id=device_id,
+        case_indices=list(case_indices),
+        input_groups=list(input_groups),
+    )
+    if manifests is None:
+        return False
+    from triton_evaluation.reference_cache import canonical_bytes, sha256
+    first_idx = list(case_indices)[0]
+    cached_ms = manifests[first_idx].reference_latency_median_ms
+    # Fresh sentinel: the same live eight-sample protocol the same-generation
+    # cache uses, recorded separately from the historical per-case samples.
     import torch
     torch.manual_seed(0)
     torch.npu.manual_seed(0)
@@ -932,13 +984,139 @@ def _configure_reference_cache(config, model_spec, input_groups, device):
     reference_model = model_spec.framework_cls(*init_params).to(device)
     try:
         live = replace(config, reference_latencies_ms=None, reference_measure_eight=True)
-        _, measured_ms, _ = _measure_framework(reference_model, input_groups[0], live, device, 1)
+        _, measured_ms, _, _ = _measure_framework(
+            reference_model, input_groups[0], live, device, first_idx
+        )
+    finally:
+        reference_model = None
+        cleanup_npu_memory()
+    remeasure = cache.needs_remeasurement(cached_ms, measured_ms)
+    manifest_shas = [
+        sha256(canonical_bytes(manifest.model_dump(mode="json")))
+        for manifest in manifests.values()
+    ]
+    if remeasure:
+        # Drift or a prior marker: never claim a historical hit; the caller
+        # keeps this trace and measures every case fresh.
+        config.reference_cache_trace = {
+            "deployment_sha256": reuse.policy.source_deployment_sha256,
+            "device_id": device_id,
+            "status": "timing_reuse_drift",
+            "manifests": manifest_shas,
+            "reference_memory_measured": True,
+            "timing_reuse_policy_sha256": reuse.policy_sha256,
+            "timing_reuse_scope_statement": reuse.policy.scope_statement,
+            "sentinel_case_idx": first_idx,
+            "sentinel_cached_ms": cached_ms,
+            "sentinel_measured_ms": measured_ms,
+            "sentinel_relative_drift": abs(measured_ms / cached_ms - 1.0),
+        }
+        return False
+    config.reference_measure_eight = False
+    config.reference_latencies_ms = {
+        case_idx: manifest.reference_latency_median_ms
+        for case_idx, manifest in manifests.items()
+    }
+    config.reference_cache_samples = {
+        case_idx: list(manifest.latency_samples_ms)
+        for case_idx, manifest in manifests.items()
+    }
+    config.reference_evidence_source = "historical_validated"
+    config.reference_evidence_proof = reuse.policy_sha256
+    config.reference_cache_trace = {
+        "deployment_sha256": reuse.policy.source_deployment_sha256,
+        "device_id": device_id,
+        "status": "timing_reuse",
+        "manifests": manifest_shas,
+        "reference_memory_measured": False,
+        "timing_reuse_policy_sha256": reuse.policy_sha256,
+        "timing_reuse_scope_statement": reuse.policy.scope_statement,
+        "sentinel_case_idx": first_idx,
+        "sentinel_cached_ms": cached_ms,
+        "sentinel_measured_ms": measured_ms,
+        "sentinel_relative_drift": abs(measured_ms / cached_ms - 1.0),
+    }
+    return True
+
+
+def _configure_reference_cache(config, model_spec, input_groups, device, case_indices=None):
+    """Measure a real reference sentinel before candidate timing, then choose denominators.
+
+    Drift invalidation is monotone for this card and deployment generation. Missing
+    entries execute the complete reference; they are never called cache hits.
+    ``input_groups`` are the groups actually selected for this benchmark run and
+    ``case_indices`` their original 1-based identities.
+    """
+    from pathlib import Path
+    from triton_evaluation.reference_cache import (
+        ReferenceCache, ReferenceCacheMiss, official_source_metadata,
+        canonical_bytes, sha256,
+    )
+    config.reference_latencies_ms = None
+    config.reference_measure_eight = False
+    config.reference_cache_samples = None
+    config.reference_evidence_source = None
+    config.reference_evidence_proof = None
+    config.reference_cache_trace = None
+    cache = ReferenceCache.from_environment()
+    if cache is None:
+        # Uncached grade: every reference case is measured eight times unless
+        # the owner-pinned validated timing-reuse policy serves exact matches.
+        config.reference_measure_eight = not config.skip_framework
+        _try_validated_timing_reuse(config, model_spec, input_groups, case_indices, device)
+        return
+    source = Path(config.verify_dir, f"{config.op_name}_torch.py").read_text(encoding="utf-8")
+    if official_source_metadata(source) is None:
+        # Not a pinned official reference: no cached evidence may serve it.
+        config.reference_measure_eight = not config.skip_framework
+        _try_validated_timing_reuse(config, model_spec, input_groups, case_indices, device)
+        return
+    if config.skip_framework:
+        raise RuntimeError("reference cache cannot be combined with an unbound skip-framework value")
+    cache.check_measurement(config)
+    policy = os.environ.get("TRITON_EVAL_REFERENCE_DEVICE_POLICY", "cpu-first")
+    trace = {"deployment_sha256": cache.deployment.digest, "device_id": cache.device_id,
+             "status": "miss", "manifests": [], "reference_memory_measured": False}
+    indices = (list(case_indices) if case_indices is not None
+               else list(range(1, len(input_groups) + 1)))
+    manifests = []
+    for case_idx, inputs in zip(indices, input_groups):
+        try:
+            manifests.append(cache.load_case(source, case_idx, inputs,
+                                            reference_device_policy=policy))
+        except ReferenceCacheMiss:
+            # Preserve complete execution when an audited task/card pair is
+            # absent — unless the validated historical policy covers it.
+            if _try_validated_timing_reuse(
+                config, model_spec, input_groups, case_indices, device
+            ):
+                return
+            config.reference_measure_eight = True
+            if config.reference_cache_trace is None:
+                config.reference_cache_trace = trace
+            return
+    if not manifests:
+        raise RuntimeError("reference cache cannot benchmark an empty task")
+    trace["manifests"] = [sha256(canonical_bytes(manifest.model_dump(mode="json")))
+                          for manifest in manifests]
+    # The first selected case is the frozen sentinel. It runs on EVERY evaluation,
+    # including a card already invalidated earlier in this generation.
+    import torch
+    torch.manual_seed(0)
+    torch.npu.manual_seed(0)
+    init_params = model_spec.get_init_inputs()
+    torch.manual_seed(0)
+    torch.npu.manual_seed(0)
+    reference_model = model_spec.framework_cls(*init_params).to(device)
+    try:
+        live = replace(config, reference_latencies_ms=None, reference_measure_eight=True)
+        _, measured_ms, _, _ = _measure_framework(reference_model, input_groups[0], live, device, indices[0])
     finally:
         reference_model = None
         cleanup_npu_memory()
     cached_ms = manifests[0].reference_latency_median_ms
     remeasure = cache.needs_remeasurement(cached_ms, measured_ms)
-    trace.update(status="remeasured" if remeasure else "hit", sentinel_case_idx=1,
+    trace.update(status="remeasured" if remeasure else "hit", sentinel_case_idx=indices[0],
                  sentinel_cached_ms=cached_ms, sentinel_measured_ms=measured_ms,
                  sentinel_relative_drift=abs(measured_ms / cached_ms - 1.0))
     if remeasure:
@@ -947,6 +1125,11 @@ def _configure_reference_cache(config, model_spec, input_groups, device):
     else:
         config.reference_latencies_ms = {manifest.binding.case_idx: manifest.reference_latency_median_ms
                                         for manifest in manifests}
+        # Return the real historical eight samples as labeled cached evidence;
+        # never fabricate samples around the cached scalar.
+        config.reference_cache_samples = {manifest.binding.case_idx: list(manifest.latency_samples_ms)
+                                          for manifest in manifests}
+        config.reference_evidence_source = "cached_manifest"
     config.reference_cache_trace = trace
 
 
@@ -975,22 +1158,28 @@ def benchmark_implementations(config: BenchmarkConfig) -> BenchmarkResult:
     torch.npu.manual_seed(0)
     input_groups = resolve_inputs(config.op_name, config.verify_dir)
     total_cases = len(input_groups)
+    # Selection preserves original 1-based case identities; it only chooses
+    # which groups this performance run measures.
+    selected_indices = _resolve_selected_indices(config.case_indices, total_cases)
+    selected_groups = [input_groups[index - 1] for index in selected_indices]
+    selected_cases = len(selected_indices)
 
     framework_cls, impl_cls, get_init_inputs = _load_benchmark_modules(config)
     model_spec = BenchmarkModelSpec(framework_cls, impl_cls, get_init_inputs)
-    _configure_reference_cache(config, model_spec, input_groups, device)
+    _configure_reference_cache(config, model_spec, selected_groups, device,
+                               case_indices=selected_indices)
     _write_reference_cache_trace(config)
 
     per_shape_results: List[SingleShapeResult] = [
         _run_shape_case(
             config, model_spec,
-            inputs, device, CaseContext(case_idx=case_idx, total_cases=total_cases),
+            inputs, device, CaseContext(case_idx=case_idx, total_cases=selected_cases),
         )
-        for case_idx, inputs in enumerate(input_groups, start=1)
+        for case_idx, inputs in zip(selected_indices, selected_groups)
     ]
 
     passed_cases = sum(1 for r in per_shape_results if r.status == "pass")
-    failed_cases = total_cases - passed_cases
+    failed_cases = selected_cases - passed_cases
 
     overall = compute_overall(per_shape_results)
 
@@ -1003,9 +1192,10 @@ def benchmark_implementations(config: BenchmarkConfig) -> BenchmarkResult:
         framework=overall.framework,
         implementation=overall.implementation,
         speedup_vs_torch=overall.speedup_vs_torch,
-        total_cases=total_cases,
+        total_cases=selected_cases,
         passed_cases=passed_cases,
         failed_cases=failed_cases,
+        case_indices=(None if config.case_indices is None else selected_indices),
         nan_indices=overall.nan_indices,
         inf_indices=overall.inf_indices,
         zero_indices=overall.zero_indices,
@@ -1045,6 +1235,7 @@ def result_to_dict(result: BenchmarkResult) -> Dict[str, Any]:
         "repeats": result.repeats,
         "max_retries": result.max_retries,
         "total_cases": result.total_cases,
+        "case_indices": result.case_indices,
         "passed_cases": result.passed_cases,
         "failed_cases": result.failed_cases,
         "nan_indices": result.nan_indices,
@@ -1071,6 +1262,9 @@ def result_to_dict(result: BenchmarkResult) -> Dict[str, Any]:
                 {
                     "avg_latency_ms": r.framework.avg_latency_ms,
                     "peak_memory_mb": r.framework.peak_memory_mb,
+                    "latency_samples_ms": r.framework.latency_samples_ms,
+                    "latency_samples_source": r.framework.latency_samples_source,
+                    "latency_samples_proof_sha256": r.framework.latency_samples_proof_sha256,
                 } if r.framework else None
             ),
             "implementation": (
@@ -1233,6 +1427,9 @@ def _build_argparser():
                         help="时延测量方法（默认 profiler；event 为 torch.npu.Event 逐迭代计时）")
     parser.add_argument("--cv-threshold", type=float, default=CV_THRESHOLD_DEFAULT,
                         help="event 方法的时延稳定性门限：变异系数超过该值判定为不稳定（默认 0.3）")
+    parser.add_argument("--case-indices", default=None,
+                       help="逗号分隔的 1-based 用例序号，只测量这些用例（默认全部）；"
+                            "输出保留原始 case_idx，不重新编号")
     return parser
 
 
@@ -1273,6 +1470,19 @@ def _save_or_print_result(result_dict, output_path):
         logger.info("%s", json.dumps(result_dict, indent=2, ensure_ascii=False))
 
 
+def _parse_case_indices(raw: Optional[str]) -> Optional[List[int]]:
+    """解析 --case-indices（逗号分隔的 1-based 序号）；None 表示全部用例。"""
+    if raw is None:
+        return None
+    parts = [part.strip() for part in raw.split(",")]
+    if not parts or any(part == "" for part in parts):
+        raise ValueError("--case-indices must be a comma-separated list of positive integers")
+    indices = [int(part) for part in parts]
+    if any(index < 1 for index in indices):
+        raise ValueError("--case-indices must be positive 1-based case numbers")
+    return indices
+
+
 def _build_config(args, verify_dir):
     return BenchmarkConfig(
         op_name=args.op_name,
@@ -1287,6 +1497,7 @@ def _build_config(args, verify_dir):
         max_retries=args.max_retries,
         measurement_method=args.measurement_method,
         cv_threshold=args.cv_threshold,
+        case_indices=_parse_case_indices(args.case_indices),
     )
 
 
@@ -1307,9 +1518,8 @@ def main():
     except VerifyGateError as e:
         sys.exit(e.exit_code)
 
-    config = _build_config(args, verify_dir)
-
     try:
+        config = _build_config(args, verify_dir)
         result = benchmark_implementations(config)
         result_dict = result_to_dict(result)
         _emit_summary(result_dict)

@@ -49,13 +49,24 @@ class _CaseReference(_PrivateModel):
 class _PerformanceCache(_PrivateModel):
     deployment_sha256: Annotated[str, Field(pattern=r"^[0-9a-f]{64}$")]
     device_id: Annotated[str, Field(pattern=r"^[0-9]+$")]
-    status: Literal["hit", "miss", "remeasured"]
+    status: Literal[
+        "hit", "miss", "remeasured", "timing_reuse", "timing_reuse_drift"
+    ]
     manifests: list[Annotated[str, Field(pattern=r"^[0-9a-f]{64}$")]]
     reference_memory_measured: bool
     sentinel_case_idx: Annotated[int, Field(ge=1)] | None = None
     sentinel_cached_ms: Annotated[float, Field(gt=0, allow_inf_nan=False)] | None = None
     sentinel_measured_ms: Annotated[float, Field(gt=0, allow_inf_nan=False)] | None = None
     sentinel_relative_drift: Annotated[float, Field(ge=0, allow_inf_nan=False)] | None = None
+    # Engine-emitted timing-reuse provenance (engine benchmark.py
+    # _try_validated_timing_reuse): the policy digest that proves the
+    # historical evidence and its owner scope statement. Optional exactly
+    # like the sentinel fields: absent values stay unknown, and every
+    # unknown key remains rejected by extra="forbid".
+    timing_reuse_policy_sha256: (
+        Annotated[str, Field(pattern=r"^[0-9a-f]{64}$")] | None
+    ) = None
+    timing_reuse_scope_statement: Annotated[str, Field(min_length=1)] | None = None
 
 
 class _ReferenceTrace(_PrivateModel):

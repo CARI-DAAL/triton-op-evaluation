@@ -302,3 +302,86 @@ def test_overlay_prepare_cli_seals_without_modifying_anchor(anchored_overlay, tm
     assert base.read_bytes() == original
     with pytest.raises(FileExistsError):
         prepare(output, base, hashlib.sha256(original).hexdigest(), configured.environment)
+
+
+def test_real_bwrap_child_reads_dev_subtree_ro_bind(tmp_path, monkeypatch):
+    """A /dev-subtree ro-bind must stay readable under the sandbox --dev mount.
+
+    Reference-cache artifacts are bound under /dev/shm; wrap() emits
+    ``--dev /dev`` as a namespace foundation, and bwrap applies argv in order,
+    so emitting it after those binds shadows them inside the child (the NB7
+    sealed-index FileNotFoundError). This is the in-child read the previous
+    argv-membership assertions could not see.
+    """
+    import os
+    import uuid
+
+    if not shutil.which("bwrap"):
+        pytest.skip("real bwrap binary is absent")
+    bootstrap = [
+        "bwrap",
+        "--unshare-all",
+        "--ro-bind",
+        "/usr",
+        "/usr",
+        "--proc",
+        "/proc",
+        "--dev",
+        "/dev",
+    ]
+    for alias in ("/bin", "/sbin", "/lib", "/lib64"):
+        path = Path(alias)
+        if path.is_symlink():
+            bootstrap += ["--symlink", str(path.readlink()), alias]
+    available = subprocess.run([*bootstrap, "--", "/usr/bin/true"], capture_output=True)
+    if available.returncode and any(
+        message in available.stderr
+        for message in (
+            b"Operation not permitted",
+            b"No permissions",
+            b"Creating new namespace failed",
+        )
+    ):
+        pytest.skip("this host denies real namespace creation")
+    assert available.returncode == 0, available.stderr.decode(errors="replace")
+    # Disposable per-run sentinel state only; never the live cache namespaces.
+    sentinel_root = Path("/dev/shm") / f"nb7-mount-order-regression-{os.getpid()}-{uuid.uuid4().hex[:8]}"
+    sentinel_root.mkdir(parents=True, exist_ok=False)
+    sentinel = sentinel_root / "sealed.json"
+    payload = b"nb7-mount-order regression sentinel"
+    sentinel.write_bytes(payload)
+    try:
+        mounts = [(path, path) for path in dict.fromkeys(("/usr", sys.base_prefix, sys.prefix))]
+        executable = Path(sys.executable)
+        if executable.is_symlink() and executable.readlink().is_absolute():
+            mounts.append((sys.base_prefix, str(executable.readlink().parent.parent)))
+        mounts.append((str(sentinel), str(sentinel)))
+        original = {
+            "readonly_mounts": mounts,
+            "environment": {"PATH": "/usr/bin:/bin"},
+        }
+        base = tmp_path / "dev-subtree-sandbox.json"
+        base.write_text(json.dumps(original))
+        monkeypatch.setenv(sandbox.CONFIG_ENV, str(base))
+        monkeypatch.setenv(sandbox.DIGEST_ENV, hashlib.sha256(base.read_bytes()).hexdigest())
+        monkeypatch.delenv(sandbox.OVERLAY_CONFIG_ENV, raising=False)
+        monkeypatch.delenv(sandbox.OVERLAY_DIGEST_ENV, raising=False)
+        work = tmp_path / "attempt"
+        work.mkdir()
+        probe = work / "probe.py"
+        probe.write_text(
+            "import hashlib,sys\n"
+            "from pathlib import Path\n"
+            f"p=Path({str(sentinel)!r})\n"
+            "try:\n"
+            "    raw=p.read_bytes()\n"
+            "except FileNotFoundError:\n"
+            "    print('SENTINEL_MISSING',file=sys.stderr);sys.exit(3)\n"
+            "print('SENTINEL_OK',len(raw),hashlib.sha256(raw).hexdigest())\n"
+        )
+        result = run_script([sys.executable, str(probe)], work, None, budget_seconds=10)
+        assert result.exit_code == 0, result.stderr
+        digest = hashlib.sha256(payload).hexdigest()
+        assert result.stdout.strip() == f"SENTINEL_OK {len(payload)} {digest}"
+    finally:
+        shutil.rmtree(sentinel_root, ignore_errors=True)

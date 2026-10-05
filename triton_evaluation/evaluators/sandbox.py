@@ -33,6 +33,12 @@ from ..reference_cache import (
     CacheIndex,
 )
 from ..reference_cache import DIGEST_ENV as CACHE_DIGEST_ENV
+from ..reference_timing_reuse import POLICY_ENV as TIMING_REUSE_POLICY_ENV
+from ..reference_timing_reuse import POLICY_SHA_ENV as TIMING_REUSE_SHA_ENV
+from ..reference_timing_reuse import (
+    POLICY_ENV_KEYS as TIMING_REUSE_ENV_KEYS,
+)
+from ..reference_timing_reuse import TimingReusePolicy as ValidatedTimingReusePolicy
 
 CONFIG_ENV = "TRITON_EVAL_ENGINE_SANDBOX_CONFIG"
 DIGEST_ENV = "TRITON_EVAL_ENGINE_SANDBOX_SHA256"
@@ -61,6 +67,7 @@ RUNTIME_ENV = frozenset(
         "OPENBLAS_NUM_THREADS",
         *CACHE_ENV_KEYS,
         *PROFILER_RUNTIME_ENV_KEYS,
+        *TIMING_REUSE_ENV_KEYS,
         "TRITON_EVAL_REFERENCE_DEVICE_POLICY",
     }
 )
@@ -74,6 +81,9 @@ class EngineSandbox(BaseModel):
     shared_npu_devices: list[Path] = Field(default_factory=list)
     executable: Path = Path("/usr/bin/bwrap")
     reference_cache_state_dir: Path | None = None
+    # Dedicated writable state mount for the validated timing-reuse sentinel's
+    # monotone drift markers; required exactly when the policy pair is set.
+    timing_reuse_state_dir: Path | None = None
 
     @model_validator(mode="after")
     def check_manifest(self):
@@ -121,6 +131,15 @@ class EngineSandbox(BaseModel):
         cache_keys = self.environment.keys() & CACHE_ENV_KEYS
         if cache_keys and cache_keys != CACHE_ENV_KEYS:
             raise ValueError("sandbox requires every reference cache deployment variable")
+        reuse_keys = self.environment.keys() & TIMING_REUSE_ENV_KEYS
+        if reuse_keys and reuse_keys != TIMING_REUSE_ENV_KEYS:
+            raise ValueError("sandbox requires both validated timing-reuse variables")
+        if reuse_keys and self.timing_reuse_state_dir is None:
+            raise ValueError(
+                "sandbox timing reuse needs an explicit writable state mount"
+            )
+        if not reuse_keys and self.timing_reuse_state_dir is not None:
+            raise ValueError("timing-reuse state mount requires the policy pair")
         if cache_keys:
             if self.reference_cache_state_dir is None:
                 raise ValueError(
@@ -165,6 +184,17 @@ class EngineSandbox(BaseModel):
             "--tmpfs",
             "/run",
         ]
+        # /proc and /dev are namespace foundations, not late mounts: bwrap
+        # applies argv in order, so a /dev emitted after a /dev-subtree bind
+        # (reference cache under /dev/shm) shadows that bind inside the child.
+        args += ["--proc", "/proc", "--dev", "/dev"]
+        if device_id is not None:
+            if device_id < 0:
+                raise ValueError("NPU device id must be nonnegative")
+            for device in [*self.shared_npu_devices, Path(f"/dev/davinci{device_id}")]:
+                if not device.exists():
+                    raise FileNotFoundError(device)
+                args += ["--dev-bind", str(device), str(device)]
         for source, destination in self.readonly_mounts:
             source = source.resolve(strict=True)
             if source == work or source in work.parents or work in source.parents:
@@ -177,19 +207,16 @@ class EngineSandbox(BaseModel):
             if state == work or state in work.parents or work in state.parents:
                 raise ValueError("cache state mount must not overlap attempt state")
             args += ["--bind", str(state), str(self.reference_cache_state_dir)]
+        if self.timing_reuse_state_dir is not None:
+            reuse_state = self.timing_reuse_state_dir.resolve(strict=True)
+            if reuse_state == work or reuse_state in work.parents or work in reuse_state.parents:
+                raise ValueError("timing-reuse state mount must not overlap attempt state")
+            args += ["--bind", str(reuse_state), str(self.timing_reuse_state_dir)]
         # Match host runtime aliases without exposing their containing directories.
         for alias in ("/bin", "/sbin", "/lib", "/lib64"):
             path = Path(alias)
             if path.is_symlink():
                 args += ["--symlink", str(path.readlink()), alias]
-        args += ["--proc", "/proc", "--dev", "/dev"]
-        if device_id is not None:
-            if device_id < 0:
-                raise ValueError("NPU device id must be nonnegative")
-            for device in [*self.shared_npu_devices, Path(f"/dev/davinci{device_id}")]:
-                if not device.exists():
-                    raise FileNotFoundError(device)
-                args += ["--dev-bind", str(device), str(device)]
         home, cache = work / ".engine-home", work / ".engine-cache"
         home.mkdir(exist_ok=True)
         cache.mkdir(exist_ok=True)
@@ -224,10 +251,10 @@ class EngineRuntimeOverlay(BaseModel):
 
     @model_validator(mode="after")
     def check_environment(self):
-        allowed = CACHE_ENV_KEYS | PROFILER_RUNTIME_ENV_KEYS
+        allowed = CACHE_ENV_KEYS | PROFILER_RUNTIME_ENV_KEYS | TIMING_REUSE_ENV_KEYS
         if self.environment.keys() - allowed:
             raise ValueError("runtime overlay permits only profiler and reference-cache variables")
-        for group in (CACHE_ENV_KEYS, PROFILER_RUNTIME_ENV_KEYS):
+        for group in (CACHE_ENV_KEYS, PROFILER_RUNTIME_ENV_KEYS, TIMING_REUSE_ENV_KEYS):
             present = self.environment.keys() & group
             if present and present != group:
                 raise ValueError("runtime overlay requires complete profiler/cache variable groups")
@@ -299,6 +326,64 @@ def apply_runtime_overlay(
             runtime.msprof_path,
         ]
     state = sandbox.reference_cache_state_dir
+    reuse_state: Path | None = None
+    if overlay.environment.keys() & TIMING_REUSE_ENV_KEYS:
+        # The explicit policy pair travels through --clearenv only via this
+        # pinned overlay: verify the artifact bytes, bind exactly what the
+        # policy declares, and never inherit anything else from the parent.
+        policy_path = Path(environment[TIMING_REUSE_POLICY_ENV])
+        for path in (policy_path,):
+            if not path.is_absolute() or ".." in path.parts or path.resolve(strict=True) != path:
+                raise ValueError("timing-reuse policy path must be absolute without aliases")
+        policy_bytes = policy_path.read_bytes()
+        if hashlib.sha256(policy_bytes).hexdigest() != environment[TIMING_REUSE_SHA_ENV]:
+            raise ValueError("timing-reuse policy differs from its explicit SHA pin")
+        policy = ValidatedTimingReusePolicy.model_validate_json(policy_bytes)
+        reuse_state = Path(policy.source_state_dir)
+        declared = {
+            "cache_dir": Path(policy.source_cache_dir),
+            "index_path": Path(policy.source_index_path),
+            "state_dir": reuse_state,
+        }
+        for name, path in declared.items():
+            if not path.is_absolute() or ".." in path.parts or path.resolve(strict=True) != path:
+                raise ValueError(f"timing-reuse policy {name} must be absolute without aliases")
+        index_raw = declared["index_path"].read_bytes()
+        if hashlib.sha256(index_raw).hexdigest() != policy.source_index_sha256:
+            raise ValueError("timing-reuse source index differs from the policy declaration")
+        index = CacheIndex.model_validate_json(index_raw)
+        if index.deployment.digest != policy.source_deployment_sha256:
+            raise ValueError("timing-reuse source index deployment differs from the policy")
+        if not declared["cache_dir"].is_dir():
+            raise ValueError("timing-reuse cache root must be a dedicated artifact directory")
+        for path in (declared["cache_dir"] / "cases", declared["cache_dir"] / "blobs"):
+            if path.exists():
+                if not path.is_dir() or path.resolve(strict=True) != path:
+                    raise ValueError("timing-reuse cache namespaces must not be aliases")
+                required.append(path)
+        required.append(declared["index_path"])
+        required.append(policy_path)
+        if not reuse_state.is_dir() or any(
+            path.is_symlink()
+            or (
+                path.is_dir()
+                and (path.parent != reuse_state or not re.fullmatch(r"[0-9a-f]{64}", path.name))
+            )
+            or (
+                path.is_file()
+                and (
+                    path.parent.parent != reuse_state
+                    or not re.fullmatch(r"card-[0-9]+\.invalid\.json", path.name)
+                )
+            )
+            for path in reuse_state.rglob("*")
+        ):
+            raise ValueError("runtime overlay requires a dedicated timing-reuse state directory")
+        for config, digest in index.deployment.runtime_files.items():
+            path = Path(config)
+            if not path.is_file() or hashlib.sha256(path.read_bytes()).hexdigest() != digest:
+                raise ValueError("timing-reuse cache dependency differs from its pin")
+            required.append(path)
     if overlay.environment.keys() & CACHE_ENV_KEYS:
         cache_root = Path(environment[CACHE_ENV])
         index_path = Path(environment[BINDING_ENV])
@@ -380,6 +465,7 @@ def apply_runtime_overlay(
         shared_npu_devices=sandbox.shared_npu_devices,
         executable=sandbox.executable,
         reference_cache_state_dir=state,
+        timing_reuse_state_dir=reuse_state,
     )
     return derived, {
         "service_package_path": str(package),
@@ -391,6 +477,12 @@ def apply_runtime_overlay(
         "effective_environment_keys": sorted(environment),
         "readonly_mounts": [[str(a), str(b)] for a, b in derived.readonly_mounts],
         "reference_cache_state_dir": str(state) if state is not None else None,
+        "timing_reuse_state_dir": str(reuse_state) if reuse_state is not None else None,
+        "timing_reuse_policy_sha256": (
+            environment[TIMING_REUSE_SHA_ENV]
+            if TIMING_REUSE_SHA_ENV in environment
+            else None
+        ),
         "cann_runtime": cann_evidence,
     }
 
@@ -418,7 +510,7 @@ def isolate_command(
     if overlay_path is None and overlay_digest is None:
         if any(
             key in os.environ and sandbox.environment.get(key) != os.environ[key]
-            for key in CACHE_ENV_KEYS | PROFILER_RUNTIME_ENV_KEYS
+            for key in CACHE_ENV_KEYS | PROFILER_RUNTIME_ENV_KEYS | TIMING_REUSE_ENV_KEYS
         ):
             raise ValueError("declared runtime needs a pinned engine overlay before --clearenv")
         return sandbox.wrap(command, Path(cwd), device_id)
@@ -429,7 +521,7 @@ def isolate_command(
         key in os.environ
         and key not in overlay.environment
         and sandbox.environment.get(key) != os.environ[key]
-        for key in CACHE_ENV_KEYS | PROFILER_RUNTIME_ENV_KEYS
+        for key in CACHE_ENV_KEYS | PROFILER_RUNTIME_ENV_KEYS | TIMING_REUSE_ENV_KEYS
     ):
         raise ValueError("runtime overlay must include every declared worker runtime group")
     sandbox, evidence = apply_runtime_overlay(sandbox, overlay)

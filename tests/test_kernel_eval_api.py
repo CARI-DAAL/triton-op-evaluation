@@ -215,7 +215,9 @@ async def test_native_catalog_admission_polling_and_owned_replay(native_app, rou
     assert canonical["purpose"] == "trial"
     assert canonical["checks"] == checks
     if route == "benchmark":
-        assert canonical["performance"] == {"warmup": 5, "repeats": 20, "method": "profiler"}
+        assert canonical["performance"] == {
+            "warmup": 5, "repeats": 20, "method": "profiler", "case_indices": None,
+        }
     assert first.status_code == replay.status_code == 200
     assert first.json() == replay.json()
     assert first.json()["eval_budget"] == "1/18"
