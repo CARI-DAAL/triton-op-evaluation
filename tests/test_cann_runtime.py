@@ -168,8 +168,8 @@ def test_derive_removes_only_version_boundary_keeps_non_cann_driver_and_language
     target = prepare(canonical_cann, tmp_path / "runtime")
     model = runtime.read_runtime(str(target), runtime.sha(target), check_resolution=False)
     root = canonical_cann[0]
-    old = root.parent / "cann-8.5.2"
-    outside = tmp_path / "outside/cann-8.5.2/keep"
+    old = root.parent / "cann-0.0.old"
+    outside = tmp_path / "outside/cann-0.0.old/keep"
     similar = root.parent / "cannulated/keep"
     original = {
         "PATH": f"{old}/bin:{outside}:{similar}:/usr/bin",
@@ -178,7 +178,7 @@ def test_derive_removes_only_version_boundary_keeps_non_cann_driver_and_language
         "LANG": "zh_CN",
     }
     actual = runtime.derive_cann_environment(model, original)
-    assert "8.5.2/bin" not in actual["PATH"]
+    assert "cann-0.0.old/bin" not in actual["PATH"]
     assert str(outside) in actual["PATH"] and str(similar) in actual["PATH"]
     assert "/trusted/noncann" in actual["PYTHONPATH"]
     assert actual["LD_LIBRARY_PATH"].split(":").count(str(root.parent / "driver/lib64")) == 1
@@ -226,7 +226,7 @@ def test_real_bwrap_old_cann_red_then_derived_child_loader_and_conditions_green(
     executable = Path(sys.executable)
     if executable.is_symlink() and executable.readlink().is_absolute():
         mounts.append((sys.base_prefix, str(executable.readlink().parent.parent)))
-    old = root.parent / "cann-8.5.2"
+    old = root.parent / "cann-0.0.old"
     original_env = {
         "PATH": f"{old}/bin:{old}/tools/profiler/bin:/usr/bin:/bin",
         "LD_LIBRARY_PATH": f"{old}/lib64:{root.parent}/driver/lib64",
@@ -287,7 +287,7 @@ def test_real_bwrap_old_cann_red_then_derived_child_loader_and_conditions_green(
     assert actual["cann_set_env_sha256"] == runtime.sha(canonical_cann[1])
     assert actual["cann_environment_sha256"] == runtime.sha(model.cann_environment_path)
     assert actual["effective_environment"]["ASCEND_HOME_PATH"] == str(root)
-    assert "8.5.2" not in json.dumps(actual["effective_environment"])
+    assert "cann-0.0.old" not in json.dumps(actual["effective_environment"])
     assert actual["effective_environment"]["PYTHONPATH"].split(":")[0] == str(
         Path(runtime.__file__).parent.parent
     )
@@ -386,7 +386,7 @@ def test_worker_rejects_changed_cann_conditions_before_measurement(
     elif fault == "required-directory":
         shutil.rmtree(canonical_cann[0] / "toolkit")
     else:
-        monkeypatch.setenv("ASCEND_HOME_PATH", str(canonical_cann[0].parent / "cann-8.5.2"))
+        monkeypatch.setenv("ASCEND_HOME_PATH", str(canonical_cann[0].parent / "cann-0.0.old"))
     with pytest.raises(ValueError):
         runtime.load_runtime()
 

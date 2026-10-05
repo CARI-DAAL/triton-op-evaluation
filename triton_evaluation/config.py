@@ -107,10 +107,13 @@ class Settings(BaseSettings):
     cann_fingerprint: str = Field(default="", pattern=r"^[A-Za-z0-9._:-]{0,128}$")
 
     # --- deployment-attested worker environment ---
-    worker_hardware_model: str = Field(default="Ascend910B3", min_length=1)
-    worker_driver_version: str = Field(default="24.1.0", min_length=1)
-    worker_runtime_version: str = Field(default="8.0.RC3", min_length=1)
-    worker_toolchain_version: str = Field(default="CANN 8.0.RC3", min_length=1)
+    worker_hardware_model: str = Field(default="Ascend910", min_length=1)
+    worker_driver_version: str = Field(default="26.0.rc1", min_length=1)
+    worker_runtime_version: str = Field(default="CANN-9.1.1", min_length=1)
+    worker_toolchain_version: str = Field(
+        default="CANN 9.1.1 / python 3.10 / torch 2.9.0 / torch_npu 2.9.0.post8 / triton_ascend 3.2.0",
+        min_length=1,
+    )
 
     # --- evaluator provenance pinned at admission ---
     evaluator_build: str = Field(default="git:" + "0" * 40, pattern=_EVALUATOR_BUILD_PATTERN)
