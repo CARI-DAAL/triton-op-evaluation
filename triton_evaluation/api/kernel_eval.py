@@ -7,6 +7,7 @@ instance.submit/get retain readiness, admission quotas and visibility checks.
 
 import asyncio
 import hashlib
+import json
 import logging
 import secrets
 import time
@@ -24,7 +25,7 @@ from ..instance import InstanceNotReadyError, QueueUnavailableError
 from ..kernel_eval_budget import EvalBudgetRegistry
 from ..security import Caller
 from . import errors
-from .contract import EvaluationRequest, ProfileParams
+from .contract import EvaluationRequest, ProfileParams, dump_contract
 from .dependencies import get_context
 from .routes import SESSION_ID_RE, TERMINAL_STATES, _validate_idempotency_key
 
@@ -303,7 +304,10 @@ async def _evaluate(instance, evaluation_request, session_id, idempotency, deadl
         if recovered is None:
             raise ToolEvaluationError(f"evaluation {resource.evaluation_id} is not visible")
         resource = recovered
-    return resource.model_dump(mode="json", exclude_none=False)
+    # Serve the JCS-restabilized contract document (as routes.py does): the
+    # raw model_dump normalizes int->float and reorders embedded keys, which
+    # would leak into the rendered observation text.
+    return json.loads(dump_contract(resource))
 
 
 @router.get("/health")
