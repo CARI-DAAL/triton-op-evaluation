@@ -428,6 +428,29 @@ class ReferenceCache:
     def binding(
         self, reference_source: str, case_idx: int, inputs, *, reference_device_policy: str
     ) -> CaseBinding:
+        return self.binding_for_card(
+            reference_source,
+            case_idx,
+            inputs,
+            reference_device_policy=reference_device_policy,
+            device_id=self.device_id,
+        )
+
+    def binding_for_card(
+        self,
+        reference_source: str,
+        case_idx: int,
+        inputs,
+        *,
+        reference_device_policy: str,
+        device_id: str,
+    ) -> CaseBinding:
+        """The CaseBinding exactly as it was (or would be) sealed on one card.
+
+        device_id is the only card-dependent binding field: input_sha256
+        hashes the input tensors' device TYPE ("npu"/"cpu"), never the card
+        index, and every other field pins the task, case and seed zero.
+        """
         metadata = official_source_metadata(reference_source)
         if metadata is None:
             raise ReferenceCacheError("only official assembled tasks are reference-cache eligible")
@@ -438,7 +461,7 @@ class ReferenceCache:
             adapter_version=metadata[1],
             case_idx=case_idx,
             input_sha256=value_sha256(inputs, input_value=True),
-            device_id=self.device_id,
+            device_id=str(device_id),
             reference_device_policy=reference_device_policy,
         )
 
@@ -487,12 +510,7 @@ class ReferenceCache:
         _atomic_immutable(Path(path), payload)
         return sha256(payload)
 
-    def load_case(
-        self, reference_source: str, case_idx: int, inputs, *, reference_device_policy: str
-    ) -> CaseManifest:
-        binding = self.binding(
-            reference_source, case_idx, inputs, reference_device_policy=reference_device_policy
-        )
+    def _sealed_manifest(self, binding: CaseBinding) -> CaseManifest:
         if self.entries is None or binding.key not in self.entries:
             raise ReferenceCacheMiss("official case has no pinned reference cache entry")
         path = self.root / "cases" / f"{binding.key}.json"
@@ -505,6 +523,53 @@ class ReferenceCache:
         if manifest.binding != binding:
             raise ReferenceCacheError("reference cache immutable binding mismatch")
         return manifest
+
+    def load_case(
+        self, reference_source: str, case_idx: int, inputs, *, reference_device_policy: str
+    ) -> CaseManifest:
+        binding = self.binding(
+            reference_source, case_idx, inputs, reference_device_policy=reference_device_policy
+        )
+        return self._sealed_manifest(binding)
+
+    def cross_card_entry(self, anchor: CaseBinding) -> CaseManifest:
+        """The unique sealed entry for a workload identity on ANY card.
+
+        The binding key embeds the auditing card, but a workload's identity
+        (task, case, seed-zero inputs, policy) is card-independent. Entries can
+        only exist for cards declared by the deployment (plus the anchor's own
+        card), so those are the candidates. Zero or ambiguous matches are
+        misses: the caller measures fresh, never an arbitrary card's entry.
+        Serving a cross-card entry is only meaningful together with a fresh
+        sentinel on the CURRENT card; drift keeps its per-card monotone
+        remeasurement marker (needs_remeasurement is unchanged).
+        """
+        if self.entries is None:
+            raise ReferenceCacheMiss("official case has no pinned reference cache entry")
+        candidates = sorted(set(self.deployment.device_conditions) | {anchor.device_id})
+        matches = [
+            binding
+            for card in candidates
+            if (binding := anchor.model_copy(update={"device_id": card})).key in self.entries
+        ]
+        if not matches:
+            raise ReferenceCacheMiss(
+                "official case has no pinned reference cache entry on any card"
+            )
+        if len(matches) > 1:
+            raise ReferenceCacheMiss(
+                "official case is sealed on several cards; no unique cross-card entry"
+            )
+        return self._sealed_manifest(matches[0])
+
+    def load_case_cross_card(
+        self, reference_source: str, case_idx: int, inputs, *, reference_device_policy: str
+    ) -> CaseManifest:
+        """load_case's verification, resolved across cards (see cross_card_entry)."""
+        anchor = self.binding(
+            reference_source, case_idx, inputs, reference_device_policy=reference_device_policy
+        )
+        return self.cross_card_entry(anchor)
 
     def outputs(self, manifest: CaseManifest):
         return _decode(manifest.outputs, self.root)

@@ -18,9 +18,13 @@ Fail-closed rules:
   source hash) must match the running engine; any mismatch denies reuse so the
   engine follows its original execution path (fresh measurement).
 - Lookup requires an exact CaseBinding match: same reference source, official
-  digest, case, seed-zero inputs, physical device and reference policy. A card
-  or case that is not represented is a miss and is measured fresh; timings are
-  never borrowed across devices.
+  digest, case, seed-zero inputs and reference policy. Timing evidence is
+  never borrowed across devices unless the policy declares cross_card_scope
+  (v4): then the UNIQUE sealed entry for the workload — whichever declared
+  card audited it — may serve the CURRENT card, and every such evaluation is
+  validated by a fresh eight-sample sentinel measured on the current card;
+  drift beyond the unchanged 3% keeps the existing per-card monotone
+  remeasurement marker for the current card.
 """
 
 import os
@@ -78,9 +82,18 @@ class TimingReusePolicy(BaseModel):
     # Dedicated writable state directory for the historical sentinel's
     # monotone drift invalidation markers (same semantics as the live cache).
     source_state_dir: str = Field(min_length=1)
-    # Cards whose original bindings the policy may serve; never borrowed
-    # across devices (lookup still requires an exact per-card binding match).
+    # Cards on which this policy may serve sealed references. Without
+    # cross_card_scope (v2/v3 semantics) these are the only cards whose exact
+    # per-card bindings are served. With cross_card_scope (v4) this is the
+    # fleet scope of the current card; the sealed entry itself may come from
+    # any card declared by the source deployment.
     source_devices: list[str] = Field(min_length=1)
+    # v4 scope: sealed entries audited on ANY declared card may serve the
+    # current card. The equivalence premise is verified per evaluation by the
+    # fresh eight-sample sentinel on the CURRENT card against the served
+    # entry; >3% drift keeps the existing per-current-card monotone
+    # remeasurement. Absent (v2/v3 artifacts): exact per-card binding only.
+    cross_card_scope: bool = False
     timing_contract: _TimingContract
     # The old audit label and reference8's fresh measurement are the same
     # underlying observation protocol: 8x (warmup5/repeats20, profiler).
@@ -158,10 +171,19 @@ class ValidatedTimingReuse:
         try:
             reused: dict[int, CaseManifest] = {}
             for case_idx, inputs in zip(case_indices, input_groups):
-                reused[case_idx] = cache.load_case(
-                    reference_source, case_idx, inputs,
-                    reference_device_policy=reference_device_policy,
-                )
+                if self.policy.cross_card_scope:
+                    # Cross-card scope: the unique sealed entry for this
+                    # workload on any declared card. The engine still measures
+                    # a fresh sentinel on the current card before serving it.
+                    reused[case_idx] = cache.load_case_cross_card(
+                        reference_source, case_idx, inputs,
+                        reference_device_policy=reference_device_policy,
+                    )
+                else:
+                    reused[case_idx] = cache.load_case(
+                        reference_source, case_idx, inputs,
+                        reference_device_policy=reference_device_policy,
+                    )
         except ReferenceCacheMiss:
             return None
         except ReferenceCacheError as error:
