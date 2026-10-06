@@ -130,8 +130,61 @@ class _OfficialInputGroups:
         return self.module.get_input_group(index)
 
     def __iter__(self):
+        """One ordered pass; each case starts from the exact RNG state the
+        random-access path would have (seed zero, preceding cases consumed).
+
+        Iterating via __getitem__ re-materializes cases 0..i for every i
+        (O(n^2) tensor generation: 51 BMM51 cases = 1326 materializations of
+        28 GB). Advancing the adapter's own generator once and replaying the
+        RNG state around each pull keeps every pull's inputs bit-identical to
+        the random-access path while materializing each case exactly once,
+        retaining only one case's tensors at a time. The per-pull state
+        restore also preserves the old isolation property: work the engine
+        interleaves between pulls (reference/candidate execution) cannot
+        consume RNG that would otherwise shift later cases' inputs.
+        """
+        import torch
+        iterator = getattr(self.module, "_iter_input_groups", None)
+        if not callable(iterator):
+            for index in range(self.total):
+                yield self[index]
+            return
+        npu = getattr(torch, "npu", None)
+
+        def snapshot():
+            npu_state = None
+            if npu is not None:
+                try:
+                    npu_state = npu.get_rng_state()
+                except Exception:
+                    if npu.is_available():
+                        return None
+            try:
+                return torch.random.get_rng_state(), npu_state
+            except Exception:
+                return None
+
+        def restore(state):
+            torch.random.set_rng_state(state[0])
+            if state[1] is not None:
+                npu.set_rng_state(state[1])
+
+        torch.manual_seed(0)
+        if npu is not None:
+            npu.manual_seed(0)
+        state = snapshot()
+        stream = iterator()
         for index in range(self.total):
-            yield self[index]
+            if state is None:
+                # State capture unavailable (device present but not
+                # snapshot-able): keep random-access semantics for this and
+                # every remaining case; identical inputs, O(n^2) cost.
+                yield self[index]
+                continue
+            restore(state)
+            case = next(stream)
+            state = snapshot()
+            yield case
 
 
 def build_input_groups(torch_module: Any) -> List[Any]:

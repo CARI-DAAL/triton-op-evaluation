@@ -1415,7 +1415,15 @@ def verify_implementations(
     torch.npu.manual_seed(0)
 
     # 执行环境不变量：与沙箱一致以 NPU 为环境设备（见 _common_utils）。
-    _ensure_npu_ambient_shared(torch)
+    if not _ensure_npu_ambient_shared(torch) and reference_device_policy == "npu-strict":
+        # npu-strict 的 reference 必须在 NPU 上执行；环境设备未切换成功时
+        # 继续运行只会把输入物化静默落到单线程 CPU 路径（观测到的 900s
+        # 停滞形态），最终同样在首个 reference 处失败 —— 在这里立刻以
+        # 明确错误终止，让归因在秒级可读而不是烧完整整一个预算。
+        raise RuntimeError(
+            "npu-strict reference requires the ambient NPU device; "
+            "torch.npu is unavailable in this engine context"
+        )
 
     input_groups, total_cases = resolve_input_provider(modules["torch_module"])
     device = None if candidate_import_error is not None else torch.device("npu")
