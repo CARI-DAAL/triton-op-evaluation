@@ -239,7 +239,7 @@ def test_unconfigured_cache_is_none(monkeypatch):
 @pytest.fixture
 def engine(monkeypatch, sealed):
     monkeypatch.setattr("triton_evaluation.reference_cache.current_npu_model", lambda: MODEL)
-    monkeypatch.setattr(verify, "_ensure_npu_ambient_shared", lambda _: True)
+    monkeypatch.setattr(verify, "_ensure_npu_ambient_shared", lambda _t, **_k: True)
     monkeypatch.setattr(verify, "cleanup_npu_memory", lambda: None)
     monkeypatch.setattr(
         torch, "npu", SimpleNamespace(manual_seed=lambda *_: None), raising=False
