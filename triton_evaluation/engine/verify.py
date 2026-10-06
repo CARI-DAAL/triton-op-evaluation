@@ -39,6 +39,9 @@ ERROR_MSG_LIMIT = 2000
 # 主进程模式外层 kill 相对 --timeout 的宽限秒数：让子进程内的 per-subject
 # 定时器有机会先把"候选执行超时"权威归因写入 verify_result.json。
 OUTER_GRACE_SECONDS = 60
+# npu-strict 环境设备建立的有界等待上限（秒）：驱动瞬态窗口实测在分钟级，
+# 且受整次运行预算封顶；等待耗尽仍不可用时守护照样立刻显式失败。
+_AMBIENT_WAIT_CAP_SECONDS = 240.0
 
 REQUIRED_MATCHED_RATIO = 0.9
 
@@ -1415,7 +1418,18 @@ def verify_implementations(
     torch.npu.manual_seed(0)
 
     # 执行环境不变量：与沙箱一致以 NPU 为环境设备（见 _common_utils）。
-    if not _ensure_npu_ambient_shared(torch) and reference_device_policy == "npu-strict":
+    # npu-strict 下先有界等待驱动瞬态恢复（drvGetDevNum 短暂 rc!=0，
+    # 2026-10-06T18:45–18:48Z 生产窗口：同一沙箱/请求字节在窗口内两次失败、
+    # 窗口前后全部成功）；等待由整次运行预算封顶，耗尽仍不可用则立刻失败。
+    ambient_wait = 0.0
+    if reference_device_policy == "npu-strict":
+        ambient_wait = _AMBIENT_WAIT_CAP_SECONDS
+        if subject_budget_seconds:
+            ambient_wait = min(ambient_wait, float(subject_budget_seconds))
+    if (
+        not _ensure_npu_ambient_shared(torch, wait_seconds=ambient_wait)
+        and reference_device_policy == "npu-strict"
+    ):
         # npu-strict 的 reference 必须在 NPU 上执行；环境设备未切换成功时
         # 继续运行只会把输入物化静默落到单线程 CPU 路径（观测到的 900s
         # 停滞形态），最终同样在首个 reference 处失败 —— 在这里立刻以

@@ -11,6 +11,7 @@
 
 """verify.py / benchmark.py 共用的工具函数，避免重复实现。"""
 import ctypes
+import time
 from typing import Any, Dict, List
 
 # prctl(PR_SET_NAME) option code，见 set_process_title()。
@@ -221,7 +222,13 @@ def build_input_groups(torch_module: Any) -> List[Any]:
         return torch_module.get_input_groups()
 
 
-def ensure_npu_ambient_device(torch) -> bool:
+# 环境设备探测的重试间隔：宿主驱动短暂拒绝设备枚举（drvGetDevNum rc!=0，
+# 2026-10-06T18:45–18:48Z 生产窗口实测）时，新进程通常在秒到分钟级恢复。
+# 测试 monkeypatch 本常量到 0 以去掉 sleep。
+AMBIENT_POLL_SECONDS = 5.0
+
+
+def ensure_npu_ambient_device(torch, *, wait_seconds: float = 0.0) -> bool:
     """把 NPU 设为进程的环境默认设备 —— 沙箱阶段验证的执行环境不变量。
 
     沙箱阶段的验证以 NPU 为环境设备运行：reference 无论在
@@ -234,6 +241,11 @@ def ensure_npu_ambient_device(torch) -> bool:
     import torch）。进程可能尚未 import torch_npu —— torch.npu 属性不
     存在时表达式求值本身会抛 AttributeError，必须用 getattr 解引用。
 
+    wait_seconds 允许有界等待设备枚举恢复：宿主驱动层存在秒级到分钟级的
+    瞬态窗口（drvGetDevNum 直接失败），期间 torch.npu.is_available() 为
+    False 而设备实际存在；重试只影响建立环境设备的时机，等待耗尽仍返回
+    False —— 调用方（npu-strict）依旧立刻显式失败，本函数绝不选择 CPU。
+
     返回是否已切换。计数片段（decoy 快速通道）刻意不调用本函数而用
     CPU-first + NotImplementedError 回退：decoy 是高频路径，每次都付
     CANN 初始化的秒级代价不划算；引擎路径无此顾虑，一律切换。
@@ -242,10 +254,17 @@ def ensure_npu_ambient_device(torch) -> bool:
     if npu is None:
         return False
     available = getattr(npu, "is_available", None)
-    if available is None or not available():
+    if available is None:
         return False
-    torch.set_default_device("npu")
-    return True
+    deadline = time.monotonic() + max(0.0, wait_seconds)
+    while True:
+        if available():
+            torch.set_default_device("npu")
+            return True
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return False
+        time.sleep(min(AMBIENT_POLL_SECONDS, remaining))
 
 
 def prepare_candidate_inputs(reference_model, inputs, *, trace=None):

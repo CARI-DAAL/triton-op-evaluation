@@ -62,7 +62,7 @@ def cpu_engine(monkeypatch):
         torch, "npu", _stub(manual_seed=lambda *_: None), raising=False
     )
     monkeypatch.setattr(benchmark, "cleanup_npu_memory", lambda: None)
-    monkeypatch.setattr(benchmark, "_ensure_npu_ambient_shared", lambda _t: True)
+    monkeypatch.setattr(benchmark, "_ensure_npu_ambient_shared", lambda _t, **_k: True)
     for name in (
         "TRITON_EVAL_REFERENCE_CACHE_DIR",
         "TRITON_EVAL_REFERENCE_CACHE_BINDING",

@@ -412,7 +412,7 @@ def test_official_cache_miss_really_executes_reference_and_candidate(cache, tmp_
     (tmp_path / "example_torch.py").write_text(SOURCE)
     monkeypatch.setattr(ReferenceCache, "from_environment", lambda: cache)
     monkeypatch.setattr(verify, "_load_verify_modules", lambda *_: modules)
-    monkeypatch.setattr(verify, "_ensure_npu_ambient_shared", lambda _: None)
+    monkeypatch.setattr(verify, "_ensure_npu_ambient_shared", lambda _t, **_k: None)
     monkeypatch.setattr(verify, "cleanup_npu_memory", lambda: None)
     monkeypatch.setattr(torch, "npu", SimpleNamespace(manual_seed=lambda _: None), raising=False)
     monkeypatch.setitem(sys.modules, "torch_npu", SimpleNamespace())
