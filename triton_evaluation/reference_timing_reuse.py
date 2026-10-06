@@ -41,6 +41,7 @@ from .reference_cache import (
     ReferenceCache,
     ReferenceCacheError,
     ReferenceCacheMiss,
+    current_npu_model,
     sha256,
 )
 
@@ -94,6 +95,12 @@ class TimingReusePolicy(BaseModel):
     # entry; >3% drift keeps the existing per-current-card monotone
     # remeasurement. Absent (v2/v3 artifacts): exact per-card binding only.
     cross_card_scope: bool = False
+    # NPU model binding (2026-10-06 ruling: reference evidence binds to the
+    # card MODEL, never the card index). When declared, the live device must
+    # report exactly this model or reuse misses (fresh measurement); the
+    # sealed runtime/toolchain fingerprint stays pinned by
+    # source_deployment_sha256 below. Absent (v2-v5 artifacts): no model gate.
+    npu_model: str | None = None
     timing_contract: _TimingContract
     # The old audit label and reference8's fresh measurement are the same
     # underlying observation protocol: 8x (warmup5/repeats20, profiler).
@@ -155,6 +162,12 @@ class ValidatedTimingReuse:
         fresh measurement cannot repair silently (index vs policy identity).
         """
         if device_id is None or device_id not in self.policy.source_devices:
+            return None
+        if self.policy.npu_model is not None and (
+            current_npu_model() != self.policy.npu_model
+        ):
+            # Same-model binding: a different NPU model never borrows sealed
+            # timing evidence; the engine measures fresh.
             return None
         from .reference_cache import official_source_metadata
 
