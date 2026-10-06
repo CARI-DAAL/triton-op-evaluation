@@ -673,6 +673,17 @@ def test_ensure_npu_ambient_device_default_wait_follows_policy(monkeypatch):
     assert _common_utils.ensure_npu_ambient_device(torch, wait_seconds=0.0) is False
 
 
+def test_benchmark_npu_strict_fails_loud_without_ambient_device():
+    """benchmark 在 npu-strict 下同样大声失败：不静默退回 CPU 物化路径。
+    （该字节变更使 timing-reuse policy 目标指纹不再匹配 → 回退 fresh。）"""
+    from triton_evaluation.engine import benchmark
+
+    text = open(benchmark.__file__, encoding="utf-8").read()
+    assert "npu-strict benchmark requires the ambient NPU device" in text
+    assert "wait_seconds=_ambient_wait" in text
+    assert "set_default_device" not in text.replace("ensure_npu_ambient_device", "")
+
+
 class _KwOnlyModel:
     """Mimics lv4 references: forward(self, x1, x2, *, s1=None, s2=None)."""
 

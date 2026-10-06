@@ -55,6 +55,9 @@ def _setup_logger() -> None:
 # ============================================================================
 
 WARMUP_DEFAULT = 5
+# npu-strict 环境设备建立的有界等待上限（秒），与 verify.py 的守护封顶一致；
+# 仅用于任何用户 kernel/reference 执行前的设备初始化探测。
+_AMBIENT_WAIT_CAP_SECONDS = 240.0
 REPEATS_DEFAULT = 20
 TRITON_IMPL_NAME_DEFAULT = "triton_ascend_impl"
 ERROR_MSG_LIMIT = 2000
@@ -1172,7 +1175,19 @@ def benchmark_implementations(config: BenchmarkConfig) -> BenchmarkResult:
     device = torch.device("npu")
 
     # 执行环境不变量：与沙箱一致以 NPU 为环境设备（见 _common_utils）。
-    _ensure_npu_ambient_shared(torch)
+    # npu-strict 下设备初始化探测允许有界等待驱动瞬态恢复（仅在此处、
+    # 任何用户 kernel/reference 执行之前，受同一整次运行预算约束）；
+    # 等待耗尽仍不可用则立刻大声失败 —— 绝不静默退回 CPU 物化路径。
+    # 注：benchmark.py 字节属于 timing-reuse policy 的目标指纹，本变更
+    # 使该 policy 在本运行时不再授权复用（回退 fresh 测量，miss 非失败）。
+    _reference_policy = os.environ.get("TRITON_EVAL_REFERENCE_DEVICE_POLICY", "cpu-first")
+    _ambient_wait = _AMBIENT_WAIT_CAP_SECONDS if _reference_policy == "npu-strict" else 0.0
+    if not _ensure_npu_ambient_shared(torch, wait_seconds=_ambient_wait):
+        if _reference_policy == "npu-strict":
+            raise RuntimeError(
+                "npu-strict benchmark requires the ambient NPU device; "
+                "torch.npu is unavailable in this engine context"
+            )
 
     # Correctness and performance use identical seed-zero input bytes.
     torch.manual_seed(0)
