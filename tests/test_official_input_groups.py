@@ -26,12 +26,14 @@ from triton_evaluation.engine._common_utils import (
 
 
 class _FakeTensor:
-    def __init__(self, cpu_state, npu_state):
-        self.cpu_state = cpu_state
-        self.npu_state = npu_state
+    """Values derive from the OWNING generator only (CPU tensors never see
+    NPU RNG state and vice versa), like real torch tensors."""
+
+    def __init__(self, generator_state):
+        self.generator_state = generator_state
 
     def digest(self):
-        return (self.cpu_state, self.npu_state)
+        return self.generator_state
 
 
 class _FakeRandom(SimpleNamespace):
@@ -48,9 +50,10 @@ def _fake_torch_rng(npu_working=True, npu_available=True, npu_broken=False, defa
 
     def randn(*shape, dtype=None):
         # Only the ambient device's generator advances, like real torch.
-        value = (state["cpu"], state["npu"])
-        state["cpu" if default_device == "cpu" else "npu"] += 1
-        return _FakeTensor(*value)
+        key = "cpu" if default_device == "cpu" else "npu"
+        value = state[key]
+        state[key] += 1
+        return _FakeTensor(value)
 
     torch_mod.randn = randn
     torch_mod.random = _FakeRandom(
