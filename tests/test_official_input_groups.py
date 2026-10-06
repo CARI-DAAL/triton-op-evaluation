@@ -38,17 +38,18 @@ class _FakeRandom(SimpleNamespace):
     pass
 
 
-def _fake_torch_rng(npu_working=True, npu_available=True, npu_broken=False):
+def _fake_torch_rng(npu_working=True, npu_available=True, npu_broken=False, default_device="cpu"):
     """torch double with observable, replayable CPU+NPU RNG state."""
     torch_mod = ModuleType("torch")
     torch_mod.Tensor = _FakeTensor
+    torch_mod.get_default_device = lambda: default_device
     state = {"cpu": 0, "npu": 0}
     torch_mod.manual_seed = lambda seed: state.__setitem__("cpu", seed)
 
     def randn(*shape, dtype=None):
+        # Only the ambient device's generator advances, like real torch.
         value = (state["cpu"], state["npu"])
-        state["cpu"] += 1
-        state["npu"] += 1
+        state["cpu" if default_device == "cpu" else "npu"] += 1
         return _FakeTensor(*value)
 
     torch_mod.randn = randn
@@ -153,7 +154,9 @@ def test_interleaved_consumption_cannot_shift_later_cases(monkeypatch):
 
 
 def test_broken_npu_state_capture_falls_back_to_random_access(monkeypatch):
-    torch_mod = _fake_torch_rng(npu_broken=True, npu_available=True)
+    # Ambient NPU set (engine normal path) but state capture fails: keep the
+    # random-access semantics rather than risk interleaved NPU RNG drift.
+    torch_mod = _fake_torch_rng(npu_broken=True, npu_available=True, default_device="npu")
     monkeypatch.setitem(sys.modules, "torch", torch_mod)
     module = _synthetic_adapter(torch_mod, cases=4)
 
@@ -174,6 +177,20 @@ def test_module_without_generator_uses_random_access(monkeypatch):
 
     assert _digests(groups) == _random_access_digests(torch_mod, module, 4)
     assert len(groups) == 4
+
+
+def test_cpu_default_device_skips_npu_state_capture(monkeypatch):
+    """CPU contexts must not attempt NPU state capture (no device init, no
+    O(n^2) fallback): the fast path runs with CPU-state snapshots alone."""
+    torch_mod = _fake_torch_rng(npu_broken=True, npu_available=True, default_device="cpu")
+    monkeypatch.setitem(sys.modules, "torch", torch_mod)
+    module = _synthetic_adapter(torch_mod, cases=4)
+
+    lazy = _digests(build_input_groups(module))
+    fast_materializations = module.produced["count"]
+
+    assert lazy == _random_access_digests(torch_mod, module, 4)
+    assert fast_materializations == 4  # fast path, not the O(n^2) fallback
 
 
 def test_len_and_indexing_unchanged(monkeypatch):

@@ -153,7 +153,11 @@ class _OfficialInputGroups:
 
         def snapshot():
             npu_state = None
-            if npu is not None:
+            # The npu generator only participates when the ambient device is
+            # NPU (the engine sets it before materialization). CPU contexts
+            # must not touch the device: capture is skipped, not attempted.
+            default_device = getattr(torch, "get_default_device", lambda: "cpu")()
+            if npu is not None and str(default_device) == "npu":
                 try:
                     npu_state = npu.get_rng_state()
                 except Exception:
