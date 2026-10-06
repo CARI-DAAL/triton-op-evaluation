@@ -1,0 +1,67 @@
+{
+ "origin": {
+  "redis_key": "triton-eval:v2.1:resource:ev_bda8970870fe47f09dce50f6ef341e5a",
+  "branch": "benchmark_correct_timedout_state"
+ },
+ "params": {
+  "action": "benchmark",
+  "kernel_code": "\"\"\"Triton implementation of batched matrix multiplication (``torch.bmm``).\n\nComputes ``C[b] = A[b] @ B[b]`` for ``A`` of shape ``(batch, m, n)`` and ``B``\nof shape ``(batch, n, p)``.\n\nDesign notes (Ascend NPU):\n\n* One fused kernel handles the whole batch.  Every logical program owns one\n  ``(batch, m_tile, p_tile)`` output tile and accumulates the ``n`` axis with\n  ``tl.dot`` (Cube path, fp32 accumulation), which mirrors the fp32\n  accumulation the reference performs.\n* The grid is 1D and shape derived; the tile sizes are powers of two adapted to\n  the (small) problem shapes so the logical programs spread across the AI cores\n  without ever exceeding ``UINT16_MAX``.\n* Every load/store is masked, so tail blocks and the over-provisioned\n  ``16 x 16`` minimum Cube tiles stay in bounds and contribute zeros.\n* A contiguous fast path drops all stride arguments (they are derivable from\n  ``M``/``N``/``P``), which keeps the per-launch host work and the kernel's\n  scalar prologue small; a fully strided kernel is kept for the general case.\n\nAll tensor-valued computation happens inside the Triton kernels; ``forward``\nonly inspects shapes, allocates the output and computes launch metadata.\n\"\"\"\n\nimport torch\nimport triton\nimport triton.language as tl\n\ntry:  # pragma: no cover - present on real NPU hosts, absent in CPU tooling\n    import torch_npu  # noqa: F401\nexcept Exception:  # pragma: no cover\n    pass\n\n\n@triton.jit\ndef _bmm_contig_kernel(\n    a_ptr,\n    b_ptr,\n    c_ptr,\n    M,\n    N,\n    P,\n    BLOCK_M: tl.constexpr,\n    BLOCK_N: tl.constexpr,\n    BLOCK_P: tl.constexpr,\n):\n    \"\"\"Batched matmul for contiguous inputs: A (B, M, N) x B (B, N, P).\"\"\"\n    pid = tl.program_id(0)\n    num_m = tl.cdiv(M, BLOCK_M)\n    num_p = tl.cdiv(P, BLOCK_P)\n    pid_m = pid % num_m\n    pid_p = (pid // num_m) % num_p\n    pid_b = pid // (num_m * num_p)\n\n    offs_m = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)\n    offs_p = pid_p * BLOCK_P + tl.arange(0, BLOCK_P)\n    offs_n = tl.arange(0, BLOCK_N)\n\n    m_mask = offs_m < M\n    p_mask = offs_p < P\n\n    a_base = a_ptr + pid_b * (M * N)\n    b_base = b_ptr + pid_b * (N * P)\n    c_base = c_ptr + pid_b * (M * P)\n\n    acc = tl.zeros((BLOCK_M, BLOCK_P), dtype=tl.float32)\n    for k in range(0, tl.cdiv(N, BLOCK_N)):\n        offs_k = k * BLOCK_N + offs_n\n        k_mask = offs_k < N\n        a = tl.load(\n            a_base + offs_m[:, None] * N + offs_k[None, :],\n            mask=m_mask[:, None] & k_mask[None, :],\n            other=0.0,\n        )\n        b = tl.load(\n            b_base + offs_k[:, None] * P + offs_p[None, :],\n            mask=k_mask[:, None] & p_mask[None, :],\n            other=0.0,\n        )\n        acc = tl.dot(a, b, acc)\n\n    tl.store(\n        c_base + offs_m[:, None] * P + offs_p[None, :],\n        acc.to(c_ptr.dtype.element_ty),\n        mask=m_mask[:, None] & p_mask[None, :],\n    )\n\n\n@triton.jit\ndef _bmm_kernel(\n    a_ptr,\n    b_ptr,\n    c_ptr,\n    M,\n    N,\n    P,\n    stride_ab,\n    stride_am,\n    stride_an,\n    stride_bb,\n    stride_bn,\n    stride_bp,\n    stride_cb,\n    stride_cm,\n    stride_cp,\n    BLOCK_M: tl.constexpr,\n    BLOCK_N: tl.constexpr,\n    BLOCK_P: tl.constexpr,\n):\n    \"\"\"Batched matmul with arbitrary (possibly non-contiguous) strides.\"\"\"\n    pid = tl.program_id(0)\n    num_m = tl.cdiv(M, BLOCK_M)\n    num_p = tl.cdiv(P, BLOCK_P)\n    pid_m = pid % num_m\n    pid_p = (pid // num_m) % num_p\n    pid_b = pid // (num_m * num_p)\n\n    offs_m = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)\n    offs_p = pid_p * BLOCK_P + tl.arange(0, BLOCK_P)\n    offs_n = tl.arange(0, BLOCK_N)\n\n    m_mask = offs_m < M\n    p_mask = offs_p < P\n\n    a_base = a_ptr + pid_b * stride_ab\n    b_base = b_ptr + pid_b * stride_bb\n\n    acc = tl.zeros((BLOCK_M, BLOCK_P), dtype=tl.float32)\n    for k in range(0, tl.cdiv(N, BLOCK_N)):\n        offs_k = k * BLOCK_N + offs_n\n        k_mask = offs_k < N\n        a = tl.load(\n            a_base + offs_m[:, None] * stride_am + offs_k[None, :] * stride_an,\n            mask=m_mask[:, None] & k_mask[None, :],\n            other=0.0,\n        )\n        b = tl.load(\n            b_base + offs_k[:, None] * stride_bn + offs_p[None, :] * stride_bp,\n            mask=k_mask[:, None] & p_mask[None, :],\n            other=0.0,\n        )\n        acc = tl.dot(a, b, acc)\n\n    tl.store(\n        c_ptr\n        + pid_b * stride_cb\n        + offs_m[:, None] * stride_cm\n        + offs_p[None, :] * stride_cp,\n        acc.to(c_ptr.dtype.element_ty),\n        mask=m_mask[:, None] & p_mask[None, :],\n    )\n\n\n# Per-shape launch metadata; shapes repeat heavily across a benchmark run, so\n# memoizing keeps the host-side prelude off the critical path.\n_TILE_CACHE = {}\n\n\ndef _pick_blocks(m, n, p):\n    \"\"\"Power-of-two Cube tiles adapted to the problem shape.\n\n    ``16`` is the smallest tile the Ascend Cube path accepts, so it is the\n    floor everywhere; the caps trade a little Cube efficiency for enough\n    logical programs to keep every AI core busy.  Returns the three tile sizes\n    plus the per-batch number of programs.\n    \"\"\"\n    key = (m, n, p)\n    cached = _TILE_CACHE.get(key)\n    if cached is not None:\n        return cached\n\n    block_m = 16\n    while block_m < m and block_m < 32:\n        block_m <<= 1\n    block_n = 16\n    while block_n < n and block_n < 128:\n        block_n <<= 1\n    block_p = 16\n    while block_p < p and block_p < 32:\n        block_p <<= 1\n\n    per_batch = ((m + block_m - 1) // block_m) * ((p + block_p - 1) // block_p)\n    tiles = (block_m, block_n, block_p, per_batch)\n    _TILE_CACHE[key] = tiles\n    return tiles\n\n\nclass ModelNew(torch.nn.Module):\n    \"\"\"Batched matrix multiplication backed by a single Triton kernel.\"\"\"\n\n    def __init__(self):\n        super(ModelNew, self).__init__()\n\n    def forward(self, A: torch.Tensor, B: torch.Tensor) -> torch.Tensor:\n        batch, m, n = A.shape\n        p = B.shape[2]\n        out = torch.empty((batch, m, p), dtype=A.dtype, device=A.device)\n        block_m, block_n, block_p, per_batch = _pick_blocks(m, n, p)\n        grid = (batch * per_batch,)\n        if A.is_contiguous() and B.is_contiguous():\n            _bmm_contig_kernel[grid](A, B, out, m, n, p, block_m, block_n, block_p)\n        else:\n            _bmm_kernel[grid](\n                A,\n                B,\n                out,\n                m,\n                n,\n                p,\n                A.stride(0),\n                A.stride(1),\n                A.stride(2),\n                B.stride(0),\n                B.stride(1),\n                B.stride(2),\n                out.stride(0),\n                out.stride(1),\n                out.stride(2),\n                block_m,\n                block_n,\n                block_p,\n            )\n        return out\n",
+  "eval_turn": 1,
+  "eval_budget": "1/18"
+ },
+ "resource": {
+  "created_at": "2026-09-29T06:19:00.589000Z",
+  "deadline_at": "2026-09-29T06:49:00.589000Z",
+  "evaluation_id": "ev_bda8970870fe47f09dce50f6ef341e5a",
+  "finished_at": "2026-09-29T14:20:12.927000Z",
+  "reference_digest": "adb9e8a450670341c2be7785386fac1e8cec85cdd62a2a634ecbf68bc3aa949d",
+  "request_digest": "79934441dc89402f4cb2424068e8d1ded57ae973ef4f6ed18afe2b59849d3ae1",
+  "result": {
+   "compile": null,
+   "correctness": {
+    "data": {
+     "decoy": false,
+     "domain_failure": null,
+     "failures": [],
+     "outcome": "correct",
+     "passed": true,
+     "passed_cases": 51,
+     "total_cases": 51
+    },
+    "error": null,
+    "reason": null,
+    "status": "succeeded"
+   },
+   "performance": {
+    "data": null,
+    "error": {
+     "check": "performance",
+     "code": "DEADLINE_EXCEEDED",
+     "message": "resource deadline expired",
+     "phase": "deadline",
+     "retryable": false
+    },
+    "reason": null,
+    "status": "timeout"
+   },
+   "profile": null,
+   "provenance": {
+    "benchmark_algorithm": "geometric-mean-v1",
+    "correctness_algorithm": "correctness-v1:npu-strict-v1",
+    "decoy_algorithm": "decoy-v1",
+    "evaluator_build": "sha256:d3232fdf45295e489d2e135753a007a2ce11b94a5c9de95191df29560d88c447",
+    "execution_environment": null,
+    "grade_eligible": false,
+    "manifest_id": "npukernelbench-machine2-v1",
+    "problem_id": "kernelbench_l3_1_BatchMatmul",
+    "profiler_algorithm": "profiler-v1",
+    "schema_version": "2.1"
+   }
+  },
+  "revision": 3,
+  "schema_version": "2.1",
+  "started_at": "2026-09-29T06:19:00.610000Z",
+  "state": "timed_out",
+  "updated_at": "2026-09-29T14:20:12.927000Z"
+ }
+}

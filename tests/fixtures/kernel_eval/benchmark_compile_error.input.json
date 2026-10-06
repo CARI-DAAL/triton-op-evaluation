@@ -1,0 +1,79 @@
+{
+ "origin": {
+  "redis_key": "triton-eval:v2.1:resource:ev_f692134085e648a5b34588a0d9acedba",
+  "branch": "benchmark_compile_error"
+ },
+ "params": {
+  "action": "benchmark",
+  "kernel_code": "import torch\nimport torch.nn as nn\nimport triton\nimport triton.language as tl\n\n\n# ---------------------------------------------------------------------------\n# C = A^T @ B^T      A: (M, N)      B: (K, M)      C: (N, K)\n#\n# C[i, j] = sum_l A[l, i] * B[j, l]\n#\n# This equals (B @ A)^T, so we compute D = B @ A  (D: (K, N)) with a plain,\n# fully coalesced matmul and transpose only once on the way out:\n#\n#     D[j, i] = sum_l B[j, l] * A[l, i]\n#       left operand  B[j, l] -> (BLOCK_K, BLOCK_M)  (l is contiguous in B)\n#       right operand A[l, i] -> (BLOCK_M, BLOCK_N)  (i is contiguous in A)\n#\n# Both global loads therefore have their contiguous axis last, which keeps the\n# memory access coalesced without any per-iteration register transpose.  The\n# single accumulated tile is transposed and stored coalesced to C.\n# ---------------------------------------------------------------------------\n@triton.jit\ndef _matmul_both_trans_kernel(\n    a_ptr, b_ptr, c_ptr,\n    M, N, K,\n    stride_am, stride_an,\n    stride_bk, stride_bm,\n    stride_cn, stride_ck,\n    BLOCK_M: tl.constexpr,   # reduction block\n    BLOCK_N: tl.constexpr,   # output rows of C (dim N)\n    BLOCK_K: tl.constexpr,   # output cols of C (dim K)\n):\n    pid_i = tl.program_id(0)   # tile along N (rows of C)\n    pid_j = tl.program_id(1)   # tile along K (cols of C)\n\n    offs_i = pid_i * BLOCK_N + tl.arange(0, BLOCK_N)   # C row index, dim N\n    offs_j = pid_j * BLOCK_K + tl.arange(0, BLOCK_K)   # C col index, dim K\n    offs_l = tl.arange(0, BLOCK_M)                     # reduction index, dim M\n\n    i_mask = offs_i < N\n    j_mask = offs_j < K\n\n    # B[j, l] tile -> (BLOCK_K, BLOCK_M), reduction axis (l) contiguous.\n    b_ptrs = b_ptr + offs_j[:, None] * stride_bk + offs_l[None, :] * stride_bm\n    # A[l, i] tile -> (BLOCK_M, BLOCK_N), output axis (i) contiguous.\n    a_ptrs = a_ptr + offs_l[:, None] * stride_am + offs_i[None, :] * stride_an\n\n    acc = tl.zeros((BLOCK_K, BLOCK_N), dtype=tl.float32)\n    for _ in range(0, tl.cdiv(M, BLOCK_M)):\n        l_valid = offs_l < M\n        b = tl.load(b_ptrs, mask=j_mask[:, None] & l_valid[None, :], other=0.0)\n        a = tl.load(a_ptrs, mask=l_valid[:, None] & i_mask[None, :], other=0.0)\n        acc = tl.dot(b, a, acc, input_precision=\"hf32\")\n        b_ptrs += BLOCK_M * stride_bm\n        a_ptrs += BLOCK_M * stride_am\n        offs_l += BLOCK_M\n\n    c = acc.to(c_ptr.dtype.element_ty)   # (BLOCK_K, BLOCK_N)\n    c = tl.trans(c)                      # (BLOCK_N, BLOCK_K)\n\n    c_ptrs = c_ptr + offs_i[:, None] * stride_cn + offs_j[None, :] * stride_ck\n    tl.store(c_ptrs, c, mask=i_mask[:, None] & j_mask[None, :])\n\n\ndef _next_pow2(x):\n    return max(1, triton.next_power_of_2(int(x)))\n\n\ndef _pick_blocks(M, N, K, elem_size):\n    \"\"\"Pick power-of-two tiles that fit comfortably in on-chip memory.\"\"\"\n    # Reduction tile: cube fractal friendly, bounded for the wider fp32 dtypes.\n    bm = max(16, min(64, _next_pow2(M)))\n    # Output tile: allow the larger tiles for narrow (2-byte) dtypes.\n    cap = 128 if elem_size <= 2 else 64\n    bn = max(16, min(cap, _next_pow2(N)))\n    bk = max(16, min(cap, _next_pow2(K)))\n    return bm, bn, bk\n\n\nclass ModelNew(nn.Module):\n    def __init__(self):\n        super(ModelNew, self).__init__()\n\n    def forward(self, A: torch.Tensor, B: torch.Tensor) -> torch.Tensor:\n        A = A.contiguous()\n        B = B.contiguous()\n        M, N = A.shape\n        K, M2 = B.shape\n        assert M2 == M, \"inner dimensions must match for transposed matmul\"\n\n        C = torch.empty((N, K), dtype=A.dtype, device=A.device)\n\n        BLOCK_M, BLOCK_N, BLOCK_K = _pick_blocks(M, N, K, A.element_size())\n        grid = (triton.cdiv(N, BLOCK_N), triton.cdiv(K, BLOCK_K))\n        _matmul_both_trans_kernel[grid](\n            A, B, C,\n            M, N, K,\n            A.stride(0), A.stride(1),\n            B.stride(0), B.stride(1),\n            C.stride(0), C.stride(1),\n            BLOCK_M=BLOCK_M,\n            BLOCK_N=BLOCK_N,\n            BLOCK_K=BLOCK_K,\n        )\n        return C\n",
+  "eval_turn": 1,
+  "eval_budget": "1/18"
+ },
+ "resource": {
+  "created_at": "2026-09-30T16:43:57.120000Z",
+  "deadline_at": "2026-09-30T16:58:57.120000Z",
+  "evaluation_id": "ev_f692134085e648a5b34588a0d9acedba",
+  "finished_at": "2026-09-30T16:44:28.784000Z",
+  "reference_digest": "1f2fd5bd17e81c34510441eb87fba770aad508c00995ce46dc81951a547429c8",
+  "request_digest": "b2d00229f3708b7521ee53e85813ed3a760197c2f1d442a0327b4e553afebf3e",
+  "result": {
+   "compile": null,
+   "correctness": {
+    "data": {
+     "decoy": false,
+     "domain_failure": {
+      "case_idx": null,
+      "code": "SUBJECT_COMPILE_ERROR",
+      "message": "candidate compilation raised CompilationError",
+      "phase": "compile"
+     },
+     "failures": [],
+     "outcome": "compile_error",
+     "passed": false,
+     "passed_cases": 3,
+     "total_cases": 50
+    },
+    "error": null,
+    "reason": null,
+    "status": "succeeded"
+   },
+   "performance": {
+    "data": null,
+    "error": null,
+    "reason": {
+     "code": "DEPENDENCY_NOT_PASSED",
+     "depends_on": "correctness",
+     "message": "correctness did not pass"
+    },
+    "status": "skipped"
+   },
+   "profile": null,
+   "provenance": {
+    "benchmark_algorithm": "geometric-mean-v1",
+    "correctness_algorithm": "correctness-v1:npu-strict-v1",
+    "decoy_algorithm": "decoy-v1",
+    "evaluator_build": "sha256:d3232fdf45295e489d2e135753a007a2ce11b94a5c9de95191df29560d88c447",
+    "execution_environment": {
+     "driver_version": "25.5.1",
+     "hardware_count": 1,
+     "hardware_model": "Ascend910",
+     "runtime_version": "CANN-8.5.2",
+     "toolchain_version": "CANN 8.5.2 / torch 2.9.0 / torch_npu 2.9.0 / triton_ascend 3.2.0",
+     "torch_npu_version": "2.9.0",
+     "torch_version": "2.9.0",
+     "triton_version": "3.2.0"
+    },
+    "grade_eligible": false,
+    "manifest_id": null,
+    "problem_id": null,
+    "profiler_algorithm": "profiler-v1",
+    "schema_version": "2.1"
+   }
+  },
+  "revision": 3,
+  "schema_version": "2.1",
+  "started_at": "2026-09-30T16:43:57.215000Z",
+  "state": "completed",
+  "updated_at": "2026-09-30T16:44:28.784000Z"
+ }
+}

@@ -109,6 +109,31 @@ def set_process_title(title: str) -> None:
         pass
 
 
+class _OfficialInputGroups:
+    """Seed-zero random access without retaining all official workload tensors."""
+    def __init__(self, module):
+        self.module = module
+        self.total = module.get_case_count()
+        if type(self.total) is not int or self.total < 1:
+            raise ValueError("official task must declare a positive case count")
+
+    def __len__(self):
+        return self.total
+
+    def __getitem__(self, index):
+        if type(index) is not int or index < 0 or index >= self.total:
+            raise IndexError("official case index is out of range")
+        import torch
+        torch.manual_seed(0)
+        if hasattr(torch, "npu"):
+            torch.npu.manual_seed(0)
+        return self.module.get_input_group(index)
+
+    def __iter__(self):
+        for index in range(self.total):
+            yield self[index]
+
+
 def build_input_groups(torch_module: Any) -> List[Any]:
     """构造 reference 的输入组；CPU 缺 kernel 时切到 NPU 上下文重试。
 
@@ -121,6 +146,10 @@ def build_input_groups(torch_module: Any) -> List[Any]:
     只对 NotImplementedError 重试：其它异常（reference 本身写错等）保持原样
     上抛，重试也不会掩盖真错误。
     """
+    if (hasattr(torch_module, "_ADAPTER_VERSION")
+            and hasattr(torch_module, "get_input_group")
+            and hasattr(torch_module, "get_case_count")):
+        return _OfficialInputGroups(torch_module)
     try:
         return torch_module.get_input_groups()
     except NotImplementedError:
@@ -160,6 +189,49 @@ def ensure_npu_ambient_device(torch) -> bool:
         return False
     torch.set_default_device("npu")
     return True
+
+
+def prepare_candidate_inputs(reference_model, inputs, *, trace=None):
+    """Bind omitted official parameters to the defaults of the pinned run().
+
+    The raw workload retains its adapter-owned sentinel for reference execution
+    and cache binding. Only the candidate receives this derived positional list.
+    Neither candidate defaults nor a copied sentinel define official semantics.
+    A reference class suffices on cache hits; it is never instantiated here.
+    """
+    import inspect
+
+    namespace = getattr(getattr(reference_model, "forward", None), "__globals__", {})
+    if namespace.get("_ADAPTER_VERSION") != "official-task-v1":
+        return list(inputs)
+    order = namespace.get("_PARAM_ORDER")
+    run = namespace.get("run")
+    if not isinstance(order, (list, tuple)) or not callable(run) or "_ABSENT" not in namespace:
+        raise ValueError("official candidate inputs require the bound adapter contract")
+    if len(inputs) != len(order):
+        raise ValueError("official candidate input count differs from parameter order")
+    parameters = inspect.signature(run).parameters
+    absent = namespace["_ABSENT"]
+    candidate_inputs = []
+    defaulted = []
+    for name, value in zip(order, inputs):
+        if name not in parameters:
+            raise ValueError("official candidate parameter is absent from run signature")
+        if value is absent:
+            value = parameters[name].default
+            if value is inspect.Parameter.empty:
+                raise ValueError("official workload omitted a required parameter: " + name)
+            defaulted.append(name)
+        candidate_inputs.append(value)
+    if trace is not None:
+        from triton_evaluation.reference_cache import value_sha256
+        trace.update(
+            candidate_input_semantics="official-run-defaults-v1",
+            candidate_defaulted_parameters=defaulted,
+            raw_input_sha256=value_sha256(inputs, input_value=True),
+            candidate_input_sha256=value_sha256(candidate_inputs, input_value=True),
+        )
+    return candidate_inputs
 
 
 def invoke_model(model, inputs):

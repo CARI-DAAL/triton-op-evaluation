@@ -1,0 +1,8 @@
+{
+  "reference_default_result": 6,
+  "raw_absent_slots": [
+    1
+  ],
+  "candidate_declared_default": 2,
+  "candidate_error": "TypeError: unsupported operand type(s) for *: 'int' and 'object'"
+}

@@ -111,9 +111,33 @@ as `.env`, then use `bash scripts/start.sh` / `bash scripts/stop.sh`. Supply Red
 with `--appendonly yes --appendfsync always`, as Compose does. The engine is
 bundled and needs no external checkout.
 
+Candidate code needs an operating-system boundary when evaluations must not
+read other attempts or service credentials. Subprocesses alone do not provide
+that boundary. Set `TRITON_EVAL_ENGINE_SANDBOX_CONFIG` on each worker to an
+operator-owned runtime manifest, and pin its digest with
+`TRITON_EVAL_ENGINE_SANDBOX_SHA256`, to enable the fail-closed Linux engine sandbox.
+See [engine isolation](docs/architecture/engine-sandbox.md) for deployment and
+device requirements. Bind changes to this execution environment to a new
+evaluator build; do not combine its measurements with a previous environment
+without declaring the change.
+
+For a deployed CANN profiler with a missing `libsqlite3.so` name, see
+[the pinned profiler runtime](docs/profiler-runtime.md). Preparation, immutable
+file binding and the actual worker/device gates are separate steps.
+
+Correctness defaults to the existing CPU-first reference with NPU fallback for
+reference execution errors. To declare an NPU reference experiment, set
+`TRITON_EVAL_REFERENCE_DEVICE_POLICY=npu-strict` on the API and every worker.
+This mode always selects the assigned NPU and never changes reference device
+after seeing a candidate outcome. It adds `:npu-strict-v1` to the published
+correctness algorithm identity automatically. Bind the policy to a new evaluator
+build and experiment; numerical rounding can differ even though the comparison
+formula and tolerances are unchanged. See [reference policy and observations](docs/architecture/reference-device-policy.md)
+for provenance, retention and admission checks.
+
 ## Submit and recover an evaluation
 
-The only supported evaluation protocol is **v2.1**:
+The durable evaluation protocol is **v2.1**:
 
 - `POST /evaluations?wait_seconds=0..60` requires `Authorization: Bearer`,
   `X-Session-ID` and `Idempotency-Key`. HTTP 200 contains a terminal resource;
@@ -126,6 +150,10 @@ The only supported evaluation protocol is **v2.1**:
   the execution capacity needed by their requested checks.
 - `/internal/metrics`: observer-authenticated metrics.
 
+The optional [native kernel_eval facade](docs/kernel-eval-native.md) serves
+`POST /verify`, `/benchmark` and `/profile` for task-agent tools. It resolves
+official task IDs from the service catalog and uses one `KERNEL_EVAL_TOKEN`.
+
 | Caller intent | `checks` |
 | --- | --- |
 | Correctness | `["correctness"]` |
@@ -133,8 +161,8 @@ The only supported evaluation protocol is **v2.1**:
 | Profiling | `["profile"]` |
 | Syntax/import precheck | `["compile"]` |
 
-There is no benchmark HTTP verb. `performance.method` defaults to `event`;
-callers may explicitly select `profiler`. Results identify the measurement
+Timing uses the `performance` check in v2.1. `performance.method` defaults to
+`event`; callers may explicitly select `profiler`. Results identify the measurement
 method; consumers must not mix methods silently. Compile-only precheck does
 not prove that every input shape can compile on the device.
 

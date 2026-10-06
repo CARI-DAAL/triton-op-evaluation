@@ -1,0 +1,23 @@
+{
+  "scope": "read-only metadata/module imports in existing service venv after source /usr/local/Ascend/cann/set_env.sh; no deployment or device execution",
+  "facts": {
+    "torch": {
+      "distribution_version": "2.9.0",
+      "module_version": "2.9.0+cpu",
+      "module_file": "/home/e84381970/open-evo-work/svc-validation-p0/repo/.venv-p0/lib/python3.10/site-packages/torch/__init__.py"
+    },
+    "torch_npu": {
+      "distribution_version": "2.9.0.post8",
+      "module_version": "2.9.0.post8",
+      "module_file": "/home/e84381970/open-evo-work/svc-validation-p0/repo/.venv-p0/lib/python3.10/site-packages/torch_npu/__init__.py"
+    },
+    "triton": {
+      "distribution_version": null,
+      "module_version": "3.2.0",
+      "module_file": "/home/e84381970/open-evo-work/svc-validation-p0/repo/.venv-p0/lib/python3.10/site-packages/triton/__init__.py"
+    },
+    "triton-ascend": {
+      "distribution_version": "3.2.0"
+    }
+  }
+}

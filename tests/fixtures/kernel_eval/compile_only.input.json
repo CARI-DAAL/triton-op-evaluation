@@ -1,0 +1,53 @@
+{
+ "origin": {
+  "redis_key": "triton-eval:v2.1:resource:ev_5213db6e0b304970b10c63b096ef7800",
+  "branch": "compile_only"
+ },
+ "params": {
+  "action": "verify",
+  "kernel_code": "import torch\nimport torch.nn as nn\nclass ModelNew(nn.Module:  # syntax error\n    def forward(self, A, B):\n        return torch.bmm(A, B)\n",
+  "eval_turn": 1,
+  "eval_budget": "1/18"
+ },
+ "resource": {
+  "created_at": "2026-09-26T00:12:07.451000Z",
+  "deadline_at": "2026-09-26T00:13:07.451000Z",
+  "evaluation_id": "ev_5213db6e0b304970b10c63b096ef7800",
+  "finished_at": "2026-09-26T00:12:07.477000Z",
+  "reference_digest": "adb9e8a450670341c2be7785386fac1e8cec85cdd62a2a634ecbf68bc3aa949d",
+  "request_digest": "0ab37da85edec487d37a0ef6538f6253cbdac88e4111e7c76385462719d133c2",
+  "result": {
+   "compile": {
+    "data": {
+     "compiler_stage": "frontend",
+     "duration_ms": 1.5961860190145671,
+     "error_excerpt": "candidate compilation failed (syntax and import precheck)",
+     "outcome": "compile_error"
+    },
+    "error": null,
+    "reason": null,
+    "status": "succeeded"
+   },
+   "correctness": null,
+   "performance": null,
+   "profile": null,
+   "provenance": {
+    "benchmark_algorithm": "geometric-mean-v1",
+    "correctness_algorithm": "correctness-v1",
+    "decoy_algorithm": "decoy-v1",
+    "evaluator_build": "git:bc4906c40e1f4b60add2a01fe5a5fc8b5a6d94c0",
+    "execution_environment": null,
+    "grade_eligible": false,
+    "manifest_id": null,
+    "problem_id": null,
+    "profiler_algorithm": "profiler-v1",
+    "schema_version": "2.1"
+   }
+  },
+  "revision": 3,
+  "schema_version": "2.1",
+  "started_at": "2026-09-26T00:12:07.469000Z",
+  "state": "completed",
+  "updated_at": "2026-09-26T00:12:07.477000Z"
+ }
+}

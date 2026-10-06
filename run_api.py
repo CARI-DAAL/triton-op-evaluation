@@ -1,5 +1,6 @@
 """Durable evaluation API entrypoint."""
-import os
+
+import asyncio
 from pathlib import Path
 
 import redis
@@ -18,12 +19,8 @@ def build_app() -> "FastAPI":  # noqa: F821 — FastAPI imported via api
     settings = Settings.from_env()
     client = redis.Redis.from_url(settings.redis_url, decode_responses=False)
     store = EvaluationStore(client, settings)
-    registry = CapabilityRegistry.from_secret_file(
-        Path(settings.capability_secret_path)
-    )
-    catalog = ReleaseCatalog.load(
-        Path(settings.catalog_root), Path(settings.catalog_manifest_path)
-    )
+    registry = CapabilityRegistry.from_secret_file(Path(settings.capability_secret_path))
+    catalog = ReleaseCatalog.load(Path(settings.catalog_root), Path(settings.catalog_manifest_path))
     context = AppContext(
         instance=EvaluationInstance(settings=settings, store=store, catalog=catalog),
         registry=registry,
@@ -35,11 +32,13 @@ app = build_app()
 
 
 def main() -> None:
-    uvicorn.run(
-        app,
-        host=os.environ.get("TRITON_EVAL_API_HOST", "127.0.0.1"),
-        port=int(os.environ.get("TRITON_EVAL_API_PORT", "11907")),
-    )
+    settings = app.state.context.instance.settings
+    if settings.api_tls_port is not None:
+        from triton_evaluation.api.listeners import serve_app
+
+        asyncio.run(serve_app(app, settings))
+    else:
+        uvicorn.run(app, host=settings.api_host, port=settings.api_port)
 
 
 if __name__ == "__main__":

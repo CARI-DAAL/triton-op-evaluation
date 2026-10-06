@@ -41,6 +41,8 @@ class BenchmarkEvaluator:
                 "performance", "resource deadline expired before performance ran"
             )
         params = request.performance or PerformanceParams()
+        if params.case_indices is not None and not params.case_indices:
+            return engine_failure("performance", "performance case selection is empty")
         effective_method = params.method
         out_path = Path(work_dir) / "perf_result.json"
         cmd = [
@@ -58,9 +60,14 @@ class BenchmarkEvaluator:
             str(params.repeats),
             "--measurement-method",
             effective_method,
-            "--output",
-            str(out_path),
         ]
+        if params.case_indices is not None:
+            # Public indices are zero-based; the engine takes one-based labels.
+            cmd += [
+                "--case-indices",
+                ",".join(str(index + 1) for index in params.case_indices),
+            ]
+        cmd += ["--output", str(out_path)]
         outcome = run_script(
             cmd,
             str(work_dir),
@@ -79,7 +86,7 @@ class BenchmarkEvaluator:
             return engine_failure(
                 "performance", "benchmark verify gate rejected the run"
             )
-        result = read_json(str(out_path))
+        result = read_json(out_path, root=work_dir)
         if outcome.exit_code == 0 and isinstance(result, dict):
             return EngineCheckResult(status="succeeded", raw=result, error=None)
         log_engine_crash(

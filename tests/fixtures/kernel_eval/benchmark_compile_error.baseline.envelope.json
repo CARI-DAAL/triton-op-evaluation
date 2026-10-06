@@ -1,0 +1,37 @@
+{
+ "correct": false,
+ "correctness_raw": {
+  "decoy": false,
+  "domain_failure": {
+   "case_idx": null,
+   "code": "SUBJECT_COMPILE_ERROR",
+   "message": "candidate compilation raised CompilationError",
+   "phase": "compile"
+  },
+  "failures": [],
+  "outcome": "compile_error",
+  "passed": false,
+  "passed_cases": 3,
+  "total_cases": 50
+ },
+ "decoy": false,
+ "speedup": 0.0,
+ "compiled": false,
+ "error": "[case None] CompilationError: candidate compilation raised CompilationError",
+ "error_class": "jit_compile_error",
+ "max_abs_err": null,
+ "mean_abs_err": null,
+ "pass_rate": null,
+ "infra_error": false,
+ "total_cases": 50,
+ "passed_cases": 3,
+ "failures": [],
+ "benchmark_available": false,
+ "benchmark": null,
+ "action": "benchmark",
+ "artifact_sha256": "2a2e5c7b4cfd240d4cc7e30f6e5ee3cd46062d0737ddede215d53e5e6647751b",
+ "eval_turn": 1,
+ "eval_budget": "1/18",
+ "request_status": "completed",
+ "observation": "[kernel_eval]\naction=benchmark\nartifact_sha256=2a2e5c7b4cfd240d4cc7e30f6e5ee3cd46062d0737ddede215d53e5e6647751b\neval_budget=1/18\nrequest_status=completed\n[kernel_eval][benchmark][jit_compile_error]\nerror=[case None] CompilationError: candidate compilation raised CompilationError"
+}

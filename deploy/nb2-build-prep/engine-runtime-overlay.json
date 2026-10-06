@@ -1,0 +1,7 @@
+{
+  "schema_version": "engine-runtime-overlay-v1",
+  "environment": {
+    "TRITON_EVAL_PROFILER_RUNTIME_MANIFEST": "/home/e84381970/open-evo-work/baseline-v3/diagnostics/PROFILER-RUNTIME-212b832-attempt3/profiler-runtime/manifest.json",
+    "TRITON_EVAL_PROFILER_RUNTIME_SHA256": "870732c56d8f8f53d1b7a739253a645552d74d5fdb73e95291f187618e83e70a"
+  }
+}

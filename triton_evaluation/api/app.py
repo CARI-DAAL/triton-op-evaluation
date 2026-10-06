@@ -1,4 +1,5 @@
 """Durable evaluation API application factory."""
+
 import asyncio
 import logging
 from contextlib import asynccontextmanager
@@ -11,6 +12,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from . import errors
 from .contract import ErrorEnvelope
 from .dependencies import AppContext
+from .kernel_eval import router as kernel_eval_router
 from .middleware import RequestIdBodyLimitMiddleware, new_request_id
 from .routes import router
 
@@ -79,6 +81,7 @@ def create_app(context: AppContext) -> FastAPI:
     app.state.context = context
     app.add_middleware(RequestIdBodyLimitMiddleware)
     app.include_router(router)
+    app.include_router(kernel_eval_router)
     _install_exception_handlers(app)
     return app
 
@@ -92,9 +95,7 @@ async def _maintenance_loop(context: AppContext, stop: asyncio.Event) -> None:
         try:
             await asyncio.to_thread(_run_maintenance, context)
         except Exception as error:  # noqa: BLE001 — a daemon loop never dies
-            logger.warning(
-                "api maintenance error (%s); continuing", type(error).__name__
-            )
+            logger.warning("api maintenance error (%s); continuing", type(error).__name__)
         try:
             await asyncio.wait_for(stop.wait(), timeout=interval)
         except asyncio.TimeoutError:
@@ -115,9 +116,9 @@ def _install_exception_handlers(app: FastAPI) -> None:
 
     @app.exception_handler(RequestValidationError)
     async def handle_validation(request: Request, exc: RequestValidationError):
-        return _envelope_response(request, errors.invalid_request_schema(
-            "request failed schema validation"
-        ))
+        return _envelope_response(
+            request, errors.invalid_request_schema("request failed schema validation")
+        )
 
     @app.exception_handler(StarletteHTTPException)
     async def handle_http_error(request: Request, exc: StarletteHTTPException):

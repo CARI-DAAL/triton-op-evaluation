@@ -1,0 +1,8 @@
+[kernel_eval]
+action=benchmark
+artifact_sha256=d7de07e6acdd28b4f2b659f279c90edda28de6939b988dab1964a162b284f3d8
+eval_budget=1/18
+request_status=completed
+[kernel_eval][benchmark][measured] verify_cases=50/50 speedup_geomean=1.142x
+benchmark={"coverage": 1, "passed_cases": 50, "per_shape_results": [{"case_idx": 0, "framework": {"avg_latency_ms": 0.0024}, "implementation": {"avg_latency_ms": 0.0019}, "input_desc": [{"dimensions": [32, 64], "dtype": "torch.float32", "input_index": 0}, {"dimensions": [32, 128], "dtype": "torch.float32", "input_index": 1}], "speedup_vs_torch": 1.263157894736842, "status": "pass"}, {"case_idx": 1, "framework": {"avg_latency_ms": 0.0035}, "implementation": {"avg_latency_ms": 0.0029}, "input_desc": [{"dimensions": [64, 128], "dtype": "torch.float32", "input_index": 0}, {"dimensions": [64, 256], "dtype": "torch.float32", "input_index": 1}], "speedup_vs_torch": 1.2068965517241381, "status": "pass"}, {"case_idx": 2, "framework": {"avg_latency_ms": 0.0043}, "implementation": {"avg_latency_ms": 0.0042}, "input_desc": [{"dimensions": [128, 256], "dtype": "torch.float32", "input_index": 0}, {"dimensions": [128, 512], "dtype": "torch.float32", "input_index": 1}], "speedup_vs_torch": 1.023809523809524, "status": "pass"}, {"case_idx": 3, "framework": {"avg_latency_ms": 0.0094}, "implementation": {"avg_latency_ms": 0.0104}, "input_desc": [{"dimensions": [256, 512], "dtype": "torch.float32", "input_index": 0}, {"dimensions": [256, 1024], "dtype": "torch.float32", "input_index": 1}], "speedup_vs_torch": 0.903846153846154, "status": "pass"}, {"case_idx": 4, "framework": {"avg_latency_ms": 0.0023}, "implementation": {"avg_latency_ms": 0.0016}, "input_desc": [{"dimensions": [32, 64], "dtype": "torch.fl
+…[truncated]…

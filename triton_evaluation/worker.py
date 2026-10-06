@@ -14,6 +14,7 @@ import threading
 import time
 from collections.abc import Callable
 from datetime import datetime, timezone
+from pathlib import Path
 
 import redis
 
@@ -51,7 +52,7 @@ _MAINTENANCE_BATCH = 100
 
 def _algorithms(settings: Settings) -> AlgorithmVersions:
     return AlgorithmVersions(
-        correctness=settings.correctness_algorithm_version,
+        correctness=settings.effective_correctness_algorithm_version,
         decoy=settings.decoy_algorithm_version,
         benchmark=settings.benchmark_algorithm_version,
         profiler=settings.profiler_algorithm_version,
@@ -341,6 +342,12 @@ class Worker:
             self.store.commit_terminal(lease, "completed", validated)
         finally:
             if work_dir is not None:
+                if self.settings.reference_diagnostics_dir is not None:
+                    from .reference_diagnostics import retain_reference_diagnostics
+
+                    retain_reference_diagnostics(
+                        self.settings, lease, Path(work_dir), self.device_id,
+                    )
                 shutil.rmtree(work_dir, ignore_errors=True)
 
     @staticmethod

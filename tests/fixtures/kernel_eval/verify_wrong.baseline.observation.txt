@@ -1,0 +1,9 @@
+[kernel_eval]
+action=verify
+artifact_sha256=e51864c33b73bce0a99165184a020e2e9a7d64cc2d304532e75e7763d7f2d338
+eval_budget=1/18
+request_status=completed
+[kernel_eval][verify][nan_inf] cases=0/50
+error=[case 0] AccuracyError: Kernel produced incorrect results; {"max_abs_diff": 24.840864181518555, "mere": 2.4963581562042236, "matched_ratio": 0, "atol": 0.001, "rtol": 0.0001220703125}; sample=[{"candidate": -2.161513090133667, "diff": -24.840864896774292, "idx": [9, 35], "reference": 22.679351806640625}, {"candidate": 1.5053322315216064, "diff": 24.110873460769653, "idx": [27, 26], "reference": -22.605541229248047}, {"candidate": -2.519238233566284, "diff": -22.17669177055359, "idx": [7, 14], "reference": 19.657453536987305}, {"candidate": 4.935340881347656, "diff": 22.11530113220215, "idx": [31, 81], "reference": -17.179960250854492}, {"candidate": 6.287017345428467, "diff": 21.932451725006104, "idx": [33, 47], "reference": -15.645434379577637}, {"candidate": 0.03449491411447525, "diff": -21.747353993356228, "idx": [2, 92], "reference": 21.781848907470703}, {"candidate": 2.1344988346099854, "diff": 21.412712335586548, "idx": [27, 35], "reference": -19.278213500976562}, {"candidate": -3.1067144870758057, "diff": -21.067428827285767, "idx": [37, 87], "reference": 17.96071434020996}]
+[case 1] AccuracyError: Kernel produced incorrect results; {"max_abs_diff": 37.27692794799805, "mere": 2.538447618484497, "matched_ratio": 3.0517578125e-05, "atol": 0.001, "rtol": 0.0001220703125}; sample=[{"candidate": 6.182852268218994, "diff": 37.276928424835205, "idx": [113, 86], "reference": -31.09407615661621}, {"candidate": 2.7380661964416504, "diff": -33.30419683456421, "idx": [81, 59], "re
+…[truncated]…

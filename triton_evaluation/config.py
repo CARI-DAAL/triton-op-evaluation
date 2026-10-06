@@ -1,7 +1,8 @@
 import os
 from pathlib import Path
+from typing import Literal
 
-from pydantic import Field, model_validator
+from pydantic import AliasChoices, Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # The evaluation engine (verify / internal benchmark / profile / validate) is
@@ -30,9 +31,33 @@ class Settings(BaseSettings):
     # Isolated durable state for the v2.1-only release.
     redis_prefix: str = Field(default="triton-eval:v2.1", min_length=1)
     engine_dir: str = _DEFAULT_ENGINE_DIR
+    reference_device_policy: Literal["cpu-first", "npu-strict"] = "cpu-first"
+    reference_diagnostics_dir: Path | None = None
+    # F-63 settings are separate from the six existing deployment anchors.
+    reference_cache_dir: Path | None = None
+    reference_cache_binding: Path | None = None
+    reference_cache_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    reference_cache_state_dir: Path | None = None
+    # Sampled-validated historical timing reuse (timing evidence only), pinned
+    # as one artifact path + SHA256 pair like the reference cache anchors.
+    reference_timing_reuse_policy: Path | None = None
+    reference_timing_reuse_sha256: str | None = Field(
+        default=None, pattern=r"^[0-9a-f]{64}$"
+    )
+    # Service-owned immutable loader compatibility, separate from six anchors.
+    profiler_runtime_manifest: Path | None = None
+    profiler_runtime_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    engine_runtime_overlay_config: Path | None = None
+    engine_runtime_overlay_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
     # Compile-only attempts use CPU capacity; mixed checks stay on one NPU worker.
     cpu_workers: int = Field(default=1, ge=0, le=32)
     api_poll_interval_seconds: float = Field(default=0.25, ge=0.05, le=5)
+    api_host: str = "127.0.0.1"
+    api_port: int = Field(default=11907, ge=1, le=65535)
+    api_tls_port: int | None = Field(default=None, ge=1, le=65535)
+    api_tls_host: str = "127.0.0.1"
+    api_tls_certfile: Path | None = None
+    api_tls_keyfile: Path | None = None
 
     # --- durable-core lifecycle (evaluation API v2) ---
     # Terminal resources and idempotency records live at least one day, and the
@@ -45,12 +70,8 @@ class Settings(BaseSettings):
     queue_poll_interval_seconds: float = Field(default=1.0, ge=0.05, le=5)
 
     # --- engine whole-run budgets (deployment-tunable) ---
-    verify_budget_cap_seconds: int = Field(
-        default=VERIFY_BUDGET_CAP_SECONDS, gt=60
-    )
-    benchmark_timeout_seconds: int = Field(
-        default=BENCHMARK_TIMEOUT_SECONDS, ge=10
-    )
+    verify_budget_cap_seconds: int = Field(default=VERIFY_BUDGET_CAP_SECONDS, gt=60)
+    benchmark_timeout_seconds: int = Field(default=BENCHMARK_TIMEOUT_SECONDS, ge=10)
 
     # --- NPU visibility hold ---
     # Megabytes of device memory each worker allocates at startup and keeps
@@ -92,35 +113,115 @@ class Settings(BaseSettings):
     cann_fingerprint: str = Field(default="", pattern=r"^[A-Za-z0-9._:-]{0,128}$")
 
     # --- deployment-attested worker environment ---
-    worker_hardware_model: str = Field(default="Ascend910B3", min_length=1)
-    worker_driver_version: str = Field(default="24.1.0", min_length=1)
-    worker_runtime_version: str = Field(default="8.0.RC3", min_length=1)
-    worker_toolchain_version: str = Field(default="CANN 8.0.RC3", min_length=1)
+    worker_hardware_model: str = Field(default="Ascend910", min_length=1)
+    worker_driver_version: str = Field(default="26.0.rc1", min_length=1)
+    worker_runtime_version: str = Field(default="CANN-9.1.1", min_length=1)
+    worker_toolchain_version: str = Field(
+        default=(
+            "CANN 9.1.1 / python 3.10 / torch 2.9.0 / torch_npu 2.9.0.post8 / triton_ascend 3.2.0"
+        ),
+        min_length=1,
+    )
 
     # --- evaluator provenance pinned at admission ---
-    evaluator_build: str = Field(
-        default="git:" + "0" * 40, pattern=_EVALUATOR_BUILD_PATTERN
-    )
+    evaluator_build: str = Field(default="git:" + "0" * 40, pattern=_EVALUATOR_BUILD_PATTERN)
     correctness_algorithm_version: str = Field(
         default="correctness-v1", pattern=_ALGORITHM_VERSION_PATTERN
     )
-    decoy_algorithm_version: str = Field(
-        default="decoy-v1", pattern=_ALGORITHM_VERSION_PATTERN
-    )
+    decoy_algorithm_version: str = Field(default="decoy-v1", pattern=_ALGORITHM_VERSION_PATTERN)
     benchmark_algorithm_version: str = Field(
+        # Provenance equals production e4a36f7: the ORIGINAL reference path
+        # measures a case once per request parameters. Reference caching is a
+        # pure optional accelerator; per-case sample evidence and the
+        # per-case reference_path record describe whatever path served.
         default="geometric-mean-v1", pattern=_ALGORITHM_VERSION_PATTERN
     )
     profiler_algorithm_version: str = Field(
         default="profiler-v1", pattern=_ALGORITHM_VERSION_PATTERN
     )
 
+    # Native kernel_eval facade. KERNEL_EVAL_TOKEN is the sandbox-facing
+    # single token; the prefixed alias supports existing Settings tooling.
+    kernel_eval_enabled: bool = False
+    kernel_eval_token: SecretStr = Field(
+        default=SecretStr(""),
+        validation_alias=AliasChoices(
+            "KERNEL_EVAL_TOKEN", "TRITON_EVAL_KERNEL_EVAL_TOKEN", "kernel_eval_token"
+        ),
+    )
+    kernel_eval_manifest_id: str | None = Field(default=None, min_length=1, max_length=128)
+    kernel_eval_max_turns: int = Field(default=18, ge=-1)
+    kernel_eval_max_wait_seconds: float = Field(default=840, ge=10, le=3600)
+    kernel_eval_auto_diagnostics: bool = True
+    kernel_eval_performance_warmup: int = Field(default=5, ge=0, le=100)
+    kernel_eval_performance_repeats: int = Field(default=20, ge=1, le=1000)
+
     # --- mounted capability secret and trusted release catalog ---
     capability_secret_path: Path | None = None
     catalog_root: Path | None = None
     catalog_manifest_path: Path | None = None
 
+    @property
+    def effective_correctness_algorithm_version(self) -> str:
+        """Reference placement is part of the correctness protocol identity."""
+        version = self.correctness_algorithm_version
+        if self.reference_device_policy == "npu-strict":
+            version += ":npu-strict-v1"
+        if self.reference_cache_sha256 is not None:
+            version += ":cache-v1:" + self.reference_cache_sha256
+        return version
+
     @model_validator(mode="after")
     def _durable_core_windows(self):
+        overlay_values = (self.engine_runtime_overlay_config, self.engine_runtime_overlay_sha256)
+        if any(value is not None for value in overlay_values) and not all(
+            value is not None for value in overlay_values
+        ):
+            raise ValueError("engine runtime overlay config and SHA must be configured together")
+        if self.engine_runtime_overlay_config is not None and (
+            not self.engine_runtime_overlay_config.is_absolute()
+            or ".." in self.engine_runtime_overlay_config.parts
+        ):
+            raise ValueError("engine runtime overlay config must be absolute without traversal")
+        profiler_values = (self.profiler_runtime_manifest, self.profiler_runtime_sha256)
+        if any(value is not None for value in profiler_values) and not all(
+            value is not None for value in profiler_values
+        ):
+            raise ValueError("profiler runtime manifest and SHA must be configured together")
+        if (
+            self.profiler_runtime_manifest is not None
+            and not self.profiler_runtime_manifest.is_absolute()
+        ):
+            raise ValueError("profiler runtime manifest must be absolute")
+        tls = (self.api_tls_port, self.api_tls_certfile, self.api_tls_keyfile)
+        if any(value is not None for value in tls) and not all(value is not None for value in tls):
+            raise ValueError("native HTTPS requires port, certfile and keyfile together")
+        if self.api_tls_port is not None and self.api_tls_port == self.api_port:
+            raise ValueError("native HTTP and HTTPS must use different ports")
+        cache_values = (
+            self.reference_cache_dir,
+            self.reference_cache_binding,
+            self.reference_cache_sha256,
+            self.reference_cache_state_dir,
+        )
+        if any(value is not None for value in cache_values) and any(
+            value is None for value in cache_values
+        ):
+            raise ValueError("all four reference cache deployment settings are required")
+        reuse_values = (self.reference_timing_reuse_policy, self.reference_timing_reuse_sha256)
+        if any(value is not None for value in reuse_values) and not all(
+            value is not None for value in reuse_values
+        ):
+            raise ValueError(
+                "timing reuse policy and pinned SHA256 must be configured together"
+            )
+        if self.reference_timing_reuse_policy is not None and (
+            not self.reference_timing_reuse_policy.is_absolute()
+            or ".." in self.reference_timing_reuse_policy.parts
+        ):
+            raise ValueError("timing reuse policy path must be absolute without traversal")
+        if len(self.effective_correctness_algorithm_version) > 128:
+            raise ValueError("effective correctness algorithm version exceeds 128 characters")
         if self.max_recovery_age_seconds > self.retention_seconds:
             raise ValueError("max_recovery_age_seconds must not exceed retention_seconds")
         if self.heartbeat_interval_seconds >= self.lease_seconds:

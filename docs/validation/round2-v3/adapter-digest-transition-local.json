@@ -1,0 +1,159 @@
+{
+  "official_sources_and_cases_unchanged": true,
+  "tasks": 20,
+  "total_cases": 1046,
+  "changed_reference_digests": 20,
+  "adapter_version": "official-task-v1",
+  "not_previously_frozen": true,
+  "change_reasons": [
+    "verbatim reference trailing bytes retained",
+    "stable integer dtype tuple independent of PYTHONHASHSEED",
+    "explicit None range check and uint8 no-range [0,5) policy",
+    "input count invariant added",
+    "bounded-memory single-case iterator preserves full inventory RNG consumption",
+    "pure get_case_count for lazy engine/decoy counting"
+  ],
+  "entries": [
+    {
+      "problem_id": "official_l3_BatchMatmul",
+      "official_digest": "57e902365bd9b2fa437cc500cf0d862989b5881f439b2157de7341b127126c73",
+      "cases": 51,
+      "prior_reference_digest": "d7ca1ce5141207216180d7b6a67aa70395eca90354e73ada4a837e787cf74604",
+      "reference_digest": "3115965c4696fd45d30d97a0774f6d6432e2cc2910d2a8a0d88f017ccaf3c780"
+    },
+    {
+      "problem_id": "official_l3_ConvDepthwise2d",
+      "official_digest": "e9d26a4c3b3f7ce336aa756d24a5786c5539e584ad886c89e8ca632f7191c487",
+      "cases": 50,
+      "prior_reference_digest": "e76860b332d7ad329c5869f2ce614d88627d1384a24b9190545cf6fe59089c7d",
+      "reference_digest": "466629c8d04c6e5ffa8dd83077ee12f3f29d83a27baef32f45b7b3bf615a2e89"
+    },
+    {
+      "problem_id": "official_l3_ConvStandard1d",
+      "official_digest": "8506600f31a5d4d3156ccf0bcb482ed8e6a1062c16329a604ca535c7cd048f07",
+      "cases": 50,
+      "prior_reference_digest": "f8bd657005608c94305c151c45514d565395ca0a0ddaa581db1b9c2edaeff8c7",
+      "reference_digest": "a46489e13a7acd4ef7a9a04e57131b9f95219cb3ff867a0d4bd84695ac952ef1"
+    },
+    {
+      "problem_id": "official_l3_ConvStandard2d",
+      "official_digest": "ba47f0d8ea4665ef69b6693f7e24a640f84365cc55549e7be1d4b9c31d8f02df",
+      "cases": 50,
+      "prior_reference_digest": "2db187244d66a09e47cba662c2120801b4f29e4b8aa54c6d9bc278189d2a7151",
+      "reference_digest": "d0a00df968044bc0102482f1a0e4142b8677f42701598c43dab28cfe125327fd"
+    },
+    {
+      "problem_id": "official_l3_ConvStandard3d",
+      "official_digest": "72a52f197ebaa4e1c5085a45808bfaeac4b4cf8cf59b2df357f4657833075b4f",
+      "cases": 60,
+      "prior_reference_digest": "2c94a7d468a860770e6d6d47b8c7efb5415c33d1e0d2200f113e858503679c47",
+      "reference_digest": "2a7cd342965568e2800169429d4d2f193224260b19b888539df83a620af87cad"
+    },
+    {
+      "problem_id": "official_l3_ConvTranspose2d",
+      "official_digest": "459f1a4abb6a0ce391b9514bbd4fbe58435b62150c63276ce5cedbe0e64d7f65",
+      "cases": 50,
+      "prior_reference_digest": "2333a33fb5c7f9c436c87387102e739ff53c8d57f8059347a2e4d83b4db0da7a",
+      "reference_digest": "f91b3c8d8a738be2dcda23a50dc6127ad8bcc58b897901df713794d768e926ec"
+    },
+    {
+      "problem_id": "official_l3_GroupedMatmul",
+      "official_digest": "3952199142dfef1e315140fc9685a5ff2099f7f7e0ade374f151919c62ff9078",
+      "cases": 45,
+      "prior_reference_digest": "8792263a29c438b17d158a20883c299cdb3fa11098bcdae3369667c2fcdd1637",
+      "reference_digest": "88f040fc806aa2f8b8340f5b9651b77dfa88cda7d482e5a6b3f390bf85447a29"
+    },
+    {
+      "problem_id": "official_l3_MatmulBothTrans",
+      "official_digest": "1572a73b8d0b08d6c65a2fd3404acbf946f31138eb53108ca030c8a16fdb396a",
+      "cases": 50,
+      "prior_reference_digest": "40123637f251cd6cf8272ddd3d913f43189eed78dc2e85686b3e17c39ee19470",
+      "reference_digest": "62f2692cb083121e103867c2d4e889c9145c0a3a2e680e5bb55adc934aaee559"
+    },
+    {
+      "problem_id": "official_l3_MatmulTransA",
+      "official_digest": "92686e54d712e85257b806a1106eef4565353e903419c21c39133ca3913426a3",
+      "cases": 50,
+      "prior_reference_digest": "445728cf35cc93f34092de9e0acda036757282608a546a953a74f61d74028e64",
+      "reference_digest": "31921f25389f33e5369ca08296f21f5130d792b569af6374fcee808ab749b1a2"
+    },
+    {
+      "problem_id": "official_l3_MatmulTransB",
+      "official_digest": "c7c856d6f740e02de7bbffd9f3458b9690e885eab5de10462dc51af69fb08965",
+      "cases": 50,
+      "prior_reference_digest": "76c3a31b6112a2432c4bbcf3a98c750e48ddc6a39e917e1335fbf87f33dea1a2",
+      "reference_digest": "ea7377ef8606c76c8fb7a12cfb1c93664202aec38622b61336acc2cbf06770ba"
+    },
+    {
+      "problem_id": "official_l4_FusionAttention",
+      "official_digest": "5e5b69d54ffb1b07a5ede5384f5d07ad63c9f95209a33603a7fe4f10f7c80778",
+      "cases": 61,
+      "prior_reference_digest": "28373cae2b1b7d96211b71f380e7d21a242312811140821c6dab39a3cbf09802",
+      "reference_digest": "d5ebe5cf26e3a27db4fe3a7e625184f4a8040c93b1051b751350fa3eaff69a8e"
+    },
+    {
+      "problem_id": "official_l4_SparseFlashAttention",
+      "official_digest": "01bad2a47861869981e28af03a7c2ea2055f0d0cdf96df676a3e898f0833abed",
+      "cases": 72,
+      "prior_reference_digest": "d1fc68dc1f24be624867c3e0a1465c7464d9895591a932b82570602e8205d991",
+      "reference_digest": "d3b658dad91fdeb7b274a096f0fdfefa842e0c99183ae2fbbc97baf59c0fe44b"
+    },
+    {
+      "problem_id": "official_l4_BlockSparseAttnFwd",
+      "official_digest": "6dfcb39e68fc1ee7bbafb87ef8e5eb977fa4e4139f874aa9d11c977c73c85994",
+      "cases": 50,
+      "prior_reference_digest": "07a8b7bd460f928886d09a6040685d5e2bac244c776c3961b6263533a0614ec1",
+      "reference_digest": "2087cb85e754500bf9096f1dc4d2a0120e6091092d3ed7ae21bd65601ef4f9d4"
+    },
+    {
+      "problem_id": "official_l4_FusedInferAttentionScore",
+      "official_digest": "83581ffba3486b821bad46c497184311988d8338a87c7e3330e535c666056f2d",
+      "cases": 50,
+      "prior_reference_digest": "e5e25541c01eae0b9d2fd268325a0794b75ae44243a62275567f74f5443f58e8",
+      "reference_digest": "741715018de6658278b9d15c6aaba3cbebeb6b567ae6cda97c51f146ad894143"
+    },
+    {
+      "problem_id": "official_l4_ScaledDotProductAttentionBackward",
+      "official_digest": "408dbfcdc13b9d07d07e55dae7fcede1c1daace9fde133537aef7744d19e9786",
+      "cases": 79,
+      "prior_reference_digest": "04f2e9466dff77200655895f3d6a99e3192c54a04b427c9ca2b499267c99a4de",
+      "reference_digest": "840371cf663b058cf2ef488ed3d96f4a3dd50067a3fa55878da7e3e8a41d8a7f"
+    },
+    {
+      "problem_id": "official_l4_QuantMatmul",
+      "official_digest": "a47cde3204f3c13367742122ac49b8c1edbf73f7af6fb7e65cc23275b8118e1a",
+      "cases": 57,
+      "prior_reference_digest": "58b00ac17d6e5090f5512fc7238c6866821e3bec64685b505ba71c8c3c7c18af",
+      "reference_digest": "8fec4f9ce920bce547ac08f1be55ae8cdf68e9a0c68ad50931f791b56a5ca6f4"
+    },
+    {
+      "problem_id": "official_l4_WeightQuantBatchmatmul",
+      "official_digest": "97a5240e9bac8e49b4bdea875358329976f40675d01a1ff7e97d4733c0170490",
+      "cases": 48,
+      "prior_reference_digest": "cbaf709247863a4748bb341571d74cdb8886cbc29717cf6aef75d866edd6a6b9",
+      "reference_digest": "35f22d103f156d8b1d109d3701be97a5dfe126a3d13dc9a0ff1e927f2d2256ed"
+    },
+    {
+      "problem_id": "official_l4_GroupedMatmulSwigluQuantV2",
+      "official_digest": "45f51c49aab4c0541f3504b56b3a2fee278bdef36040a378a4b4cf01bffd652c",
+      "cases": 50,
+      "prior_reference_digest": "84ddcbd758dc0a6c59611934a8101e92eb525436a49707985f36a7cbb3acb85e",
+      "reference_digest": "095130c691cd2c0e0abdf8c04960d81b7e8494af6d0a05335bdf18e05ed0f8bd"
+    },
+    {
+      "problem_id": "official_l4_LightningIndexer",
+      "official_digest": "74464ac74457fd1d169b777b7df5aaf60e41fd18cf2d8010d5b152da797d9b41",
+      "cases": 20,
+      "prior_reference_digest": "03e0c4d508cf7212aec53b1309cf12d5eb6b37da2e34ac0979bc08eb925d2142",
+      "reference_digest": "f264dff7fc31e5d115b0e9a4f0af4a57e20ef891fc626311c159cfdb94a2918b"
+    },
+    {
+      "problem_id": "official_l4_FFN",
+      "official_digest": "22cafcddec8f70857d053ae1a91af0722a5cfc0fdeff0c18e0d6f79f252d4945",
+      "cases": 53,
+      "prior_reference_digest": "52d8fd216e1ccfe5333c1c061a517083519595cc8d4afe429612d5a2321284f8",
+      "reference_digest": "e4e29ab24d43fc02a215acccf61e4bdd0ec7c18b91860e6eb5d0d0170f5e9e6b"
+    }
+  ],
+  "assembler_file_sha256": "faede513090f01069bed17f4c20628e1cce04e8807b90e82a8321e106677e6f5"
+}

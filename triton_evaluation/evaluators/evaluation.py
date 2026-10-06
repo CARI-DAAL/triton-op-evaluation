@@ -149,7 +149,10 @@ class EvaluationEvaluator:
             if self.settings is not None
             else VERIFY_BUDGET_CAP_SECONDS
         )
-        return VerifyEvaluator(self.engine_dir, budget_cap_seconds=cap)
+        policy = self.settings.reference_device_policy if self.settings is not None else "cpu-first"
+        return VerifyEvaluator(
+            self.engine_dir, budget_cap_seconds=cap, reference_device_policy=policy,
+        )
 
     def _benchmark_evaluator(self) -> BenchmarkEvaluator:
         timeout = (

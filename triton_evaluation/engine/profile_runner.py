@@ -97,8 +97,37 @@ def build_runner_source() -> str:
                 return torch_module.get_input_groups()
 
 
+        class OfficialGroups:
+            def __init__(self, reference, torch):
+                self.reference = reference
+                self.torch = torch
+                self.total = reference.get_case_count()
+                if type(self.total) is not int or self.total < 1:
+                    raise RuntimeError("official task must contain cases")
+
+            def __len__(self):
+                return self.total
+
+            def __getitem__(self, index):
+                if type(index) is not int or not 0 <= index < self.total:
+                    raise IndexError("official case index out of range")
+                seed(self.torch)
+                group = self.reference.get_input_group(index)
+                if not isinstance(group, (list, tuple)):
+                    raise TypeError("official case must be a list or tuple of arguments")
+                return list(group)
+
+            def __iter__(self):
+                for index in range(self.total):
+                    yield self[index]
+
+
         def resolve_groups(reference, torch):
             seed(torch)
+            if (hasattr(reference, "_ADAPTER_VERSION")
+                    and hasattr(reference, "get_input_group")
+                    and hasattr(reference, "get_case_count")):
+                return OfficialGroups(reference, torch)
             if hasattr(reference, "get_input_groups"):
                 groups = list(build_input_groups(reference, torch))
                 if not groups:
@@ -183,10 +212,10 @@ def build_runner_source() -> str:
             model = implementation.ModelNew(
                 *reference.get_init_inputs()
             ).to("npu:0")
-            inputs = [to_npu(value, torch) for value in groups[index]]
+            from _common_utils import invoke_model, prepare_candidate_inputs
+            raw_inputs = groups[index]
+            inputs = [to_npu(value, torch) for value in prepare_candidate_inputs(getattr(reference, "Model", None), raw_inputs)]
             with torch.no_grad():
-                from _common_utils import invoke_model
-
                 invoke_model(model, inputs)
             if hasattr(torch, "npu"):
                 torch.npu.synchronize()
@@ -508,5 +537,5 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    _set_process_title("TritonEvalWork")
+    _set_process_title("EvalEngine")
     raise SystemExit(main())
