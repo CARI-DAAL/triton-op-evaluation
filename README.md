@@ -1,12 +1,117 @@
 # triton-evaluation
 
-Durable Triton-Ascend evaluation over one HTTP interface. The service owns
-admission, leases, recovery, execution and typed evidence. The consumer owns
-session, instance selection and scoring. Workers run isolated evaluation
-subprocesses: CPU workers for compile-only requests and one NPU worker per
-configured card for all other evaluations.
+An HTTP service for evaluating Triton-Ascend kernels: correctness, performance,
+profiling, and syntax/import prechecks. Accepted evaluations are persisted in
+Redis and can be recovered after a client disconnect or worker restart.
 
-## Interface
+The service owns admission, execution, leases, recovery, and typed results.
+The consumer owns sessions, instance selection, and scoring. Each host runs
+one API, local durable Redis, CPU workers for compile-only requests, and one
+NPU worker per configured card. The evaluation engine is bundled.
+
+## Repository layout
+
+| Path | Responsibility |
+| --- | --- |
+| [`triton_evaluation/`](triton_evaluation/) | API, durable scheduling, workers, evaluators, and bundled engine |
+| [`contracts/evaluation-api/2.1/`](contracts/evaluation-api/2.1/) | Published schema, golden fixtures, and digests; required at API startup |
+| [`scripts/`](scripts/) | Deployment, contract generation, smoke checks, and release gates |
+| [`tests/`](tests/) | CPU tests, contract checks, consumer integration, and NPU tests |
+| [`docker-compose.yml`](docker-compose.yml), [`docker/`](docker/) | Single-host deployment, reused independently on each host |
+| [`docs/`](docs/) | Architecture, decisions, specifications, and historical plans |
+
+`contracts/` is generated from [`api/contract.py`](triton_evaluation/api/contract.py)
+and [`api/contract_artifacts.py`](triton_evaluation/api/contract_artifacts.py).
+The API and host launcher verify its bytes; Docker copies it into the image,
+and CI and consumers check its digests. After a contract change, regenerate it
+with `python scripts/generate_contract_artifacts.py --write` and review and
+commit the generated changes together. Deleting it prevents API startup.
+
+## Local development
+
+Run commands from the repository root. Python 3.10+ is required; CI checks
+Python 3.10–3.12. The core CPU tests do not require an Ascend device.
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -e ".[test,dev]"
+python scripts/generate_contract_artifacts.py --check
+python -m pytest -m 'not npu' -q
+python -m ruff check .
+python -m compileall -q triton_evaluation scripts
+```
+
+For the actual consumer's HTTP integration tests, point to a checkout containing
+`kernel_agent/rewards/triton_eval_client.py`:
+
+```bash
+EVALUATION_CONSUMER_ROOT=/path/to/kernel-harness \
+  python -m pytest tests/test_consumer_integration.py -q
+```
+
+These tests exercise the real HTTP application, durable store, and a Worker
+with a stub evaluator. They are skipped when the consumer checkout is not
+configured. Real NPU calibration, card recovery, and timing run separately via
+[`scripts/npu_release_gate.py`](scripts/npu_release_gate.py).
+
+## Deploy on an Ascend host
+
+Run one independent instance per host, each with its own API, local durable
+Redis and card list. The image contains the declared Python stack; CANN and
+driver come from the host. Bind each instance to an explicit private IPv4
+address. The driver reaches that address; task-agent containers reach only
+the driver's session facade.
+
+Copy [`docker.env.example`](docker.env.example) to `docker.env` and replace
+its placeholders before starting:
+
+| Setting | Value to supply |
+| --- | --- |
+| `TRITON_EVAL_API_HOST` | This host's private IPv4 address; API port is `11907` |
+| `TRITON_EVAL_IMAGE`, `TRITON_EVAL_EVALUATOR_BUILD` | Immutable image reference and its matching `sha256:…` digest |
+| `CANN_HOST`, `TRITON_EVAL_WORKER_*` | Host toolkit path and actual hardware/toolchain inventory |
+| `TRITON_EVAL_CARDS` | Unique physical card IDs, e.g. `0` or `0,1,3` |
+| `TRITON_EVAL_CAPABILITY_SECRET_PATH` | Caller registry JSON, permissions no broader than `0600` |
+| `TRITON_EVAL_CATALOG_ROOT`, `TRITON_EVAL_CATALOG_MANIFEST_PATH` | Release directory and catalog manifest |
+
+The file formats are defined in [capability loading](triton_evaluation/security.py)
+and [catalog loading](triton_evaluation/catalog.py). After editing `docker.env`:
+
+```bash
+set -a
+source docker.env
+set +a
+export TRITON_EVAL_ENV_FILE="$PWD/docker.env"
+scripts/compose.sh pull
+scripts/compose.sh up -d --force-recreate
+scripts/compose.sh logs -f
+```
+
+Preflight validates the exact configuration being launched, locally available
+pinned images, private bind, mounted capability/catalog and Redis AOF settings.
+Export the env file before invoking the wrapper, as above. Use `up` to apply
+configuration changes; `start` and `restart` reuse existing containers.
+`TRITON_EVAL_CARDS` selects worker processes; the privileged Ascend container
+has host device access, so this list is scheduling rather than a container
+security boundary. Restrict network access to trusted drivers. For access
+outside the private network, use a separately managed TLS gateway and put its
+HTTPS URL in the consumer pool.
+
+For a single-card smoke deployment, use this same Compose file with
+`TRITON_EVAL_CARDS=0`. Card lists are unique nonnegative integers, such as
+`0,1,3`. Redis uses the local server on port 6379, with database 7 by default.
+`TRITON_EVAL_CPU_WORKERS` defaults to 1 and accepts 0–32. Setting it to 0
+disables compile-only capacity unless separate `run_worker.py --cpu` processes
+join the same instance. CPU workers do not claim cards or run card recovery.
+
+For host execution without Docker, install `.[npu]` in an isolated environment
+(with the Ascend wheel index if needed), configure [`.env.example`](.env.example)
+as `.env`, then use `bash scripts/start.sh` / `bash scripts/stop.sh`. Supply Redis
+with `--appendonly yes --appendfsync always`, as Compose does. The engine is
+bundled and needs no external checkout.
+
+## Submit and recover an evaluation
 
 The only supported evaluation protocol is **v2.1**:
 
@@ -39,21 +144,43 @@ return 200 when an explicit wait observes completion. Every check executes
 within a leased attempt under the resource deadline. Mixed requests stay on
 one NPU worker, including an explicitly requested compile check.
 
-```json
-{
-  "schema_version": "2.1",
-  "purpose": "trial",
-  "op_name": "add",
-  "reference_code": "<trusted reference source>",
-  "kernel_code": "<candidate source>",
-  "checks": ["correctness", "performance"],
-  "deadline_seconds": 900,
-  "performance": {"warmup": 5, "repeats": 50, "method": "profiler"}
+Create `request.json` from your reference and candidate source files:
+
+```bash
+python - <<'PYREQUEST'
+import json
+from pathlib import Path
+
+request = {
+    "schema_version": "2.1",
+    "purpose": "trial",
+    "op_name": "add",
+    "reference_code": Path("reference.py").read_text(encoding="utf-8"),
+    "kernel_code": Path("kernel.py").read_text(encoding="utf-8"),
+    "checks": ["correctness", "performance"],
+    "deadline_seconds": 900,
+    "performance": {"warmup": 5, "repeats": 50, "method": "event"},
 }
+Path("request.json").write_text(json.dumps(request), encoding="utf-8")
+PYREQUEST
+
+# Set EVALUATION_URL and EVALUATION_CAPABILITY_FILE for your instance.
+# Use a new key for new work; keep the same key and payload for retries.
+curl -sS -i "$EVALUATION_URL/evaluations?wait_seconds=0" \
+  -H "Authorization: Bearer $(cat "$EVALUATION_CAPABILITY_FILE")" \
+  -H 'Content-Type: application/json' \
+  -H 'X-Session-ID: example-session-1' \
+  -H 'Idempotency-Key: example-evaluation-1' \
+  --data-binary @request.json
+
+# Set EVALUATION_ID to the returned evaluation_id; poll the original instance.
+curl -sS -i "$EVALUATION_URL/evaluations/$EVALUATION_ID" \
+  -H "Authorization: Bearer $(cat "$EVALUATION_CAPABILITY_FILE")"
 ```
 
 Resources have `queued`, `running`, `completed`, `failed` or `timed_out`
-states. Completed evaluations may contain a wrong kernel or domain failure.
+states. For `completed` evaluations, inspect each check result: the kernel may be
+wrong or have a domain failure.
 Infrastructure failure is not a numeric correctness failure. Results never
 return hidden reference source or test inputs.
 
@@ -66,41 +193,7 @@ quota; they grant no authority.
 41 fixtures and their digests. [The cutover note](docs/architecture/evaluations-v21-contract.md)
 describes the publication rebuild and removed interfaces.
 
-## One or multiple hosts
-
-Run one independent instance per host, each with its own API, local durable
-Redis and card list. The image contains the declared Python stack; CANN and
-driver come from the host. Bind each instance to an explicit private IPv4
-address. The driver reaches that address; task-agent containers reach only
-the driver's session facade.
-
-```bash
-cp docker.env.example docker.env
-# Set private bind, immutable image/build, CANN root, cards, secret and catalog.
-set -a
-source docker.env
-set +a
-export TRITON_EVAL_ENV_FILE="$PWD/docker.env"
-scripts/compose.sh up -d --force-recreate
-scripts/compose.sh logs -f
-```
-
-Preflight validates the exact configuration being launched, pinned images,
-private bind, mounted capability/catalog and local Redis AOF durability.
-Export the env file before invoking the wrapper, as above. Use `up` to apply
-configuration changes; `start` and `restart` reuse existing containers.
-`TRITON_EVAL_CARDS` selects worker processes; the privileged Ascend container
-has host device access, so this list is scheduling rather than a container
-security boundary. Restrict network access to trusted drivers. For access
-outside the private network, use a separately managed TLS gateway and put its
-HTTPS URL in the consumer pool.
-
-For a single-card smoke deployment, use this same Compose file with
-`TRITON_EVAL_CARDS=0`. Card lists are unique nonnegative integers, such as
-`0,1,3`. Redis uses the local server on port 6379, with database 7 by default.
-`TRITON_EVAL_CPU_WORKERS` defaults to 1 and accepts 0–32. Setting it to 0
-disables compile-only capacity unless separate `run_worker.py --cpu` processes
-join the same instance. CPU workers do not claim cards or run card recovery.
+## Multiple hosts
 
 Set `EVALUATION_POOL_FILE` on the consumer driver to a JSON file:
 
@@ -124,11 +217,6 @@ new sessions. Keep old owners available while their evaluation handles exist.
 Quotas, card health and caches are per instance. Never share one namespace
 between machines with overlapping card IDs.
 
-For host execution, install `.[npu]` in an isolated environment, configure
-`.env.example`, then use `scripts/start.sh` / `scripts/stop.sh`. Supply Redis
-with `--appendonly yes --appendfsync always`, as Compose does. The engine is
-bundled and needs no external checkout.
-
 ## Recovery and caching
 
 Synchronous Redis AOF EXEC acknowledgement is the durability boundary. HTTP
@@ -151,16 +239,13 @@ do not call reference input factories or synthesize correctness case results.
 A positive precheck skips another precheck. New logical evaluations still
 measure correctness and performance. Backend JIT failures are not reused
 across inputs because they can depend on shape and dtype. There is no promised
-cross-request executable-artifact or successful-result cache. See
-[the architecture decision](docs/adr/0001-evaluation-instance-ownership.md).
-The [admission and evidence decision](docs/adr/0002-admission-before-execution.md)
-explains attempt ownership, CPU scheduling and terminal evidence rules.
+cross-request executable-artifact or successful-result cache.
 
-## Cutover
+## Upgrading from retired protocols
 
-This release removes old routes, task polling, version stripping, sunset
-switches, old dispatch queues and unscoped card metadata. The namespace is
-`triton-eval:v2.1`. Stop old admissions, collect all in-flight results from
+The service uses the `triton-eval:v2.1` namespace. Legacy routes, task polling,
+old dispatch queues, and the retired `kernel_eval` bridge are no longer shipped.
+Stop old admissions, collect all in-flight results from
 their original owner, then switch consumers and instances together. Old records
 are neither read nor deleted. Preserve the Redis volume; rollback requires
 the matching consumer and original namespace. Never use `docker compose down -v`.
@@ -170,20 +255,9 @@ contract and architecture notes describe supported behavior. Host-specific
 throwaway Compose files are retired; the single deployment configuration uses
 the declared image stack and explicit host inputs.
 
-## Validation
+## Further reading
 
-```bash
-pip install -e ".[test,dev]"
-python -m pytest -m 'not npu' -q
-ruff check .
-python scripts/generate_contract_artifacts.py --check
-python -m compileall -q triton_evaluation scripts
-EVALUATION_CONSUMER_ROOT=/path/to/kernel-harness \
-  python -m pytest tests/test_consumer_integration.py -q
-```
-
-The cross-repository gate uses the actual consumer against the real HTTP
-application, durable store and CPU Worker evaluator. Real NPU calibration,
-canary recovery and timing run separately via `scripts/npu_release_gate.py`.
-See also [card health](docs/architecture/card-health.md) and
-[attempt provenance](docs/architecture/attempt-card-provenance.md).
+- [Domain vocabulary](CONTEXT.md)
+- [Instance ownership and caching](docs/adr/0001-evaluation-instance-ownership.md)
+- [Admission, CPU scheduling, and evidence](docs/adr/0002-admission-before-execution.md)
+- [Card health](docs/architecture/card-health.md) and [attempt provenance](docs/architecture/attempt-card-provenance.md)
