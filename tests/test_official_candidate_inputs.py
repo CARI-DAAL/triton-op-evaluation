@@ -123,7 +123,7 @@ def test_benchmark_actual_candidate_function_receives_defaults(reference, monkey
         assert inputs[1] is reference._ABSENT
         if not cache_hit:
             captured.append(model(*inputs))
-        return {}, 2.0, 0.0
+        return {}, 2.0, 0.0, None
 
     def candidate(model, inputs, *_args):
         captured.append(invoke_model(model, inputs))

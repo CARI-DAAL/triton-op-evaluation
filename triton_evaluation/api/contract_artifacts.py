@@ -223,6 +223,8 @@ def _performance_data(measurement_method="npu_event_v1") -> "m.PerformanceResult
             reference_latency_ms=1.0,
             speedup_vs_reference=2.0,
             measurement_method=measurement_method,
+            reference_latency_samples_ms=[0.96, 0.98, 0.99, 1.0, 1.0, 1.01, 1.02, 1.04],
+            reference_latency_samples_source="fresh_measurements",
         ),
         m.PerformanceCase(
             case_idx=1,

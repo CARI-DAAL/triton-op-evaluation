@@ -38,6 +38,12 @@ class Settings(BaseSettings):
     reference_cache_binding: Path | None = None
     reference_cache_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
     reference_cache_state_dir: Path | None = None
+    # Sampled-validated historical timing reuse (timing evidence only), pinned
+    # as one artifact path + SHA256 pair like the reference cache anchors.
+    reference_timing_reuse_policy: Path | None = None
+    reference_timing_reuse_sha256: str | None = Field(
+        default=None, pattern=r"^[0-9a-f]{64}$"
+    )
     # Service-owned immutable loader compatibility, separate from six anchors.
     profiler_runtime_manifest: Path | None = None
     profiler_runtime_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
@@ -119,7 +125,10 @@ class Settings(BaseSettings):
     )
     decoy_algorithm_version: str = Field(default="decoy-v1", pattern=_ALGORITHM_VERSION_PATTERN)
     benchmark_algorithm_version: str = Field(
-        default="geometric-mean-v1", pattern=_ALGORITHM_VERSION_PATTERN
+        # reference8-v1: every measured reference case is timed eight times
+        # (warmup/repeats per request) and the published median is the median of
+        # those eight samples; per-case sample evidence is part of the result.
+        default="geometric-mean-v1:reference8-v1", pattern=_ALGORITHM_VERSION_PATTERN
     )
     profiler_algorithm_version: str = Field(
         default="profiler-v1", pattern=_ALGORITHM_VERSION_PATTERN
@@ -193,6 +202,18 @@ class Settings(BaseSettings):
             value is None for value in cache_values
         ):
             raise ValueError("all four reference cache deployment settings are required")
+        reuse_values = (self.reference_timing_reuse_policy, self.reference_timing_reuse_sha256)
+        if any(value is not None for value in reuse_values) and not all(
+            value is not None for value in reuse_values
+        ):
+            raise ValueError(
+                "timing reuse policy and pinned SHA256 must be configured together"
+            )
+        if self.reference_timing_reuse_policy is not None and (
+            not self.reference_timing_reuse_policy.is_absolute()
+            or ".." in self.reference_timing_reuse_policy.parts
+        ):
+            raise ValueError("timing reuse policy path must be absolute without traversal")
         if len(self.effective_correctness_algorithm_version) > 128:
             raise ValueError("effective correctness algorithm version exceeds 128 characters")
         if self.max_recovery_age_seconds > self.retention_seconds:

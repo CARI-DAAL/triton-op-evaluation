@@ -114,10 +114,94 @@ performance evaluation. A relative shift strictly above 3% writes a monotone
 physical-card/deployment invalidation marker. That evaluation and subsequent ones
 in that generation remeasure every reference case eight times and use the median.
 They do not overwrite or repin the audit evidence. A cache miss also uses live
-median-of-eight denominators. This can be considerably slower than the old live
-single-measurement route; measure actual coverage and wall time before predicting
-batch duration. A one-case task still spends eight measurements on its sentinel,
-so reuse does not imply reduced cost for that task.
+median-of-eight denominators. Since `geometric-mean-v1:reference8-v1` an
+**uncached** grade (no cache environment configured, or a non-official reference)
+also measures every benchmarked reference case eight times instead of once; one
+grade therefore yields eight warmup/repeats reference samples per case without
+eight separate requests. This can be considerably slower than the old live
+single-measurement route (roughly eight times the reference-side measurement
+cost); measure actual coverage and wall time before predicting batch duration.
+A one-case task still spends eight measurements on its sentinel, so reuse does
+not imply reduced cost for that task.
+
+Each measured case in the public `PerformanceResult.per_case` carries the real
+reference evidence behind its `reference_latency_ms` (which stays the median):
+`reference_latency_samples_ms` — exactly eight finite positive latencies — and
+`reference_latency_samples_source`, either `fresh_measurements` (eight samples
+measured in this grade) or `cached_manifest` (the eight historical samples
+recorded in the pinned cache manifest, returned only on a sentinel-validated
+cache hit). Samples are never fabricated around a cached scalar, and a case with
+a legacy or unbound reference scalar carries no samples and no source label.
+Failed or partial reference measurement stays a failed/unmeasured case; it never
+becomes a successful eight-sample result.
+
+Case identity convention: engine and cache/audit labels are one-based; the
+public `PerformanceCase.case_idx` and the optional request selection
+`PerformanceParams.case_indices` are zero-based (audit case N ↔ public N-1), the
+same convention as `ProfileParams.case_indices`. A request with
+`performance.case_indices` benchmarks only those original cases for performance
+(correctness always covers the full task); the engine result reports the
+original one-based `case_indices` it measured and never renumbers them, so
+`PerformanceResult.selected_cases`/`coverage` describe the selected subset. A
+subset performance result is diagnostic evidence; full-coverage consumers keep
+their own fail-closed coverage checks. An empty or out-of-range selection is
+rejected (invalid request or failed performance check), never silently widened.
+
+## Opt-in reuse of validated historical timings (timing only)
+
+A deployment may pin ONE owner-adopted policy artifact that authorizes reusing
+the OLD reference cache's timing evidence across one explicitly approved
+runtime transition (for example original -> patched-Triton), configured like
+the other pinned anchors:
+
+```text
+TRITON_EVAL_REFERENCE_TIMING_REUSE_POLICY=/absolute/validated-timing-reuse-policy.json
+TRITON_EVAL_REFERENCE_TIMING_REUSE_SHA256=<SHA256 of exact policy bytes>
+```
+
+The policy declares the source deployment digest, cache root and sealed index
+SHA256, the covered physical cards, the 8×(warmup5/repeats20, profiler) timing
+contract (reconciled explicitly with reference8's identical per-sample
+protocol, never silently aliased), the target patched runtime file hashes, the
+consuming service source hash, and the sampled evidence that justified adoption.
+It honestly states its scope: six sampled BatchMatmul cases within ±3% support an
+owner-adopted runtime-wide policy; that is not a remeasurement or an individual
+validation of all 1046 source cases.
+
+At the real timing lookup, reuse requires an exact `CaseBinding` match — same
+reference source, official digest, case, seed-zero inputs, physical device and
+reference policy — and serves the manifest's REAL eight historical samples and
+their median, labeled `historical_validated` with the policy digest as public
+proof (`reference_timing_policy_sha256`). The existing sentinel contract is
+retained for historical timings: before serving reuse, the engine measures the
+first selected case fresh (the same eight-sample warmup/repeats protocol) and
+compares it with the historical median using the same >3% rule and monotone
+invalidation markers (written under the policy's dedicated state directory,
+keyed by source deployment and card). Drift or an existing marker forces the
+original fresh measurement path for every case (trace `timing_reuse_drift`);
+the fresh sentinel observation is recorded in the trace separately from the
+historical per-case samples. Timings are never borrowed across devices or
+cases: any miss (unrepresented card, case, input or protocol) leaves the engine
+on its original execution path (fresh measurement), and a partially covered
+selection is measured fresh for every case. A tampered policy (bytes ≠ pinned
+SHA256), a contradictory index or a mismatched target identity is an
+infrastructure failure or a denial — never a hit. Reuse is timing evidence only:
+correctness, quality and admission gates are unchanged, and the source cache,
+index and manifests are never modified or rekeyed.
+
+### Sandbox delivery of the policy pair
+
+`--clearenv` sandbox children receive the policy pair ONLY through the pinned
+engine runtime overlay: `TRITON_EVAL_REFERENCE_TIMING_REUSE_POLICY` and
+`..._SHA256` form one complete group in `RUNTIME_ENV` and in the overlay's
+allowed environment (both-or-neither everywhere; a state mount without the
+pair is refused too). The overlay verifies the policy bytes against the pinned
+SHA, the declared index and deployment identities, and binds exactly the
+declared artifacts read-only (policy file, sealed index, the cache's `cases`
+and `blobs` namespaces, pinned runtime files) plus one dedicated writable
+state directory for the sentinel's drift markers. A worker declaring the pair
+without a pinned overlay is refused rather than silently dropped by
+`--clearenv`, and no other parent environment is inherited.
 
 `verify_reference.json`, retained by the existing attempt-bound diagnostics, records
 hit/miss, output/manifest/binding SHA and whether a live reference actually ran.

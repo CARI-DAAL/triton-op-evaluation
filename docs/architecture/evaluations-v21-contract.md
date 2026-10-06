@@ -8,9 +8,14 @@ Unknown fields and versions are rejected before admission.
 
 Execution is selected through `checks`, ordered as `compile`, `correctness`,
 `performance`, then `profile`. Performance requires correctness and defaults
-to event timing; callers may explicitly request profiler timing. Profile-only
-and compile-only evaluations remain valid. `grade_context` belongs only to
-`purpose: "grade"`; trial and rollout traffic cannot carry it.
+to event timing; callers may explicitly request profiler timing. `performance`
+may carry zero-based `case_indices` (same shape as profile selection) to
+benchmark only original cases; without it performance covers the whole task.
+Each measured performance case reports `reference_latency_ms` (the median) plus,
+when sample evidence exists, `reference_latency_samples_ms` (eight samples) and
+`reference_latency_samples_source` (`fresh_measurements` or `cached_manifest`).
+Profile-only and compile-only evaluations remain valid. `grade_context` belongs
+only to `purpose: "grade"`; trial and rollout traffic cannot carry it.
 
 Caller facades map intent into checks before submission:
 

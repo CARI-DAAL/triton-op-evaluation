@@ -428,6 +428,9 @@ def shape_correctness(raw: dict[str, object], decoy: bool) -> CorrectnessResult:
 class _ShapeMeasurement(StrictModel):
     avg_latency_ms: float
     peak_memory_mb: float
+    latency_samples_ms: list[float] | None = None
+    latency_samples_source: str | None = None
+    latency_samples_proof_sha256: str | None = None
 
 
 class _AggregateMeasurement(StrictModel):
@@ -476,6 +479,9 @@ class _BenchmarkResult(StrictModel):
     speedup_vs_torch: float | None
     measurement_method: MeasurementMethod | None = None
     per_shape_results: list[_PerShapeResult]
+    # One-based original identities of the cases this run measured; None means
+    # the full contiguous task (legacy engine output).
+    case_indices: list[Annotated[int, Field(ge=1)]] | None = None
 
     @model_validator(mode="after")
     def _counts_and_identity(self):
@@ -486,8 +492,6 @@ class _BenchmarkResult(StrictModel):
         indices = [case.case_idx for case in self.per_shape_results]
         if len(set(indices)) != len(indices):
             raise ValueError("duplicate case_idx")
-        if any(index > self.total_cases for index in indices):
-            raise ValueError("case_idx out of range")
         abnormal = (
             self.nan_indices
             + self.inf_indices
@@ -497,8 +501,21 @@ class _BenchmarkResult(StrictModel):
         )
         if len(set(abnormal)) != len(abnormal):
             raise ValueError("abnormal-speedup index lists overlap")
-        if any(index < 1 or index > self.total_cases for index in abnormal):
-            raise ValueError("abnormal-speedup index out of range")
+        if self.case_indices is not None:
+            if len(self.case_indices) != self.total_cases:
+                raise ValueError("case_indices must cover every selected case")
+            if len(set(self.case_indices)) != len(self.case_indices):
+                raise ValueError("case_indices must be unique")
+            allowed = set(self.case_indices)
+            if any(index not in allowed for index in indices):
+                raise ValueError("case_idx outside the declared selection")
+            if any(index not in allowed for index in abnormal):
+                raise ValueError("abnormal-speedup index outside the declared selection")
+        else:
+            if any(index > self.total_cases for index in indices):
+                raise ValueError("case_idx out of range")
+            if any(index < 1 or index > self.total_cases for index in abnormal):
+                raise ValueError("abnormal-speedup index out of range")
         by_index = {case.case_idx: case for case in self.per_shape_results}
         for index in abnormal:
             case = by_index[index]
@@ -536,6 +553,9 @@ def shape_performance(raw: dict[str, object]) -> PerformanceResult:
                 reference_latency_ms=reference,
                 speedup_vs_reference=reference / implementation,
                 measurement_method=case.measurement_method,
+                reference_latency_samples_ms=case.framework.latency_samples_ms,
+                reference_latency_samples_source=case.framework.latency_samples_source,
+                reference_timing_policy_sha256=case.framework.latency_samples_proof_sha256,
             )
         )
     if not per_case:
