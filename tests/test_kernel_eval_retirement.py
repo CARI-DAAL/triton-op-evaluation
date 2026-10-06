@@ -10,8 +10,8 @@ ROOT = Path(__file__).parents[1]
 
 def test_bridge_entry_and_config_are_removed_but_archived_bytes_remain():
     retired = ROOT / "adapters/kernel-eval-legacy-bridge"
-    assert {path.name for path in retired.iterdir() if path.is_file()} == {"README.md"}
-    assert not list(retired.rglob("*.py"))
+    # Removed entirely upstream (PR #38); only the non-executable archive remains.
+    assert not retired.exists()
     archive = ROOT / "docs/archives/kernel-eval-legacy-bridge"
     manifest = json.loads((archive / "ARCHIVE-MANIFEST.json").read_text())
     for name, record in manifest["files"].items():

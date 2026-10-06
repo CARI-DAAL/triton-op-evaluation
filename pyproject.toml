@@ -44,7 +44,8 @@ markers = [
 line-length = 100
 target-version = "py310"
 # engine/ is vendored (Huawei, CANN license) — do not lint or reformat it.
-# reference/ holds verbatim kernel-agent parity fixtures — same rule.
+# docs/archives/kernel-eval-legacy-bridge/reference holds verbatim retired-bridge
+# fixture bytes kept as evidence — same rule.
 extend-exclude = [
     "triton_evaluation/engine",
     "docs/archives/kernel-eval-legacy-bridge/reference",
