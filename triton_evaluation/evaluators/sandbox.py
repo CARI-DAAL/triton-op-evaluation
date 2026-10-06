@@ -31,6 +31,7 @@ from ..reference_cache import (
     DEVICE_ENV,
     STATE_ENV,
     CacheIndex,
+    CacheIndexV2,
 )
 from ..reference_cache import DIGEST_ENV as CACHE_DIGEST_ENV
 from ..reference_timing_reuse import POLICY_ENV as TIMING_REUSE_POLICY_ENV
@@ -394,7 +395,13 @@ def apply_runtime_overlay(
         raw = index_path.read_bytes()
         if hashlib.sha256(raw).hexdigest() != environment[CACHE_DIGEST_ENV]:
             raise ValueError("runtime overlay cache index differs from its pin")
-        index = CacheIndex.model_validate_json(raw)
+        # Model-bound (v2) indexes are pinned exactly like v1: same digest
+        # pin, same deployment integrity; entries are only relocated by
+        # NPU-model workload identity instead of the card index.
+        if json.loads(raw).get("schema_version") == "reference-cache-index-v2":
+            index = CacheIndexV2.model_validate_json(raw)
+        else:
+            index = CacheIndex.model_validate_json(raw)
         if not cache_root.is_dir():
             raise ValueError("runtime overlay cache root must be a dedicated artifact directory")
         # Expose only the two content-addressed artifact namespaces, rather

@@ -1242,6 +1242,9 @@ def _attempt_case(modules, case_ctx: CaseContext, inputs, device,
             "selected_reference_device": str(golden_device),
             "reference_completed": False,
             "output_devices": [],
+            # Per-case reference source: cache (sealed output compared with the
+            # unchanged tolerance) or fresh (reference computed on this run).
+            "reference_source": "cache" if case_ctx.cached_reference is not None else "fresh",
         })
     if case_ctx.reference_trace is not None and case_ctx.reference_cache_status is not None:
         case_ctx.reference_trace[-1]["reference_cache_status"] = case_ctx.reference_cache_status
