@@ -381,11 +381,14 @@ def test_historical_sentinel_drift_forces_fresh_measurement_monotonically(
         "example", str(verify_dir), measurement_method="profiler"
     )
     result = benchmark.benchmark_implementations(config)
-    # sentinel (8) + fresh eight per case (2x8): nothing was reused
-    assert calls["framework"] == 8 + 8 * 2
+    # sentinel (8) + the ORIGINAL e4a36f7 path (one measurement per case):
+    # nothing was reused, and with no cache configured the service runs its
+    # original reference path exactly as production.
+    assert calls["framework"] == 8 + 2
     assert all(
-        case.framework.latency_samples_source == "fresh_measurements"
-        and case.framework.latency_samples_proof_sha256 is None
+        case.framework.latency_samples_source is None
+        and case.framework.latency_samples_ms is None
+        and case.framework.reference_path == "original_measurements"
         for case in result.per_shape_results
     )
     trace = json.loads(Path(verify_dir, "verify_reference.json").read_text())
@@ -410,26 +413,31 @@ def test_historical_sentinel_drift_forces_fresh_measurement_monotonically(
     result = benchmark.benchmark_implementations(
         benchmark.BenchmarkConfig("example", str(verify_dir), measurement_method="profiler")
     )
-    assert calls["framework"] == 8 + 8 * 2  # sentinel still runs, then fresh
+    assert calls["framework"] == 8 + 2  # sentinel still runs, then original path
     assert all(
-        case.framework.latency_samples_source == "fresh_measurements"
+        case.framework.reference_path == "original_measurements"
         for case in result.per_shape_results
     )
     trace = json.loads(Path(verify_dir, "verify_reference.json").read_text())
     assert trace["performance_cache"]["status"] == "timing_reuse_drift"
 
 
-def test_absent_policy_preserves_exact_fresh_eight_behavior(tmp_path, monkeypatch, cpu_engine):
+def test_absent_policy_preserves_exact_original_e4a36f7_behavior(
+    tmp_path, monkeypatch, cpu_engine
+):
     verify_dir = write_task(tmp_path, cases=2)
     config = benchmark.BenchmarkConfig(
         "example", str(verify_dir), measurement_method="profiler"
     )
     result = benchmark.benchmark_implementations(config)
-    assert cpu_engine["framework"] == 8 * 2
-    assert result.per_shape_results[0].framework.latency_samples_source == (
-        "fresh_measurements"
+    # No cache and no policy: the ORIGINAL e4a36f7 path measures each case
+    # exactly once; no sample evidence, no trace, per-case path recorded.
+    assert cpu_engine["framework"] == 2
+    assert result.per_shape_results[0].framework.latency_samples_source is None
+    assert result.per_shape_results[0].framework.latency_samples_ms is None
+    assert result.per_shape_results[0].framework.reference_path == (
+        "original_measurements"
     )
-    assert result.per_shape_results[0].framework.latency_samples_proof_sha256 is None
     trace = json.loads(Path(verify_dir, "verify_reference.json").read_text())
     assert "performance_cache" not in trace
 
@@ -460,9 +468,10 @@ def test_wrong_transition_input_device_or_protocol_cannot_yield_reuse(
     result = benchmark.benchmark_implementations(
         benchmark.BenchmarkConfig("example", str(verify_dir), measurement_method="profiler")
     )
-    assert calls["framework"] == 16
+    assert calls["framework"] == 2  # original path: one measurement per case
     assert all(
-        case.framework.latency_samples_source == "fresh_measurements"
+        case.framework.latency_samples_source is None
+        and case.framework.reference_path == "original_measurements"
         for case in result.per_shape_results
     )
 
@@ -473,7 +482,7 @@ def test_wrong_transition_input_device_or_protocol_cannot_yield_reuse(
     result = benchmark.benchmark_implementations(
         benchmark.BenchmarkConfig("example", str(verify_dir), measurement_method="profiler")
     )
-    assert calls["framework"] == 16
+    assert calls["framework"] == 2
 
     # wrong inputs: different tensor bytes cannot match the sealed binding
     verify_dir, _, _, calls, _, _ = configure_reuse(
@@ -482,18 +491,18 @@ def test_wrong_transition_input_device_or_protocol_cannot_yield_reuse(
     result = benchmark.benchmark_implementations(
         benchmark.BenchmarkConfig("example", str(verify_dir), measurement_method="profiler")
     )
-    assert calls["framework"] == 16
+    assert calls["framework"] == 2
 
-    # wrong measurement protocol: a repeats=50 request is measured fresh
+    # wrong measurement protocol: a repeats=50 request takes the original path
     verify_dir, _, _, calls, _, _ = configure_reuse(tmp_path / "pr", monkeypatch, cases=2)
     result = benchmark.benchmark_implementations(
         benchmark.BenchmarkConfig(
             "example", str(verify_dir), measurement_method="profiler", repeats=50
         )
     )
-    assert calls["framework"] == 8 * 2  # fresh eight per case at repeats=50
+    assert calls["framework"] == 2  # one original-path measurement per case
     assert all(
-        case.framework.latency_samples_source == "fresh_measurements"
+        case.framework.latency_samples_source is None
         for case in result.per_shape_results
     )
 
@@ -533,11 +542,13 @@ def test_partial_coverage_follows_original_execution_for_all_cases(
     result = benchmark.benchmark_implementations(
         benchmark.BenchmarkConfig("example", str(verify_dir), measurement_method="profiler")
     )
-    # case 2 has no old binding: the whole run measures fresh; nothing is
+    # case 2 has no old binding: the whole run follows the original execution
+    # path (no cache configured -> one measurement per case); nothing is
     # partially relabeled.
-    assert cpu_engine["framework"] == 8 * 6
+    assert cpu_engine["framework"] == 6
     assert all(
-        case.framework.latency_samples_source == "fresh_measurements"
+        case.framework.latency_samples_source is None
+        and case.framework.reference_path == "original_measurements"
         for case in result.per_shape_results
     )
 

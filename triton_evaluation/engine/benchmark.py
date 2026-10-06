@@ -177,6 +177,12 @@ class PerformanceResult:
     latency_samples_ms: Optional[List[float]] = None
     latency_samples_source: Optional[str] = None
     latency_samples_proof_sha256: Optional[str] = None
+    # Which reference path served this case: cached_manifest |
+    # historical_validated (accelerator hits), fresh_measurements (the
+    # cache's own miss/drift remeasure path) or original_measurements
+    # (the production e4a36f7 single-measurement path). None on the
+    # implementation side and for preset skip-framework reference values.
+    reference_path: Optional[str] = None
 
 
 @dataclass
@@ -642,10 +648,22 @@ def _compute_speedup(framework_latency_ms: float, impl_latency_ms: float) -> flo
     return 0
 
 
+def _reference_path_label(config: BenchmarkConfig) -> Optional[str]:
+    """本Run参考路径的逐用例标签（同一Run内所有用例同路径）。"""
+    if config.reference_latencies_ms is not None:
+        return config.reference_evidence_source or "cached_manifest"
+    if config.reference_measure_eight:
+        return "fresh_measurements"
+    if config.skip_framework:
+        return None
+    return "original_measurements"
+
+
 def _build_perf_pair(
     framework: Measurement,
     impl: Measurement,
     reference_evidence: Optional[Tuple[List[float], str, Optional[str]]] = None,
+    reference_path: Optional[str] = None,
 ) -> Tuple[PerformanceResult, PerformanceResult]:
     """把 framework / impl 的三元测量结果打包成两份 PerformanceResult。"""
     samples, source, proof = reference_evidence if reference_evidence else (None, None, None)
@@ -657,6 +675,7 @@ def _build_perf_pair(
             latency_samples_ms=samples,
             latency_samples_source=source,
             latency_samples_proof_sha256=proof,
+            reference_path=reference_path,
         ),
         PerformanceResult(
             avg_latency_ms=round(impl.latency_ms, 4),
@@ -704,6 +723,7 @@ def run_single_benchmark(
         Measurement(framework_operators, framework_latency_ms, framework_peak_memory),
         Measurement(impl_operators, impl_latency_ms, impl_peak_memory),
         reference_evidence,
+        reference_path=_reference_path_label(config),
     )
     return fw_perf, impl_perf, round(speedup, 4)
 
@@ -1060,15 +1080,16 @@ def _configure_reference_cache(config, model_spec, input_groups, device, case_in
     config.reference_cache_trace = None
     cache = ReferenceCache.from_environment()
     if cache is None:
-        # Uncached grade: every reference case is measured eight times unless
-        # the owner-pinned validated timing-reuse policy serves exact matches.
-        config.reference_measure_eight = not config.skip_framework
+        # Uncached grade, exactly as production e4a36f7: the ORIGINAL
+        # reference path measures each case once. The owner-pinned
+        # timing-reuse policy stays a pure optional accelerator — a
+        # validated hit serves it, every miss keeps the original path.
         _try_validated_timing_reuse(config, model_spec, input_groups, case_indices, device)
         return
     source = Path(config.verify_dir, f"{config.op_name}_torch.py").read_text(encoding="utf-8")
     if official_source_metadata(source) is None:
-        # Not a pinned official reference: no cached evidence may serve it.
-        config.reference_measure_eight = not config.skip_framework
+        # Not a pinned official reference: no cached evidence may serve it;
+        # the ORIGINAL e4a36f7 path measures it exactly as before.
         _try_validated_timing_reuse(config, model_spec, input_groups, case_indices, device)
         return
     if config.skip_framework:
@@ -1265,6 +1286,7 @@ def result_to_dict(result: BenchmarkResult) -> Dict[str, Any]:
                     "latency_samples_ms": r.framework.latency_samples_ms,
                     "latency_samples_source": r.framework.latency_samples_source,
                     "latency_samples_proof_sha256": r.framework.latency_samples_proof_sha256,
+                    "reference_path": r.framework.reference_path,
                 } if r.framework else None
             ),
             "implementation": (

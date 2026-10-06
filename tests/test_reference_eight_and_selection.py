@@ -1,11 +1,13 @@
-"""One grade -> eight reference samples + median + honest provenance (CPU).
+"""Reference evidence + honest provenance through the real path (CPU).
 
 Real call paths on CPU with a fake ``measure_single`` seam (the same seam the
 controlled cache tests use): the full engine ``benchmark_implementations`` ->
 ``result_to_dict`` -> evaluator ``shape_performance`` -> public contract JSON.
-Covers uncached fresh-eight, cache-hit manifest samples labeled cached, case
-selection with original identity preservation (audit one-based labels == engine
-case_idx; public case_idx == audit - 1), and failure/partial-sample honesty.
+Covers the uncached ORIGINAL e4a36f7 reference path (ruling 2026-10-06:
+caching is a pure optional accelerator), cache-hit manifest samples labeled
+cached, case selection with original identity preservation (audit one-based
+labels == engine case_idx; public case_idx == audit - 1), and failure/partial-
+sample honesty.
 """
 
 import importlib.metadata
@@ -156,9 +158,13 @@ def public_json(result_dict):
     return performance, json.loads(payload)
 
 
-def test_uncached_grade_measures_eight_fresh_reference_samples_per_case(
+def test_uncached_grade_takes_the_original_e4a36f7_reference_path(
     tmp_path, monkeypatch, cpu_engine
 ):
+    # Ruling 2026-10-06: reference caching is a pure optional accelerator.
+    # With no cache and no policy configured the service behaves exactly as
+    # production e4a36f7: each reference case is measured ONCE per request
+    # parameters on the original path (no eight-sample remeasure).
     for name in (
         "TRITON_EVAL_REFERENCE_CACHE_DIR",
         "TRITON_EVAL_REFERENCE_CACHE_BINDING",
@@ -172,25 +178,31 @@ def test_uncached_grade_measures_eight_fresh_reference_samples_per_case(
     )
     assert config.reference_measure_eight is False  # before configuration
     result = benchmark.benchmark_implementations(config)
-    assert config.reference_measure_eight is True  # uncached grade forces eight
-    assert config.reference_cache_trace is None
+    assert config.reference_measure_eight is False  # original path, not eight
+    assert config.reference_latencies_ms is None
+    assert config.reference_cache_trace is None  # e4a36f7 writes no trace
 
     case = result.per_shape_results[0]
-    assert case.framework.latency_samples_ms == FRESH_SAMPLES
-    assert case.framework.latency_samples_source == "fresh_measurements"
-    assert case.framework.avg_latency_ms == round(FRESH_MEDIAN, 4)
-    assert case.speedup_vs_torch == round(FRESH_MEDIAN / IMPL_LATENCY, 4)
-    # exactly eight reference measurements per case, one candidate measurement
-    assert scripted["framework"] == 8 * 3
+    assert case.framework.latency_samples_ms is None  # single scalar, no samples
+    assert case.framework.latency_samples_source is None
+    assert case.framework.reference_path == "original_measurements"
+    assert case.framework.avg_latency_ms == FRESH_SAMPLES[0]  # the single measurement
+    assert case.speedup_vs_torch == round(FRESH_SAMPLES[0] / IMPL_LATENCY, 4)
+    # exactly ONE reference measurement per case, one candidate measurement
+    assert scripted["framework"] == 3
     assert result.case_indices is None and result.total_cases == 3
 
     performance, payload = public_json(benchmark.result_to_dict(result))
     first = performance.per_case[0]
-    assert first.reference_latency_samples_ms == FRESH_SAMPLES
-    assert first.reference_latency_samples_source == "fresh_measurements"
-    assert first.reference_latency_ms == round(FRESH_MEDIAN, 4)
-    assert first.speedup_vs_reference == pytest.approx(FRESH_MEDIAN / IMPL_LATENCY)
-    assert payload["per_case"][0]["reference_latency_samples_ms"] == FRESH_SAMPLES
+    assert first.reference_latency_samples_ms is None  # legacy scalar shape
+    assert first.reference_latency_samples_source is None
+    assert first.reference_latency_ms == FRESH_SAMPLES[0]
+    assert first.speedup_vs_reference == pytest.approx(FRESH_SAMPLES[0] / IMPL_LATENCY)
+    assert payload["per_case"][0]["reference_latency_samples_ms"] is None
+    assert "reference_path" not in payload["per_case"][0]  # public contract unchanged
+    # the engine-private per-case record states the path that served the case
+    engine_case = benchmark.result_to_dict(result)["per_shape_results"][0]["framework"]
+    assert engine_case["reference_path"] == "original_measurements"
 
 
 def test_selected_cases_preserve_original_identity_through_the_real_path(
@@ -211,8 +223,9 @@ def test_selected_cases_preserve_original_identity_through_the_real_path(
     assert [case.case_idx for case in result.per_shape_results] != list(
         range(1, len(AUDIT_SELECTED) + 1)
     )  # never renumbered
-    # only the selected cases are measured: 8 reference + 1 candidate each
-    assert scripted["framework"] == 8 * len(AUDIT_SELECTED)
+    # only the selected cases are measured: 1 reference + 1 candidate each
+    # (uncached original e4a36f7 path: one reference measurement per case)
+    assert scripted["framework"] == len(AUDIT_SELECTED)
     assert sorted(set(scripted["names"])) == sorted(
         f"framework_profile_case{index}" for index in AUDIT_SELECTED
     )
@@ -395,12 +408,11 @@ def test_public_case_requires_source_label_with_samples_and_allows_legacy_scalar
 def test_partial_or_invalid_reference_measurement_stays_a_failed_case(
     tmp_path, monkeypatch, cpu_engine
 ):
-    # seven good samples then a missing latency -> not a successful eight-sample
+    # an invalid reference measurement (missing latency) -> not a successful
     # result; the case fails after retries and shaping reports no measurement.
-    scripted_measure(
-        monkeypatch,
-        [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, None] * 6,
-    )
+    # Path-independent: every framework call the engine could make (original
+    # single-measurement path or sentinel/remeasure eights) is invalid.
+    scripted_measure(monkeypatch, [None] * 24)
     config = benchmark.BenchmarkConfig(
         "example", write_task(tmp_path, cases=2), measurement_method="event"
     )
@@ -410,13 +422,23 @@ def test_partial_or_invalid_reference_measurement_stays_a_failed_case(
     with pytest.raises(ShapingError):
         public_json(benchmark.result_to_dict(result))
 
-    # a non-finite sample is equally refused
+    # a non-finite single measurement on the original path is reported
+    # honestly as an abnormal (inf) index, never as sample evidence
     scripted_measure(
-        monkeypatch, [1.0, 1.0, 1.0, 1.0, float("inf"), 1.0, 1.0, 1.0] * 6
+        monkeypatch, [float("inf")] * 24
     )
     result = benchmark.benchmark_implementations(config)
-    assert result.failed_cases == 2
+    assert result.failed_cases == 0  # engine keeps e4a36f7 abnormal-index honesty
+    assert result.inf_indices == [1, 2]
+    assert all(
+        case.framework.latency_samples_ms is None
+        and case.framework.reference_path == "original_measurements"
+        for case in result.per_shape_results
+        if case.framework
+    )
 
 
-def test_settings_declare_the_reference8_benchmark_protocol():
-    assert Settings().benchmark_algorithm_version == "geometric-mean-v1:reference8-v1"
+def test_settings_declare_the_production_benchmark_protocol():
+    # The general service presents production e4a36f7 provenance; caching is
+    # an optional accelerator recorded per case, not a protocol change.
+    assert Settings().benchmark_algorithm_version == "geometric-mean-v1"

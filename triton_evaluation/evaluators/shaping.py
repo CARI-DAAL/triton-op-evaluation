@@ -431,6 +431,10 @@ class _ShapeMeasurement(StrictModel):
     latency_samples_ms: list[float] | None = None
     latency_samples_source: str | None = None
     latency_samples_proof_sha256: str | None = None
+    # Engine-private per-case record of which reference path served the case
+    # (cached_manifest | historical_validated | fresh_measurements |
+    # original_measurements); not part of the public contract.
+    reference_path: str | None = None
 
 
 class _AggregateMeasurement(StrictModel):

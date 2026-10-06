@@ -239,9 +239,12 @@ def test_cross_card_drift_marks_remeasure_for_the_current_card_monotonically(
     result = benchmark.benchmark_implementations(
         benchmark.BenchmarkConfig("example", str(verify_dir), measurement_method="profiler")
     )
-    assert calls["framework"] == 8 + 8 * 2  # sentinel, then fresh eight per case
+    # Drift: sentinel runs, then the ORIGINAL e4a36f7 path serves every case
+    # (no cache configured here; the accelerator is optional).
+    assert calls["framework"] == 8 + 2
     assert all(
-        case.framework.latency_samples_source == "fresh_measurements"
+        case.framework.latency_samples_source is None
+        and case.framework.reference_path == "original_measurements"
         and case.framework.latency_samples_proof_sha256 is None
         for case in result.per_shape_results
     )
@@ -267,26 +270,30 @@ def test_cross_card_drift_marks_remeasure_for_the_current_card_monotonically(
     result = benchmark.benchmark_implementations(
         benchmark.BenchmarkConfig("example", str(verify_dir), measurement_method="profiler")
     )
-    assert calls["framework"] == 8 + 8 * 2
+    assert calls["framework"] == 8 + 2  # sentinel, then the original path
     assert all(
-        case.framework.latency_samples_source == "fresh_measurements"
+        case.framework.reference_path == "original_measurements"
         for case in result.per_shape_results
     )
     # card 8 (the sealed card) stays clean: the marker is per current card
     assert not list(state_dir.rglob("card-8.invalid.json"))
 
 
-def test_cross_card_unknown_workload_is_measured_fresh(tmp_path, monkeypatch, cpu_engine):
-    # No sealed entry for these inputs anywhere: miss on every card.
+def test_cross_card_unknown_workload_takes_the_original_path(
+    tmp_path, monkeypatch, cpu_engine
+):
+    # No sealed entry for these inputs anywhere: no reuse on any card, and
+    # with no cache configured the service runs its ORIGINAL e4a36f7 path.
     verify_dir, _, _, calls, state_dir, _ = configure_cross_card(
         tmp_path, monkeypatch, cases=2, size=7, seal_size=2, entry_cards=("6",)
     )
     result = benchmark.benchmark_implementations(
         benchmark.BenchmarkConfig("example", str(verify_dir), measurement_method="profiler")
     )
-    assert calls["framework"] == 8 * 2
+    assert calls["framework"] == 2  # one original-path measurement per case
     assert all(
-        case.framework.latency_samples_source == "fresh_measurements"
+        case.framework.latency_samples_source is None
+        and case.framework.reference_path == "original_measurements"
         for case in result.per_shape_results
     )
     assert not list(state_dir.rglob("card-*.invalid.json"))
@@ -304,9 +311,11 @@ def test_cross_card_fleet_gate_denies_a_card_outside_the_policy(
     result = benchmark.benchmark_implementations(
         benchmark.BenchmarkConfig("example", str(verify_dir), measurement_method="profiler")
     )
-    assert calls["framework"] == 8 * 2
+    # Card 16 borrows nothing; no cache configured -> original path.
+    assert calls["framework"] == 2
     assert all(
-        case.framework.latency_samples_source == "fresh_measurements"
+        case.framework.latency_samples_source is None
+        and case.framework.reference_path == "original_measurements"
         for case in result.per_shape_results
     )
 
@@ -315,7 +324,8 @@ def test_policy_without_cross_card_scope_keeps_exact_per_card_semantics(
     tmp_path, monkeypatch, cpu_engine
 ):
     # A v2/v3-style policy (no cross_card_scope) never borrows card 6's entry
-    # for card 9, even when card 9 is inside source_devices.
+    # for card 9, even when card 9 is inside source_devices; with no cache
+    # configured the ORIGINAL e4a36f7 path serves the run.
     verify_dir, _, _, calls, _, _ = configure_cross_card(
         tmp_path, monkeypatch, cases=2, entry_cards=("6",), current_card="9",
         devices=["9"], cross_card=False,
@@ -323,26 +333,29 @@ def test_policy_without_cross_card_scope_keeps_exact_per_card_semantics(
     result = benchmark.benchmark_implementations(
         benchmark.BenchmarkConfig("example", str(verify_dir), measurement_method="profiler")
     )
-    assert calls["framework"] == 8 * 2
+    assert calls["framework"] == 2
     assert all(
-        case.framework.latency_samples_source == "fresh_measurements"
+        case.framework.latency_samples_source is None
+        and case.framework.reference_path == "original_measurements"
         for case in result.per_shape_results
     )
 
 
-def test_ambiguous_cross_card_seal_fails_closed_to_fresh(
+def test_ambiguous_cross_card_seal_fails_closed_to_the_original_path(
     tmp_path, monkeypatch, cpu_engine
 ):
-    # The same workload sealed on two cards has no unique cross-card entry.
+    # The same workload sealed on two cards has no unique cross-card entry;
+    # nothing is borrowed and the original path measures (no cache here).
     verify_dir, _, _, calls, _, _ = configure_cross_card(
         tmp_path, monkeypatch, cases=2, entry_cards=("6", "7"), seal_twice=True
     )
     result = benchmark.benchmark_implementations(
         benchmark.BenchmarkConfig("example", str(verify_dir), measurement_method="profiler")
     )
-    assert calls["framework"] == 8 * 2
+    assert calls["framework"] == 2
     assert all(
-        case.framework.latency_samples_source == "fresh_measurements"
+        case.framework.latency_samples_source is None
+        and case.framework.reference_path == "original_measurements"
         for case in result.per_shape_results
     )
 
