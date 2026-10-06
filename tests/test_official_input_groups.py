@@ -196,6 +196,27 @@ def test_cpu_default_device_skips_npu_state_capture(monkeypatch):
     assert fast_materializations == 4  # fast path, not the O(n^2) fallback
 
 
+def test_indexed_npu_default_device_still_captures_npu_state(monkeypatch):
+    """实机回归：torch.get_default_device() 带序号返回 "npu:0"（非 "npu"）。
+    旧判断 str(default_device) == "npu" 恒为 False，NPU 状态从未被捕获/重放，
+    引擎在 pull 间的 manual_seed(0) 重播种（_instantiate_models）于是把
+    case≥2 的输入从 eager/sealed 契约上漂移（2026-10-07 实测：仅 case 1
+    与 sealed input_sha256 吻合）。类型比较必须忽略序号。"""
+    torch_mod = _fake_torch_rng(default_device="npu:0")
+    monkeypatch.setitem(sys.modules, "torch", torch_mod)
+    module = _synthetic_adapter(torch_mod, cases=5)
+
+    clean = _digests(build_input_groups(module))
+    engine_like = []
+    for case in build_input_groups(module):
+        engine_like.append([t.digest() for t in case])
+        torch_mod.manual_seed(0)  # _instantiate_models 的同种子重建
+        torch_mod.npu.manual_seed(0)
+
+    assert clean == engine_like
+    assert clean == _random_access_digests(torch_mod, module, 5)
+
+
 def test_len_and_indexing_unchanged(monkeypatch):
     torch_mod = _fake_torch_rng()
     monkeypatch.setitem(sys.modules, "torch", torch_mod)

@@ -158,8 +158,12 @@ class _OfficialInputGroups:
             # The npu generator only participates when the ambient device is
             # NPU (the engine sets it before materialization). CPU contexts
             # must not touch the device: capture is skipped, not attempted.
+            # torch.get_default_device() carries an index once the device is
+            # established ("npu:0", not "npu"): compare the type, never the
+            # exact string — the string form silently skipped capture and let
+            # between-pull reseeds shift every later case's inputs.
             default_device = getattr(torch, "get_default_device", lambda: "cpu")()
-            if npu is not None and str(default_device) == "npu":
+            if npu is not None and str(default_device).partition(":")[0] == "npu":
                 try:
                     npu_state = npu.get_rng_state()
                 except Exception:
