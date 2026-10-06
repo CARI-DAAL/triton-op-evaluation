@@ -643,6 +643,36 @@ def test_npu_strict_guard_recovers_within_bounded_wait(tmp_path, monkeypatch):
     assert calls["n"] == 2
 
 
+def test_ensure_npu_ambient_device_default_wait_follows_policy(monkeypatch):
+    """未显式传 wait_seconds 的调用点（benchmark / profile runner）由部署策略推导：
+    npu-strict 有界等待恢复，其余（含未配置）保持单次探测。"""
+    from triton_evaluation.engine import _common_utils
+
+    monkeypatch.setattr(_common_utils, "AMBIENT_POLL_SECONDS", 0.0)
+    calls = {"n": 0}
+
+    def flaky():
+        calls["n"] += 1
+        return calls["n"] > 1
+
+    torch = _fake_torch_module()
+    torch.npu.is_available = flaky
+    torch.set_default_device = lambda _name: None
+
+    monkeypatch.setenv("TRITON_EVAL_REFERENCE_DEVICE_POLICY", "npu-strict")
+    assert _common_utils.ensure_npu_ambient_device(torch) is True
+    assert calls["n"] == 2  # 默认等待吸收了首次瞬态失败
+
+    calls["n"] = 0
+    torch.npu.is_available = lambda: False
+    monkeypatch.setenv("TRITON_EVAL_REFERENCE_DEVICE_POLICY", "cpu-first")
+    assert _common_utils.ensure_npu_ambient_device(torch) is False
+    assert calls["n"] == 0  # cpu-first：单次探测，不进入等待循环
+
+    monkeypatch.delenv("TRITON_EVAL_REFERENCE_DEVICE_POLICY")
+    assert _common_utils.ensure_npu_ambient_device(torch, wait_seconds=0.0) is False
+
+
 class _KwOnlyModel:
     """Mimics lv4 references: forward(self, x1, x2, *, s1=None, s2=None)."""
 

@@ -11,6 +11,7 @@
 
 """verify.py / benchmark.py 共用的工具函数，避免重复实现。"""
 import ctypes
+import os
 import time
 from typing import Any, Dict, List
 
@@ -226,9 +227,14 @@ def build_input_groups(torch_module: Any) -> List[Any]:
 # 2026-10-06T18:45–18:48Z 生产窗口实测）时，新进程通常在秒到分钟级恢复。
 # 测试 monkeypatch 本常量到 0 以去掉 sleep。
 AMBIENT_POLL_SECONDS = 5.0
+# 未显式传 wait_seconds 的调用点（benchmark / profile runner）在部署策略为
+# npu-strict 时的有界等待上限：环境设备是硬性要求，等它短暂恢复优于立刻
+# 失败或静默退 CPU；cpu-first 部署保持单次探测不变。verify.py 显式传预算。
+AMBIENT_WAIT_SECONDS = 240.0
+_REFERENCE_POLICY_ENV = "TRITON_EVAL_REFERENCE_DEVICE_POLICY"
 
 
-def ensure_npu_ambient_device(torch, *, wait_seconds: float = 0.0) -> bool:
+def ensure_npu_ambient_device(torch, *, wait_seconds: float | None = None) -> bool:
     """把 NPU 设为进程的环境默认设备 —— 沙箱阶段验证的执行环境不变量。
 
     沙箱阶段的验证以 NPU 为环境设备运行：reference 无论在
@@ -245,6 +251,8 @@ def ensure_npu_ambient_device(torch, *, wait_seconds: float = 0.0) -> bool:
     瞬态窗口（drvGetDevNum 直接失败），期间 torch.npu.is_available() 为
     False 而设备实际存在；重试只影响建立环境设备的时机，等待耗尽仍返回
     False —— 调用方（npu-strict）依旧立刻显式失败，本函数绝不选择 CPU。
+    未显式传值时由部署策略推导：npu-strict 等 AMBIENT_WAIT_SECONDS，
+    其余（含未配置）为 0，即历史单次探测行为。
 
     返回是否已切换。计数片段（decoy 快速通道）刻意不调用本函数而用
     CPU-first + NotImplementedError 回退：decoy 是高频路径，每次都付
@@ -256,6 +264,12 @@ def ensure_npu_ambient_device(torch, *, wait_seconds: float = 0.0) -> bool:
     available = getattr(npu, "is_available", None)
     if available is None:
         return False
+    if wait_seconds is None:
+        wait_seconds = (
+            AMBIENT_WAIT_SECONDS
+            if os.environ.get(_REFERENCE_POLICY_ENV) == "npu-strict"
+            else 0.0
+        )
     deadline = time.monotonic() + max(0.0, wait_seconds)
     while True:
         if available():

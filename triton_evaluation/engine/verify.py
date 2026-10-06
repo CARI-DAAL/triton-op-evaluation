@@ -39,9 +39,6 @@ ERROR_MSG_LIMIT = 2000
 # 主进程模式外层 kill 相对 --timeout 的宽限秒数：让子进程内的 per-subject
 # 定时器有机会先把"候选执行超时"权威归因写入 verify_result.json。
 OUTER_GRACE_SECONDS = 60
-# npu-strict 环境设备建立的有界等待上限（秒）：驱动瞬态窗口实测在分钟级，
-# 且受整次运行预算封顶；等待耗尽仍不可用时守护照样立刻显式失败。
-_AMBIENT_WAIT_CAP_SECONDS = 240.0
 
 REQUIRED_MATCHED_RATIO = 0.9
 
@@ -166,6 +163,7 @@ class InputSpec:
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from _log_utils import setup_logger as _setup_logger_shared  # noqa: E402	 
 from _common_utils import build_input_groups as _build_input_groups_shared  # noqa: E402
+from _common_utils import AMBIENT_WAIT_SECONDS as _AMBIENT_WAIT_CAP_SECONDS  # noqa: E402
 from _common_utils import ensure_npu_ambient_device as _ensure_npu_ambient_shared  # noqa: E402
 from _common_utils import describe_input as _describe_input_shared  # noqa: E402
 from _common_utils import enforce_conv_fp32 as _enforce_conv_fp32  # noqa: E402
