@@ -120,8 +120,11 @@ def test_old_engine_override_and_host_scripts_are_refused(anchored_overlay, monk
 
 @pytest.mark.parametrize("original_path", ["missing-msprof", "wrong-msprof"])
 def test_real_bwrap_child_loads_pinned_alias_and_new_helper_without_host_canary(
-    tmp_path, monkeypatch, anchored_overlay, original_path
+    tmp_path, monkeypatch, request, original_path
 ):
+    # The bwrap guard must run before anchored_overlay/deployed_runtime setup:
+    # that fixture globally monkeypatches shutil.which (to pin the controlled
+    # msprof), which would hide a missing real bwrap from the check below.
     if not shutil.which("bwrap"):
         pytest.skip("real bwrap binary is absent")
     bootstrap = [
@@ -150,7 +153,7 @@ def test_real_bwrap_child_loads_pinned_alias_and_new_helper_without_host_canary(
     ):
         pytest.skip("this host denies real namespace creation")
     assert available.returncode == 0, available.stderr.decode(errors="replace")
-    base, original, _overlay, work, model = anchored_overlay
+    base, original, _overlay, work, model = request.getfixturevalue("anchored_overlay")
     if original_path == "wrong-msprof":
         wrong_dir = tmp_path / "old-tool-bin"
         wrong_dir.mkdir()
