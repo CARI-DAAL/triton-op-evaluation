@@ -502,7 +502,7 @@ class ReferenceCache:
         *,
         entries: dict[str, str] | None = None,
         state_dir: Path | None = None,
-        model_index: "CacheIndexV2 | None" = None,
+        model_index: CacheIndexV2 | None = None,
     ):
         self.root = Path(root)
         self.deployment = deployment
@@ -647,7 +647,7 @@ class ReferenceCache:
         _atomic_immutable(Path(path), payload)
         return sha256(payload)
 
-    def write_model_bound_index(self, path: Path, index: "CacheIndexV2") -> str:
+    def write_model_bound_index(self, path: Path, index: CacheIndexV2) -> str:
         payload = canonical_bytes(index.model_dump(mode="json"))
         _atomic_immutable(Path(path), payload)
         return sha256(payload)

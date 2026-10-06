@@ -33,7 +33,6 @@ from triton_evaluation.reference_cache import (
     ReferenceCacheError,
     ReferenceCacheMiss,
     build_model_bound_index,
-    current_npu_model,
     sha256,
 )
 from triton_evaluation.reference_timing_reuse import TimingReusePolicy, ValidatedTimingReuse

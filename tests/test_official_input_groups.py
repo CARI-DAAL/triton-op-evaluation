@@ -70,8 +70,11 @@ def _fake_torch_rng(npu_working=True, npu_available=True, npu_broken=False, defa
 
         npu_set = None
     else:
-        npu_get_rng_state = lambda: ("npu-state", state["npu"])
-        npu_set = lambda snap: state.__setitem__("npu", snap[1])
+        def npu_get_rng_state():
+            return ("npu-state", state["npu"])
+
+        def npu_set(snap):
+            state["npu"] = snap[1]
     torch_mod.npu = SimpleNamespace(
         manual_seed=npu_manual_seed,
         get_rng_state=npu_get_rng_state,
