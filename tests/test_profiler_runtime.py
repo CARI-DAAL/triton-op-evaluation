@@ -133,6 +133,7 @@ def test_configured_runtime_refuses_async_or_unknown_callback_contract():
 def test_actual_profile_entry_holds_alias_until_sync_callback_then_original_csv_parser(
     tmp_path, monkeypatch, deployed_runtime
 ):
+    pytest.importorskip("pandas")
     from triton_evaluation.engine import benchmark
 
     _target, model = deployed_runtime

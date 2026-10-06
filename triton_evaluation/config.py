@@ -117,7 +117,9 @@ class Settings(BaseSettings):
     worker_driver_version: str = Field(default="26.0.rc1", min_length=1)
     worker_runtime_version: str = Field(default="CANN-9.1.1", min_length=1)
     worker_toolchain_version: str = Field(
-        default="CANN 9.1.1 / python 3.10 / torch 2.9.0 / torch_npu 2.9.0.post8 / triton_ascend 3.2.0",
+        default=(
+            "CANN 9.1.1 / python 3.10 / torch 2.9.0 / torch_npu 2.9.0.post8 / triton_ascend 3.2.0"
+        ),
         min_length=1,
     )
 

@@ -69,6 +69,7 @@ def evidence(output):
 
 
 def test_exact_retained_copy_rc_zero_with_no_csv_is_empty_export(tmp_path, monkeypatch, capture):
+    pytest.importorskip("pandas")
     report, digest, raw = capture
     fake_msprof(tmp_path, monkeypatch, "print('export completed without operator data')\n")
     output = tmp_path / "replay"
@@ -87,6 +88,7 @@ def test_exact_retained_copy_rc_zero_with_no_csv_is_empty_export(tmp_path, monke
 def test_cann_text_data_does_not_claim_kernel_details_or_eight_new_measurements(
     tmp_path, monkeypatch, capture
 ):
+    pytest.importorskip("pandas")
     report, digest, _ = capture
     fake_msprof(
         tmp_path,
@@ -107,6 +109,7 @@ def test_cann_text_data_does_not_claim_kernel_details_or_eight_new_measurements(
 def test_actual_service_kernel_csv_formula_is_used_without_torch_or_triton_imports(
     tmp_path, monkeypatch, capture
 ):
+    pytest.importorskip("pandas")
     report, digest, _ = capture
     fake_msprof(
         tmp_path,
@@ -147,6 +150,7 @@ def test_extra_artifact_refuses_unpinned_capture(tmp_path, capture):
 
 
 def test_timeout_retains_executed_pid_signal_and_partial_stdout(tmp_path, monkeypatch, capture):
+    pytest.importorskip("pandas")
     report, digest, _ = capture
     fake_msprof(
         tmp_path, monkeypatch, "import time\nprint('started', flush=True)\ntime.sleep(30)\n"
@@ -244,6 +248,7 @@ def elf_binding(tmp_path):
 def test_private_exact_elf_alias_changes_only_export_child_loader_and_restores_data(
     tmp_path, monkeypatch, capture, elf_binding
 ):
+    pytest.importorskip("pandas")
     report, digest, _ = capture
     library, library_sha, consumer, consumer_sha = elf_binding
     fake_msprof(

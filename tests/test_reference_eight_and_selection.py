@@ -21,6 +21,11 @@ from types import SimpleNamespace
 import pytest
 from pydantic import ValidationError
 
+from triton_evaluation.api.contract import (
+    EvaluationRequest,
+    PerformanceCase,
+    PerformanceParams,
+)
 from triton_evaluation.config import Settings
 from triton_evaluation.engine import benchmark
 from triton_evaluation.evaluators import benchmark as benchmark_evaluator_module
@@ -31,11 +36,6 @@ from triton_evaluation.reference_cache import (
     CacheMeasurement,
     ReferenceCache,
     sha256,
-)
-from triton_evaluation.api.contract import (
-    EvaluationRequest,
-    PerformanceCase,
-    PerformanceParams,
 )
 
 torch = pytest.importorskip("torch")
@@ -265,7 +265,7 @@ def test_cache_hit_returns_real_manifest_samples_as_cached_evidence(
 
     # sentinel measured the first selected case eight times, then reuse
     assert state["framework"] == 8
-    for case, index in zip(result.per_shape_results, AUDIT_SELECTED):
+    for case, index in zip(result.per_shape_results, AUDIT_SELECTED, strict=False):
         assert case.framework.latency_samples_source == "cached_manifest"
         assert case.framework.latency_samples_ms == [
             round(1.0 + index * 0.1 + k * 0.01, 4) for k in range(8)
@@ -280,7 +280,7 @@ def test_cache_hit_returns_real_manifest_samples_as_cached_evidence(
 
     performance, payload = public_json(benchmark.result_to_dict(result))
     assert [case.case_idx for case in performance.per_case] == PUBLIC_SELECTED
-    for case, index in zip(performance.per_case, AUDIT_SELECTED):
+    for case, index in zip(performance.per_case, AUDIT_SELECTED, strict=False):
         assert case.reference_latency_samples_source == "cached_manifest"
         assert case.reference_latency_samples_ms == [
             round(1.0 + index * 0.1 + k * 0.01, 4) for k in range(8)

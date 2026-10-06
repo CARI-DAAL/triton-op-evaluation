@@ -24,13 +24,13 @@ def test_latency_none_and_nonfinite_are_sharp_failures(value):
 
 
 def test_accepts_actual_numeric_profiler_scalar():
-    import numpy as np
+    np = pytest.importorskip("numpy")
 
     assert probe.valid_latency(np.float64(0.001))
 
 
 def test_numpy_profiler_latency_produces_native_boolean_and_json_report(tmp_path):
-    import numpy as np
+    np = pytest.importorskip("numpy")
 
     latency = np.float64(0.00471)
     accepted = probe.valid_latency(latency)
@@ -43,7 +43,7 @@ def test_numpy_profiler_latency_produces_native_boolean_and_json_report(tmp_path
 
 @pytest.mark.parametrize("kind", ["nan", "inf", "zero", "negative", "bool"])
 def test_numpy_invalid_latencies_remain_native_false(kind):
-    import numpy as np
+    np = pytest.importorskip("numpy")
 
     value = {
         "nan": np.float64("nan"),
@@ -67,7 +67,7 @@ def test_report_rejects_nonfinite_and_unknown_values(tmp_path):
 def test_eight_actual_numpy_timings_are_written_without_a_scalar_serializer(
     tmp_path, monkeypatch, controlled_measurement
 ):
-    import numpy as np
+    np = pytest.importorskip("numpy")
 
     monkeypatch.setattr(
         controlled_measurement,

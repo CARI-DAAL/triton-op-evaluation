@@ -20,6 +20,7 @@ import pytest
 from pydantic import ValidationError
 
 from triton_evaluation import reference_timing_reuse as reuse_module
+from triton_evaluation.api.contract import PerformanceCase
 from triton_evaluation.engine import benchmark, verify
 from triton_evaluation.evaluators import sandbox
 from triton_evaluation.evaluators.shaping import shape_performance
@@ -31,7 +32,6 @@ from triton_evaluation.reference_cache import (
     ReferenceCache,
     sha256,
 )
-from triton_evaluation.api.contract import PerformanceCase
 from triton_evaluation.reference_timing_reuse import (
     POLICY_ENV,
     POLICY_SHA_ENV,
@@ -734,7 +734,9 @@ def test_half_pair_or_tampered_policy_is_refused(delivery, monkeypatch, tmp_path
     try:
         delivery["policy_path"].write_bytes(original_bytes + b" ")
         monkeypatch.setenv(sandbox.OVERLAY_CONFIG_ENV, str(delivery["overlay_path"]))
-        monkeypatch.setenv(sandbox.OVERLAY_DIGEST_ENV, sha256(delivery["overlay_path"].read_bytes()))
+        monkeypatch.setenv(
+            sandbox.OVERLAY_DIGEST_ENV, sha256(delivery["overlay_path"].read_bytes())
+        )
         with pytest.raises(ValueError, match="SHA pin"):
             sandbox.isolate_command([sys.executable, "-c", "pass"], delivery["work"], None, {})
     finally:

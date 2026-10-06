@@ -345,7 +345,9 @@ def test_real_bwrap_child_reads_dev_subtree_ro_bind(tmp_path, monkeypatch):
         pytest.skip("this host denies real namespace creation")
     assert available.returncode == 0, available.stderr.decode(errors="replace")
     # Disposable per-run sentinel state only; never the live cache namespaces.
-    sentinel_root = Path("/dev/shm") / f"nb7-mount-order-regression-{os.getpid()}-{uuid.uuid4().hex[:8]}"
+    sentinel_root = Path("/dev/shm") / (
+        f"nb7-mount-order-regression-{os.getpid()}-{uuid.uuid4().hex[:8]}"
+    )
     sentinel_root.mkdir(parents=True, exist_ok=False)
     sentinel = sentinel_root / "sealed.json"
     payload = b"nb7-mount-order regression sentinel"

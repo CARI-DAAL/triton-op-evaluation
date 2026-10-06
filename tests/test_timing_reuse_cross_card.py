@@ -10,7 +10,6 @@ the live reuse run, and the delivered policy v4. Fail-closed behavior
 everywhere.
 """
 
-import hashlib
 import importlib.metadata
 import json
 import statistics
@@ -18,6 +17,7 @@ import sys
 from pathlib import Path
 
 import pytest
+from test_timing_reuse_policy import IMPL_LATENCY, write_task
 
 from triton_evaluation import reference_timing_reuse as reuse_module
 from triton_evaluation.engine import benchmark
@@ -34,7 +34,6 @@ from triton_evaluation.reference_timing_reuse import (
     TimingReusePolicy,
     load_validated_timing_reuse,
 )
-from test_timing_reuse_policy import IMPL_LATENCY, write_task
 
 torch = pytest.importorskip("torch")
 
@@ -50,7 +49,9 @@ REAL_CARD8_INPUTS = Path(
 )
 DELIVERY_DIR = Path(__file__).parents[1] / ".scratch/nb7-cross-card-reuse-20261006"
 REAL_POLICY_V4 = DELIVERY_DIR / "validated-timing-reuse-policy-v4.json"
-EXPECTED_CARD_COUNTS = {"1": 150, "2": 131, "3": 175, "4": 110, "5": 100, "6": 124, "7": 107, "8": 149}
+EXPECTED_CARD_COUNTS = {
+    "1": 150, "2": 131, "3": 175, "4": 110, "5": 100, "6": 124, "7": 107, "8": 149
+}
 
 requires_real_artifacts = pytest.mark.skipif(
     not REAL_INDEX.is_file() or not REAL_CACHE_DIR.is_dir(),
@@ -398,7 +399,7 @@ def test_cross_card_lookup_unit_semantics(tmp_path):
     deployment = make_deployment(tmp_path, ("6", "8"))
     source = Path(write_task(tmp_path, cases=1)).joinpath("example_torch.py").read_text("utf-8")
     inputs = [torch.ones(2)]
-    cache = ReferenceCache(tmp_path / "old", deployment, "9", entries={}, state_dir=None)
+    ReferenceCache(tmp_path / "old", deployment, "9", entries={}, state_dir=None)
     writer = ReferenceCache(tmp_path / "old", deployment, "8", entries={}, state_dir=None)
     key, digest = writer.write_case(
         source, 1, inputs, inputs[0], repeated_outputs=inputs[0],
@@ -442,12 +443,13 @@ def test_real_sealed_entries_are_unique_per_workload_across_cards():
     assert sha256(payload) == REAL_INDEX_SHA
     index = reuse_module.CacheIndex.model_validate_json(payload)
     assert index.deployment.digest == REAL_DEPLOYMENT_SHA
-    workload = lambda binding: json.dumps(
-        {k: v for k, v in binding.model_dump().items() if k != "device_id"}, sort_keys=True
-    )
+    def workload(binding):
+        return json.dumps(
+            {k: v for k, v in binding.model_dump().items() if k != "device_id"}, sort_keys=True
+        )
     groups: dict[str, int] = {}
     cards: dict[str, int] = {}
-    for key, manifest_sha in index.entries.items():
+    for key, _manifest_sha in index.entries.items():
         manifest = reuse_module.CaseManifest.model_validate_json(
             (REAL_CACHE_DIR / "cases" / f"{key}.json").read_bytes()
         )

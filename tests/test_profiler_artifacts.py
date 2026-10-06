@@ -7,6 +7,7 @@ from triton_evaluation.engine import benchmark
 
 @pytest.mark.parametrize("corrupt_csv", [False, True])
 def test_keep_res_preserves_failed_capture_for_diagnosis(tmp_path, corrupt_csv):
+    pytest.importorskip("pandas")
     capture = tmp_path / "capture"
     capture.mkdir()
     record = capture / "raw_record.bin"
@@ -18,6 +19,7 @@ def test_keep_res_preserves_failed_capture_for_diagnosis(tmp_path, corrupt_csv):
 
 
 def test_default_cleanup_behavior_remains_explicit(tmp_path):
+    pytest.importorskip("pandas")
     capture = tmp_path / "capture"
     capture.mkdir()
     (capture / "raw_record.bin").write_bytes(b"not requested for retention")

@@ -53,6 +53,12 @@ extend-exclude = [
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
 
+[tool.ruff.lint.per-file-ignores]
+# Byte-pinned by the validated timing-reuse policy; changing them would
+# invalidate the deployed source SHA pins.
+"triton_evaluation/evaluators/sandbox.py" = ["I001"]  # pinned by timing-reuse policy v5; reformat with the next policy version
+"triton_evaluation/reference_timing_reuse.py" = ["E501", "B905"]  # pinned by timing-reuse policy v5; reformat with the next policy version
+
 [tool.ruff.lint.flake8-bugbear]
 # FastAPI dependency-injection defaults are calls in argument defaults by design.
 extend-immutable-calls = ["fastapi.Depends", "fastapi.Query", "fastapi.Header", "fastapi.Path"]

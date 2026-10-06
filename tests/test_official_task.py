@@ -9,9 +9,10 @@ import types
 from pathlib import Path
 
 import pytest
-import torch
 
 from triton_evaluation import official_task
+
+torch = pytest.importorskip("torch")
 
 OFFICIAL_ROOT = Path(os.environ.get("OFFICIAL_TASK_ROOT", "/nonexistent/official-task-data"))
 requires_official = pytest.mark.skipif(
