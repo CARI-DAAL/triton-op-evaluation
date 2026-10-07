@@ -685,6 +685,64 @@ class EvaluationStore:
     # Terminal commit
     # ------------------------------------------------------------------
 
+    def requeue_retryable_engine_failure(
+        self, lease: AttemptLease, *, failed_card: int | None = None
+    ) -> bool:
+        """Requeue this running resource after a retryable engine failure.
+
+        Mirrors the lease-reaper's replacement transition exactly (bumped
+        fencing token, ``replacement_pending``, fresh ready member, shared
+        ``MAX_ATTEMPTS`` claim budget across lease losses and engine failures).
+        The failed attempt's card is published as ``last_failed_card`` so the
+        existing affinity avoidance steers the retry to another card.
+        ``False`` means fenced out, past the deadline, or budget exhausted —
+        the caller terminalizes exactly as before this path existed.
+        """
+        resource_key = self._key(f"resource:{lease.evaluation_id}")
+        leases_key = self._key("running-leases")
+        sequence_key = self._key("queue-sequence")
+        while True:
+            now_ms = self._clock()
+            pipeline = self._r.pipeline()
+            try:
+                pipeline.watch(resource_key)
+                stored = pipeline.hgetall(resource_key)
+                if not stored or not self._fence_conditions_met(stored, lease, now_ms):
+                    self.note_fenced_write()
+                    return False
+                if int(stored[b"attempt_count"]) >= MAX_ATTEMPTS:
+                    return False  # shared attempt budget exhausted
+                ready_key = self._ready_key(
+                    self._stored_traffic_class(stored),
+                    stored[b"execution_class"].decode("utf-8"),
+                )
+                pipeline.watch(ready_key, sequence_key)
+                successor = int(pipeline.get(sequence_key) or 0) + 1
+                metadata = (
+                    {"last_failed_card": str(failed_card)}
+                    if failed_card is not None
+                    else {}
+                )
+                pipeline.multi()
+                pipeline.set(sequence_key, successor)
+                pipeline.hset(
+                    resource_key,
+                    mapping={
+                        "attempt_id": "",
+                        "fencing_token": str(int(stored[b"fencing_token"]) + 1),
+                        "replacement_pending": "1",
+                        "active_check": "",
+                        "lease_deadline_ms": "0",
+                        **metadata,
+                    },
+                )
+                pipeline.zrem(leases_key, lease.evaluation_id)
+                pipeline.zadd(ready_key, {lease.evaluation_id: successor})
+                pipeline.execute()
+                return True
+            except redis.WatchError:
+                continue
+
     def commit_terminal(
         self, lease: AttemptLease, state: TerminalState, result: EvaluationResult
     ) -> bool:

@@ -154,6 +154,25 @@ class _CorruptedRequestError(RuntimeError):
 
 
 
+def _retryable_engine_failure(result) -> bool:
+    """True for a pre-subject engine infrastructure failure, never a verdict.
+
+    Matches exactly the evaluator's ``engine_failure`` shape (exit=1 class:
+    ambient-device loss, CANN inner errors) — a produced verdict, a candidate
+    compile/run failure, or a deadline/watchdog timeout never requeues.
+    """
+    correctness = result.correctness
+    return (
+        correctness is not None
+        and correctness.status == "failed"
+        and correctness.data is None
+        and correctness.error is not None
+        and correctness.error.retryable
+        and correctness.error.code == "EVALUATOR_EXECUTION_FAILED"
+        and correctness.error.phase == "execution"
+    )
+
+
 class Worker:
     """One claim-capable worker for CPU prechecks or a single NPU device."""
 
@@ -337,6 +356,21 @@ class Worker:
 
             if self._clock() >= lease.deadline_at_ms:
                 self._commit_deadline(lease, request.checks, progress.saved)
+                return
+            if (
+                self.settings.engine_failure_requeue
+                and _retryable_engine_failure(validated)
+                and self.store.requeue_retryable_engine_failure(
+                    lease, failed_card=self.device_id
+                )
+            ):
+                # Device/envelope distress before any subject outcome: the same
+                # resource retries under the shared attempt budget, and the
+                # failed card is skipped by affinity avoidance.
+                logger.warning(
+                    "requeued retryable engine failure of attempt %s on card %s",
+                    lease.attempt_id, self.device_id,
+                )
                 return
             # False means another winner already terminalized the resource.
             self.store.commit_terminal(lease, "completed", validated)
