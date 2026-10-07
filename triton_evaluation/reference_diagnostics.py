@@ -41,6 +41,7 @@ class _CaseReference(_PrivateModel):
     raw_input_sha256: Annotated[str, Field(pattern=r"^[0-9a-f]{64}$")] | None = None
     candidate_input_sha256: Annotated[str, Field(pattern=r"^[0-9a-f]{64}$")] | None = None
     reference_cache_status: Literal["hit", "miss"] | None = None
+    reference_source: Literal["cache", "fresh"] | None = None
     reference_manifest_sha256: Annotated[str, Field(pattern=r"^[0-9a-f]{64}$")] | None = None
     reference_binding_sha256: Annotated[str, Field(pattern=r"^[0-9a-f]{64}$")] | None = None
     reference_output_sha256: Annotated[str, Field(pattern=r"^[0-9a-f]{64}$")] | None = None

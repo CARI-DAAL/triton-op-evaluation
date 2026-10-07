@@ -163,6 +163,7 @@ class InputSpec:
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from _log_utils import setup_logger as _setup_logger_shared  # noqa: E402	 
 from _common_utils import build_input_groups as _build_input_groups_shared  # noqa: E402
+from _common_utils import AMBIENT_WAIT_SECONDS as _AMBIENT_WAIT_CAP_SECONDS  # noqa: E402
 from _common_utils import ensure_npu_ambient_device as _ensure_npu_ambient_shared  # noqa: E402
 from _common_utils import describe_input as _describe_input_shared  # noqa: E402
 from _common_utils import enforce_conv_fp32 as _enforce_conv_fp32  # noqa: E402
@@ -1241,6 +1242,9 @@ def _attempt_case(modules, case_ctx: CaseContext, inputs, device,
             "selected_reference_device": str(golden_device),
             "reference_completed": False,
             "output_devices": [],
+            # Per-case reference source: cache (sealed output compared with the
+            # unchanged tolerance) or fresh (reference computed on this run).
+            "reference_source": "cache" if case_ctx.cached_reference is not None else "fresh",
         })
     if case_ctx.reference_trace is not None and case_ctx.reference_cache_status is not None:
         case_ctx.reference_trace[-1]["reference_cache_status"] = case_ctx.reference_cache_status
@@ -1415,7 +1419,26 @@ def verify_implementations(
     torch.npu.manual_seed(0)
 
     # 执行环境不变量：与沙箱一致以 NPU 为环境设备（见 _common_utils）。
-    _ensure_npu_ambient_shared(torch)
+    # npu-strict 下先有界等待驱动瞬态恢复（drvGetDevNum 短暂 rc!=0，
+    # 2026-10-06T18:45–18:48Z 生产窗口：同一沙箱/请求字节在窗口内两次失败、
+    # 窗口前后全部成功）；等待由整次运行预算封顶，耗尽仍不可用则立刻失败。
+    ambient_wait = 0.0
+    if reference_device_policy == "npu-strict":
+        ambient_wait = _AMBIENT_WAIT_CAP_SECONDS
+        if subject_budget_seconds:
+            ambient_wait = min(ambient_wait, float(subject_budget_seconds))
+    if (
+        not _ensure_npu_ambient_shared(torch, wait_seconds=ambient_wait)
+        and reference_device_policy == "npu-strict"
+    ):
+        # npu-strict 的 reference 必须在 NPU 上执行；环境设备未切换成功时
+        # 继续运行只会把输入物化静默落到单线程 CPU 路径（观测到的 900s
+        # 停滞形态），最终同样在首个 reference 处失败 —— 在这里立刻以
+        # 明确错误终止，让归因在秒级可读而不是烧完整整一个预算。
+        raise RuntimeError(
+            "npu-strict reference requires the ambient NPU device; "
+            "torch.npu is unavailable in this engine context"
+        )
 
     input_groups, total_cases = resolve_input_provider(modules["torch_module"])
     device = None if candidate_import_error is not None else torch.device("npu")

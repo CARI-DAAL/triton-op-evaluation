@@ -153,6 +153,7 @@ def test_actual_reference_output_device_is_distinct_from_selection(monkeypatch, 
             "selected_reference_device": "npu",
             "reference_completed": not fails,
             "output_devices": [] if fails else [{"output_index": 0, "device": "npu:0"}],
+            "reference_source": "fresh",
         }
     ]
 

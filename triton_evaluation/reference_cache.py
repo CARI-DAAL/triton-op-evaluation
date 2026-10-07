@@ -82,10 +82,16 @@ class CacheDeployment(BaseModel):
     # Engine basenames, plus the one explicitly named sibling runtime helper.
     algorithm_files: dict[str, str] = Field(min_length=1)
     device_conditions: dict[str, dict[str, str]] = Field(min_length=1)
+    # NPU model identity for the model-bound index v2 (e.g. "Ascend910_9362").
+    # Absent on every sealed v1 deployment; excluded from the digest when None
+    # so all stored v1 digests stay byte-identical.
+    npu_model: str | None = None
     measurement: CacheMeasurement
 
     @model_validator(mode="after")
     def validate_digests(self):
+        if self.npu_model is not None and (not self.npu_model.strip() or len(self.npu_model) > 64):
+            raise ValueError("declared NPU model must be a short non-empty name")
         for path, digest in self.runtime_files.items():
             if not Path(path).is_absolute() or not _DIGEST.fullmatch(digest):
                 raise ValueError("runtime files require absolute paths and SHA256")
@@ -106,7 +112,7 @@ class CacheDeployment(BaseModel):
 
     @property
     def digest(self) -> str:
-        return sha256(canonical_bytes(self.model_dump(mode="json")))
+        return sha256(canonical_bytes(self.model_dump(mode="json", exclude_none=True)))
 
     def check_runtime(self, engine_dir: Path | None = None) -> None:
         for distribution, expected in self.runtime_versions.items():
@@ -191,6 +197,94 @@ class CacheIndex(BaseModel):
             for key, value in self.entries.items()
         ):
             raise ValueError("cache index entries require SHA256 keys and manifest digests")
+        return self
+
+
+class ModelBoundBinding(BaseModel):
+    """Workload identity bound to the NPU MODEL, not the card index.
+
+    The 2026-10-06 ruling: reference evidence (outputs AND latencies) does not
+    need the card number, only the card MODEL. The binding key is the model
+    plus the seed-zero input hash plus the runtime/toolchain fingerprint
+    (runtime distributions and immutable CANN/driver files) under which the
+    evidence was sealed, plus the task/case identity. A different model or
+    fingerprint produces a different key: a miss, never a wrong answer.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    schema_version: Literal["reference-model-binding-v1"] = "reference-model-binding-v1"
+    npu_model: str = Field(min_length=1, max_length=64)
+    runtime_versions: dict[str, str] = Field(min_length=1)
+    runtime_files: dict[str, str] = Field(min_length=1)
+    reference_source_sha256: str
+    official_digest: str
+    adapter_version: str
+    input_seed: Literal[0] = 0
+    case_idx: int = Field(ge=1)
+    input_sha256: str
+    reference_device_policy: Literal["cpu-first", "npu-strict"]
+
+    @model_validator(mode="after")
+    def validate_digests(self):
+        if not _DIGEST.fullmatch(self.reference_source_sha256) or not _DIGEST.fullmatch(
+            self.official_digest
+        ) or not _DIGEST.fullmatch(self.input_sha256):
+            raise ValueError("model-bound binding requires SHA256 identities")
+        if any(
+            not Path(path).is_absolute() or not _DIGEST.fullmatch(digest)
+            for path, digest in self.runtime_files.items()
+        ):
+            raise ValueError("runtime files require absolute paths and SHA256")
+        return self
+
+    @property
+    def key(self) -> str:
+        return sha256(canonical_bytes(self.model_dump(mode="json")))
+
+
+class ModelBoundEntry(BaseModel):
+    """Locator of the UNIQUE sealed v1 manifest for a model-bound workload.
+
+    Stored manifests and their card-bound keys are never edited or rekeyed;
+    the v2 index only records where the sealed bytes live.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    sealed_binding_key: str
+    manifest_sha256: str
+
+    @model_validator(mode="after")
+    def validate_digests(self):
+        if not _DIGEST.fullmatch(self.sealed_binding_key) or not _DIGEST.fullmatch(
+            self.manifest_sha256
+        ):
+            raise ValueError("model-bound entries require SHA256 identities")
+        return self
+
+
+class CacheIndexV2(BaseModel):
+    """Model-bound index: entries keyed by ModelBoundBinding.key.
+
+    The deployment keeps the SEALED runtime/toolchain fingerprint (so the key
+    still pins it) while algorithm_files are re-pinned to the CURRENT engine;
+    source_deployment_sha256 anchors which original deployment sealed the
+    manifests this index resolves.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    schema_version: Literal["reference-cache-index-v2"] = "reference-cache-index-v2"
+    deployment: CacheDeployment
+    source_deployment_sha256: str
+    entries: dict[str, ModelBoundEntry]
+
+    @model_validator(mode="after")
+    def validate_entries(self):
+        if self.deployment.npu_model is None:
+            raise ValueError("model-bound index requires a declared NPU model")
+        if not _DIGEST.fullmatch(self.source_deployment_sha256):
+            raise ValueError("source deployment requires SHA256")
+        if any(not _DIGEST.fullmatch(key) for key in self.entries):
+            raise ValueError("model-bound index entries require SHA256 keys")
         return self
 
 
@@ -384,6 +478,21 @@ def _atomic_immutable(path: Path, payload: bytes) -> None:
             temporary.unlink(missing_ok=True)
 
 
+def current_npu_model() -> str | None:
+    """The live NPU model name (e.g. "Ascend910_9362"); None when unobservable.
+
+    The model is a hardware property of the visible device, independent of the
+    card index. An unobservable model never binds: callers treat it as a miss.
+    """
+    try:
+        import torch
+
+        name = torch.npu.get_device_name(0)
+    except Exception:
+        return None
+    return name if isinstance(name, str) and name.strip() else None
+
+
 class ReferenceCache:
     def __init__(
         self,
@@ -393,12 +502,19 @@ class ReferenceCache:
         *,
         entries: dict[str, str] | None = None,
         state_dir: Path | None = None,
+        model_index: CacheIndexV2 | None = None,
     ):
         self.root = Path(root)
         self.deployment = deployment
         self.device_id = str(device_id)
         self.entries = entries
         self.state_dir = Path(state_dir) if state_dir is not None else None
+        # Model-bound (v2) resolution: entries keyed by NPU model + input hash
+        # + runtime fingerprint instead of the card index. When the pinned
+        # toolchain fingerprint does not describe this runtime, lookups miss
+        # (fresh reference) instead of failing the evaluation.
+        self.model_index = model_index
+        self.model_bound_applicable = model_index is not None
 
     @classmethod
     def from_environment(cls) -> ReferenceCache | None:
@@ -412,11 +528,32 @@ class ReferenceCache:
         pinned = Path(present[BINDING_ENV]).read_bytes()
         if sha256(pinned) != present[DIGEST_ENV]:
             raise ReferenceCacheError("reference cache index differs from pinned SHA256")
-        index = CacheIndex.model_validate_json(pinned)
-        index.deployment.check_runtime()
         physical_card = os.environ.get(DEVICE_ENV, os.environ.get("ASCEND_RT_VISIBLE_DEVICES", ""))
         if not physical_card.isdigit():
             raise ReferenceCacheError("reference cache requires an unambiguous physical card")
+        if json.loads(pinned).get("schema_version") == "reference-cache-index-v2":
+            # Optional accelerator bound to model + input hash + runtime
+            # fingerprint: a toolchain fingerprint that does not describe THIS
+            # runtime makes every lookup miss (fresh reference), never an
+            # evaluation failure (policy target-mismatch precedent).
+            index = CacheIndexV2.model_validate_json(pinned)
+            try:
+                index.deployment.check_runtime()
+            except ReferenceCacheError:
+                applicable = False
+            else:
+                applicable = True
+            cache = cls(
+                Path(present[CACHE_ENV]),
+                index.deployment,
+                physical_card,
+                state_dir=Path(present[STATE_ENV]),
+                model_index=index,
+            )
+            cache.model_bound_applicable = applicable
+            return cache
+        index = CacheIndex.model_validate_json(pinned)
+        index.deployment.check_runtime()
         return cls(
             Path(present[CACHE_ENV]),
             index.deployment,
@@ -510,6 +647,11 @@ class ReferenceCache:
         _atomic_immutable(Path(path), payload)
         return sha256(payload)
 
+    def write_model_bound_index(self, path: Path, index: CacheIndexV2) -> str:
+        payload = canonical_bytes(index.model_dump(mode="json"))
+        _atomic_immutable(Path(path), payload)
+        return sha256(payload)
+
     def _sealed_manifest(self, binding: CaseBinding) -> CaseManifest:
         if self.entries is None or binding.key not in self.entries:
             raise ReferenceCacheMiss("official case has no pinned reference cache entry")
@@ -524,13 +666,100 @@ class ReferenceCache:
             raise ReferenceCacheError("reference cache immutable binding mismatch")
         return manifest
 
+    def model_bound_binding(
+        self,
+        reference_source: str,
+        case_idx: int,
+        inputs,
+        *,
+        reference_device_policy: str,
+        npu_model: str | None = None,
+    ) -> ModelBoundBinding:
+        """The workload identity under the model-bound (v2) index.
+
+        npu_model defaults to the live observed model; tests may inject one.
+        The runtime fingerprint comes from the pinned v2 deployment, whose
+        toolchain check_runtime has already validated against this runtime.
+        """
+        if self.model_index is None:
+            raise ReferenceCacheError("cache is not model-bound")
+        metadata = official_source_metadata(reference_source)
+        if metadata is None:
+            raise ReferenceCacheError("only official assembled tasks are reference-cache eligible")
+        observed = current_npu_model() if npu_model is None else npu_model
+        if observed is None:
+            raise ReferenceCacheMiss("NPU model is unobservable; reference computed fresh")
+        return ModelBoundBinding(
+            npu_model=observed,
+            runtime_versions=self.model_index.deployment.runtime_versions,
+            runtime_files=self.model_index.deployment.runtime_files,
+            reference_source_sha256=sha256(reference_source.encode("utf-8")),
+            official_digest=metadata[0],
+            adapter_version=metadata[1],
+            case_idx=case_idx,
+            input_sha256=value_sha256(inputs, input_value=True),
+            reference_device_policy=reference_device_policy,
+        )
+
     def load_case(
         self, reference_source: str, case_idx: int, inputs, *, reference_device_policy: str
     ) -> CaseManifest:
+        if self.model_index is not None:
+            return self._load_case_model_bound(
+                reference_source, case_idx, inputs,
+                reference_device_policy=reference_device_policy,
+            )
         binding = self.binding(
             reference_source, case_idx, inputs, reference_device_policy=reference_device_policy
         )
         return self._sealed_manifest(binding)
+
+    def _load_case_model_bound(
+        self, reference_source: str, case_idx: int, inputs, *, reference_device_policy: str
+    ) -> CaseManifest:
+        """Resolve the unique sealed entry for this workload by MODEL.
+
+        The current card is never part of the lookup: any same-model card
+        serves the one sealed entry. A different model, a different runtime
+        fingerprint, or an absent entry is a plain miss (fresh reference).
+        """
+        if not self.model_bound_applicable:
+            raise ReferenceCacheMiss(
+                "model-bound cache index does not describe this runtime; reference computed fresh"
+            )
+        binding = self.model_bound_binding(
+            reference_source, case_idx, inputs, reference_device_policy=reference_device_policy
+        )
+        entry = self.model_index.entries.get(binding.key)
+        if entry is None:
+            raise ReferenceCacheMiss(
+                "official case has no model-bound reference cache entry"
+            )
+        path = self.root / "cases" / f"{entry.sealed_binding_key}.json"
+        if path.is_symlink() or path.parent.is_symlink():
+            raise ReferenceCacheError("reference manifest must not be a symlink")
+        payload = path.read_bytes()
+        if sha256(payload) != entry.manifest_sha256:
+            raise ReferenceCacheError("reference manifest hash mismatch")
+        manifest = CaseManifest.model_validate_json(payload)
+        sealed = manifest.binding
+        # The sealed card-bound binding must carry exactly this workload's
+        # card-independent identity, sealed under the pinned source
+        # deployment, on a card the source deployment declared.
+        if (
+            sealed.deployment_sha256 != self.model_index.source_deployment_sha256
+            or sealed.reference_source_sha256 != binding.reference_source_sha256
+            or sealed.official_digest != binding.official_digest
+            or sealed.adapter_version != binding.adapter_version
+            or sealed.input_seed != binding.input_seed
+            or sealed.case_idx != binding.case_idx
+            or sealed.input_sha256 != binding.input_sha256
+            or sealed.reference_device_policy != binding.reference_device_policy
+            or sealed.device_id not in self.deployment.device_conditions
+            or sealed.key != entry.sealed_binding_key
+        ):
+            raise ReferenceCacheError("model-bound entry does not match its sealed binding")
+        return manifest
 
     def cross_card_entry(self, anchor: CaseBinding) -> CaseManifest:
         """The unique sealed entry for a workload identity on ANY card.
@@ -620,3 +849,82 @@ class ReferenceCache:
         )
         if observed != self.deployment.measurement:
             raise ReferenceCacheError("reference denominator measurement configuration changed")
+
+
+def build_model_bound_index(
+    source: CacheIndex,
+    target: CacheDeployment,
+    *,
+    cache_root: Path,
+) -> tuple[CacheIndexV2, dict[str, object]]:
+    """Operator tool: rekey every unique sealed v1 workload by NPU model.
+
+    Reads the sealed card-bound manifests exactly as pinned by ``source``
+    (never rewrites them) and produces a v2 index whose keys are
+    ModelBoundBinding identities: NPU model + seed-zero input hash + the
+    SEALED runtime/toolchain fingerprint + task/case identity. ``target``
+    keeps the sealed runtime fingerprint (asserted below) while re-pinning
+    ``algorithm_files`` to the current engine; the card index disappears
+    from the key entirely. A workload sealed on several cards with
+    different evidence is ambiguous and stays OUT of the index (a miss),
+    never an arbitrary card's entry.
+    """
+    if target.npu_model is None:
+        raise ReferenceCacheError("model-bound target deployment requires a declared NPU model")
+    if (
+        target.runtime_versions != source.deployment.runtime_versions
+        or target.runtime_files != source.deployment.runtime_files
+    ):
+        raise ReferenceCacheError(
+            "model-bound keys pin the sealed runtime fingerprint; the target "
+            "deployment must keep the source runtime_versions/runtime_files"
+        )
+    entries: dict[str, ModelBoundEntry] = {}
+    ambiguous: dict[str, list[str]] = {}
+    for sealed_key, manifest_sha in sorted(source.entries.items()):
+        path = Path(cache_root) / "cases" / f"{sealed_key}.json"
+        payload = path.read_bytes()
+        if sha256(payload) != manifest_sha:
+            raise ReferenceCacheError(f"sealed manifest hash mismatch: {sealed_key}")
+        manifest = CaseManifest.model_validate_json(payload)
+        binding = manifest.binding
+        if binding.deployment_sha256 != source.deployment.digest:
+            raise ReferenceCacheError(
+                "sealed manifest was produced by a different source deployment"
+            )
+        model_binding = ModelBoundBinding(
+            npu_model=target.npu_model,
+            runtime_versions=source.deployment.runtime_versions,
+            runtime_files=source.deployment.runtime_files,
+            reference_source_sha256=binding.reference_source_sha256,
+            official_digest=binding.official_digest,
+            adapter_version=binding.adapter_version,
+            input_seed=binding.input_seed,
+            case_idx=binding.case_idx,
+            input_sha256=binding.input_sha256,
+            reference_device_policy=binding.reference_device_policy,
+        )
+        entry = ModelBoundEntry(
+            sealed_binding_key=sealed_key, manifest_sha256=manifest_sha
+        )
+        existing = entries.get(model_binding.key)
+        if existing is not None and existing != entry:
+            ambiguous.setdefault(model_binding.key, []).append(sealed_key)
+            continue
+        entries[model_binding.key] = entry
+    for key in ambiguous:
+        entries.pop(key, None)
+    index = CacheIndexV2(
+        deployment=target,
+        source_deployment_sha256=source.deployment.digest,
+        entries=entries,
+    )
+    report = {
+        "source_entries": len(source.entries),
+        "model_bound_entries": len(entries),
+        "ambiguous_excluded": len(ambiguous),
+        "sealed_cards": sorted(
+            {card for card in source.deployment.device_conditions}
+        ),
+    }
+    return index, report

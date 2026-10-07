@@ -74,7 +74,7 @@ def cpu_engine(monkeypatch):
         raising=False,
     )
     monkeypatch.setattr(benchmark, "cleanup_npu_memory", lambda: None)
-    monkeypatch.setattr(benchmark, "_ensure_npu_ambient_shared", lambda _torch: True)
+    monkeypatch.setattr(benchmark, "_ensure_npu_ambient_shared", lambda _torch, **_k: True)
     monkeypatch.delitem(sys.modules, "example_torch", raising=False)
     monkeypatch.delitem(sys.modules, "example_triton_ascend_impl", raising=False)
     for name in (POLICY_ENV, POLICY_SHA_ENV):

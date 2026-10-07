@@ -11,6 +11,8 @@
 
 """verify.py / benchmark.py 共用的工具函数，避免重复实现。"""
 import ctypes
+import os
+import time
 from typing import Any, Dict, List
 
 # prctl(PR_SET_NAME) option code，见 set_process_title()。
@@ -130,8 +132,69 @@ class _OfficialInputGroups:
         return self.module.get_input_group(index)
 
     def __iter__(self):
+        """One ordered pass; each case starts from the exact RNG state the
+        random-access path would have (seed zero, preceding cases consumed).
+
+        Iterating via __getitem__ re-materializes cases 0..i for every i
+        (O(n^2) tensor generation: 51 BMM51 cases = 1326 materializations of
+        28 GB). Advancing the adapter's own generator once and replaying the
+        RNG state around each pull keeps every pull's inputs bit-identical to
+        the random-access path while materializing each case exactly once,
+        retaining only one case's tensors at a time. The per-pull state
+        restore also preserves the old isolation property: work the engine
+        interleaves between pulls (reference/candidate execution) cannot
+        consume RNG that would otherwise shift later cases' inputs.
+        """
+        import torch
+        iterator = getattr(self.module, "_iter_input_groups", None)
+        if not callable(iterator):
+            for index in range(self.total):
+                yield self[index]
+            return
+        npu = getattr(torch, "npu", None)
+
+        def snapshot():
+            npu_state = None
+            # The npu generator only participates when the ambient device is
+            # NPU (the engine sets it before materialization). CPU contexts
+            # must not touch the device: capture is skipped, not attempted.
+            # torch.get_default_device() carries an index once the device is
+            # established ("npu:0", not "npu"): compare the type, never the
+            # exact string — the string form silently skipped capture and let
+            # between-pull reseeds shift every later case's inputs.
+            default_device = getattr(torch, "get_default_device", lambda: "cpu")()
+            if npu is not None and str(default_device).partition(":")[0] == "npu":
+                try:
+                    npu_state = npu.get_rng_state()
+                except Exception:
+                    if npu.is_available():
+                        return None
+            try:
+                return torch.random.get_rng_state(), npu_state
+            except Exception:
+                return None
+
+        def restore(state):
+            torch.random.set_rng_state(state[0])
+            if state[1] is not None:
+                npu.set_rng_state(state[1])
+
+        torch.manual_seed(0)
+        if npu is not None:
+            npu.manual_seed(0)
+        state = snapshot()
+        stream = iterator()
         for index in range(self.total):
-            yield self[index]
+            if state is None:
+                # State capture unavailable (device present but not
+                # snapshot-able): keep random-access semantics for this and
+                # every remaining case; identical inputs, O(n^2) cost.
+                yield self[index]
+                continue
+            restore(state)
+            case = next(stream)
+            state = snapshot()
+            yield case
 
 
 def build_input_groups(torch_module: Any) -> List[Any]:
@@ -164,7 +227,18 @@ def build_input_groups(torch_module: Any) -> List[Any]:
         return torch_module.get_input_groups()
 
 
-def ensure_npu_ambient_device(torch) -> bool:
+# 环境设备探测的重试间隔：宿主驱动短暂拒绝设备枚举（drvGetDevNum rc!=0，
+# 2026-10-06T18:45–18:48Z 生产窗口实测）时，新进程通常在秒到分钟级恢复。
+# 测试 monkeypatch 本常量到 0 以去掉 sleep。
+AMBIENT_POLL_SECONDS = 5.0
+# 未显式传 wait_seconds 的调用点（benchmark / profile runner）在部署策略为
+# npu-strict 时的有界等待上限：环境设备是硬性要求，等它短暂恢复优于立刻
+# 失败或静默退 CPU；cpu-first 部署保持单次探测不变。verify.py 显式传预算。
+AMBIENT_WAIT_SECONDS = 240.0
+_REFERENCE_POLICY_ENV = "TRITON_EVAL_REFERENCE_DEVICE_POLICY"
+
+
+def ensure_npu_ambient_device(torch, *, wait_seconds: float | None = None) -> bool:
     """把 NPU 设为进程的环境默认设备 —— 沙箱阶段验证的执行环境不变量。
 
     沙箱阶段的验证以 NPU 为环境设备运行：reference 无论在
@@ -177,6 +251,13 @@ def ensure_npu_ambient_device(torch) -> bool:
     import torch）。进程可能尚未 import torch_npu —— torch.npu 属性不
     存在时表达式求值本身会抛 AttributeError，必须用 getattr 解引用。
 
+    wait_seconds 允许有界等待设备枚举恢复：宿主驱动层存在秒级到分钟级的
+    瞬态窗口（drvGetDevNum 直接失败），期间 torch.npu.is_available() 为
+    False 而设备实际存在；重试只影响建立环境设备的时机，等待耗尽仍返回
+    False —— 调用方（npu-strict）依旧立刻显式失败，本函数绝不选择 CPU。
+    未显式传值时由部署策略推导：npu-strict 等 AMBIENT_WAIT_SECONDS，
+    其余（含未配置）为 0，即历史单次探测行为。
+
     返回是否已切换。计数片段（decoy 快速通道）刻意不调用本函数而用
     CPU-first + NotImplementedError 回退：decoy 是高频路径，每次都付
     CANN 初始化的秒级代价不划算；引擎路径无此顾虑，一律切换。
@@ -185,10 +266,23 @@ def ensure_npu_ambient_device(torch) -> bool:
     if npu is None:
         return False
     available = getattr(npu, "is_available", None)
-    if available is None or not available():
+    if available is None:
         return False
-    torch.set_default_device("npu")
-    return True
+    if wait_seconds is None:
+        wait_seconds = (
+            AMBIENT_WAIT_SECONDS
+            if os.environ.get(_REFERENCE_POLICY_ENV) == "npu-strict"
+            else 0.0
+        )
+    deadline = time.monotonic() + max(0.0, wait_seconds)
+    while True:
+        if available():
+            torch.set_default_device("npu")
+            return True
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return False
+        time.sleep(min(AMBIENT_POLL_SECONDS, remaining))
 
 
 def prepare_candidate_inputs(reference_model, inputs, *, trace=None):
