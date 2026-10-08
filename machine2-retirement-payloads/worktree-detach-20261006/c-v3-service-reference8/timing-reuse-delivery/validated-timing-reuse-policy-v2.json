@@ -1,0 +1,117 @@
+{
+  "contract_reconciliation": "The source audit label (profiler, warmup5, repeats20, 8 samples, median) and reference8's fresh per-case measurement are the same underlying observation protocol: eight independent warmup5/repeats20 profiler measurements whose median is the reference latency. They are reconciled explicitly here, never silently aliased; source samples are served verbatim as historical evidence.",
+  "evidence": {
+    "adopted_at": "2026-10-05",
+    "adopted_by": "owner 80563d29 (deployment owner)",
+    "authoritative_verification_receipt": "/dev/shm/v3-cache-ab-review-20261004-grade8/verification-receipt.json",
+    "authoritative_verification_receipt_sha256": "570d768a2a7d5fa014ce493725c10579afbad9487c129be5a7ea5a78b99d5a8b",
+    "closeout_receipt": "/root/.paseo/worktrees/08x5542i/v3-cache-cutover-prep-20261003/.scratch/v3-cache-cutover-prep/GRADE8-CLOSEOUT-RECEIPT-20261005.md",
+    "closeout_receipt_sha256": "7c0222b324ccc6bd2810da96be1913526c38354083482f874cbe7e62c08341d8",
+    "execution_environment_note": "resource execution_environment carried Settings default labels (Ascend910B3/CANN 8.0.RC3) as metadata only; observed runtime identity is the patched triton files and source hashes bound in target_*; config owner 80563d29 provides target values explicitly",
+    "grade8_eid": "ev_e04caf2e5693456c8823ee6229543655",
+    "grade8_reference_diag_sha256": "e3b3b5bb3591aa62ee5945a91dfb6f6729276ab479ad1c5f9a0366fb1792bb67",
+    "grade8_report": "/root/.paseo/worktrees/08x5542i/v3-cache-cutover-prep-20261003/.scratch/v3-cache-cutover-prep/GRADE8-RESULT-20261005.md",
+    "grade8_report_note": "report prose table has known transcription errors and a host-local(+8) timestamp label; the verification receipt and retained resource bytes are authoritative",
+    "grade8_report_sha256": "a1c3257e074dd1a4b4bdf9ecc4d5572708751879f896897f88fd698505be7500",
+    "grade8_resource_sha256": "3aad0b8912811d574f2226b2a7823f80b724c2e0abe76d2617ae4c82d3f4b905",
+    "inspection_threshold_pct": 3.0,
+    "lead_final_evidence_receipt_sha256": "7dce9d6659482a1756d762f4715f12e4804b790c2a64b21d4592d1137a03f00b",
+    "old_tsv_sha256": "db2d828151309ddaa224fe74cf0bc2f3f9739cd32be010c628972e20908224d9",
+    "original_audit_join_sha256": "7a94e7a26c4e6af1a7122b077cd1001d148b40ac58158d72353e4d33b808177c",
+    "per_case_raw_medians_ms": {
+      "0": {
+        "drift_pct": -1.96655,
+        "input_sha256": "9af3b576139482dc124606d1fdf9ffd99289a6ef1b175869aab01098b16f4153",
+        "new": 0.9671,
+        "old": 0.9865
+      },
+      "10": {
+        "drift_pct": 0.17929,
+        "input_sha256": "1fd8b72ae629da86c142c6adc62d8c001295cd44d59f77b1e720c31f85d2cd3b",
+        "new": 0.11174999999999999,
+        "old": 0.11155000000000001
+      },
+      "17": {
+        "drift_pct": -0.00578,
+        "input_sha256": "a7a9d2d4f35fa491ddede711255c3717c054e44778df051d5fc57963ff76f8d0",
+        "new": 0.8654,
+        "old": 0.86545
+      },
+      "32": {
+        "drift_pct": -0.08836,
+        "input_sha256": "9b9328e92a54b839dc479631112c0bfd779f8f25c826c52c2b645df8321cd440",
+        "new": 1.1307,
+        "old": 1.1317
+      },
+      "42": {
+        "drift_pct": -0.60332,
+        "input_sha256": "1bdef41f154b1f08351f31c6f3954bc1e51e4994634f805265db3f2c4e755f33",
+        "new": 35.67675,
+        "old": 35.893299999999996
+      },
+      "5": {
+        "drift_pct": 0.0,
+        "input_sha256": "88f97be744b7b1a53568043e69ed48e866c533b922c97ea8250a195fb9c0fc4c",
+        "new": 0.002,
+        "old": 0.002
+      }
+    },
+    "raw_median_drift_window_pct": [
+      -1.96655,
+      0.17929
+    ],
+    "resource_created_at_utc": "2026-10-05T15:44:32.172000Z",
+    "resource_finished_at_utc": "2026-10-05T15:50:09.560000Z",
+    "resource_started_at_utc": "2026-10-05T15:44:32.374000Z",
+    "sampled_cases_one_based": [
+      1,
+      6,
+      11,
+      18,
+      33,
+      43
+    ],
+    "sampled_cases_public_zero_based": [
+      0,
+      5,
+      10,
+      17,
+      32,
+      42
+    ],
+    "sampled_problem": "official_l3_BatchMatmul",
+    "source_scope": "20 official tasks / 1046 per-case bindings, original cards 1-8",
+    "v1_artifact_superseded_by": "source identity changed (fresh historical sentinel + sandbox delivery seam) and schema v2 requires source_state_dir; v1 retained at .scratch/v3-service-reference8/phase2-snapshot-20261006/validated-timing-reuse-policy-v1-delivered.json"
+  },
+  "schema_version": "validated-timing-reuse-policy-v2",
+  "scope_statement": "Owner-adopted runtime-wide historical Torch-reference TIMING reuse for the patched-Triton transition. Evidence basis: ONE sampled grade8 comparison (EID ev_e04caf2e5693456c8823ee6229543655, 2026-10-05) on official_l3_BatchMatmul cases 1,6,11,18,33,43 (audit one-based) spanning fp32/fp16/bf16 and 0.002-35.89 ms medians; raw-median drift -1.96655%..+0.17929%, all within the +/-3% inspection threshold. This policy is NOT a remeasurement, coverage proof, or individual validation of all 1046 source cases; sampling does not prove every timing. Timing evidence only: correctness, quality and admission gates are unchanged; reuse requires an exact binding match AND a fresh in-range sentinel (existing >3% drift remeasurement semantics retained, monotone per source generation and card).",
+  "source_cache_dir": "/dev/shm/v3-ocp-payload-run-20261004-a2/cache",
+  "source_deployment_sha256": "84154dfb56d4a06a818cee7e110589d27817fce784881edaa864210412932f5d",
+  "source_devices": [
+    "1",
+    "2",
+    "3",
+    "4",
+    "5",
+    "6",
+    "7",
+    "8"
+  ],
+  "source_index_path": "/dev/shm/v3-ocp-payload-run-20261004-a2/state/sealed-cache-index.json",
+  "source_index_sha256": "4c165dfca2675951c7dabf3caeabbef22f54d69a44e1540e95110b470db4fa87",
+  "source_state_dir": "/root/.paseo/worktrees/0u9809pj/v3-service-reference8-20261005/.scratch/v3-service-reference8/timing-reuse-delivery/state",
+  "target_patched_runtime_files": {
+    "backends/ascend/driver.py": "3942188b279b331b82abece2a59b4837cf8fb5d5ab894840876533c7478e297b",
+    "backends/ascend/npu_utils.cpp": "6bd908f6e53c8ae243a44def9af8a3706034fcbab7cc627658b6742a3f609140"
+  },
+  "target_service_source_sha256": {
+    "engine/benchmark.py": "66ee3307dcd16f798e7f50cadabe4ebae9fc4d63c162802d24998c9c3005299a",
+    "evaluators/sandbox.py": "8b92a0dfbdb57024227a84105a7911a2492e44ead7d166d03f5f8527ce0a27a5"
+  },
+  "timing_contract": {
+    "method": "profiler",
+    "repeats": 20,
+    "samples": 8,
+    "warmup": 5
+  }
+}

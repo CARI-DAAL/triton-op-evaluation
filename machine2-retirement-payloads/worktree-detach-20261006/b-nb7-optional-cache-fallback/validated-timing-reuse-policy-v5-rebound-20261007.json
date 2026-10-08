@@ -1,0 +1,72 @@
+{
+ "contract_reconciliation": "The source audit label (profiler, warmup5, repeats20, 8 samples, median) and reference8's fresh per-case measurement are the same underlying observation protocol: eight independent warmup5/repeats20 profiler measurements whose median is the reference latency. They are reconciled explicitly here, never silently aliased; source samples are served verbatim as historical evidence.",
+ "cross_card_scope": true,
+ "evidence": {
+  "adopted_at": "2026-10-06",
+  "adopted_by": "owner 80563d29 (deployment owner)",
+  "cross_card_basis": {
+   "input_identity": "official inputs are seed-zero per case; input_sha256 hashes the device TYPE (npu), never the card index (reference_cache._encode input_value=True); all 51 live card-8 BMM51 candidate_input_sha256 values equal sealed card-8 binding input_sha256 values",
+   "live_runs": {
+    "card8_51case_eid": "ev_8cc6293b565048a1a6ab47289e623017",
+    "grade8_eid": "ev_e04caf2e5693456c8823ee6229543655"
+   },
+   "sentinel": "unchanged F-63 semantics: fresh 8-sample sentinel on the CURRENT card per evaluation; >3% drift writes the monotone card-<current>.invalid.json marker under the source generation digest",
+   "workload_uniqueness": "1046 sealed entries = 1046 distinct workload identities (binding minus device_id); no workload sealed on two cards; cards 1-8: 150/131/175/110/100/124/107/149"
+  },
+  "human_ruling_2026_10_06": "卡之间是等价的为什么不能跨卡复用呢 -> option A: cross-card reuse, equivalence premise verified by live sentinels (see task nb7-cross-card-reuse-20261006)",
+  "inspection_threshold_pct": 3.0,
+  "sampled_cases_one_based": [
+   1,
+   6,
+   11,
+   18,
+   33,
+   43
+  ],
+  "sampled_problem": "official_l3_BatchMatmul",
+  "supersedes_policy": "validated-timing-reuse-policy-v3 (81b970e51ff8db06ad5d3ea19c53dd5e9a74d8c4a621b72fb07f8038b98c2ac7); v3 artifact untouched",
+  "v3_evidence_carried_over": "see validated-timing-reuse-policy-v3.json evidence (grade8 receipts, per-case raw medians, drift window -1.96655%..+0.17929%)"
+ },
+ "schema_version": "validated-timing-reuse-policy-v2",
+ "scope_statement": "Owner-adopted runtime-wide historical Torch-reference TIMING reuse for the patched-Triton transition, extended by the 2026-10-06 human ruling (\"卡之间是等价的为什么不能跨卡复用呢\") to CROSS-CARD reuse: a sealed reference (8-sample profiler median, audited on one card) may serve an evaluation on ANY fleet card, because the equivalence premise is verified per evaluation by the existing fresh eight-sample sentinel measured on the CURRENT card and compared with the served entry; drift beyond the unchanged +/-3% keeps the existing per-current-card monotone remeasurement (F-63). Evidence basis: the v3 sampled grade8 comparison (EID ev_e04caf2e5693456c8823ee6229543655, 2026-10-05) on official_l3_BatchMatmul cases 1,6,11,18,33,43, the 2026-10-06 live 51-case card-8 timing_reuse run (EID ev_8cc6293b565048a1a6ab47289e623017), and the verified uniqueness of all 1046 sealed workload identities across cards (cards 1-8: 150/131/175/110/100/124/107/149). This policy is NOT a remeasurement, coverage proof, or individual validation of all 1046 source cases on every card; the sentinel is the per-evaluation validation. Timing evidence only: correctness, quality and admission gates are unchanged. 2026-10-06 optional-accelerator ruling (\"如果有reference更好若果没有也能跑\") carried by branch af31c25: when this policy serves no validated hit the engine takes the production e4a36f7 reference path for its configuration (original single measurement with no cache configured or a non-official task; e4a36f7's own eight-sample remeasure on a cache-configured miss or drift), so this policy can only ever accelerate, never alter, the service.",
+ "source_cache_dir": "/dev/shm/v3-ocp-payload-run-20261004-a2/cache",
+ "source_deployment_sha256": "84154dfb56d4a06a818cee7e110589d27817fce784881edaa864210412932f5d",
+ "source_devices": [
+  "0",
+  "1",
+  "2",
+  "3",
+  "4",
+  "5",
+  "6",
+  "7",
+  "8",
+  "9",
+  "10",
+  "11",
+  "12",
+  "13",
+  "14",
+  "15"
+ ],
+ "source_index_path": "/dev/shm/v3-ocp-payload-run-20261004-a2/state/sealed-cache-index.json",
+ "source_index_sha256": "4c165dfca2675951c7dabf3caeabbef22f54d69a44e1540e95110b470db4fa87",
+ "source_state_dir": "/home/e84381970/open-evo-work/runtime-artifacts/worktree-detach-20261006/c-v3-service-reference8/timing-reuse-delivery/state",
+ "target_patched_runtime_files": {
+  "backends/ascend/driver.py": "3942188b279b331b82abece2a59b4837cf8fb5d5ab894840876533c7478e297b",
+  "backends/ascend/npu_utils.cpp": "6bd908f6e53c8ae243a44def9af8a3706034fcbab7cc627658b6742a3f609140"
+ },
+ "target_service_source_sha256": {
+  "engine/benchmark.py": "683cc5fbe33cad1679287a77cfc9ecae5ea6d59cb9dd4d8a646251a6d0646ea8",
+  "evaluators/sandbox.py": "d30887b31172af5988d8659adecaa70e46360b58c1b4a707dc5c90adc16384e9",
+  "reference_cache.py": "8a5682fe1d63ab34f32717d4a89c986d5fdf40bbcad2ee48cdfdc780491195ae",
+  "reference_diagnostics.py": "1d268c3252703fe7cafa1f568f8344b4928fa7afeda6bedb3739fe8819b83270",
+  "reference_timing_reuse.py": "d0c9a8b27057414d955f867ecfe79cbd50b16d667b2e90d02e74854bf0570b60"
+ },
+ "timing_contract": {
+  "method": "profiler",
+  "repeats": 20,
+  "samples": 8,
+  "warmup": 5
+ }
+}
