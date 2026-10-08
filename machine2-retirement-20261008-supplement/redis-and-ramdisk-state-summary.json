@@ -1,0 +1,23 @@
+{
+  "captured": "2026-10-08T11:2x+08:00 (machine2, read-only)",
+  "redis_triton-eval-machine2-redis": {
+    "container": "triton-eval-redis-machine2 (docker volume triton-eval-machine2-redis, AOF ~271MB)",
+    "dbsize": 26181,
+    "key_classes": {
+      "triton-eval:machine2:v2.1:inflight:session:*": 26156,
+      "worker-heartbeats": 1, "worker-heartbeat-expiry": 1,
+      "card-health:*": 16, "state:completed": 1, "state:failed": 1,
+      "state:timed_out": 1, "queue-sequence": 1, "metrics:fenced-write-rejected": 1,
+      "inflight:caller:trusted:*": 1, "inflight:caller:trial:*": 1
+    },
+    "sample": "inflight session keys are string markers ~152 bytes, TTL -1; no terminal result payloads found in scan",
+    "queue_sequence": 26213, "fenced_write_rejected": 1157,
+    "decision": "no unique terminal outcomes; queue/session infrastructure state not preserved per boundary (no raw Redis/AOF dump)"
+  },
+  "mnt_bridge-ram": {
+    "claim_and_run.sh": "byte-identical (md5 4700d0fefa33bfdf54c06e451f3014e0) to open-evo-bridge/claim_and_run.sh which is preserved in open-evo-bridge/",
+    "work/": "242 dirs: bestws_kernelbench_* / op_op-* / ab_lstm_* local-toolchain (cannbot/uni_agent verify.py+benchmark.py) outputs, metrics format is local toolchain schema (verified_success/error_groups), no eval-service request/evaluation ids; newest 2026-09-27",
+    "toolchain-scripts,cannbot-merged,ab_orig_engine,leak*.txt,zz_probe2.txt": "cannbot/KernelGYM-lane tools and probes; no Open Evo/eval-service result or deployed-code relationship established",
+    "decision": "nothing retained from /mnt/bridge-ram (human scope: only open evo and eval service; kernel gym unrelated)"
+  }
+}

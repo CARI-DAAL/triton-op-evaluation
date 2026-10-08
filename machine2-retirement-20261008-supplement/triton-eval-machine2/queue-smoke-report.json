@@ -1,0 +1,1759 @@
+{
+  "ids": [
+    "ev_f5af86fd17f6473f9b8ad6fec6dcd71e",
+    "ev_9943f3b5b0f54155aa2f3e01a55c036c",
+    "ev_b30f2736ffce42a0aad112ab08944051",
+    "ev_99763c891215420c89233e484afb1d24",
+    "ev_96d5840a489a49bdb78981f7853d4219",
+    "ev_bc0a153b1b1a48ff8fe8982cd92d35ff",
+    "ev_e0fd973b8e20439f930b496f34bfd158",
+    "ev_f1e3db871557461394dc0f9700ddf361",
+    "ev_6ab1a1c1159d4c1a9294d8c0772336ee",
+    "ev_7aa90a434dd3454290608a025996ddf3",
+    "ev_9d4dcb3a6cdc479798d793c6d6a88cad",
+    "ev_6d37099b6eb048a58a8cb530f760cae1"
+  ],
+  "snapshots": [
+    {
+      "time": 1789328707.113512,
+      "counts": {
+        "queued": 12
+      },
+      "running_cards": {},
+      "bindings": {}
+    },
+    {
+      "time": 1789328707.6171527,
+      "counts": {
+        "queued": 6,
+        "running": 6
+      },
+      "running_cards": {
+        "1": 1,
+        "4": 1,
+        "3": 1,
+        "0": 1,
+        "6": 1,
+        "2": 1
+      },
+      "bindings": {
+        "ev_b30f2736ffce42a0aad112ab08944051": 1,
+        "ev_99763c891215420c89233e484afb1d24": 4,
+        "ev_96d5840a489a49bdb78981f7853d4219": 3,
+        "ev_e0fd973b8e20439f930b496f34bfd158": 0,
+        "ev_f1e3db871557461394dc0f9700ddf361": 6,
+        "ev_6d37099b6eb048a58a8cb530f760cae1": 2
+      }
+    },
+    {
+      "time": 1789328707.8691754,
+      "counts": {
+        "running": 8,
+        "queued": 4
+      },
+      "running_cards": {
+        "5": 1,
+        "1": 1,
+        "4": 1,
+        "3": 1,
+        "0": 1,
+        "6": 1,
+        "7": 1,
+        "2": 1
+      },
+      "bindings": {
+        "ev_f5af86fd17f6473f9b8ad6fec6dcd71e": 5,
+        "ev_b30f2736ffce42a0aad112ab08944051": 1,
+        "ev_99763c891215420c89233e484afb1d24": 4,
+        "ev_96d5840a489a49bdb78981f7853d4219": 3,
+        "ev_e0fd973b8e20439f930b496f34bfd158": 0,
+        "ev_f1e3db871557461394dc0f9700ddf361": 6,
+        "ev_7aa90a434dd3454290608a025996ddf3": 7,
+        "ev_6d37099b6eb048a58a8cb530f760cae1": 2
+      }
+    },
+    {
+      "time": 1789328767.5837085,
+      "counts": {
+        "running": 8,
+        "queued": 3,
+        "completed": 1
+      },
+      "running_cards": {
+        "5": 1,
+        "4": 1,
+        "3": 1,
+        "0": 1,
+        "6": 1,
+        "7": 1,
+        "1": 1,
+        "2": 1
+      },
+      "bindings": {
+        "ev_f5af86fd17f6473f9b8ad6fec6dcd71e": 5,
+        "ev_b30f2736ffce42a0aad112ab08944051": 1,
+        "ev_99763c891215420c89233e484afb1d24": 4,
+        "ev_96d5840a489a49bdb78981f7853d4219": 3,
+        "ev_e0fd973b8e20439f930b496f34bfd158": 0,
+        "ev_f1e3db871557461394dc0f9700ddf361": 6,
+        "ev_7aa90a434dd3454290608a025996ddf3": 7,
+        "ev_9d4dcb3a6cdc479798d793c6d6a88cad": 1,
+        "ev_6d37099b6eb048a58a8cb530f760cae1": 2
+      }
+    },
+    {
+      "time": 1789328771.3645318,
+      "counts": {
+        "running": 8,
+        "queued": 2,
+        "completed": 2
+      },
+      "running_cards": {
+        "5": 1,
+        "4": 1,
+        "3": 1,
+        "6": 1,
+        "0": 1,
+        "7": 1,
+        "1": 1,
+        "2": 1
+      },
+      "bindings": {
+        "ev_f5af86fd17f6473f9b8ad6fec6dcd71e": 5,
+        "ev_b30f2736ffce42a0aad112ab08944051": 1,
+        "ev_99763c891215420c89233e484afb1d24": 4,
+        "ev_96d5840a489a49bdb78981f7853d4219": 3,
+        "ev_e0fd973b8e20439f930b496f34bfd158": 0,
+        "ev_f1e3db871557461394dc0f9700ddf361": 6,
+        "ev_6ab1a1c1159d4c1a9294d8c0772336ee": 0,
+        "ev_7aa90a434dd3454290608a025996ddf3": 7,
+        "ev_9d4dcb3a6cdc479798d793c6d6a88cad": 1,
+        "ev_6d37099b6eb048a58a8cb530f760cae1": 2
+      }
+    },
+    {
+      "time": 1789328771.8686535,
+      "counts": {
+        "running": 8,
+        "queued": 1,
+        "completed": 3
+      },
+      "running_cards": {
+        "5": 1,
+        "4": 1,
+        "3": 1,
+        "6": 1,
+        "0": 1,
+        "7": 1,
+        "1": 1,
+        "2": 1
+      },
+      "bindings": {
+        "ev_f5af86fd17f6473f9b8ad6fec6dcd71e": 5,
+        "ev_b30f2736ffce42a0aad112ab08944051": 1,
+        "ev_99763c891215420c89233e484afb1d24": 4,
+        "ev_96d5840a489a49bdb78981f7853d4219": 3,
+        "ev_bc0a153b1b1a48ff8fe8982cd92d35ff": 6,
+        "ev_e0fd973b8e20439f930b496f34bfd158": 0,
+        "ev_f1e3db871557461394dc0f9700ddf361": 6,
+        "ev_6ab1a1c1159d4c1a9294d8c0772336ee": 0,
+        "ev_7aa90a434dd3454290608a025996ddf3": 7,
+        "ev_9d4dcb3a6cdc479798d793c6d6a88cad": 1,
+        "ev_6d37099b6eb048a58a8cb530f760cae1": 2
+      }
+    },
+    {
+      "time": 1789328772.6243827,
+      "counts": {
+        "running": 7,
+        "completed": 5
+      },
+      "running_cards": {
+        "5": 1,
+        "2": 1,
+        "4": 1,
+        "3": 1,
+        "6": 1,
+        "0": 1,
+        "1": 1
+      },
+      "bindings": {
+        "ev_f5af86fd17f6473f9b8ad6fec6dcd71e": 5,
+        "ev_9943f3b5b0f54155aa2f3e01a55c036c": 2,
+        "ev_b30f2736ffce42a0aad112ab08944051": 1,
+        "ev_99763c891215420c89233e484afb1d24": 4,
+        "ev_96d5840a489a49bdb78981f7853d4219": 3,
+        "ev_bc0a153b1b1a48ff8fe8982cd92d35ff": 6,
+        "ev_e0fd973b8e20439f930b496f34bfd158": 0,
+        "ev_f1e3db871557461394dc0f9700ddf361": 6,
+        "ev_6ab1a1c1159d4c1a9294d8c0772336ee": 0,
+        "ev_7aa90a434dd3454290608a025996ddf3": 7,
+        "ev_9d4dcb3a6cdc479798d793c6d6a88cad": 1,
+        "ev_6d37099b6eb048a58a8cb530f760cae1": 2
+      }
+    },
+    {
+      "time": 1789328772.8765752,
+      "counts": {
+        "completed": 6,
+        "running": 6
+      },
+      "running_cards": {
+        "2": 1,
+        "4": 1,
+        "3": 1,
+        "6": 1,
+        "0": 1,
+        "1": 1
+      },
+      "bindings": {
+        "ev_f5af86fd17f6473f9b8ad6fec6dcd71e": 5,
+        "ev_9943f3b5b0f54155aa2f3e01a55c036c": 2,
+        "ev_b30f2736ffce42a0aad112ab08944051": 1,
+        "ev_99763c891215420c89233e484afb1d24": 4,
+        "ev_96d5840a489a49bdb78981f7853d4219": 3,
+        "ev_bc0a153b1b1a48ff8fe8982cd92d35ff": 6,
+        "ev_e0fd973b8e20439f930b496f34bfd158": 0,
+        "ev_f1e3db871557461394dc0f9700ddf361": 6,
+        "ev_6ab1a1c1159d4c1a9294d8c0772336ee": 0,
+        "ev_7aa90a434dd3454290608a025996ddf3": 7,
+        "ev_9d4dcb3a6cdc479798d793c6d6a88cad": 1,
+        "ev_6d37099b6eb048a58a8cb530f760cae1": 2
+      }
+    },
+    {
+      "time": 1789328773.6328702,
+      "counts": {
+        "completed": 7,
+        "running": 5
+      },
+      "running_cards": {
+        "2": 1,
+        "4": 1,
+        "6": 1,
+        "0": 1,
+        "1": 1
+      },
+      "bindings": {
+        "ev_f5af86fd17f6473f9b8ad6fec6dcd71e": 5,
+        "ev_9943f3b5b0f54155aa2f3e01a55c036c": 2,
+        "ev_b30f2736ffce42a0aad112ab08944051": 1,
+        "ev_99763c891215420c89233e484afb1d24": 4,
+        "ev_96d5840a489a49bdb78981f7853d4219": 3,
+        "ev_bc0a153b1b1a48ff8fe8982cd92d35ff": 6,
+        "ev_e0fd973b8e20439f930b496f34bfd158": 0,
+        "ev_f1e3db871557461394dc0f9700ddf361": 6,
+        "ev_6ab1a1c1159d4c1a9294d8c0772336ee": 0,
+        "ev_7aa90a434dd3454290608a025996ddf3": 7,
+        "ev_9d4dcb3a6cdc479798d793c6d6a88cad": 1,
+        "ev_6d37099b6eb048a58a8cb530f760cae1": 2
+      }
+    },
+    {
+      "time": 1789328774.8926756,
+      "counts": {
+        "completed": 8,
+        "running": 4
+      },
+      "running_cards": {
+        "2": 1,
+        "6": 1,
+        "0": 1,
+        "1": 1
+      },
+      "bindings": {
+        "ev_f5af86fd17f6473f9b8ad6fec6dcd71e": 5,
+        "ev_9943f3b5b0f54155aa2f3e01a55c036c": 2,
+        "ev_b30f2736ffce42a0aad112ab08944051": 1,
+        "ev_99763c891215420c89233e484afb1d24": 4,
+        "ev_96d5840a489a49bdb78981f7853d4219": 3,
+        "ev_bc0a153b1b1a48ff8fe8982cd92d35ff": 6,
+        "ev_e0fd973b8e20439f930b496f34bfd158": 0,
+        "ev_f1e3db871557461394dc0f9700ddf361": 6,
+        "ev_6ab1a1c1159d4c1a9294d8c0772336ee": 0,
+        "ev_7aa90a434dd3454290608a025996ddf3": 7,
+        "ev_9d4dcb3a6cdc479798d793c6d6a88cad": 1,
+        "ev_6d37099b6eb048a58a8cb530f760cae1": 2
+      }
+    },
+    {
+      "time": 1789328820.2505949,
+      "counts": {
+        "completed": 9,
+        "running": 3
+      },
+      "running_cards": {
+        "2": 1,
+        "6": 1,
+        "0": 1
+      },
+      "bindings": {
+        "ev_f5af86fd17f6473f9b8ad6fec6dcd71e": 5,
+        "ev_9943f3b5b0f54155aa2f3e01a55c036c": 2,
+        "ev_b30f2736ffce42a0aad112ab08944051": 1,
+        "ev_99763c891215420c89233e484afb1d24": 4,
+        "ev_96d5840a489a49bdb78981f7853d4219": 3,
+        "ev_bc0a153b1b1a48ff8fe8982cd92d35ff": 6,
+        "ev_e0fd973b8e20439f930b496f34bfd158": 0,
+        "ev_f1e3db871557461394dc0f9700ddf361": 6,
+        "ev_6ab1a1c1159d4c1a9294d8c0772336ee": 0,
+        "ev_7aa90a434dd3454290608a025996ddf3": 7,
+        "ev_9d4dcb3a6cdc479798d793c6d6a88cad": 1,
+        "ev_6d37099b6eb048a58a8cb530f760cae1": 2
+      }
+    },
+    {
+      "time": 1789328825.0357633,
+      "counts": {
+        "completed": 10,
+        "running": 2
+      },
+      "running_cards": {
+        "6": 1,
+        "0": 1
+      },
+      "bindings": {
+        "ev_f5af86fd17f6473f9b8ad6fec6dcd71e": 5,
+        "ev_9943f3b5b0f54155aa2f3e01a55c036c": 2,
+        "ev_b30f2736ffce42a0aad112ab08944051": 1,
+        "ev_99763c891215420c89233e484afb1d24": 4,
+        "ev_96d5840a489a49bdb78981f7853d4219": 3,
+        "ev_bc0a153b1b1a48ff8fe8982cd92d35ff": 6,
+        "ev_e0fd973b8e20439f930b496f34bfd158": 0,
+        "ev_f1e3db871557461394dc0f9700ddf361": 6,
+        "ev_6ab1a1c1159d4c1a9294d8c0772336ee": 0,
+        "ev_7aa90a434dd3454290608a025996ddf3": 7,
+        "ev_9d4dcb3a6cdc479798d793c6d6a88cad": 1,
+        "ev_6d37099b6eb048a58a8cb530f760cae1": 2
+      }
+    },
+    {
+      "time": 1789328826.042938,
+      "counts": {
+        "completed": 11,
+        "running": 1
+      },
+      "running_cards": {
+        "0": 1
+      },
+      "bindings": {
+        "ev_f5af86fd17f6473f9b8ad6fec6dcd71e": 5,
+        "ev_9943f3b5b0f54155aa2f3e01a55c036c": 2,
+        "ev_b30f2736ffce42a0aad112ab08944051": 1,
+        "ev_99763c891215420c89233e484afb1d24": 4,
+        "ev_96d5840a489a49bdb78981f7853d4219": 3,
+        "ev_bc0a153b1b1a48ff8fe8982cd92d35ff": 6,
+        "ev_e0fd973b8e20439f930b496f34bfd158": 0,
+        "ev_f1e3db871557461394dc0f9700ddf361": 6,
+        "ev_6ab1a1c1159d4c1a9294d8c0772336ee": 0,
+        "ev_7aa90a434dd3454290608a025996ddf3": 7,
+        "ev_9d4dcb3a6cdc479798d793c6d6a88cad": 1,
+        "ev_6d37099b6eb048a58a8cb530f760cae1": 2
+      }
+    },
+    {
+      "time": 1789328826.2952967,
+      "counts": {
+        "completed": 12
+      },
+      "running_cards": {},
+      "bindings": {
+        "ev_f5af86fd17f6473f9b8ad6fec6dcd71e": 5,
+        "ev_9943f3b5b0f54155aa2f3e01a55c036c": 2,
+        "ev_b30f2736ffce42a0aad112ab08944051": 1,
+        "ev_99763c891215420c89233e484afb1d24": 4,
+        "ev_96d5840a489a49bdb78981f7853d4219": 3,
+        "ev_bc0a153b1b1a48ff8fe8982cd92d35ff": 6,
+        "ev_e0fd973b8e20439f930b496f34bfd158": 0,
+        "ev_f1e3db871557461394dc0f9700ddf361": 6,
+        "ev_6ab1a1c1159d4c1a9294d8c0772336ee": 0,
+        "ev_7aa90a434dd3454290608a025996ddf3": 7,
+        "ev_9d4dcb3a6cdc479798d793c6d6a88cad": 1,
+        "ev_6d37099b6eb048a58a8cb530f760cae1": 2
+      }
+    }
+  ],
+  "cards_used": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7
+  ],
+  "max_running": 8,
+  "max_queued": 12,
+  "max_per_card": 1,
+  "results": [
+    {
+      "created_at": "2026-09-13T19:45:07.086000Z",
+      "deadline_at": "2026-09-13T20:15:07.086000Z",
+      "evaluation_id": "ev_f5af86fd17f6473f9b8ad6fec6dcd71e",
+      "finished_at": "2026-09-13T19:46:12.821000Z",
+      "reference_digest": "8d197b43a570abda54e6c83a6a73e2712a20bdc9cba626be5fd5b0cf4ea3bc3b",
+      "request_digest": "6dc94c2e7902d3fa967a29c2b1dec3718d6b9e0e7b0a864272e697df4ca2d141",
+      "result": {
+        "compile": null,
+        "correctness": {
+          "data": {
+            "decoy": false,
+            "domain_failure": null,
+            "failures": [],
+            "outcome": "correct",
+            "passed": true,
+            "passed_cases": 2,
+            "total_cases": 2
+          },
+          "error": null,
+          "reason": null,
+          "status": "succeeded"
+        },
+        "performance": {
+          "data": {
+            "aggregation": "geometric_mean_v1",
+            "coverage": 1,
+            "measured_cases": 2,
+            "measurement_method": "profiler_kernel_sum_v1",
+            "overall_speedup_vs_reference": 1.1401754250991378,
+            "per_case": [
+              {
+                "case_idx": 0,
+                "implementation_latency_ms": 0.002,
+                "input_shapes": [
+                  {
+                    "dimensions": [
+                      128
+                    ],
+                    "dtype": "torch.float32",
+                    "input_index": 0
+                  },
+                  {
+                    "dimensions": [
+                      128
+                    ],
+                    "dtype": "torch.float32",
+                    "input_index": 1
+                  }
+                ],
+                "measurement_method": "profiler_kernel_sum_v1",
+                "reference_latency_ms": 0.0026,
+                "speedup_vs_reference": 1.2999999999999998
+              },
+              {
+                "case_idx": 1,
+                "implementation_latency_ms": 0.0014,
+                "input_shapes": [
+                  {
+                    "dimensions": [
+                      1024
+                    ],
+                    "dtype": "torch.float32",
+                    "input_index": 0
+                  },
+                  {
+                    "dimensions": [
+                      1024
+                    ],
+                    "dtype": "torch.float32",
+                    "input_index": 1
+                  }
+                ],
+                "measurement_method": "profiler_kernel_sum_v1",
+                "reference_latency_ms": 0.0014,
+                "speedup_vs_reference": 1
+              }
+            ],
+            "selected_cases": 2,
+            "unmeasured_cases": []
+          },
+          "error": null,
+          "reason": null,
+          "status": "succeeded"
+        },
+        "profile": null,
+        "provenance": {
+          "benchmark_algorithm": "geometric-mean-v1",
+          "correctness_algorithm": "correctness-v1",
+          "decoy_algorithm": "decoy-v1",
+          "evaluator_build": "git:661bde58fb908f42090a3835ab5cd678ce737fc7",
+          "execution_environment": {
+            "driver_version": "25.5.1",
+            "hardware_count": 1,
+            "hardware_model": "Ascend910",
+            "runtime_version": "9.0.0",
+            "toolchain_version": "CANN 9.0.0",
+            "torch_npu_version": "2.9.0",
+            "torch_version": "2.9.0+cpu",
+            "triton_version": null
+          },
+          "grade_eligible": false,
+          "manifest_id": null,
+          "problem_id": null,
+          "profiler_algorithm": "profiler-v1",
+          "schema_version": "2.1"
+        }
+      },
+      "revision": 3,
+      "schema_version": "2.1",
+      "started_at": "2026-09-13T19:45:07.752000Z",
+      "state": "completed",
+      "updated_at": "2026-09-13T19:46:12.821000Z"
+    },
+    {
+      "created_at": "2026-09-13T19:45:07.107000Z",
+      "deadline_at": "2026-09-13T20:15:07.107000Z",
+      "evaluation_id": "ev_9943f3b5b0f54155aa2f3e01a55c036c",
+      "finished_at": "2026-09-13T19:47:04.825000Z",
+      "reference_digest": "8d197b43a570abda54e6c83a6a73e2712a20bdc9cba626be5fd5b0cf4ea3bc3b",
+      "request_digest": "6dc94c2e7902d3fa967a29c2b1dec3718d6b9e0e7b0a864272e697df4ca2d141",
+      "result": {
+        "compile": null,
+        "correctness": {
+          "data": {
+            "decoy": false,
+            "domain_failure": null,
+            "failures": [],
+            "outcome": "correct",
+            "passed": true,
+            "passed_cases": 2,
+            "total_cases": 2
+          },
+          "error": null,
+          "reason": null,
+          "status": "succeeded"
+        },
+        "performance": {
+          "data": {
+            "aggregation": "geometric_mean_v1",
+            "coverage": 1,
+            "measured_cases": 2,
+            "measurement_method": "profiler_kernel_sum_v1",
+            "overall_speedup_vs_reference": 1.163350101494222,
+            "per_case": [
+              {
+                "case_idx": 0,
+                "implementation_latency_ms": 0.0019,
+                "input_shapes": [
+                  {
+                    "dimensions": [
+                      128
+                    ],
+                    "dtype": "torch.float32",
+                    "input_index": 0
+                  },
+                  {
+                    "dimensions": [
+                      128
+                    ],
+                    "dtype": "torch.float32",
+                    "input_index": 1
+                  }
+                ],
+                "measurement_method": "profiler_kernel_sum_v1",
+                "reference_latency_ms": 0.0024,
+                "speedup_vs_reference": 1.263157894736842
+              },
+              {
+                "case_idx": 1,
+                "implementation_latency_ms": 0.0014,
+                "input_shapes": [
+                  {
+                    "dimensions": [
+                      1024
+                    ],
+                    "dtype": "torch.float32",
+                    "input_index": 0
+                  },
+                  {
+                    "dimensions": [
+                      1024
+                    ],
+                    "dtype": "torch.float32",
+                    "input_index": 1
+                  }
+                ],
+                "measurement_method": "profiler_kernel_sum_v1",
+                "reference_latency_ms": 0.0015,
+                "speedup_vs_reference": 1.0714285714285714
+              }
+            ],
+            "selected_cases": 2,
+            "unmeasured_cases": []
+          },
+          "error": null,
+          "reason": null,
+          "status": "succeeded"
+        },
+        "profile": null,
+        "provenance": {
+          "benchmark_algorithm": "geometric-mean-v1",
+          "correctness_algorithm": "correctness-v1",
+          "decoy_algorithm": "decoy-v1",
+          "evaluator_build": "git:661bde58fb908f42090a3835ab5cd678ce737fc7",
+          "execution_environment": {
+            "driver_version": "25.5.1",
+            "hardware_count": 1,
+            "hardware_model": "Ascend910",
+            "runtime_version": "9.0.0",
+            "toolchain_version": "CANN 9.0.0",
+            "torch_npu_version": "2.9.0",
+            "torch_version": "2.9.0+cpu",
+            "triton_version": null
+          },
+          "grade_eligible": false,
+          "manifest_id": null,
+          "problem_id": null,
+          "profiler_algorithm": "profiler-v1",
+          "schema_version": "2.1"
+        }
+      },
+      "revision": 3,
+      "schema_version": "2.1",
+      "started_at": "2026-09-13T19:46:12.432000Z",
+      "state": "completed",
+      "updated_at": "2026-09-13T19:47:04.825000Z"
+    },
+    {
+      "created_at": "2026-09-13T19:45:07.064000Z",
+      "deadline_at": "2026-09-13T20:15:07.064000Z",
+      "evaluation_id": "ev_b30f2736ffce42a0aad112ab08944051",
+      "finished_at": "2026-09-13T19:46:07.442000Z",
+      "reference_digest": "8d197b43a570abda54e6c83a6a73e2712a20bdc9cba626be5fd5b0cf4ea3bc3b",
+      "request_digest": "6dc94c2e7902d3fa967a29c2b1dec3718d6b9e0e7b0a864272e697df4ca2d141",
+      "result": {
+        "compile": null,
+        "correctness": {
+          "data": {
+            "decoy": false,
+            "domain_failure": null,
+            "failures": [],
+            "outcome": "correct",
+            "passed": true,
+            "passed_cases": 2,
+            "total_cases": 2
+          },
+          "error": null,
+          "reason": null,
+          "status": "succeeded"
+        },
+        "performance": {
+          "data": {
+            "aggregation": "geometric_mean_v1",
+            "coverage": 1,
+            "measured_cases": 2,
+            "measurement_method": "profiler_kernel_sum_v1",
+            "overall_speedup_vs_reference": 1.1785113019775793,
+            "per_case": [
+              {
+                "case_idx": 0,
+                "implementation_latency_ms": 0.0018,
+                "input_shapes": [
+                  {
+                    "dimensions": [
+                      128
+                    ],
+                    "dtype": "torch.float32",
+                    "input_index": 0
+                  },
+                  {
+                    "dimensions": [
+                      128
+                    ],
+                    "dtype": "torch.float32",
+                    "input_index": 1
+                  }
+                ],
+                "measurement_method": "profiler_kernel_sum_v1",
+                "reference_latency_ms": 0.0025,
+                "speedup_vs_reference": 1.388888888888889
+              },
+              {
+                "case_idx": 1,
+                "implementation_latency_ms": 0.0015,
+                "input_shapes": [
+                  {
+                    "dimensions": [
+                      1024
+                    ],
+                    "dtype": "torch.float32",
+                    "input_index": 0
+                  },
+                  {
+                    "dimensions": [
+                      1024
+                    ],
+                    "dtype": "torch.float32",
+                    "input_index": 1
+                  }
+                ],
+                "measurement_method": "profiler_kernel_sum_v1",
+                "reference_latency_ms": 0.0015,
+                "speedup_vs_reference": 1
+              }
+            ],
+            "selected_cases": 2,
+            "unmeasured_cases": []
+          },
+          "error": null,
+          "reason": null,
+          "status": "succeeded"
+        },
+        "profile": null,
+        "provenance": {
+          "benchmark_algorithm": "geometric-mean-v1",
+          "correctness_algorithm": "correctness-v1",
+          "decoy_algorithm": "decoy-v1",
+          "evaluator_build": "git:661bde58fb908f42090a3835ab5cd678ce737fc7",
+          "execution_environment": {
+            "driver_version": "25.5.1",
+            "hardware_count": 1,
+            "hardware_model": "Ascend910",
+            "runtime_version": "9.0.0",
+            "toolchain_version": "CANN 9.0.0",
+            "torch_npu_version": "2.9.0",
+            "torch_version": "2.9.0+cpu",
+            "triton_version": null
+          },
+          "grade_eligible": false,
+          "manifest_id": null,
+          "problem_id": null,
+          "profiler_algorithm": "profiler-v1",
+          "schema_version": "2.1"
+        }
+      },
+      "revision": 3,
+      "schema_version": "2.1",
+      "started_at": "2026-09-13T19:45:07.437000Z",
+      "state": "completed",
+      "updated_at": "2026-09-13T19:46:07.442000Z"
+    },
+    {
+      "created_at": "2026-09-13T19:45:07.070000Z",
+      "deadline_at": "2026-09-13T20:15:07.070000Z",
+      "evaluation_id": "ev_99763c891215420c89233e484afb1d24",
+      "finished_at": "2026-09-13T19:46:14.706000Z",
+      "reference_digest": "8d197b43a570abda54e6c83a6a73e2712a20bdc9cba626be5fd5b0cf4ea3bc3b",
+      "request_digest": "6dc94c2e7902d3fa967a29c2b1dec3718d6b9e0e7b0a864272e697df4ca2d141",
+      "result": {
+        "compile": null,
+        "correctness": {
+          "data": {
+            "decoy": false,
+            "domain_failure": null,
+            "failures": [],
+            "outcome": "correct",
+            "passed": true,
+            "passed_cases": 2,
+            "total_cases": 2
+          },
+          "error": null,
+          "reason": null,
+          "status": "succeeded"
+        },
+        "performance": {
+          "data": {
+            "aggregation": "geometric_mean_v1",
+            "coverage": 1,
+            "measured_cases": 2,
+            "measurement_method": "profiler_kernel_sum_v1",
+            "overall_speedup_vs_reference": 1.163350101494222,
+            "per_case": [
+              {
+                "case_idx": 0,
+                "implementation_latency_ms": 0.0019,
+                "input_shapes": [
+                  {
+                    "dimensions": [
+                      128
+                    ],
+                    "dtype": "torch.float32",
+                    "input_index": 0
+                  },
+                  {
+                    "dimensions": [
+                      128
+                    ],
+                    "dtype": "torch.float32",
+                    "input_index": 1
+                  }
+                ],
+                "measurement_method": "profiler_kernel_sum_v1",
+                "reference_latency_ms": 0.0024,
+                "speedup_vs_reference": 1.263157894736842
+              },
+              {
+                "case_idx": 1,
+                "implementation_latency_ms": 0.0014,
+                "input_shapes": [
+                  {
+                    "dimensions": [
+                      1024
+                    ],
+                    "dtype": "torch.float32",
+                    "input_index": 0
+                  },
+                  {
+                    "dimensions": [
+                      1024
+                    ],
+                    "dtype": "torch.float32",
+                    "input_index": 1
+                  }
+                ],
+                "measurement_method": "profiler_kernel_sum_v1",
+                "reference_latency_ms": 0.0015,
+                "speedup_vs_reference": 1.0714285714285714
+              }
+            ],
+            "selected_cases": 2,
+            "unmeasured_cases": []
+          },
+          "error": null,
+          "reason": null,
+          "status": "succeeded"
+        },
+        "profile": null,
+        "provenance": {
+          "benchmark_algorithm": "geometric-mean-v1",
+          "correctness_algorithm": "correctness-v1",
+          "decoy_algorithm": "decoy-v1",
+          "evaluator_build": "git:661bde58fb908f42090a3835ab5cd678ce737fc7",
+          "execution_environment": {
+            "driver_version": "25.5.1",
+            "hardware_count": 1,
+            "hardware_model": "Ascend910",
+            "runtime_version": "9.0.0",
+            "toolchain_version": "CANN 9.0.0",
+            "torch_npu_version": "2.9.0",
+            "torch_version": "2.9.0+cpu",
+            "triton_version": null
+          },
+          "grade_eligible": false,
+          "manifest_id": null,
+          "problem_id": null,
+          "profiler_algorithm": "profiler-v1",
+          "schema_version": "2.1"
+        }
+      },
+      "revision": 3,
+      "schema_version": "2.1",
+      "started_at": "2026-09-13T19:45:07.438000Z",
+      "state": "completed",
+      "updated_at": "2026-09-13T19:46:14.706000Z"
+    },
+    {
+      "created_at": "2026-09-13T19:45:07.081000Z",
+      "deadline_at": "2026-09-13T20:15:07.081000Z",
+      "evaluation_id": "ev_96d5840a489a49bdb78981f7853d4219",
+      "finished_at": "2026-09-13T19:46:13.426000Z",
+      "reference_digest": "8d197b43a570abda54e6c83a6a73e2712a20bdc9cba626be5fd5b0cf4ea3bc3b",
+      "request_digest": "6dc94c2e7902d3fa967a29c2b1dec3718d6b9e0e7b0a864272e697df4ca2d141",
+      "result": {
+        "compile": null,
+        "correctness": {
+          "data": {
+            "decoy": false,
+            "domain_failure": null,
+            "failures": [],
+            "outcome": "correct",
+            "passed": true,
+            "passed_cases": 2,
+            "total_cases": 2
+          },
+          "error": null,
+          "reason": null,
+          "status": "succeeded"
+        },
+        "performance": {
+          "data": {
+            "aggregation": "geometric_mean_v1",
+            "coverage": 1,
+            "measured_cases": 2,
+            "measurement_method": "profiler_kernel_sum_v1",
+            "overall_speedup_vs_reference": 1.1081832770072813,
+            "per_case": [
+              {
+                "case_idx": 0,
+                "implementation_latency_ms": 0.0019,
+                "input_shapes": [
+                  {
+                    "dimensions": [
+                      128
+                    ],
+                    "dtype": "torch.float32",
+                    "input_index": 0
+                  },
+                  {
+                    "dimensions": [
+                      128
+                    ],
+                    "dtype": "torch.float32",
+                    "input_index": 1
+                  }
+                ],
+                "measurement_method": "profiler_kernel_sum_v1",
+                "reference_latency_ms": 0.0025,
+                "speedup_vs_reference": 1.3157894736842106
+              },
+              {
+                "case_idx": 1,
+                "implementation_latency_ms": 0.0015,
+                "input_shapes": [
+                  {
+                    "dimensions": [
+                      1024
+                    ],
+                    "dtype": "torch.float32",
+                    "input_index": 0
+                  },
+                  {
+                    "dimensions": [
+                      1024
+                    ],
+                    "dtype": "torch.float32",
+                    "input_index": 1
+                  }
+                ],
+                "measurement_method": "profiler_kernel_sum_v1",
+                "reference_latency_ms": 0.0014,
+                "speedup_vs_reference": 0.9333333333333333
+              }
+            ],
+            "selected_cases": 2,
+            "unmeasured_cases": []
+          },
+          "error": null,
+          "reason": null,
+          "status": "succeeded"
+        },
+        "profile": null,
+        "provenance": {
+          "benchmark_algorithm": "geometric-mean-v1",
+          "correctness_algorithm": "correctness-v1",
+          "decoy_algorithm": "decoy-v1",
+          "evaluator_build": "git:661bde58fb908f42090a3835ab5cd678ce737fc7",
+          "execution_environment": {
+            "driver_version": "25.5.1",
+            "hardware_count": 1,
+            "hardware_model": "Ascend910",
+            "runtime_version": "9.0.0",
+            "toolchain_version": "CANN 9.0.0",
+            "torch_npu_version": "2.9.0",
+            "torch_version": "2.9.0+cpu",
+            "triton_version": null
+          },
+          "grade_eligible": false,
+          "manifest_id": null,
+          "problem_id": null,
+          "profiler_algorithm": "profiler-v1",
+          "schema_version": "2.1"
+        }
+      },
+      "revision": 3,
+      "schema_version": "2.1",
+      "started_at": "2026-09-13T19:45:07.442000Z",
+      "state": "completed",
+      "updated_at": "2026-09-13T19:46:13.426000Z"
+    },
+    {
+      "created_at": "2026-09-13T19:45:07.104000Z",
+      "deadline_at": "2026-09-13T20:15:07.104000Z",
+      "evaluation_id": "ev_bc0a153b1b1a48ff8fe8982cd92d35ff",
+      "finished_at": "2026-09-13T19:47:05.947000Z",
+      "reference_digest": "8d197b43a570abda54e6c83a6a73e2712a20bdc9cba626be5fd5b0cf4ea3bc3b",
+      "request_digest": "6dc94c2e7902d3fa967a29c2b1dec3718d6b9e0e7b0a864272e697df4ca2d141",
+      "result": {
+        "compile": null,
+        "correctness": {
+          "data": {
+            "decoy": false,
+            "domain_failure": null,
+            "failures": [],
+            "outcome": "correct",
+            "passed": true,
+            "passed_cases": 2,
+            "total_cases": 2
+          },
+          "error": null,
+          "reason": null,
+          "status": "succeeded"
+        },
+        "performance": {
+          "data": {
+            "aggregation": "geometric_mean_v1",
+            "coverage": 1,
+            "measured_cases": 2,
+            "measurement_method": "profiler_kernel_sum_v1",
+            "overall_speedup_vs_reference": 1.1547005383792515,
+            "per_case": [
+              {
+                "case_idx": 0,
+                "implementation_latency_ms": 0.0018,
+                "input_shapes": [
+                  {
+                    "dimensions": [
+                      128
+                    ],
+                    "dtype": "torch.float32",
+                    "input_index": 0
+                  },
+                  {
+                    "dimensions": [
+                      128
+                    ],
+                    "dtype": "torch.float32",
+                    "input_index": 1
+                  }
+                ],
+                "measurement_method": "profiler_kernel_sum_v1",
+                "reference_latency_ms": 0.0024,
+                "speedup_vs_reference": 1.3333333333333333
+              },
+              {
+                "case_idx": 1,
+                "implementation_latency_ms": 0.0015,
+                "input_shapes": [
+                  {
+                    "dimensions": [
+                      1024
+                    ],
+                    "dtype": "torch.float32",
+                    "input_index": 0
+                  },
+                  {
+                    "dimensions": [
+                      1024
+                    ],
+                    "dtype": "torch.float32",
+                    "input_index": 1
+                  }
+                ],
+                "measurement_method": "profiler_kernel_sum_v1",
+                "reference_latency_ms": 0.0015,
+                "speedup_vs_reference": 1
+              }
+            ],
+            "selected_cases": 2,
+            "unmeasured_cases": []
+          },
+          "error": null,
+          "reason": null,
+          "status": "succeeded"
+        },
+        "profile": null,
+        "provenance": {
+          "benchmark_algorithm": "geometric-mean-v1",
+          "correctness_algorithm": "correctness-v1",
+          "decoy_algorithm": "decoy-v1",
+          "evaluator_build": "git:661bde58fb908f42090a3835ab5cd678ce737fc7",
+          "execution_environment": {
+            "driver_version": "25.5.1",
+            "hardware_count": 1,
+            "hardware_model": "Ascend910",
+            "runtime_version": "9.0.0",
+            "toolchain_version": "CANN 9.0.0",
+            "torch_npu_version": "2.9.0",
+            "torch_version": "2.9.0+cpu",
+            "triton_version": null
+          },
+          "grade_eligible": false,
+          "manifest_id": null,
+          "problem_id": null,
+          "profiler_algorithm": "profiler-v1",
+          "schema_version": "2.1"
+        }
+      },
+      "revision": 3,
+      "schema_version": "2.1",
+      "started_at": "2026-09-13T19:46:11.702000Z",
+      "state": "completed",
+      "updated_at": "2026-09-13T19:47:05.947000Z"
+    },
+    {
+      "created_at": "2026-09-13T19:45:07.056000Z",
+      "deadline_at": "2026-09-13T20:15:07.056000Z",
+      "evaluation_id": "ev_e0fd973b8e20439f930b496f34bfd158",
+      "finished_at": "2026-09-13T19:46:11.346000Z",
+      "reference_digest": "8d197b43a570abda54e6c83a6a73e2712a20bdc9cba626be5fd5b0cf4ea3bc3b",
+      "request_digest": "6dc94c2e7902d3fa967a29c2b1dec3718d6b9e0e7b0a864272e697df4ca2d141",
+      "result": {
+        "compile": null,
+        "correctness": {
+          "data": {
+            "decoy": false,
+            "domain_failure": null,
+            "failures": [],
+            "outcome": "correct",
+            "passed": true,
+            "passed_cases": 2,
+            "total_cases": 2
+          },
+          "error": null,
+          "reason": null,
+          "status": "succeeded"
+        },
+        "performance": {
+          "data": {
+            "aggregation": "geometric_mean_v1",
+            "coverage": 1,
+            "measured_cases": 2,
+            "measurement_method": "profiler_kernel_sum_v1",
+            "overall_speedup_vs_reference": 1.1002392084403616,
+            "per_case": [
+              {
+                "case_idx": 0,
+                "implementation_latency_ms": 0.0019,
+                "input_shapes": [
+                  {
+                    "dimensions": [
+                      128
+                    ],
+                    "dtype": "torch.float32",
+                    "input_index": 0
+                  },
+                  {
+                    "dimensions": [
+                      128
+                    ],
+                    "dtype": "torch.float32",
+                    "input_index": 1
+                  }
+                ],
+                "measurement_method": "profiler_kernel_sum_v1",
+                "reference_latency_ms": 0.0023,
+                "speedup_vs_reference": 1.2105263157894737
+              },
+              {
+                "case_idx": 1,
+                "implementation_latency_ms": 0.0014,
+                "input_shapes": [
+                  {
+                    "dimensions": [
+                      1024
+                    ],
+                    "dtype": "torch.float32",
+                    "input_index": 0
+                  },
+                  {
+                    "dimensions": [
+                      1024
+                    ],
+                    "dtype": "torch.float32",
+                    "input_index": 1
+                  }
+                ],
+                "measurement_method": "profiler_kernel_sum_v1",
+                "reference_latency_ms": 0.0014,
+                "speedup_vs_reference": 1
+              }
+            ],
+            "selected_cases": 2,
+            "unmeasured_cases": []
+          },
+          "error": null,
+          "reason": null,
+          "status": "succeeded"
+        },
+        "profile": null,
+        "provenance": {
+          "benchmark_algorithm": "geometric-mean-v1",
+          "correctness_algorithm": "correctness-v1",
+          "decoy_algorithm": "decoy-v1",
+          "evaluator_build": "git:661bde58fb908f42090a3835ab5cd678ce737fc7",
+          "execution_environment": {
+            "driver_version": "25.5.1",
+            "hardware_count": 1,
+            "hardware_model": "Ascend910",
+            "runtime_version": "9.0.0",
+            "toolchain_version": "CANN 9.0.0",
+            "torch_npu_version": "2.9.0",
+            "torch_version": "2.9.0+cpu",
+            "triton_version": null
+          },
+          "grade_eligible": false,
+          "manifest_id": null,
+          "problem_id": null,
+          "profiler_algorithm": "profiler-v1",
+          "schema_version": "2.1"
+        }
+      },
+      "revision": 3,
+      "schema_version": "2.1",
+      "started_at": "2026-09-13T19:45:07.435000Z",
+      "state": "completed",
+      "updated_at": "2026-09-13T19:46:11.346000Z"
+    },
+    {
+      "created_at": "2026-09-13T19:45:07.048000Z",
+      "deadline_at": "2026-09-13T20:15:07.048000Z",
+      "evaluation_id": "ev_f1e3db871557461394dc0f9700ddf361",
+      "finished_at": "2026-09-13T19:46:11.697000Z",
+      "reference_digest": "8d197b43a570abda54e6c83a6a73e2712a20bdc9cba626be5fd5b0cf4ea3bc3b",
+      "request_digest": "6dc94c2e7902d3fa967a29c2b1dec3718d6b9e0e7b0a864272e697df4ca2d141",
+      "result": {
+        "compile": null,
+        "correctness": {
+          "data": {
+            "decoy": false,
+            "domain_failure": null,
+            "failures": [],
+            "outcome": "correct",
+            "passed": true,
+            "passed_cases": 2,
+            "total_cases": 2
+          },
+          "error": null,
+          "reason": null,
+          "status": "succeeded"
+        },
+        "performance": {
+          "data": {
+            "aggregation": "geometric_mean_v1",
+            "coverage": 1,
+            "measured_cases": 2,
+            "measurement_method": "profiler_kernel_sum_v1",
+            "overall_speedup_vs_reference": 1.1239029738980326,
+            "per_case": [
+              {
+                "case_idx": 0,
+                "implementation_latency_ms": 0.0019,
+                "input_shapes": [
+                  {
+                    "dimensions": [
+                      128
+                    ],
+                    "dtype": "torch.float32",
+                    "input_index": 0
+                  },
+                  {
+                    "dimensions": [
+                      128
+                    ],
+                    "dtype": "torch.float32",
+                    "input_index": 1
+                  }
+                ],
+                "measurement_method": "profiler_kernel_sum_v1",
+                "reference_latency_ms": 0.0024,
+                "speedup_vs_reference": 1.263157894736842
+              },
+              {
+                "case_idx": 1,
+                "implementation_latency_ms": 0.0014,
+                "input_shapes": [
+                  {
+                    "dimensions": [
+                      1024
+                    ],
+                    "dtype": "torch.float32",
+                    "input_index": 0
+                  },
+                  {
+                    "dimensions": [
+                      1024
+                    ],
+                    "dtype": "torch.float32",
+                    "input_index": 1
+                  }
+                ],
+                "measurement_method": "profiler_kernel_sum_v1",
+                "reference_latency_ms": 0.0014,
+                "speedup_vs_reference": 1
+              }
+            ],
+            "selected_cases": 2,
+            "unmeasured_cases": []
+          },
+          "error": null,
+          "reason": null,
+          "status": "succeeded"
+        },
+        "profile": null,
+        "provenance": {
+          "benchmark_algorithm": "geometric-mean-v1",
+          "correctness_algorithm": "correctness-v1",
+          "decoy_algorithm": "decoy-v1",
+          "evaluator_build": "git:661bde58fb908f42090a3835ab5cd678ce737fc7",
+          "execution_environment": {
+            "driver_version": "25.5.1",
+            "hardware_count": 1,
+            "hardware_model": "Ascend910",
+            "runtime_version": "9.0.0",
+            "toolchain_version": "CANN 9.0.0",
+            "torch_npu_version": "2.9.0",
+            "torch_version": "2.9.0+cpu",
+            "triton_version": null
+          },
+          "grade_eligible": false,
+          "manifest_id": null,
+          "problem_id": null,
+          "profiler_algorithm": "profiler-v1",
+          "schema_version": "2.1"
+        }
+      },
+      "revision": 3,
+      "schema_version": "2.1",
+      "started_at": "2026-09-13T19:45:07.433000Z",
+      "state": "completed",
+      "updated_at": "2026-09-13T19:46:11.697000Z"
+    },
+    {
+      "created_at": "2026-09-13T19:45:07.100000Z",
+      "deadline_at": "2026-09-13T20:15:07.100000Z",
+      "evaluation_id": "ev_6ab1a1c1159d4c1a9294d8c0772336ee",
+      "finished_at": "2026-09-13T19:47:06.146000Z",
+      "reference_digest": "8d197b43a570abda54e6c83a6a73e2712a20bdc9cba626be5fd5b0cf4ea3bc3b",
+      "request_digest": "6dc94c2e7902d3fa967a29c2b1dec3718d6b9e0e7b0a864272e697df4ca2d141",
+      "result": {
+        "compile": null,
+        "correctness": {
+          "data": {
+            "decoy": false,
+            "domain_failure": null,
+            "failures": [],
+            "outcome": "correct",
+            "passed": true,
+            "passed_cases": 2,
+            "total_cases": 2
+          },
+          "error": null,
+          "reason": null,
+          "status": "succeeded"
+        },
+        "performance": {
+          "data": {
+            "aggregation": "geometric_mean_v1",
+            "coverage": 1,
+            "measured_cases": 2,
+            "measurement_method": "profiler_kernel_sum_v1",
+            "overall_speedup_vs_reference": 1.1547005383792515,
+            "per_case": [
+              {
+                "case_idx": 0,
+                "implementation_latency_ms": 0.0018,
+                "input_shapes": [
+                  {
+                    "dimensions": [
+                      128
+                    ],
+                    "dtype": "torch.float32",
+                    "input_index": 0
+                  },
+                  {
+                    "dimensions": [
+                      128
+                    ],
+                    "dtype": "torch.float32",
+                    "input_index": 1
+                  }
+                ],
+                "measurement_method": "profiler_kernel_sum_v1",
+                "reference_latency_ms": 0.0024,
+                "speedup_vs_reference": 1.3333333333333333
+              },
+              {
+                "case_idx": 1,
+                "implementation_latency_ms": 0.0014,
+                "input_shapes": [
+                  {
+                    "dimensions": [
+                      1024
+                    ],
+                    "dtype": "torch.float32",
+                    "input_index": 0
+                  },
+                  {
+                    "dimensions": [
+                      1024
+                    ],
+                    "dtype": "torch.float32",
+                    "input_index": 1
+                  }
+                ],
+                "measurement_method": "profiler_kernel_sum_v1",
+                "reference_latency_ms": 0.0014,
+                "speedup_vs_reference": 1
+              }
+            ],
+            "selected_cases": 2,
+            "unmeasured_cases": []
+          },
+          "error": null,
+          "reason": null,
+          "status": "succeeded"
+        },
+        "profile": null,
+        "provenance": {
+          "benchmark_algorithm": "geometric-mean-v1",
+          "correctness_algorithm": "correctness-v1",
+          "decoy_algorithm": "decoy-v1",
+          "evaluator_build": "git:661bde58fb908f42090a3835ab5cd678ce737fc7",
+          "execution_environment": {
+            "driver_version": "25.5.1",
+            "hardware_count": 1,
+            "hardware_model": "Ascend910",
+            "runtime_version": "9.0.0",
+            "toolchain_version": "CANN 9.0.0",
+            "torch_npu_version": "2.9.0",
+            "torch_version": "2.9.0+cpu",
+            "triton_version": null
+          },
+          "grade_eligible": false,
+          "manifest_id": null,
+          "problem_id": null,
+          "profiler_algorithm": "profiler-v1",
+          "schema_version": "2.1"
+        }
+      },
+      "revision": 3,
+      "schema_version": "2.1",
+      "started_at": "2026-09-13T19:46:11.351000Z",
+      "state": "completed",
+      "updated_at": "2026-09-13T19:47:06.146000Z"
+    },
+    {
+      "created_at": "2026-09-13T19:45:07.092000Z",
+      "deadline_at": "2026-09-13T20:15:07.092000Z",
+      "evaluation_id": "ev_7aa90a434dd3454290608a025996ddf3",
+      "finished_at": "2026-09-13T19:46:12.476000Z",
+      "reference_digest": "8d197b43a570abda54e6c83a6a73e2712a20bdc9cba626be5fd5b0cf4ea3bc3b",
+      "request_digest": "6dc94c2e7902d3fa967a29c2b1dec3718d6b9e0e7b0a864272e697df4ca2d141",
+      "result": {
+        "compile": null,
+        "correctness": {
+          "data": {
+            "decoy": false,
+            "domain_failure": null,
+            "failures": [],
+            "outcome": "correct",
+            "passed": true,
+            "passed_cases": 2,
+            "total_cases": 2
+          },
+          "error": null,
+          "reason": null,
+          "status": "succeeded"
+        },
+        "performance": {
+          "data": {
+            "aggregation": "geometric_mean_v1",
+            "coverage": 1,
+            "measured_cases": 2,
+            "measurement_method": "profiler_kernel_sum_v1",
+            "overall_speedup_vs_reference": 1.1401754250991378,
+            "per_case": [
+              {
+                "case_idx": 0,
+                "implementation_latency_ms": 0.002,
+                "input_shapes": [
+                  {
+                    "dimensions": [
+                      128
+                    ],
+                    "dtype": "torch.float32",
+                    "input_index": 0
+                  },
+                  {
+                    "dimensions": [
+                      128
+                    ],
+                    "dtype": "torch.float32",
+                    "input_index": 1
+                  }
+                ],
+                "measurement_method": "profiler_kernel_sum_v1",
+                "reference_latency_ms": 0.0026,
+                "speedup_vs_reference": 1.2999999999999998
+              },
+              {
+                "case_idx": 1,
+                "implementation_latency_ms": 0.0014,
+                "input_shapes": [
+                  {
+                    "dimensions": [
+                      1024
+                    ],
+                    "dtype": "torch.float32",
+                    "input_index": 0
+                  },
+                  {
+                    "dimensions": [
+                      1024
+                    ],
+                    "dtype": "torch.float32",
+                    "input_index": 1
+                  }
+                ],
+                "measurement_method": "profiler_kernel_sum_v1",
+                "reference_latency_ms": 0.0014,
+                "speedup_vs_reference": 1
+              }
+            ],
+            "selected_cases": 2,
+            "unmeasured_cases": []
+          },
+          "error": null,
+          "reason": null,
+          "status": "succeeded"
+        },
+        "profile": null,
+        "provenance": {
+          "benchmark_algorithm": "geometric-mean-v1",
+          "correctness_algorithm": "correctness-v1",
+          "decoy_algorithm": "decoy-v1",
+          "evaluator_build": "git:661bde58fb908f42090a3835ab5cd678ce737fc7",
+          "execution_environment": {
+            "driver_version": "25.5.1",
+            "hardware_count": 1,
+            "hardware_model": "Ascend910",
+            "runtime_version": "9.0.0",
+            "toolchain_version": "CANN 9.0.0",
+            "torch_npu_version": "2.9.0",
+            "torch_version": "2.9.0+cpu",
+            "triton_version": null
+          },
+          "grade_eligible": false,
+          "manifest_id": null,
+          "problem_id": null,
+          "profiler_algorithm": "profiler-v1",
+          "schema_version": "2.1"
+        }
+      },
+      "revision": 3,
+      "schema_version": "2.1",
+      "started_at": "2026-09-13T19:45:07.756000Z",
+      "state": "completed",
+      "updated_at": "2026-09-13T19:46:12.476000Z"
+    },
+    {
+      "created_at": "2026-09-13T19:45:07.093000Z",
+      "deadline_at": "2026-09-13T20:15:07.093000Z",
+      "evaluation_id": "ev_9d4dcb3a6cdc479798d793c6d6a88cad",
+      "finished_at": "2026-09-13T19:47:00.039000Z",
+      "reference_digest": "8d197b43a570abda54e6c83a6a73e2712a20bdc9cba626be5fd5b0cf4ea3bc3b",
+      "request_digest": "6dc94c2e7902d3fa967a29c2b1dec3718d6b9e0e7b0a864272e697df4ca2d141",
+      "result": {
+        "compile": null,
+        "correctness": {
+          "data": {
+            "decoy": false,
+            "domain_failure": null,
+            "failures": [],
+            "outcome": "correct",
+            "passed": true,
+            "passed_cases": 2,
+            "total_cases": 2
+          },
+          "error": null,
+          "reason": null,
+          "status": "succeeded"
+        },
+        "performance": {
+          "data": {
+            "aggregation": "geometric_mean_v1",
+            "coverage": 1,
+            "measured_cases": 2,
+            "measurement_method": "profiler_kernel_sum_v1",
+            "overall_speedup_vs_reference": 1.2108531758779983,
+            "per_case": [
+              {
+                "case_idx": 0,
+                "implementation_latency_ms": 0.0019,
+                "input_shapes": [
+                  {
+                    "dimensions": [
+                      128
+                    ],
+                    "dtype": "torch.float32",
+                    "input_index": 0
+                  },
+                  {
+                    "dimensions": [
+                      128
+                    ],
+                    "dtype": "torch.float32",
+                    "input_index": 1
+                  }
+                ],
+                "measurement_method": "profiler_kernel_sum_v1",
+                "reference_latency_ms": 0.0026,
+                "speedup_vs_reference": 1.368421052631579
+              },
+              {
+                "case_idx": 1,
+                "implementation_latency_ms": 0.0014,
+                "input_shapes": [
+                  {
+                    "dimensions": [
+                      1024
+                    ],
+                    "dtype": "torch.float32",
+                    "input_index": 0
+                  },
+                  {
+                    "dimensions": [
+                      1024
+                    ],
+                    "dtype": "torch.float32",
+                    "input_index": 1
+                  }
+                ],
+                "measurement_method": "profiler_kernel_sum_v1",
+                "reference_latency_ms": 0.0015,
+                "speedup_vs_reference": 1.0714285714285714
+              }
+            ],
+            "selected_cases": 2,
+            "unmeasured_cases": []
+          },
+          "error": null,
+          "reason": null,
+          "status": "succeeded"
+        },
+        "profile": null,
+        "provenance": {
+          "benchmark_algorithm": "geometric-mean-v1",
+          "correctness_algorithm": "correctness-v1",
+          "decoy_algorithm": "decoy-v1",
+          "evaluator_build": "git:661bde58fb908f42090a3835ab5cd678ce737fc7",
+          "execution_environment": {
+            "driver_version": "25.5.1",
+            "hardware_count": 1,
+            "hardware_model": "Ascend910",
+            "runtime_version": "9.0.0",
+            "toolchain_version": "CANN 9.0.0",
+            "torch_npu_version": "2.9.0",
+            "torch_version": "2.9.0+cpu",
+            "triton_version": null
+          },
+          "grade_eligible": false,
+          "manifest_id": null,
+          "problem_id": null,
+          "profiler_algorithm": "profiler-v1",
+          "schema_version": "2.1"
+        }
+      },
+      "revision": 3,
+      "schema_version": "2.1",
+      "started_at": "2026-09-13T19:46:07.447000Z",
+      "state": "completed",
+      "updated_at": "2026-09-13T19:47:00.039000Z"
+    },
+    {
+      "created_at": "2026-09-13T19:45:07.077000Z",
+      "deadline_at": "2026-09-13T20:15:07.077000Z",
+      "evaluation_id": "ev_6d37099b6eb048a58a8cb530f760cae1",
+      "finished_at": "2026-09-13T19:46:12.426000Z",
+      "reference_digest": "8d197b43a570abda54e6c83a6a73e2712a20bdc9cba626be5fd5b0cf4ea3bc3b",
+      "request_digest": "6dc94c2e7902d3fa967a29c2b1dec3718d6b9e0e7b0a864272e697df4ca2d141",
+      "result": {
+        "compile": null,
+        "correctness": {
+          "data": {
+            "decoy": false,
+            "domain_failure": null,
+            "failures": [],
+            "outcome": "correct",
+            "passed": true,
+            "passed_cases": 2,
+            "total_cases": 2
+          },
+          "error": null,
+          "reason": null,
+          "status": "succeeded"
+        },
+        "performance": {
+          "data": {
+            "aggregation": "geometric_mean_v1",
+            "coverage": 1,
+            "measured_cases": 2,
+            "measurement_method": "profiler_kernel_sum_v1",
+            "overall_speedup_vs_reference": 1.1239029738980326,
+            "per_case": [
+              {
+                "case_idx": 0,
+                "implementation_latency_ms": 0.0019,
+                "input_shapes": [
+                  {
+                    "dimensions": [
+                      128
+                    ],
+                    "dtype": "torch.float32",
+                    "input_index": 0
+                  },
+                  {
+                    "dimensions": [
+                      128
+                    ],
+                    "dtype": "torch.float32",
+                    "input_index": 1
+                  }
+                ],
+                "measurement_method": "profiler_kernel_sum_v1",
+                "reference_latency_ms": 0.0024,
+                "speedup_vs_reference": 1.263157894736842
+              },
+              {
+                "case_idx": 1,
+                "implementation_latency_ms": 0.0014,
+                "input_shapes": [
+                  {
+                    "dimensions": [
+                      1024
+                    ],
+                    "dtype": "torch.float32",
+                    "input_index": 0
+                  },
+                  {
+                    "dimensions": [
+                      1024
+                    ],
+                    "dtype": "torch.float32",
+                    "input_index": 1
+                  }
+                ],
+                "measurement_method": "profiler_kernel_sum_v1",
+                "reference_latency_ms": 0.0014,
+                "speedup_vs_reference": 1
+              }
+            ],
+            "selected_cases": 2,
+            "unmeasured_cases": []
+          },
+          "error": null,
+          "reason": null,
+          "status": "succeeded"
+        },
+        "profile": null,
+        "provenance": {
+          "benchmark_algorithm": "geometric-mean-v1",
+          "correctness_algorithm": "correctness-v1",
+          "decoy_algorithm": "decoy-v1",
+          "evaluator_build": "git:661bde58fb908f42090a3835ab5cd678ce737fc7",
+          "execution_environment": {
+            "driver_version": "25.5.1",
+            "hardware_count": 1,
+            "hardware_model": "Ascend910",
+            "runtime_version": "9.0.0",
+            "toolchain_version": "CANN 9.0.0",
+            "torch_npu_version": "2.9.0",
+            "torch_version": "2.9.0+cpu",
+            "triton_version": null
+          },
+          "grade_eligible": false,
+          "manifest_id": null,
+          "problem_id": null,
+          "profiler_algorithm": "profiler-v1",
+          "schema_version": "2.1"
+        }
+      },
+      "revision": 3,
+      "schema_version": "2.1",
+      "started_at": "2026-09-13T19:45:07.440000Z",
+      "state": "completed",
+      "updated_at": "2026-09-13T19:46:12.426000Z"
+    }
+  ]
+}

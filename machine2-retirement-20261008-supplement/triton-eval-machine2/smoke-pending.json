@@ -1,0 +1,27 @@
+{
+  "request_digest": "67dcfb61b5ecabe40f41427d7e716ac0dfcaa3b4326909bc8adaa2484faf8074",
+  "idempotency_key": "0ab54077ab874188a25c1cb019131c8b",
+  "service_url": "http://192.169.0.227:11907",
+  "created_at": 1789328599.6636457,
+  "request": {
+    "schema_version": "2.1",
+    "purpose": "trial",
+    "op_name": "EvalServiceMigrationAdd",
+    "reference_code": "import io as _triton_eval_io\nimport os as _triton_eval_os\n_triton_eval_files = {'cases.json': '{\"n\":128}\\n{\"n\":1024}\\n', 'EvalServiceMigrationAdd.json': '{\"n\":128}\\n{\"n\":1024}\\n'}\n\ndef _triton_eval_open(path, mode='r', *args, **kwargs):\n    if mode not in ('r', 'rt', 'rb'):\n        raise ValueError('reference sidecars are read-only')\n    name = _triton_eval_os.path.basename(path)\n    if name not in _triton_eval_files:\n        raise FileNotFoundError('reference sidecar was not supplied')\n    text = _triton_eval_files[name]\n    return _triton_eval_io.BytesIO(text.encode('utf-8')) if 'b' in mode else _triton_eval_io.StringIO(text)\nimport torch\nimport json\nimport os\n\nclass Model(torch.nn.Module):\n\n    def forward(self, x, y):\n        return x + y\n\ndef get_input_groups():\n    with _triton_eval_open(os.path.join(os.path.dirname(__file__), 'cases.json')) as stream:\n        cases = [json.loads(line) for line in stream if line.strip()]\n    return [[torch.randn(c['n'], dtype=torch.float32), torch.randn(c['n'], dtype=torch.float32)] for c in cases]\n\ndef get_init_inputs():\n    return []\n",
+    "kernel_code": "import torch\nimport triton\nimport triton.language as tl\n@triton.jit\ndef add_kernel(X, Y, Z, N: tl.constexpr, BLOCK: tl.constexpr):\n    offsets = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)\n    mask = offsets < N\n    x = tl.load(X + offsets, mask=mask, other=0)\n    y = tl.load(Y + offsets, mask=mask, other=0)\n    tl.store(Z + offsets, x + y, mask=mask)\nclass ModelNew(torch.nn.Module):\n    def forward(self, x, y):\n        z = torch.empty_like(x)\n        add_kernel[(triton.cdiv(x.numel(), 128),)](x, y, z, x.numel(), BLOCK=128)\n        return z\n",
+    "checks": [
+      "correctness",
+      "performance"
+    ],
+    "deadline_seconds": 1800,
+    "performance": {
+      "method": "profiler",
+      "warmup": 5,
+      "repeats": 20
+    }
+  },
+  "evaluation_id": "ev_15dc62105ba843f1aed2eb27d835679b",
+  "revision": 3,
+  "state": "completed",
+  "terminal": true
+}

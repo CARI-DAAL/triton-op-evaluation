@@ -1,0 +1,13 @@
+{
+  "served_model_name": "qwen3.8-flash-next",
+  "context_length": null,
+  "reasoning_parser": "qwen3",
+  "tool_call_parser": "qwen3_coder",
+  "default_chat_template_kwargs": null,
+  "sampling_defaults": "model",
+  "preferred_sampling_params": null,
+  "max_running_requests": 8,
+  "max_queued_requests": null,
+  "status": "ready",
+  "version": "0.0.0.dev0"
+}

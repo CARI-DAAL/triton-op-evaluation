@@ -1,0 +1,50 @@
+{
+  "created_at": "2026-09-14T03:25:05.811795+08:00",
+  "service_repo": "/home/e84381970/triton-op-evaluation",
+  "service_container": "cc",
+  "service_env": "/home/e84381970/triton-eval-machine2/service.env",
+  "agent_sandbox_container": "triton-agent-cpu",
+  "url": "http://192.169.0.227:11907",
+  "npu_devices": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7
+  ],
+  "upstream_commit": "bcdd3d9524c4a175b8ee81e630f0768bc8f98b81",
+  "commit": "661bde58fb908f42090a3835ab5cd678ce737fc7",
+  "local_fix": "Triton canary inspect.getsource compatibility",
+  "agent_runtime": "runc",
+  "migration_validation": {
+    "adapter_tests_passed": 8,
+    "service_tests_passed": 20,
+    "add_smoke_passed": true,
+    "queue_jobs_passed": 12,
+    "cards_used": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7
+    ],
+    "max_concurrent_per_card": 1,
+    "baseline_restarted": false,
+    "baseline_smoke_evaluation_id": "ev_31af59adbd714c4b8e56e8303a7d06a5",
+    "baseline_smoke_passed": true,
+    "baseline_smoke_cases": 51,
+    "baseline_smoke_speedup": 0.856153
+  },
+  "current_baseline": {
+    "run_id": "baseline_qwen38_m1_evalsvc_s8_20260914_014450",
+    "run_dir": "/home/l00515014/op_gen/self-evo/Uniagent-triton-ascend-evo/eval/output/synth_levels_concurrent_baseline_qwen38_m1_evalsvc_s8_20260914_014450",
+    "model": "qwen3.8-flash-next",
+    "launcher_pid": 3480946
+  }
+}

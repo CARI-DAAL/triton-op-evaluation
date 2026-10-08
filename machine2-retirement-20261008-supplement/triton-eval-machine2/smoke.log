@@ -1,0 +1,55 @@
+ENV_STARTED
+WORKSPACE_READY
+[run_verify] op_name=EvalServiceMigrationAdd workspace=/opt/workspace_evalsvc_smoke/agent_workdir
+[run_verify] === Step 1/3: AST check ===
+[run_verify] AST PASSED
+[run_verify] === Step 2/3: correctness verification ===
+[run_verify] files staged to output/verify/
+[best-snapshot] updated: passed_cases=2, total_cases=2, compile_ok=True, correctness_ok=True, speedup_vs_torch=1.169795
+[eval-service] evaluation_id=ev_15dc62105ba843f1aed2eb27d835679b state=completed
+[run_verify] verify result: 2/2
+[run_verify] === Step 3/3: performance benchmark ===
+[run_verify] speedup_vs_torch=1.1698x (target=2.0x) [LOW]
+[run_verify] saved as best (speedup=1.1698x, prev=1.1698x)
+[run_verify] === SUMMARY ===
+{
+  "stage": "verify_done",
+  "ast_valid": true,
+  "passed_cases": 2,
+  "total_cases": 2,
+  "failed_cases": 0,
+  "pass_rate": 1.0,
+  "verified_success": true,
+  "error_groups": [],
+  "backend": "eval_service",
+  "evaluation_id": "ev_15dc62105ba843f1aed2eb27d835679b",
+  "service_state": "completed",
+  "service_outcome": "correct",
+  "infra_error": false,
+  "benchmark_status": "succeeded",
+  "benchmark_error": null,
+  "benchmark_ran": true,
+  "speedup_vs_torch": 1.1697953037312037,
+  "speedup_target": 2.0,
+  "kernel_metrics": {},
+  "bottleneck_hint": []
+}
+[run_verify] ALL CASES PASSED - speedup=1.1698x (target=2.0x). Optimize further or call submit when speedup reaches the target.
+
+[reward] op=EvalServiceMigrationAdd best_first=1 source=metrics_best speedup=1.1698 correctness_ok=True reward=0.9840
+Traceback (most recent call last):
+  File "/home/e84381970/triton-eval-machine2/smoke_agent.py", line 73, in <module>
+    asyncio.run(main())
+  File "/usr/local/python3.11.14/lib/python3.11/asyncio/runners.py", line 190, in run
+    return runner.run(main)
+           ^^^^^^^^^^^^^^^^
+  File "/usr/local/python3.11.14/lib/python3.11/asyncio/runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/python3.11.14/lib/python3.11/asyncio/base_events.py", line 654, in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+  File "/home/e84381970/triton-eval-machine2/smoke_agent.py", line 66, in main
+    assert metrics.get('passed_cases') == metrics.get('total_cases') == 2, metrics
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: {'eval_completed': True, 'op_name': 'EvalServiceMigrationAdd', 'reward': 0.984, 'metrics': {'op_name': 'EvalServiceMigrationAdd', 'success': True, 'ast_check_ok': True, 'compile_ok': True, 'correctness_ok': True, 'total_cases': 2, 'passed_cases': 2, 'failed_cases': 0, 'pass_rate': 1.0, 'perf_data': {'op_name': 'EvalServiceMigrationAdd', 'speedup_vs_torch': 1.1697953037312037, 'total_cases': 2, 'passed_cases': 2, 'measurement_method': 'profiler_kernel_sum_v1', 'service_performance': {'aggregation': 'geometric_mean_v1', 'coverage': 1, 'measured_cases': 2, 'measurement_method': 'profiler_kernel_sum_v1', 'overall_speedup_vs_reference': 1.1697953037312037, 'per_case': [{'case_idx': 0, 'implementation_latency_ms': 0.0019, 'input_shapes': [{'dimensions': [128], 'dtype': 'torch.float32', 'input_index': 0}, {'dimensions': [128], 'dtype': 'torch.float32', 'input_index': 1}], 'measurement_method': 'profiler_kernel_sum_v1', 'reference_latency_ms': 0.0026, 'speedup_vs_reference': 1.368421052631579}, {'case_idx': 1, 'implementation_latency_ms': 0.0014, 'input_shapes': [{'dimensions': [1024], 'dtype': 'torch.float32', 'input_index': 0}, {'dimensions': [1024], 'dtype': 'torch.float32', 'input_index': 1}], 'measurement_method': 'profiler_kernel_sum_v1', 'reference_latency_ms': 0.0014, 'speedup_vs_reference': 1}], 'selected_cases': 2, 'unmeasured_cases': []}, 'evaluation_id': 'ev_15dc62105ba843f1aed2eb27d835679b', 'backend': 'eval_service', 'benchmark_available': True, 'provenance': {'benchmark_algorithm': 'geometric-mean-v1', 'correctness_algorithm': 'correctness-v1', 'decoy_algorithm': 'decoy-v1', 'evaluator_build': 'git:661bde58fb908f42090a3835ab5cd678ce737fc7', 'execution_environment': {'driver_version': '25.5.1', 'hardware_count': 1, 'hardware_model': 'Ascend910', 'runtime_version': '9.0.0', 'toolchain_version': 'CANN 9.0.0', 'torch_npu_version': '2.9.0', 'torch_version': '2.9.0+cpu', 'triton_version': None}, 'grade_eligible': False, 'manifest_id': None, 'problem_id': None, 'profiler_algorithm': 'profiler-v1', 'schema_version': '2.1'}}, 'perf_missing': False, 'backend': 'eval_service', 'evaluation_id': 'ev_15dc62105ba843f1aed2eb27d835679b', 'provenance': {'benchmark_algorithm': 'geometric-mean-v1', 'correctness_algorithm': 'correctness-v1', 'decoy_algorithm': 'decoy-v1', 'evaluator_build': 'git:661bde58fb908f42090a3835ab5cd678ce737fc7', 'execution_environment': {'driver_version': '25.5.1', 'hardware_count': 1, 'hardware_model': 'Ascend910', 'runtime_version': '9.0.0', 'toolchain_version': 'CANN 9.0.0', 'torch_npu_version': '2.9.0', 'torch_version': '2.9.0+cpu', 'triton_version': None}, 'grade_eligible': False, 'manifest_id': None, 'problem_id': None, 'profiler_algorithm': 'profiler-v1', 'schema_version': '2.1'}, 'service_correctness_passed': True, 'infra_error': False, 'reward': 0.984, 'reward_ast': 0.0, 'reward_compile': 0.1, 'reward_correctness': 0.55, 'reward_all_correct_bonus': 0.1, 'reward_speedup': 0.234, 'raw_speedup': 1.169795, 'speedup_vs_torch': 1.169795, 'assistant_messages_seen': 0}, 'used_best_metrics': True, 'selected_metrics_source': 'metrics_best', 'resolved': True, 'best_metrics': {'op_name': 'EvalServiceMigrationAdd', 'success': True, 'ast_check_ok': True, 'compile_ok': True, 'correctness_ok': True, 'total_cases': 2, 'passed_cases': 2, 'failed_cases': 0, 'pass_rate': 1.0, 'perf_data': {'op_name': 'EvalServiceMigrationAdd', 'speedup_vs_torch': 1.1697953037312037, 'total_cases': 2, 'passed_cases': 2, 'measurement_method': 'profiler_kernel_sum_v1', 'service_performance': {'aggregation': 'geometric_mean_v1', 'coverage': 1, 'measured_cases': 2, 'measurement_method': 'profiler_kernel_sum_v1', 'overall_speedup_vs_reference': 1.1697953037312037, 'per_case': [{'case_idx': 0, 'implementation_latency_ms': 0.0019, 'input_shapes': [{'dimensions': [128], 'dtype': 'torch.float32', 'input_index': 0}, {'dimensions': [128], 'dtype': 'torch.float32', 'input_index': 1}], 'measurement_method': 'profiler_kernel_sum_v1', 'reference_latency_ms': 0.0026, 'speedup_vs_reference': 1.368421052631579}, {'case_idx': 1, 'implementation_latency_ms': 0.0014, 'input_shapes': [{'dimensions': [1024], 'dtype': 'torch.float32', 'input_index': 0}, {'dimensions': [1024], 'dtype': 'torch.float32', 'input_index': 1}], 'measurement_method': 'profiler_kernel_sum_v1', 'reference_latency_ms': 0.0014, 'speedup_vs_reference': 1}], 'selected_cases': 2, 'unmeasured_cases': []}, 'evaluation_id': 'ev_15dc62105ba843f1aed2eb27d835679b', 'backend': 'eval_service', 'benchmark_available': True, 'provenance': {'benchmark_algorithm': 'geometric-mean-v1', 'correctness_algorithm': 'correctness-v1', 'decoy_algorithm': 'decoy-v1', 'evaluator_build': 'git:661bde58fb908f42090a3835ab5cd678ce737fc7', 'execution_environment': {'driver_version': '25.5.1', 'hardware_count': 1, 'hardware_model': 'Ascend910', 'runtime_version': '9.0.0', 'toolchain_version': 'CANN 9.0.0', 'torch_npu_version': '2.9.0', 'torch_version': '2.9.0+cpu', 'triton_version': None}, 'grade_eligible': False, 'manifest_id': None, 'problem_id': None, 'profiler_algorithm': 'profiler-v1', 'schema_version': '2.1'}}, 'perf_missing': False, 'backend': 'eval_service', 'evaluation_id': 'ev_15dc62105ba843f1aed2eb27d835679b', 'provenance': {'benchmark_algorithm': 'geometric-mean-v1', 'correctness_algorithm': 'correctness-v1', 'decoy_algorithm': 'decoy-v1', 'evaluator_build': 'git:661bde58fb908f42090a3835ab5cd678ce737fc7', 'execution_environment': {'driver_version': '25.5.1', 'hardware_count': 1, 'hardware_model': 'Ascend910', 'runtime_version': '9.0.0', 'toolchain_version': 'CANN 9.0.0', 'torch_npu_version': '2.9.0', 'torch_version': '2.9.0+cpu', 'triton_version': None}, 'grade_eligible': False, 'manifest_id': None, 'problem_id': None, 'profiler_algorithm': 'profiler-v1', 'schema_version': '2.1'}, 'service_correctness_passed': True, 'infra_error': False, 'reward': 0.984, 'reward_ast': 0.0, 'reward_compile': 0.1, 'reward_correctness': 0.55, 'reward_all_correct_bonus': 0.1, 'reward_speedup': 0.234, 'raw_speedup': 1.169795, 'speedup_vs_torch': 1.169795, 'assistant_messages_seen': 0}}

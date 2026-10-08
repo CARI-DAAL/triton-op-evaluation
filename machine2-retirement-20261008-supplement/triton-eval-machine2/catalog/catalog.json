@@ -1,0 +1,125 @@
+{
+  "schema_version": "1.0",
+  "entries": [
+    {
+      "manifest_id": "npukernelbench-machine2-v1",
+      "problem_id": "kernelbench_l3_10_ConvTranspose2d",
+      "reference_digest": "6ebb7be9d246022fee3adf675e123118af0f906c29ff7fdf317baa0ad3739099",
+      "reference_path": "references/kernelbench_l3_10_ConvTranspose2d.py"
+    },
+    {
+      "manifest_id": "npukernelbench-machine2-v1",
+      "problem_id": "kernelbench_l3_1_BatchMatmul",
+      "reference_digest": "adb9e8a450670341c2be7785386fac1e8cec85cdd62a2a634ecbf68bc3aa949d",
+      "reference_path": "references/kernelbench_l3_1_BatchMatmul.py"
+    },
+    {
+      "manifest_id": "npukernelbench-machine2-v1",
+      "problem_id": "kernelbench_l3_2_GroupedMatmul",
+      "reference_digest": "2a243bea94986ff00605bcbe576717a861599102b8ecfc03f0d246335da99819",
+      "reference_path": "references/kernelbench_l3_2_GroupedMatmul.py"
+    },
+    {
+      "manifest_id": "npukernelbench-machine2-v1",
+      "problem_id": "kernelbench_l3_3_MatmulBothTrans",
+      "reference_digest": "1f2fd5bd17e81c34510441eb87fba770aad508c00995ce46dc81951a547429c8",
+      "reference_path": "references/kernelbench_l3_3_MatmulBothTrans.py"
+    },
+    {
+      "manifest_id": "npukernelbench-machine2-v1",
+      "problem_id": "kernelbench_l3_4_MatmulTransA",
+      "reference_digest": "f1baa57ac4e9b075d2d0342eedcc23765dd57fcae7ac3cce09e88ecac328b299",
+      "reference_path": "references/kernelbench_l3_4_MatmulTransA.py"
+    },
+    {
+      "manifest_id": "npukernelbench-machine2-v1",
+      "problem_id": "kernelbench_l3_5_MatmulTransB",
+      "reference_digest": "afaa727b0ff0362fbdfe0563613e4f8303d8e3b1d692910e560bf6dd7f170756",
+      "reference_path": "references/kernelbench_l3_5_MatmulTransB.py"
+    },
+    {
+      "manifest_id": "npukernelbench-machine2-v1",
+      "problem_id": "kernelbench_l3_6_ConvStandard1d",
+      "reference_digest": "bf6e96bd02757d3587c31a4fcefc02f4919037c7c39782fcfdf17ebaaaa42e86",
+      "reference_path": "references/kernelbench_l3_6_ConvStandard1d.py"
+    },
+    {
+      "manifest_id": "npukernelbench-machine2-v1",
+      "problem_id": "kernelbench_l3_7_ConvStandard2d",
+      "reference_digest": "7f449904fecd180051ca5ac76384f70c1c8416ceefe0869c0628930d7c9a476f",
+      "reference_path": "references/kernelbench_l3_7_ConvStandard2d.py"
+    },
+    {
+      "manifest_id": "npukernelbench-machine2-v1",
+      "problem_id": "kernelbench_l3_8_ConvStandard3d",
+      "reference_digest": "9e6ccace81a57d3810a67ae69a299f094f776188ea5049ba2b189820dcd5e0f5",
+      "reference_path": "references/kernelbench_l3_8_ConvStandard3d.py"
+    },
+    {
+      "manifest_id": "npukernelbench-machine2-v1",
+      "problem_id": "kernelbench_l3_9_ConvDepthwise2d",
+      "reference_digest": "337f6135e6a72baba140e47317f0fa4f05c7b46b9ef5d03deeb0b45282b28728",
+      "reference_path": "references/kernelbench_l3_9_ConvDepthwise2d.py"
+    },
+    {
+      "manifest_id": "npukernelbench-machine2-v1",
+      "problem_id": "kernelbench_l4_10_FusedInferAttentionScore",
+      "reference_digest": "a6da8ba8ab5aabf5078728b449cface434f6cba370b1ef3cf6a9b1fe15467fdf",
+      "reference_path": "references/kernelbench_l4_10_FusedInferAttentionScore.py"
+    },
+    {
+      "manifest_id": "npukernelbench-machine2-v1",
+      "problem_id": "kernelbench_l4_1_LSTM",
+      "reference_digest": "86b001b5ac4f32f5a83139a80e11da8f6e4ed0bf365b2b2466659b6e3d69ce6c",
+      "reference_path": "references/kernelbench_l4_1_LSTM.py"
+    },
+    {
+      "manifest_id": "npukernelbench-machine2-v1",
+      "problem_id": "kernelbench_l4_2_FFN",
+      "reference_digest": "d08b2a006c1c5bf42bdbd122841a985c607f655eca9b5b5e8868b42906ee15cd",
+      "reference_path": "references/kernelbench_l4_2_FFN.py"
+    },
+    {
+      "manifest_id": "npukernelbench-machine2-v1",
+      "problem_id": "kernelbench_l4_3_FusionAttention",
+      "reference_digest": "8f77ed5341fc66eddc7ddf31fc66622ba845ef6e7a289bce581e1dbe90130386",
+      "reference_path": "references/kernelbench_l4_3_FusionAttention.py"
+    },
+    {
+      "manifest_id": "npukernelbench-machine2-v1",
+      "problem_id": "kernelbench_l4_4_GroupedMatmulSwigluQuantV2",
+      "reference_digest": "3d4f03fafaaa839e3f4a7390961dd09ba62d5f8dae3312346c4bb376af8cd380",
+      "reference_path": "references/kernelbench_l4_4_GroupedMatmulSwigluQuantV2.py"
+    },
+    {
+      "manifest_id": "npukernelbench-machine2-v1",
+      "problem_id": "kernelbench_l4_5_LightningIndexer",
+      "reference_digest": "9644baac70aa9bfa834602caea77cd9f1d8c20910ad620e51059b53df0c09956",
+      "reference_path": "references/kernelbench_l4_5_LightningIndexer.py"
+    },
+    {
+      "manifest_id": "npukernelbench-machine2-v1",
+      "problem_id": "kernelbench_l4_6_QuantMatmul",
+      "reference_digest": "a16027b604ce1dc35a04bca4a21bbce45a7d4e5931d5e0c38cdf8eba7b0c002f",
+      "reference_path": "references/kernelbench_l4_6_QuantMatmul.py"
+    },
+    {
+      "manifest_id": "npukernelbench-machine2-v1",
+      "problem_id": "kernelbench_l4_7_SparseFlashAttention",
+      "reference_digest": "9117e307c6ad3c940e87a31c5879447cb7a76e6510b7af5d59d4b6793f54203c",
+      "reference_path": "references/kernelbench_l4_7_SparseFlashAttention.py"
+    },
+    {
+      "manifest_id": "npukernelbench-machine2-v1",
+      "problem_id": "kernelbench_l4_8_WeightQuantBatchmatmul",
+      "reference_digest": "c9a2f210528368667a1f041315bf12ae344e1d55fe40b1854dffa8100838c195",
+      "reference_path": "references/kernelbench_l4_8_WeightQuantBatchmatmul.py"
+    },
+    {
+      "manifest_id": "npukernelbench-machine2-v1",
+      "problem_id": "kernelbench_l4_9_QuantMatmulReduceSum",
+      "reference_digest": "f92f939ee36dc83afd2052ab3ef2a2aa5c95329df159af0194956af28cd0dcc9",
+      "reference_path": "references/kernelbench_l4_9_QuantMatmulReduceSum.py"
+    }
+  ]
+}

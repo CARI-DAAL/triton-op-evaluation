@@ -1,0 +1,114 @@
+WARNING: The directory '/home/HwHiAiUser/.cache/pip' or its parent directory is not owned or is not writable by the current user. The cache has been disabled. Check the permissions and owner of that directory. If executing pip with sudo, you should use sudo's -H flag.
+Obtaining file:///home/e84381970/triton-op-evaluation
+  Installing build dependencies: started
+  Installing build dependencies: finished with status 'done'
+  Checking if build backend supports build_editable: started
+  Checking if build backend supports build_editable: finished with status 'done'
+  Getting requirements to build editable: started
+  Getting requirements to build editable: finished with status 'done'
+  Preparing editable metadata (pyproject.toml): started
+  Preparing editable metadata (pyproject.toml): finished with status 'done'
+Collecting fastapi==0.139.2 (from triton-evaluation==0.1.0)
+  Downloading fastapi-0.139.2-py3-none-any.whl.metadata (26 kB)
+Collecting uvicorn==0.51.0 (from triton-evaluation==0.1.0)
+  Downloading uvicorn-0.51.0-py3-none-any.whl.metadata (6.6 kB)
+Collecting redis==8.0.1 (from triton-evaluation==0.1.0)
+  Downloading redis-8.0.1-py3-none-any.whl.metadata (13 kB)
+Collecting pydantic==2.13.4 (from triton-evaluation==0.1.0)
+  Downloading pydantic-2.13.4-py3-none-any.whl.metadata (109 kB)
+     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 109.4/109.4 kB 384.3 kB/s eta 0:00:00
+Collecting pydantic-settings==2.14.2 (from triton-evaluation==0.1.0)
+  Downloading pydantic_settings-2.14.2-py3-none-any.whl.metadata (3.4 kB)
+Collecting rfc8785==0.1.4 (from triton-evaluation==0.1.0)
+  Downloading rfc8785-0.1.4-py3-none-any.whl.metadata (3.4 kB)
+Requirement already satisfied: starlette>=0.46.0 in /usr/local/python3.11.14/lib/python3.11/site-packages (from fastapi==0.139.2->triton-evaluation==0.1.0) (0.50.0)
+Requirement already satisfied: typing-extensions>=4.8.0 in /usr/local/python3.11.14/lib/python3.11/site-packages (from fastapi==0.139.2->triton-evaluation==0.1.0) (4.15.0)
+Requirement already satisfied: typing-inspection>=0.4.2 in /usr/local/python3.11.14/lib/python3.11/site-packages (from fastapi==0.139.2->triton-evaluation==0.1.0) (0.4.2)
+Requirement already satisfied: annotated-doc>=0.0.2 in /usr/local/python3.11.14/lib/python3.11/site-packages (from fastapi==0.139.2->triton-evaluation==0.1.0) (0.0.4)
+Requirement already satisfied: annotated-types>=0.6.0 in /usr/local/python3.11.14/lib/python3.11/site-packages (from pydantic==2.13.4->triton-evaluation==0.1.0) (0.7.0)
+Collecting pydantic-core==2.46.4 (from pydantic==2.13.4->triton-evaluation==0.1.0)
+  Downloading pydantic_core-2.46.4-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl.metadata (6.6 kB)
+Requirement already satisfied: python-dotenv>=0.21.0 in /usr/local/python3.11.14/lib/python3.11/site-packages (from pydantic-settings==2.14.2->triton-evaluation==0.1.0) (1.2.2)
+Requirement already satisfied: click>=7.0 in /usr/local/python3.11.14/lib/python3.11/site-packages (from uvicorn==0.51.0->triton-evaluation==0.1.0) (8.3.3)
+Requirement already satisfied: h11>=0.8 in /usr/local/python3.11.14/lib/python3.11/site-packages (from uvicorn==0.51.0->triton-evaluation==0.1.0) (0.16.0)
+Collecting pytest==9.1.1 (from triton-evaluation==0.1.0)
+  Downloading pytest-9.1.1-py3-none-any.whl.metadata (7.6 kB)
+Collecting fakeredis==2.37.0 (from triton-evaluation==0.1.0)
+  Downloading fakeredis-2.37.0-py3-none-any.whl.metadata (7.1 kB)
+Requirement already satisfied: httpx==0.28.1 in /usr/local/python3.11.14/lib/python3.11/site-packages (from triton-evaluation==0.1.0) (0.28.1)
+Requirement already satisfied: jsonschema==4.26.0 in /usr/local/python3.11.14/lib/python3.11/site-packages (from triton-evaluation==0.1.0) (4.26.0)
+Collecting sortedcontainers>=2 (from fakeredis==2.37.0->triton-evaluation==0.1.0)
+  Downloading sortedcontainers-2.4.0-py2.py3-none-any.whl.metadata (10 kB)
+Requirement already satisfied: anyio in /usr/local/python3.11.14/lib/python3.11/site-packages (from httpx==0.28.1->triton-evaluation==0.1.0) (4.13.0)
+Requirement already satisfied: certifi in /usr/local/python3.11.14/lib/python3.11/site-packages (from httpx==0.28.1->triton-evaluation==0.1.0) (2026.4.22)
+Requirement already satisfied: httpcore==1.* in /usr/local/python3.11.14/lib/python3.11/site-packages (from httpx==0.28.1->triton-evaluation==0.1.0) (1.0.9)
+Requirement already satisfied: idna in /usr/local/python3.11.14/lib/python3.11/site-packages (from httpx==0.28.1->triton-evaluation==0.1.0) (3.13)
+Requirement already satisfied: attrs>=22.2.0 in /usr/local/python3.11.14/lib/python3.11/site-packages (from jsonschema==4.26.0->triton-evaluation==0.1.0) (26.1.0)
+Requirement already satisfied: jsonschema-specifications>=2023.03.6 in /usr/local/python3.11.14/lib/python3.11/site-packages (from jsonschema==4.26.0->triton-evaluation==0.1.0) (2025.9.1)
+Requirement already satisfied: referencing>=0.28.4 in /usr/local/python3.11.14/lib/python3.11/site-packages (from jsonschema==4.26.0->triton-evaluation==0.1.0) (0.37.0)
+Requirement already satisfied: rpds-py>=0.25.0 in /usr/local/python3.11.14/lib/python3.11/site-packages (from jsonschema==4.26.0->triton-evaluation==0.1.0) (0.30.0)
+Collecting iniconfig>=1.0.1 (from pytest==9.1.1->triton-evaluation==0.1.0)
+  Downloading iniconfig-2.3.0-py3-none-any.whl.metadata (2.5 kB)
+Requirement already satisfied: packaging>=22 in /usr/local/python3.11.14/lib/python3.11/site-packages (from pytest==9.1.1->triton-evaluation==0.1.0) (26.2)
+Collecting pluggy<2,>=1.5 (from pytest==9.1.1->triton-evaluation==0.1.0)
+  Downloading pluggy-1.6.0-py3-none-any.whl.metadata (4.8 kB)
+Requirement already satisfied: pygments>=2.7.2 in /usr/local/python3.11.14/lib/python3.11/site-packages (from pytest==9.1.1->triton-evaluation==0.1.0) (2.20.0)
+Downloading fastapi-0.139.2-py3-none-any.whl (130 kB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 130.2/130.2 kB 1.7 MB/s eta 0:00:00
+Downloading pydantic-2.13.4-py3-none-any.whl (472 kB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 472.3/472.3 kB 1.6 MB/s eta 0:00:00
+Downloading pydantic_settings-2.14.2-py3-none-any.whl (61 kB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 61.7/61.7 kB 7.6 MB/s eta 0:00:00
+Downloading redis-8.0.1-py3-none-any.whl (502 kB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 502.4/502.4 kB 6.8 MB/s eta 0:00:00
+Downloading rfc8785-0.1.4-py3-none-any.whl (9.2 kB)
+Downloading uvicorn-0.51.0-py3-none-any.whl (73 kB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 73.2/73.2 kB 9.7 MB/s eta 0:00:00
+Downloading pydantic_core-2.46.4-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl (2.0 MB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 2.0/2.0 MB 6.6 MB/s eta 0:00:00
+Downloading fakeredis-2.37.0-py3-none-any.whl (151 kB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 151.5/151.5 kB 34.1 MB/s eta 0:00:00
+Downloading pytest-9.1.1-py3-none-any.whl (386 kB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 386.5/386.5 kB 30.4 MB/s eta 0:00:00
+Downloading iniconfig-2.3.0-py3-none-any.whl (7.5 kB)
+Downloading pluggy-1.6.0-py3-none-any.whl (20 kB)
+Downloading sortedcontainers-2.4.0-py2.py3-none-any.whl (29 kB)
+Checking if build backend supports build_editable: started
+Checking if build backend supports build_editable: finished with status 'done'
+Building wheels for collected packages: triton-evaluation
+  Building editable for triton-evaluation (pyproject.toml): started
+  Building editable for triton-evaluation (pyproject.toml): finished with status 'done'
+  Created wheel for triton-evaluation: filename=triton_evaluation-0.1.0-0.editable-py3-none-any.whl size=3042 sha256=5bfd3f02a400e6abf14aec6aff6ff47ef860b9ae05d51e5bdccd352548cb06eb
+  Stored in directory: /tmp/pip-ephem-wheel-cache-klvnrwo7/wheels/67/eb/25/f124b9db2624fec6e70b06bcd962a998fdad036ce1557447d6
+Successfully built triton-evaluation
+Installing collected packages: sortedcontainers, uvicorn, rfc8785, redis, pydantic-core, pluggy, iniconfig, pytest, pydantic, fakeredis, pydantic-settings, fastapi, triton-evaluation
+  Attempting uninstall: uvicorn
+    Found existing installation: uvicorn 0.46.0
+    Not uninstalling uvicorn at /usr/local/python3.11.14/lib/python3.11/site-packages, outside environment /home/e84381970/triton-eval-machine2/venv
+    Can't uninstall 'uvicorn'. No files were found to uninstall.
+  Attempting uninstall: pydantic-core
+    Found existing installation: pydantic_core 2.46.3
+    Not uninstalling pydantic-core at /usr/local/python3.11.14/lib/python3.11/site-packages, outside environment /home/e84381970/triton-eval-machine2/venv
+    Can't uninstall 'pydantic_core'. No files were found to uninstall.
+  Attempting uninstall: pydantic
+    Found existing installation: pydantic 2.13.3
+    Not uninstalling pydantic at /usr/local/python3.11.14/lib/python3.11/site-packages, outside environment /home/e84381970/triton-eval-machine2/venv
+    Can't uninstall 'pydantic'. No files were found to uninstall.
+  Attempting uninstall: pydantic-settings
+    Found existing installation: pydantic-settings 2.14.0
+    Not uninstalling pydantic-settings at /usr/local/python3.11.14/lib/python3.11/site-packages, outside environment /home/e84381970/triton-eval-machine2/venv
+    Can't uninstall 'pydantic-settings'. No files were found to uninstall.
+  Attempting uninstall: fastapi
+    Found existing installation: fastapi 0.123.10
+    Not uninstalling fastapi at /usr/local/python3.11.14/lib/python3.11/site-packages, outside environment /home/e84381970/triton-eval-machine2/venv
+    Can't uninstall 'fastapi'. No files were found to uninstall.
+ERROR: pip's dependency resolver does not currently take into account all the packages that are installed. This behaviour is the source of the following dependency conflicts.
+ms-service-profiler 26.0.0 requires matplotlib, which is not installed.
+ms-service-profiler 26.0.0 requires msguard, which is not installed.
+ms-service-profiler 26.0.0 requires openpyxl, which is not installed.
+ms-service-profiler 26.0.0 requires opentelemetry-exporter-otlp-proto-grpc==1.33.1, but you have opentelemetry-exporter-otlp-proto-grpc 1.41.1 which is incompatible.
+ms-service-profiler 26.0.0 requires opentelemetry-exporter-otlp-proto-http==1.33.1, but you have opentelemetry-exporter-otlp-proto-http 1.41.1 which is incompatible.
+ms-service-profiler 26.0.0 requires pandas~=2.2, but you have pandas 3.0.2 which is incompatible.
+vllm-ascend 0.19.1rc1 requires fastapi<0.124.0, but you have fastapi 0.139.2 which is incompatible.
+vllm 0.19.1+empty requires opencv-python-headless>=4.13.0, but you have opencv-python-headless 4.11.0.86 which is incompatible.
+Successfully installed fakeredis-2.37.0 fastapi-0.139.2 iniconfig-2.3.0 pluggy-1.6.0 pydantic-2.13.4 pydantic-core-2.46.4 pydantic-settings-2.14.2 pytest-9.1.1 redis-8.0.1 rfc8785-0.1.4 sortedcontainers-2.4.0 triton-evaluation-0.1.0 uvicorn-0.51.0

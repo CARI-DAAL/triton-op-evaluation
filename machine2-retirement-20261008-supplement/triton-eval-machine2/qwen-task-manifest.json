@@ -1,0 +1,122 @@
+{
+  "kernelbench_l3_10_ConvTranspose2d": {
+    "reference_sha256": "a2c80855a008a3f7a5c28f2d22d353f1087f22e0cdb1a8ef223d6bc0fde81d58",
+    "support_sha256": {
+      "10_ConvTranspose2d.json": "e2f5689a64dbbb304df3a22173e644e9b40f709af3fbc84ba71bcf9636579167"
+    }
+  },
+  "kernelbench_l3_1_BatchMatmul": {
+    "reference_sha256": "e284da8248e63c7d0706757e9cb65fd0e92fe898a84c4376466f217e2a92de7e",
+    "support_sha256": {
+      "1_BatchMatmul.json": "80c9c6268ffa4bc73cefdd271e1efeb6e05d02a7acc2e2b215e7c3a8f6cf4fc1"
+    }
+  },
+  "kernelbench_l3_2_GroupedMatmul": {
+    "reference_sha256": "4ec792ddda93d02fb421ce7ca1403b53b241416e20798f390bcae975a9480626",
+    "support_sha256": {
+      "2_GroupedMatmul.json": "eed00ad1dfdaaf6d26648c6db2f7e495c7342f1fec7cb83a769fe17084872eed"
+    }
+  },
+  "kernelbench_l3_3_MatmulBothTrans": {
+    "reference_sha256": "1fac17e3ce97c132299e95bf858a1e12a667d12ed66cc1dc52af1e5fa4c209f6",
+    "support_sha256": {
+      "3_MatmulBothTrans.json": "3cc2e155a354bb6dde0432ab2ec0c685244a36fefab7a4c3b88707839c1b25cb"
+    }
+  },
+  "kernelbench_l3_4_MatmulTransA": {
+    "reference_sha256": "3ce55bc391fdcc01a8b312dabb52e4705ebd0fb181239dc61daa02a8a5fd68ba",
+    "support_sha256": {
+      "4_MatmulTransA.json": "fcefbe0ab751082bf1e5afd57fd374a7350603b8d05fe30454794638704cdb01"
+    }
+  },
+  "kernelbench_l3_5_MatmulTransB": {
+    "reference_sha256": "f76916e52b3d2620fe5490526a5eecfd04be9fbce2123647fa2183ff0119493b",
+    "support_sha256": {
+      "5_MatmulTransB.json": "be6daa8f7b34e870f9a06b3c91e290d4b8153327cc0f0e1a4ee552683b3bc6bd"
+    }
+  },
+  "kernelbench_l3_6_ConvStandard1d": {
+    "reference_sha256": "87cb1a47e528bd0e596d74ed79f846000061683ec977d821c2e35ec22c1f7715",
+    "support_sha256": {
+      "6_ConvStandard1d.json": "63761b2ccb1f2c06e3090e4895f06fff50b50713d7644318a74b2f2beeca6a1c"
+    }
+  },
+  "kernelbench_l3_7_ConvStandard2d": {
+    "reference_sha256": "0047ae5285155185b463baec8c14f0104526d5a74a721994ba66d605dd87f974",
+    "support_sha256": {
+      "7_ConvStandard2d.json": "c5c50ad9159e34a6a5b0197ac2e0a17a2f455210bde3479070b23a240f368382"
+    }
+  },
+  "kernelbench_l3_8_ConvStandard3d": {
+    "reference_sha256": "3a2c82db033242d35681ab14938bf5777fc6721df2342ed43ea70b660050a1f7",
+    "support_sha256": {
+      "8_ConvStandard3d.json": "2e9cae461942da124734157534b3d5e1c99eeb50701d47c6cca74dc2895f2853"
+    }
+  },
+  "kernelbench_l3_9_ConvDepthwise2d": {
+    "reference_sha256": "2427865f962af7b21e9004da6a51dfcaebb13c7866fefae156c810efe57efe5b",
+    "support_sha256": {
+      "9_ConvDepthwise2d.json": "c16dc33296705d7e2296029ac11f899a631c364076b8f6fe4d550b78d2cb5c09"
+    }
+  },
+  "kernelbench_l4_10_FusedInferAttentionScore": {
+    "reference_sha256": "a16a47761e9e10d4d5daa8b975220c3aba362130e19374cef6bf45adcc4134b2",
+    "support_sha256": {
+      "10_FusedInferAttentionScore.json": "8de5ce55899e90c4bcbae8410e467b0a61ad40378dea4b28947a8d859a87a5a0"
+    }
+  },
+  "kernelbench_l4_1_LSTM": {
+    "reference_sha256": "5f9e4c29740961fa61ff507b830ba9201679163c0af1f217543f1a906f1a7e39",
+    "support_sha256": {
+      "1_LSTM.json": "4ade5ac117d32b7b28bf0df6172d5bc02087da155321e6effffad29c98fd5708"
+    }
+  },
+  "kernelbench_l4_2_FFN": {
+    "reference_sha256": "65f03cbfb769c14a71fb0fe90632713f0d5eff767d6d137c971eda19f7bef4c2",
+    "support_sha256": {
+      "2_FFN.json": "9334b78ccd4e852b60a81d136c9ceb875f4e62e63ccec549c56ffef5db77a71d"
+    }
+  },
+  "kernelbench_l4_3_FusionAttention": {
+    "reference_sha256": "85428aeabeb26845e660b0a66d9f99cab3c76b41ed8380dd3308b1378168899f",
+    "support_sha256": {
+      "3_FusionAttention.json": "80a08a1b41d2d16a046b2ba09beef8b808bd72cfd32c82c98e590aed2a01d6e1"
+    }
+  },
+  "kernelbench_l4_4_GroupedMatmulSwigluQuantV2": {
+    "reference_sha256": "a77855031f96b75a28157ad9b131966bdd6f65cae4086ae688c71e73dee12ed6",
+    "support_sha256": {
+      "4_GroupedMatmulSwigluQuantV2.json": "207d76464d2dd2d1c178ca44e9986a69655158c905bcc6888849951e20db4210"
+    }
+  },
+  "kernelbench_l4_5_LightningIndexer": {
+    "reference_sha256": "7aa40d7d24e31a1bdbdafffd5aa086bbefdd60718e298e25657356bc49375360",
+    "support_sha256": {
+      "5_LightningIndexer.json": "6c4a6b624f0ee0af5f5f7be3d7502d92e3f30de72df674b57805c330aa600a2d"
+    }
+  },
+  "kernelbench_l4_6_QuantMatmul": {
+    "reference_sha256": "e220488d3adbb6657dd40b0773968fc7bb1636bc56cd60e1725080da380beec5",
+    "support_sha256": {
+      "6_QuantMatmul.json": "173f9a8b426318322fd2bf6b96bb6cd055adf1a02c55b752146a612d0b42c475"
+    }
+  },
+  "kernelbench_l4_7_SparseFlashAttention": {
+    "reference_sha256": "644fdee6af7be92fab5deb34927acc118bb0e681b8a88e380e1bdfee05eaef4e",
+    "support_sha256": {
+      "7_SparseFlashAttention.json": "7cba43b4b13748e0651092f29f7c53ece5568cd817e0c82f643cac889f7663c9"
+    }
+  },
+  "kernelbench_l4_8_WeightQuantBatchmatmul": {
+    "reference_sha256": "8aa802afc409b0c47f68164f8a5b75ec93a777f2c64f45e95e9b2216ab1a7fe1",
+    "support_sha256": {
+      "8_WeightQuantBatchmatmul.json": "dce72db1040ef95cc5f4a5fddc027bc6d662003f2dc5273f2f605cba001bb532"
+    }
+  },
+  "kernelbench_l4_9_QuantMatmulReduceSum": {
+    "reference_sha256": "648e180dde280ef4fe672236777e3f3a89265804234cbaa0d442e83ef3559c19",
+    "support_sha256": {
+      "9_QuantMatmulReduceSum.json": "fdb4e1c5eb6fedd906f395fa60787061a1da9ec6937e0d9fcfa532065a5f71fa"
+    }
+  }
+}

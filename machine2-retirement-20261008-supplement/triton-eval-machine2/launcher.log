@@ -1,0 +1,13 @@
+Starting API on 192.169.0.227:11907 (log: /home/e84381970/triton-eval-machine2/logs/api.log)
+Starting CPU worker 0 (log: /home/e84381970/triton-eval-machine2/logs/worker_cpu_0.log)
+Starting worker on NPU card 0 (log: /home/e84381970/triton-eval-machine2/logs/worker_0.log)
+Starting worker on NPU card 1 (log: /home/e84381970/triton-eval-machine2/logs/worker_1.log)
+Starting worker on NPU card 2 (log: /home/e84381970/triton-eval-machine2/logs/worker_2.log)
+Starting worker on NPU card 3 (log: /home/e84381970/triton-eval-machine2/logs/worker_3.log)
+Started API + 1 CPU and 4 NPU worker(s). Logs in /home/e84381970/triton-eval-machine2/logs/. PID file: /home/e84381970/triton-eval-machine2/logs/triton-eval.pids.
+Stop with: bash scripts/stop.sh   (or Ctrl-C if this is in the foreground)
+scripts/start.sh: line 128:   579 Killed                  "${PYTHON_BIN}" run_worker.py --cpu > "${LOG_DIR}/worker_cpu_${i}.log" 2>&1
+scripts/start.sh: line 128:   580 Killed                  "${PYTHON_BIN}" run_worker.py --card "${card}" > "${LOG_DIR}/worker_${card}.log" 2>&1
+scripts/start.sh: line 128:   581 Killed                  "${PYTHON_BIN}" run_worker.py --card "${card}" > "${LOG_DIR}/worker_${card}.log" 2>&1
+scripts/start.sh: line 128:   583 Killed                  "${PYTHON_BIN}" run_worker.py --card "${card}" > "${LOG_DIR}/worker_${card}.log" 2>&1
+scripts/start.sh: line 128:   582 Killed                  "${PYTHON_BIN}" run_worker.py --card "${card}" > "${LOG_DIR}/worker_${card}.log" 2>&1

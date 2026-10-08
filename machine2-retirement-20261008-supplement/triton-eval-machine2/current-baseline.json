@@ -1,0 +1,6 @@
+{
+  "run_id": "baseline_qwen38_m1_evalsvc_s8_20260914_014450",
+  "run_dir": "/home/l00515014/op_gen/self-evo/Uniagent-triton-ascend-evo/eval/output/synth_levels_concurrent_baseline_qwen38_m1_evalsvc_s8_20260914_014450",
+  "launcher_pid": 3480946,
+  "model": "qwen3.8-flash-next"
+}

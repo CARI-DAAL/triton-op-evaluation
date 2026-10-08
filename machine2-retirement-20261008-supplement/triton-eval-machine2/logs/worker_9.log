@@ -1,0 +1,5 @@
+2026-09-20 03:08:42,939 INFO __main__ holding 64 MB on card 9 for npu-smi visibility
+<triton-eval-canary>:17: UserWarning: Cannot create tensor with interal format while allow_internel_format=False, tensor will be created with base format. (Triggered internally at build/CMakeFiles/torch_npu.dir/compiler_depend.ts:338.)
+  output = torch.empty_like(x)
+2026-09-20 07:54:25,765 WARNING triton_evaluation.worker evaluator protocol failure (ValidationError) on attempt at_6a63d0dae0b24289a7aad889f0f701b0
+path string is NULLpath string is NULL

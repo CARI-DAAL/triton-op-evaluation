@@ -1,0 +1,14 @@
+{
+  "model": "qwen3.8-flash-next",
+  "elapsed_seconds": 7.49,
+  "content": "\n\n437",
+  "reasoning_chars": 104,
+  "finish_reason": "stop",
+  "usage": {
+    "prompt_tokens": 69,
+    "total_tokens": 120,
+    "completion_tokens": 51,
+    "prompt_tokens_details": null,
+    "reasoning_tokens": 46
+  }
+}

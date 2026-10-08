@@ -1,0 +1,39 @@
+BASELINE_WORKSPACE_READY kernelbench_l3_1_BatchMatmul
+[run_verify] op_name=kernelbench_l3_1_BatchMatmul workspace=/opt/workspace_evalsvc_baseline_smoke/agent_workdir
+[run_verify] === Step 1/3: AST check ===
+[run_verify] AST PASSED
+[run_verify] === Step 2/3: correctness verification ===
+[run_verify] files staged to output/verify/
+[best-snapshot] updated: passed_cases=51, total_cases=51, compile_ok=True, correctness_ok=True, speedup_vs_torch=0.856153
+[eval-service] evaluation_id=ev_31af59adbd714c4b8e56e8303a7d06a5 state=completed
+[run_verify] verify result: 51/51
+[run_verify] === Step 3/3: performance benchmark ===
+[run_verify] speedup_vs_torch=0.8562x (target=2.0x) [LOW]
+[run_verify] saved as best (speedup=0.8562x, prev=0.8562x)
+[run_verify] === SUMMARY ===
+{
+  "stage": "verify_done",
+  "ast_valid": true,
+  "passed_cases": 51,
+  "total_cases": 51,
+  "failed_cases": 0,
+  "pass_rate": 1.0,
+  "verified_success": true,
+  "error_groups": [],
+  "backend": "eval_service",
+  "evaluation_id": "ev_31af59adbd714c4b8e56e8303a7d06a5",
+  "service_state": "completed",
+  "service_outcome": "correct",
+  "infra_error": false,
+  "benchmark_status": "succeeded",
+  "benchmark_error": null,
+  "benchmark_ran": true,
+  "speedup_vs_torch": 0.8561534125683392,
+  "speedup_target": 2.0,
+  "kernel_metrics": {},
+  "bottleneck_hint": []
+}
+[run_verify] ALL CASES PASSED - speedup=0.8562x (target=2.0x). Optimize further or call submit when speedup reaches the target.
+
+[reward] op=kernelbench_l3_1_BatchMatmul best_first=1 source=metrics_best speedup=0.8562 correctness_ok=True reward=0.9212
+BASELINE_SMOKE_PASSED {"passed_cases": 51, "total_cases": 51, "speedup_vs_torch": 0.856153}

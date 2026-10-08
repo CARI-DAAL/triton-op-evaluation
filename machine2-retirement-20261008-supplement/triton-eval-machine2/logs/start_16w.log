@@ -1,0 +1,22 @@
+Starting API on 192.169.0.227:11907 (log: /home/e84381970/triton-eval-machine2/logs/api.log)
+Starting CPU worker 0 (log: /home/e84381970/triton-eval-machine2/logs/worker_cpu_0.log)
+Starting worker on NPU card 0 (log: /home/e84381970/triton-eval-machine2/logs/worker_0.log)
+Starting worker on NPU card 1 (log: /home/e84381970/triton-eval-machine2/logs/worker_1.log)
+Starting worker on NPU card 2 (log: /home/e84381970/triton-eval-machine2/logs/worker_2.log)
+Starting worker on NPU card 3 (log: /home/e84381970/triton-eval-machine2/logs/worker_3.log)
+Starting worker on NPU card 4 (log: /home/e84381970/triton-eval-machine2/logs/worker_4.log)
+Starting worker on NPU card 5 (log: /home/e84381970/triton-eval-machine2/logs/worker_5.log)
+Starting worker on NPU card 6 (log: /home/e84381970/triton-eval-machine2/logs/worker_6.log)
+Starting worker on NPU card 7 (log: /home/e84381970/triton-eval-machine2/logs/worker_7.log)
+Starting worker on NPU card 8 (log: /home/e84381970/triton-eval-machine2/logs/worker_8.log)
+Starting worker on NPU card 9 (log: /home/e84381970/triton-eval-machine2/logs/worker_9.log)
+Starting worker on NPU card 10 (log: /home/e84381970/tscripts/start.sh: line 128: 3698485 Killed                  "${PYTHON_BIN}" run_worker.py --cpu > "${LOG_DIR}/worker_cpu_${i}.log" 2>&1
+scripts/start.sh: line 128: 3698486 Killed                  "${PYTHON_BIN}" run_worker.py --card "${card}" > "${LOG_DIR}/worker_${card}.log" 2>&1
+scripts/start.sh: line 128: 3698487 Killed                  "${PYTHON_BIN}" run_worker.py --card "${card}" > "${LOG_DIR}/worker_${card}.log" 2>&1
+scripts/start.sh: line 128: 3698488 Killed                  "${PYTHON_BIN}" run_worker.py --card "${card}" > "${LOG_DIR}/worker_${card}.log" 2>&1
+scripts/start.sh: line 128: 3698489 Killed                  "${PYTHON_BIN}" run_worker.py --card "${card}" > "${LOG_DIR}/worker_${card}.log" 2>&1
+scripts/start.sh: line 128: 3Shutting down...
+              "${PYTHON_BIN}" run_worker.py --card "${card}" > "${LOG_DIR}/worker_${card}.log" 2>&1
+scripts/start.sh: line 128: 3698491 Killed                  "${PYTHON_BIN}" run_worker.py --card "${card}" > "${LOG_DIR}/worker_${card}.log" 2>&1
+scripts/start.sh: line 128: 3698492 Killed                  "${PYTHON_BIN}" run_worker.py --card "${card}" > "${LOG_DIR}/worker_${card}.log" 2>&1
+scripts/start.sh: line 128: 3698493 Killed                  "${PYTHON_BIN}" run_worker.py --card "${card}" > "${LOG_DIR}/worker_${card}.log" 2>&1

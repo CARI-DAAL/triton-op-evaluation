@@ -1,0 +1,142 @@
+{
+  "kernelbench_l3_10_ConvTranspose2d": {
+    "op_name": "kernelbench_l3_10_ConvTranspose2d",
+    "reference_path": "/home/e84381970/open-evo-data/npukernelbench-native/tasks/kernelbench_l3_10_ConvTranspose2d/reference.py",
+    "sidecar_path": "/home/e84381970/open-evo-data/npukernelbench-native/tasks/kernelbench_l3_10_ConvTranspose2d/10_ConvTranspose2d.json",
+    "reference_digest": "a2c80855a008a3f7a5c28f2d22d353f1087f22e0cdb1a8ef223d6bc0fde81d58",
+    "cases": 50
+  },
+  "kernelbench_l3_1_BatchMatmul": {
+    "op_name": "kernelbench_l3_1_BatchMatmul",
+    "reference_path": "/home/e84381970/open-evo-data/npukernelbench-native/tasks/kernelbench_l3_1_BatchMatmul/reference.py",
+    "sidecar_path": "/home/e84381970/open-evo-data/npukernelbench-native/tasks/kernelbench_l3_1_BatchMatmul/1_BatchMatmul.json",
+    "reference_digest": "e284da8248e63c7d0706757e9cb65fd0e92fe898a84c4376466f217e2a92de7e",
+    "cases": 51
+  },
+  "kernelbench_l3_2_GroupedMatmul": {
+    "op_name": "kernelbench_l3_2_GroupedMatmul",
+    "reference_path": "/home/e84381970/open-evo-data/npukernelbench-native/tasks/kernelbench_l3_2_GroupedMatmul/reference.py",
+    "sidecar_path": "/home/e84381970/open-evo-data/npukernelbench-native/tasks/kernelbench_l3_2_GroupedMatmul/2_GroupedMatmul.json",
+    "reference_digest": "4ec792ddda93d02fb421ce7ca1403b53b241416e20798f390bcae975a9480626",
+    "cases": 50
+  },
+  "kernelbench_l3_3_MatmulBothTrans": {
+    "op_name": "kernelbench_l3_3_MatmulBothTrans",
+    "reference_path": "/home/e84381970/open-evo-data/npukernelbench-native/tasks/kernelbench_l3_3_MatmulBothTrans/reference.py",
+    "sidecar_path": "/home/e84381970/open-evo-data/npukernelbench-native/tasks/kernelbench_l3_3_MatmulBothTrans/3_MatmulBothTrans.json",
+    "reference_digest": "1fac17e3ce97c132299e95bf858a1e12a667d12ed66cc1dc52af1e5fa4c209f6",
+    "cases": 50
+  },
+  "kernelbench_l3_4_MatmulTransA": {
+    "op_name": "kernelbench_l3_4_MatmulTransA",
+    "reference_path": "/home/e84381970/open-evo-data/npukernelbench-native/tasks/kernelbench_l3_4_MatmulTransA/reference.py",
+    "sidecar_path": "/home/e84381970/open-evo-data/npukernelbench-native/tasks/kernelbench_l3_4_MatmulTransA/4_MatmulTransA.json",
+    "reference_digest": "3ce55bc391fdcc01a8b312dabb52e4705ebd0fb181239dc61daa02a8a5fd68ba",
+    "cases": 50
+  },
+  "kernelbench_l3_5_MatmulTransB": {
+    "op_name": "kernelbench_l3_5_MatmulTransB",
+    "reference_path": "/home/e84381970/open-evo-data/npukernelbench-native/tasks/kernelbench_l3_5_MatmulTransB/reference.py",
+    "sidecar_path": "/home/e84381970/open-evo-data/npukernelbench-native/tasks/kernelbench_l3_5_MatmulTransB/5_MatmulTransB.json",
+    "reference_digest": "f76916e52b3d2620fe5490526a5eecfd04be9fbce2123647fa2183ff0119493b",
+    "cases": 50
+  },
+  "kernelbench_l3_6_ConvStandard1d": {
+    "op_name": "kernelbench_l3_6_ConvStandard1d",
+    "reference_path": "/home/e84381970/open-evo-data/npukernelbench-native/tasks/kernelbench_l3_6_ConvStandard1d/reference.py",
+    "sidecar_path": "/home/e84381970/open-evo-data/npukernelbench-native/tasks/kernelbench_l3_6_ConvStandard1d/6_ConvStandard1d.json",
+    "reference_digest": "87cb1a47e528bd0e596d74ed79f846000061683ec977d821c2e35ec22c1f7715",
+    "cases": 50
+  },
+  "kernelbench_l3_7_ConvStandard2d": {
+    "op_name": "kernelbench_l3_7_ConvStandard2d",
+    "reference_path": "/home/e84381970/open-evo-data/npukernelbench-native/tasks/kernelbench_l3_7_ConvStandard2d/reference.py",
+    "sidecar_path": "/home/e84381970/open-evo-data/npukernelbench-native/tasks/kernelbench_l3_7_ConvStandard2d/7_ConvStandard2d.json",
+    "reference_digest": "0047ae5285155185b463baec8c14f0104526d5a74a721994ba66d605dd87f974",
+    "cases": 50
+  },
+  "kernelbench_l3_8_ConvStandard3d": {
+    "op_name": "kernelbench_l3_8_ConvStandard3d",
+    "reference_path": "/home/e84381970/open-evo-data/npukernelbench-native/tasks/kernelbench_l3_8_ConvStandard3d/reference.py",
+    "sidecar_path": "/home/e84381970/open-evo-data/npukernelbench-native/tasks/kernelbench_l3_8_ConvStandard3d/8_ConvStandard3d.json",
+    "reference_digest": "3a2c82db033242d35681ab14938bf5777fc6721df2342ed43ea70b660050a1f7",
+    "cases": 60
+  },
+  "kernelbench_l3_9_ConvDepthwise2d": {
+    "op_name": "kernelbench_l3_9_ConvDepthwise2d",
+    "reference_path": "/home/e84381970/open-evo-data/npukernelbench-native/tasks/kernelbench_l3_9_ConvDepthwise2d/reference.py",
+    "sidecar_path": "/home/e84381970/open-evo-data/npukernelbench-native/tasks/kernelbench_l3_9_ConvDepthwise2d/9_ConvDepthwise2d.json",
+    "reference_digest": "2427865f962af7b21e9004da6a51dfcaebb13c7866fefae156c810efe57efe5b",
+    "cases": 50
+  },
+  "kernelbench_l4_10_FusedInferAttentionScore": {
+    "op_name": "kernelbench_l4_10_FusedInferAttentionScore",
+    "reference_path": "/home/e84381970/open-evo-data/npukernelbench-native/tasks/kernelbench_l4_10_FusedInferAttentionScore/reference.py",
+    "sidecar_path": "/home/e84381970/open-evo-data/npukernelbench-native/tasks/kernelbench_l4_10_FusedInferAttentionScore/10_FusedInferAttentionScore.json",
+    "reference_digest": "a16a47761e9e10d4d5daa8b975220c3aba362130e19374cef6bf45adcc4134b2",
+    "cases": 50
+  },
+  "kernelbench_l4_1_LSTM": {
+    "op_name": "kernelbench_l4_1_LSTM",
+    "reference_path": "/home/e84381970/open-evo-data/npukernelbench-native/tasks/kernelbench_l4_1_LSTM/reference.py",
+    "sidecar_path": "/home/e84381970/open-evo-data/npukernelbench-native/tasks/kernelbench_l4_1_LSTM/1_LSTM.json",
+    "reference_digest": "5f9e4c29740961fa61ff507b830ba9201679163c0af1f217543f1a906f1a7e39",
+    "cases": 50
+  },
+  "kernelbench_l4_2_FFN": {
+    "op_name": "kernelbench_l4_2_FFN",
+    "reference_path": "/home/e84381970/open-evo-data/npukernelbench-native/tasks/kernelbench_l4_2_FFN/reference.py",
+    "sidecar_path": "/home/e84381970/open-evo-data/npukernelbench-native/tasks/kernelbench_l4_2_FFN/2_FFN.json",
+    "reference_digest": "65f03cbfb769c14a71fb0fe90632713f0d5eff767d6d137c971eda19f7bef4c2",
+    "cases": 50
+  },
+  "kernelbench_l4_3_FusionAttention": {
+    "op_name": "kernelbench_l4_3_FusionAttention",
+    "reference_path": "/home/e84381970/open-evo-data/npukernelbench-native/tasks/kernelbench_l4_3_FusionAttention/reference.py",
+    "sidecar_path": "/home/e84381970/open-evo-data/npukernelbench-native/tasks/kernelbench_l4_3_FusionAttention/3_FusionAttention.json",
+    "reference_digest": "85428aeabeb26845e660b0a66d9f99cab3c76b41ed8380dd3308b1378168899f",
+    "cases": 50
+  },
+  "kernelbench_l4_4_GroupedMatmulSwigluQuantV2": {
+    "op_name": "kernelbench_l4_4_GroupedMatmulSwigluQuantV2",
+    "reference_path": "/home/e84381970/open-evo-data/npukernelbench-native/tasks/kernelbench_l4_4_GroupedMatmulSwigluQuantV2/reference.py",
+    "sidecar_path": "/home/e84381970/open-evo-data/npukernelbench-native/tasks/kernelbench_l4_4_GroupedMatmulSwigluQuantV2/4_GroupedMatmulSwigluQuantV2.json",
+    "reference_digest": "a77855031f96b75a28157ad9b131966bdd6f65cae4086ae688c71e73dee12ed6",
+    "cases": 50
+  },
+  "kernelbench_l4_5_LightningIndexer": {
+    "op_name": "kernelbench_l4_5_LightningIndexer",
+    "reference_path": "/home/e84381970/open-evo-data/npukernelbench-native/tasks/kernelbench_l4_5_LightningIndexer/reference.py",
+    "sidecar_path": "/home/e84381970/open-evo-data/npukernelbench-native/tasks/kernelbench_l4_5_LightningIndexer/5_LightningIndexer.json",
+    "reference_digest": "7aa40d7d24e31a1bdbdafffd5aa086bbefdd60718e298e25657356bc49375360",
+    "cases": 50
+  },
+  "kernelbench_l4_6_QuantMatmul": {
+    "op_name": "kernelbench_l4_6_QuantMatmul",
+    "reference_path": "/home/e84381970/open-evo-data/npukernelbench-native/tasks/kernelbench_l4_6_QuantMatmul/reference.py",
+    "sidecar_path": "/home/e84381970/open-evo-data/npukernelbench-native/tasks/kernelbench_l4_6_QuantMatmul/6_QuantMatmul.json",
+    "reference_digest": "e220488d3adbb6657dd40b0773968fc7bb1636bc56cd60e1725080da380beec5",
+    "cases": 50
+  },
+  "kernelbench_l4_7_SparseFlashAttention": {
+    "op_name": "kernelbench_l4_7_SparseFlashAttention",
+    "reference_path": "/home/e84381970/open-evo-data/npukernelbench-native/tasks/kernelbench_l4_7_SparseFlashAttention/reference.py",
+    "sidecar_path": "/home/e84381970/open-evo-data/npukernelbench-native/tasks/kernelbench_l4_7_SparseFlashAttention/7_SparseFlashAttention.json",
+    "reference_digest": "644fdee6af7be92fab5deb34927acc118bb0e681b8a88e380e1bdfee05eaef4e",
+    "cases": 50
+  },
+  "kernelbench_l4_8_WeightQuantBatchmatmul": {
+    "op_name": "kernelbench_l4_8_WeightQuantBatchmatmul",
+    "reference_path": "/home/e84381970/open-evo-data/npukernelbench-native/tasks/kernelbench_l4_8_WeightQuantBatchmatmul/reference.py",
+    "sidecar_path": "/home/e84381970/open-evo-data/npukernelbench-native/tasks/kernelbench_l4_8_WeightQuantBatchmatmul/8_WeightQuantBatchmatmul.json",
+    "reference_digest": "8aa802afc409b0c47f68164f8a5b75ec93a777f2c64f45e95e9b2216ab1a7fe1",
+    "cases": 50
+  },
+  "kernelbench_l4_9_QuantMatmulReduceSum": {
+    "op_name": "kernelbench_l4_9_QuantMatmulReduceSum",
+    "reference_path": "/home/e84381970/open-evo-data/npukernelbench-native/tasks/kernelbench_l4_9_QuantMatmulReduceSum/reference.py",
+    "sidecar_path": "/home/e84381970/open-evo-data/npukernelbench-native/tasks/kernelbench_l4_9_QuantMatmulReduceSum/9_QuantMatmulReduceSum.json",
+    "reference_digest": "648e180dde280ef4fe672236777e3f3a89265804234cbaa0d442e83ef3559c19",
+    "cases": 50
+  }
+}

@@ -1,0 +1,4 @@
+2026-09-20 03:08:43,373 INFO __main__ holding 64 MB on card 6 for npu-smi visibility
+<triton-eval-canary>:17: UserWarning: Cannot create tensor with interal format while allow_internel_format=False, tensor will be created with base format. (Triggered internally at build/CMakeFiles/torch_npu.dir/compiler_depend.ts:338.)
+  output = torch.empty_like(x)
+path string is NULLpath string is NULL
