@@ -3,7 +3,8 @@
 This repository contains a client plugin for an independently deployed
 triton-evaluation HTTP service. `plugins/triton-eval/` is its location within this
 repository; `triton-eval/` is the plugin root. Metadata and skill content have
-different roles:
+different roles. Keep this package separate from the service source and Docker
+deployment files; distribute the contents of `plugins/triton-eval/` as the plugin:
 
 ```text
 plugins/triton-eval/

@@ -5,13 +5,13 @@
 # versions pinned in pyproject.toml [project.optional-dependencies].npu — the
 # SAME declaration the host path (scripts/start.sh) uses. Build:
 #
-#   docker build -t triton-eval:1.0 .
+#   docker build -f docker/Dockerfile -t triton-eval:1.0 .
 #   # torch_npu / triton-ascend not on PyPI? add
 #   #   --build-arg PIP_EXTRA_INDEX_URL=https://<ascend-index>/simple
 #
 # Host-coupled pieces (CANN toolkit, NPU driver, /dev/davinci*) are NOT in the
 # image: they must match the host driver and are bind-mounted at runtime —
-# see docker-compose.yml.
+# see docker/compose.yaml.
 #
 # BASE_IMAGE: any aarch64 base with bash + python3.11/pip. The official python
 # image is all this build needs; override only if your site mandates a

@@ -5,6 +5,7 @@ import json
 import pytest
 
 from scripts.deployment_preflight import (
+    PROJECT_ROOT,
     DeploymentConfig,
     PreflightError,
     inspect_deployment,
@@ -124,7 +125,7 @@ def base_env(tmp_path, **overrides):
         "TRITON_EVAL_CAPABILITY_SECRET_PATH": str(secret),
         "TRITON_EVAL_IMAGE": EVAL_IMAGE,
         "TRITON_EVAL_EVALUATOR_BUILD": EVALUATOR_BUILD,
-        "TRITON_EVAL_COMPOSE_FILE": "docker-compose.yml",
+        "TRITON_EVAL_COMPOSE_FILE": "docker/compose.yaml",
         "TRITON_EVAL_ENV_FILE": "/dev/null",
     }
     env.update(overrides)
@@ -153,6 +154,18 @@ def make_runner(tmp_path, **kwargs):
 # ---------------------------------------------------------------------------
 # Happy path
 # ---------------------------------------------------------------------------
+
+
+def test_default_compose_path_is_independent_of_cwd(tmp_path, monkeypatch):
+    runner = make_runner(tmp_path)
+    env = base_env(tmp_path, TRITON_EVAL_COMPOSE_FILE=None)
+    monkeypatch.chdir(tmp_path)
+    inspect_deployment(env, runner)
+    assert runner.calls[0] == [
+        "docker", "compose", "--project-directory", str(PROJECT_ROOT),
+        "--env-file", "/dev/null", "-f", str(PROJECT_ROOT / "docker/compose.yaml"),
+        "config", "--format", "json",
+    ]
 
 
 def test_valid_deployment_passes_and_returns_config(tmp_path):

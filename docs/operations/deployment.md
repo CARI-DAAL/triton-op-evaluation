@@ -1,6 +1,18 @@
 # Deploy an evaluation instance
 
-Run all commands from the repository root.
+Run the setup commands below from the repository root. Docker-specific assets
+live in `docker/`; the build context remains the repository root:
+
+```bash
+docker build -f docker/Dockerfile -t triton-eval:local .
+```
+
+For deployment, publish the image and use its immutable digest as described below.
+The Compose wrapper uses `docker/compose.yaml` with an explicit repository project
+directory. This preserves the default project name, root `logs/` mount and Redis
+volume identity when moving the Compose file. `.dockerignore` stays at the build
+context root. The wrapper can also be called by absolute path from another directory.
+Custom `TRITON_EVAL_COMPOSE_FILE` paths use the same repository project directory.
 
 Run one independent instance per host, each with its own API, local durable
 Redis and card list. The image contains the declared Python stack; CANN and
@@ -8,8 +20,9 @@ driver come from the host. Bind each instance to an explicit private IPv4
 address. The driver reaches that address; task-agent containers reach only
 the driver's session facade.
 
-Copy [`docker.env.example`](../../docker.env.example) to `docker.env` and replace
-its placeholders before starting:
+Copy [`docker/.env.example`](../../docker/.env.example) to `docker/.env` and replace
+its placeholders before starting. Existing env files can remain at their current
+location; point `TRITON_EVAL_ENV_FILE` at that absolute path:
 
 | Setting | Value to supply |
 | --- | --- |
@@ -20,13 +33,13 @@ its placeholders before starting:
 | `TRITON_EVAL_CAPABILITY_SECRET_PATH` | Caller registry JSON, permissions no broader than `0600` |
 
 The registry format is defined in [capability loading](../../triton_evaluation/service/security.py).
-Catalog files and dataset registration are not deployment inputs. After editing `docker.env`:
+Catalog files and dataset registration are not deployment inputs. After editing `docker/.env`:
 
 ```bash
 set -a
-source docker.env
+source docker/.env
 set +a
-export TRITON_EVAL_ENV_FILE="$PWD/docker.env"
+export TRITON_EVAL_ENV_FILE="$PWD/docker/.env"
 scripts/compose.sh pull
 scripts/compose.sh up -d --force-recreate
 scripts/compose.sh logs -f
