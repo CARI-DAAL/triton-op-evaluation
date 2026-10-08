@@ -120,12 +120,21 @@ def build_app(tmp_path, catalog_files, clock=None, settings=None):
     registry = CapabilityRegistry.from_secret_file(Path(settings.capability_secret_path))
     catalog = ReleaseCatalog.load(catalog_files.root, catalog_files.manifest_path)
 
+    from triton_evaluation.kernel_eval_budget import EvalBudgetRegistry
+    from triton_evaluation.kernel_evaluation import KernelEvaluation
+
+    instance = EvaluationInstance(
+        settings=settings, store=store, catalog=catalog,
+        metrics=metrics, artifacts_verified=True,
+    )
+    budget = EvalBudgetRegistry(
+        client, prefix=settings.redis_prefix, maximum=settings.kernel_eval_max_turns,
+        retention_seconds=settings.retention_seconds,
+    )
     context = AppContext(
-        instance=EvaluationInstance(
-            settings=settings, store=store, catalog=catalog,
-            metrics=metrics, artifacts_verified=True,
-        ),
+        instance=instance,
         registry=registry,
+        kernel_eval=KernelEvaluation(instance, budget),
     )
     app = create_app(context)
     transport = httpx.ASGITransport(app=app)

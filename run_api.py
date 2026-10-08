@@ -12,6 +12,8 @@ from triton_evaluation.broker import EvaluationStore
 from triton_evaluation.catalog import ReleaseCatalog
 from triton_evaluation.config import Settings
 from triton_evaluation.instance import EvaluationInstance
+from triton_evaluation.kernel_eval_budget import EvalBudgetRegistry
+from triton_evaluation.kernel_evaluation import KernelEvaluation
 from triton_evaluation.security import CapabilityRegistry
 
 
@@ -21,9 +23,15 @@ def build_app() -> "FastAPI":  # noqa: F821 — FastAPI imported via api
     store = EvaluationStore(client, settings)
     registry = CapabilityRegistry.from_secret_file(Path(settings.capability_secret_path))
     catalog = ReleaseCatalog.load(Path(settings.catalog_root), Path(settings.catalog_manifest_path))
+    instance = EvaluationInstance(settings=settings, store=store, catalog=catalog)
+    budget = EvalBudgetRegistry(
+        client, prefix=settings.redis_prefix, maximum=settings.kernel_eval_max_turns,
+        retention_seconds=settings.retention_seconds,
+    )
     context = AppContext(
-        instance=EvaluationInstance(settings=settings, store=store, catalog=catalog),
+        instance=instance,
         registry=registry,
+        kernel_eval=KernelEvaluation(instance, budget),
     )
     return create_app(context)
 

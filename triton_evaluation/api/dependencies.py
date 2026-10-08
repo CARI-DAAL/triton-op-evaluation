@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from fastapi import Request
 
 from ..instance import EvaluationInstance
+from ..kernel_evaluation import KernelEvaluation
 from ..security import CapabilityRegistry
 
 
@@ -11,6 +12,7 @@ from ..security import CapabilityRegistry
 class AppContext:
     instance: EvaluationInstance
     registry: CapabilityRegistry
+    kernel_eval: KernelEvaluation
 
 
 def get_context(request: Request) -> AppContext:
