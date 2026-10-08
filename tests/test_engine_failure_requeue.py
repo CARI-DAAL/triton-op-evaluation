@@ -14,9 +14,9 @@ from triton_evaluation.api.contract import (
     EvaluationResult,
     SkipInfo,
 )
-from triton_evaluation.broker import MAX_ATTEMPTS
-from triton_evaluation.terminal_results import compile_outcome_from_precheck
-from triton_evaluation.worker import _retryable_engine_failure
+from triton_evaluation.runtime.worker import _retryable_engine_failure
+from triton_evaluation.service.broker import MAX_ATTEMPTS
+from triton_evaluation.service.terminal_results import compile_outcome_from_precheck
 
 
 def test_engine_failure_retry_requires_explicit_opt_in(settings):

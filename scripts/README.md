@@ -1,11 +1,13 @@
 # Supported commands
 
 Run commands from the repository root in the configured Python environment.
-Python tools expose `--help`; preparation outputs belong outside the checkout.
+Worker and preparation CLIs expose `--help`; preparation outputs belong outside
+the checkout. The API entrypoint starts the configured listeners.
 
 | Task | Commands | Guide |
 | --- | --- | --- |
 | Compose deployment | `compose.sh`, `deployment_preflight.py` | [Deployment](../docs/operations/deployment.md) |
+| Manual API/worker startup | `python -m scripts.run_api`, `python -m scripts.run_worker --cpu`, `python -m scripts.run_worker --card 0` | [Deployment](../docs/operations/deployment.md) |
 | Host workers and API | `start.sh`, `stop.sh`, `dl_wheels.sh` | [Deployment](../docs/operations/deployment.md) |
 | Smoke and NPU gates | `test_eval_service.py`, `npu_release_gate.py` | [Tests](../tests/README.md) |
 | Official task catalog | `register_official_tasks.py` | [Task registration](../docs/operations/official-task-registration.md) |

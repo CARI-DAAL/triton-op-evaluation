@@ -19,8 +19,8 @@ from pydantic import BaseModel, ConfigDict, Field
 # Support both installed-package usage and `python scripts/register_official_tasks.py`.
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from triton_evaluation.catalog import ReleaseCatalog  # noqa: E402
 from triton_evaluation.official_task import load_task  # noqa: E402
+from triton_evaluation.service.catalog import ReleaseCatalog  # noqa: E402
 
 DEFAULT_MANIFEST_ID = "npukernelbench-official-v1"
 SOURCE_REPOSITORY = "https://gitcode.com/Ascend/ascendc-kernelgen-data"

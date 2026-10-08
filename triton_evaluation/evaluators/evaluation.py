@@ -45,8 +45,8 @@ from ..api.contract import (
     SkipInfo,
 )
 from ..config import BENCHMARK_TIMEOUT_SECONDS, VERIFY_BUDGET_CAP_SECONDS
-from ..models import PinnedProvenance
-from ..terminal_results import compile_outcome_from_precheck, complete_evaluation
+from ..service.models import PinnedProvenance
+from ..service.terminal_results import compile_outcome_from_precheck, complete_evaluation
 from .base import (
     EngineCheckResult,
     LeaseLostError,

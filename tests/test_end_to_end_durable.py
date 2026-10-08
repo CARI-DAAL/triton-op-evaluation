@@ -13,7 +13,7 @@ from test_api import (
 )
 
 from triton_evaluation.api.contract import EvaluationResource
-from triton_evaluation.worker import Worker
+from triton_evaluation.runtime.worker import Worker
 
 pytestmark = pytest.mark.anyio
 
@@ -85,17 +85,17 @@ def _rebuild(app):
     import httpx
 
     from triton_evaluation.api import create_app
-    from triton_evaluation.broker import EvaluationStore
-    from triton_evaluation.metrics import RedisMetrics
-    from triton_evaluation.security import CapabilityRegistry
+    from triton_evaluation.service.broker import EvaluationStore
+    from triton_evaluation.service.metrics import RedisMetrics
+    from triton_evaluation.service.security import CapabilityRegistry
 
     metrics = RedisMetrics(app.store._r, app.settings.redis_prefix)
     store = EvaluationStore(app.store._r, app.settings, clock=app.clock,
                             metrics=metrics)
     from triton_evaluation.api.dependencies import AppContext
-    from triton_evaluation.instance import EvaluationInstance
     from triton_evaluation.kernel_eval_budget import EvalBudgetRegistry
     from triton_evaluation.kernel_evaluation import KernelEvaluation
+    from triton_evaluation.service.instance import EvaluationInstance
 
     instance = EvaluationInstance(
         settings=app.settings, store=store,
@@ -145,7 +145,7 @@ async def test_worker_replacement_after_lease_expiry(app):
 
 
 def _identity(app):
-    from triton_evaluation.models import WorkerIdentity, new_worker_id
+    from triton_evaluation.service.models import WorkerIdentity, new_worker_id
 
     return WorkerIdentity(new_worker_id(), app.settings.evaluator_build,
                           algorithms(app.settings))

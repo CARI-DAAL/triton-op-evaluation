@@ -5,7 +5,10 @@ import importlib.metadata
 import pytest
 
 from triton_evaluation.config import Settings
-from triton_evaluation.execution_environment import _triton_version, build_execution_environment
+from triton_evaluation.runtime.execution_environment import (
+    _triton_version,
+    build_execution_environment,
+)
 
 
 def _serve(available: dict[str, str]):

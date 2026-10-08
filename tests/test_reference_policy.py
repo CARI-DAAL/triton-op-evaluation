@@ -82,8 +82,8 @@ def test_policy_binds_admission_and_worker_compatibility(
 ):
     from conftest import make_caller
 
-    from triton_evaluation.instance import EvaluationInstance
-    from triton_evaluation.worker import Worker
+    from triton_evaluation.runtime.worker import Worker
+    from triton_evaluation.service.instance import EvaluationInstance
 
     strict = settings.model_copy(update={"reference_device_policy": "npu-strict"})
     old_worker = Worker(store, None, device_id=3, settings=settings, clock=clock)

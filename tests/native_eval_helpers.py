@@ -4,8 +4,8 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from triton_evaluation.api.contract import EvaluationResult
-from triton_evaluation.models import AlgorithmVersions, WorkerIdentity, new_worker_id
 from triton_evaluation.official_task import load_task
+from triton_evaluation.service.models import AlgorithmVersions, WorkerIdentity, new_worker_id
 
 TOKEN = "native-tool-token"
 TASK_ID = "official_l3_Demo"

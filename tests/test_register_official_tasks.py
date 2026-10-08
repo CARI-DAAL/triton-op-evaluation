@@ -11,7 +11,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from scripts import register_official_tasks as registrar  # noqa: E402
 from triton_evaluation.api.contract import GradeContext
-from triton_evaluation.catalog import ManifestBindingError, ReleaseCatalog
+from triton_evaluation.service.catalog import ManifestBindingError, ReleaseCatalog
 
 
 def _snapshot(root: Path):

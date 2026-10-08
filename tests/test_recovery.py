@@ -8,9 +8,9 @@ from conftest import (
 )
 
 from triton_evaluation.api.contract import EvaluationResource
-from triton_evaluation.broker import MAX_ATTEMPTS, EvaluationStore
-from triton_evaluation.models import AlgorithmVersions, WorkerCompatibility
 from triton_evaluation.serialization import sha256_hex
+from triton_evaluation.service.broker import MAX_ATTEMPTS, EvaluationStore
+from triton_evaluation.service.models import AlgorithmVersions, WorkerCompatibility
 
 
 def _key(settings, suffix):

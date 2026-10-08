@@ -26,8 +26,8 @@ from triton_evaluation.evaluators.base import (
     engine_timeout,
 )
 from triton_evaluation.evaluators.evaluation import EvaluationEvaluator
-from triton_evaluation.execution_environment import build_execution_environment
-from triton_evaluation.models import AlgorithmVersions, PinnedProvenance
+from triton_evaluation.runtime.execution_environment import build_execution_environment
+from triton_evaluation.service.models import AlgorithmVersions, PinnedProvenance
 
 FIXTURES = Path(__file__).parent / "fixtures" / "engine"
 

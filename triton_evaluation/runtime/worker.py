@@ -18,8 +18,7 @@ from pathlib import Path
 
 import redis
 
-from . import health
-from .api.contract import (
+from triton_evaluation.api.contract import (
     Check,
     CheckFailed,
     CheckOutcome,
@@ -28,21 +27,22 @@ from .api.contract import (
     EvaluationRequest,
     EvaluationResult,
 )
-from .broker import EvaluationStore
-from .config import Settings
-from .evaluators.base import LeaseLostError
-from .evaluators.evaluation import EvaluationEvaluator
-from .execution_environment import build_execution_environment
-from .models import (
+from triton_evaluation.config import Settings
+from triton_evaluation.evaluators.base import LeaseLostError
+from triton_evaluation.evaluators.evaluation import EvaluationEvaluator
+from triton_evaluation.runtime import health
+from triton_evaluation.runtime.execution_environment import build_execution_environment
+from triton_evaluation.runtime.precheck import run_precheck
+from triton_evaluation.serialization import canonical_json_bytes, sha256_hex
+from triton_evaluation.service.broker import EvaluationStore
+from triton_evaluation.service.models import (
     AlgorithmVersions,
     AttemptLease,
     PinnedProvenance,
     WorkerIdentity,
     new_worker_id,
 )
-from .precheck import run_precheck
-from .serialization import canonical_json_bytes, sha256_hex
-from .terminal_results import complete_evaluation
+from triton_evaluation.service.terminal_results import complete_evaluation
 
 logger = logging.getLogger(__name__)
 
@@ -387,7 +387,7 @@ class Worker:
         finally:
             if work_dir is not None:
                 if self.settings.reference_diagnostics_dir is not None:
-                    from .reference_diagnostics import retain_reference_diagnostics
+                    from triton_evaluation.reference_diagnostics import retain_reference_diagnostics
 
                     retain_reference_diagnostics(
                         self.settings, lease, Path(work_dir), self.device_id,

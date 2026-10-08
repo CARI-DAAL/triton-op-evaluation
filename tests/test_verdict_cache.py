@@ -7,7 +7,7 @@ from unittest import mock
 import pytest
 import redis
 
-from triton_evaluation import verdict_cache
+from triton_evaluation.runtime import verdict_cache
 
 
 def test_digest_is_stable_and_scoped():

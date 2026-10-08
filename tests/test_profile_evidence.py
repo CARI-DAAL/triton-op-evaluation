@@ -11,7 +11,7 @@ from triton_evaluation.api.contract import EvaluationRequest
 from triton_evaluation.evaluators import profile as profile_module
 from triton_evaluation.evaluators.base import ScriptOutcome
 from triton_evaluation.evaluators.evaluation import EvaluationEvaluator
-from triton_evaluation.models import AlgorithmVersions, PinnedProvenance
+from triton_evaluation.service.models import AlgorithmVersions, PinnedProvenance
 
 FIXTURES = Path(__file__).parent / "fixtures" / "engine"
 

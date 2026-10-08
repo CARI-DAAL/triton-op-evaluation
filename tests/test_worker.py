@@ -21,8 +21,8 @@ from triton_evaluation.api.contract import (
 )
 from triton_evaluation.config import Settings
 from triton_evaluation.evaluators.base import LeaseLostError
-from triton_evaluation.models import AlgorithmVersions, WorkerIdentity, new_worker_id
-from triton_evaluation.worker import LeaseKeeper, Worker
+from triton_evaluation.runtime.worker import LeaseKeeper, Worker
+from triton_evaluation.service.models import AlgorithmVersions, WorkerIdentity, new_worker_id
 
 
 class StubEvaluator:
@@ -594,7 +594,7 @@ def test_worker_records_attempt_card_even_when_affinity_avoidance_is_disabled(
 
 def test_shape_dependent_compile_error_is_not_reused_for_other_inputs(store, settings, clock,
                                                     make_command):
-    from triton_evaluation import verdict_cache
+    from triton_evaluation.runtime import verdict_cache
 
     settings = settings.model_copy(update={"cann_fingerprint": "cann-test"})
     result = make_completed_result(settings)
@@ -618,7 +618,7 @@ def test_shape_dependent_compile_error_is_not_reused_for_other_inputs(store, set
 
 
 def test_correct_terminal_does_not_feed_cache(store, settings, clock, make_command):
-    from triton_evaluation import verdict_cache
+    from triton_evaluation.runtime import verdict_cache
 
     worker = build_worker(store, settings,
                           StubEvaluator(settings, result=make_completed_result(settings)),

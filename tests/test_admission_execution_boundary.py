@@ -3,7 +3,7 @@ import pytest
 from conftest import make_caller
 from test_api import build_app, post, request_payload, seed_worker
 
-from triton_evaluation import verdict_cache
+from triton_evaluation.runtime import verdict_cache
 
 pytestmark = pytest.mark.anyio
 

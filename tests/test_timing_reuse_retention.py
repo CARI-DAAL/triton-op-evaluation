@@ -27,9 +27,9 @@ from pathlib import Path
 import pytest
 from test_worker import StubEvaluator, build_worker
 
-from triton_evaluation.admission import admit
-from triton_evaluation.catalog import ReleaseCatalog
-from triton_evaluation.models import (
+from triton_evaluation.service.admission import admit
+from triton_evaluation.service.catalog import ReleaseCatalog
+from triton_evaluation.service.models import (
     AlgorithmVersions,
     CreateResourceCommand,
     new_evaluation_id,

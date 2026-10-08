@@ -4,7 +4,7 @@ from typing import Annotated
 from fastapi import Depends
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
-from ..security import Caller, CapabilityRegistry
+from ..service.security import Caller, CapabilityRegistry
 from . import errors
 from .dependencies import AppContext, get_context
 

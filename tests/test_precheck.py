@@ -6,8 +6,8 @@ from unittest import mock
 import pytest
 import redis
 
-from triton_evaluation import precheck, verdict_cache
 from triton_evaluation.evaluators.base import ScriptOutcome
+from triton_evaluation.runtime import precheck, verdict_cache
 
 
 @pytest.fixture

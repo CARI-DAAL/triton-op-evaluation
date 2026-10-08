@@ -5,9 +5,9 @@ from concurrent.futures import ThreadPoolExecutor
 import fakeredis
 from conftest import make_caller, make_grade_caller, make_grade_request, make_request
 
-from triton_evaluation.broker import EvaluationStore, _digest_text
 from triton_evaluation.config import Settings
 from triton_evaluation.serialization import sha256_hex
+from triton_evaluation.service.broker import EvaluationStore, _digest_text
 
 
 def _key(settings, suffix):

@@ -13,7 +13,7 @@ from dataclasses import dataclass
 
 import redis
 
-from .broker import StorageError
+from .service.broker import StorageError
 
 
 @dataclass(frozen=True)

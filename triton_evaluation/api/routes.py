@@ -12,11 +12,11 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Header, Query, Request
 from fastapi.responses import Response
 
-from ..admission import ForbiddenError
-from ..broker import StorageError
-from ..catalog import ManifestBindingError
-from ..instance import EvaluationInstance, InstanceNotReadyError, QueueUnavailableError
-from ..security import Caller
+from ..service.admission import ForbiddenError
+from ..service.broker import StorageError
+from ..service.catalog import ManifestBindingError
+from ..service.instance import EvaluationInstance, InstanceNotReadyError, QueueUnavailableError
+from ..service.security import Caller
 from . import errors
 from .auth import require_observer, require_read_caller, require_submit_caller
 from .contract import EvaluationRequest, EvaluationResource

@@ -2,7 +2,7 @@
 import pytest
 from test_api import build_app, post, seed_worker, trial_headers
 
-from triton_evaluation.metrics import RedisMetrics
+from triton_evaluation.service.metrics import RedisMetrics
 
 pytestmark = pytest.mark.anyio
 
@@ -75,7 +75,7 @@ def test_leakage_attempts_are_rejected(app):
 
 def test_no_graderecord_metrics_in_this_service(app):
     """GradeRecord scored/unscored metrics belong to Eval Hub, not here."""
-    from triton_evaluation.metrics import ALLOWED_METRICS
+    from triton_evaluation.service.metrics import ALLOWED_METRICS
 
     assert not any("grade_record" in name for name in ALLOWED_METRICS)
     assert "correctness_domain_outcomes_total" in ALLOWED_METRICS
@@ -200,7 +200,7 @@ async def test_terminal_dimensions_are_instrumented(app, make_command):
     from conftest import make_caller, make_completed_result
     from test_api import algorithms
 
-    from triton_evaluation.models import WorkerIdentity, new_worker_id
+    from triton_evaluation.service.models import WorkerIdentity, new_worker_id
 
     app.store.create_or_replay(
         make_command(caller=make_caller("trial-caller", "trial",
@@ -220,7 +220,7 @@ async def test_terminal_dimensions_are_instrumented(app, make_command):
 def test_worker_dimensions_are_instrumented(app):
     from test_api import algorithms
 
-    from triton_evaluation.models import WorkerIdentity, new_worker_id
+    from triton_evaluation.service.models import WorkerIdentity, new_worker_id
 
     identity = WorkerIdentity(new_worker_id(), app.settings.evaluator_build,
                               algorithms(app.settings))
@@ -232,7 +232,7 @@ def test_worker_dimensions_are_instrumented(app):
 
 
 def test_shaping_and_catalog_dimensions_exist(app):
-    from triton_evaluation.metrics import ALLOWED_METRICS
+    from triton_evaluation.service.metrics import ALLOWED_METRICS
 
     assert "shaping_failures_total" in ALLOWED_METRICS
     assert "catalog_binding_outcomes_total" in ALLOWED_METRICS

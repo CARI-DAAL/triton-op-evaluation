@@ -4,7 +4,7 @@ from unittest import mock
 
 import pytest
 
-import run_worker
+from scripts import run_worker
 
 
 def test_cpu_cli_never_holds_an_npu(monkeypatch):

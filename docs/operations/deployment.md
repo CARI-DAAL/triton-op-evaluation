@@ -20,8 +20,8 @@ its placeholders before starting:
 | `TRITON_EVAL_CAPABILITY_SECRET_PATH` | Caller registry JSON, permissions no broader than `0600` |
 | `TRITON_EVAL_CATALOG_ROOT`, `TRITON_EVAL_CATALOG_MANIFEST_PATH` | Release directory and catalog manifest |
 
-The file formats are defined in [capability loading](../../triton_evaluation/security.py)
-and [catalog loading](../../triton_evaluation/catalog.py). After editing `docker.env`:
+The file formats are defined in [capability loading](../../triton_evaluation/service/security.py)
+and [catalog loading](../../triton_evaluation/service/catalog.py). After editing `docker.env`:
 
 ```bash
 set -a
@@ -47,14 +47,31 @@ For a single-card smoke deployment, use this same Compose file with
 `TRITON_EVAL_CARDS=0`. Card lists are unique nonnegative integers, such as
 `0,1,3`. Redis uses the local server on port 6379, with database 7 by default.
 `TRITON_EVAL_CPU_WORKERS` defaults to 1 and accepts 0–32. Setting it to 0
-disables compile-only capacity unless separate `run_worker.py --cpu` processes
-join the same instance. CPU workers do not claim cards or run card recovery.
+disables compile-only capacity unless separate
+`python -m scripts.run_worker --cpu` processes join the same instance. CPU workers do not claim cards or run card recovery.
 
 For host execution without Docker, install `.[npu]` in an isolated environment
 (with the Ascend wheel index if needed), configure [`.env.example`](../../.env.example)
 as `.env`, then use `bash scripts/start.sh` / `bash scripts/stop.sh`. Supply Redis
 with `--appendonly yes --appendfsync always`, as Compose does. The engine is
 bundled and needs no external checkout.
+
+The API owns HTTP admission and recovery; workers execute leased attempts with
+separate CPU/NPU assignments and lifecycles. Their entrypoints remain separate
+under `scripts/`. For manual startup, use separate terminals from the repository
+root with the same exported instance configuration:
+
+```bash
+python -m scripts.run_api
+python -m scripts.run_worker --cpu
+python -m scripts.run_worker --card 0
+```
+
+Run one NPU worker per configured physical card. The host launcher and Compose
+manage these processes together. For a single HTTP listener, the API can also
+run as `uvicorn scripts.run_api:app --host "$TRITON_EVAL_API_HOST" --port 11907`.
+Use `python -m scripts.run_api` for the configured
+[native HTTP/TLS listeners](../usage/kernel-eval.md#native-https-for-the-platform-verifier).
 
 Candidate code needs an operating-system boundary when evaluations must not
 read other attempts or service credentials. Subprocesses alone do not provide

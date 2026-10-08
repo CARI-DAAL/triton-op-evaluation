@@ -27,7 +27,7 @@ compatibility alias `TRITON_EVAL_KERNEL_EVAL_TOKEN`; other fields retain the
 ## Native HTTPS for the platform verifier
 
 Harbor's platform verifier requires HTTPS even when its destination is
-loopback. Start the service's own two listeners in one `run_api.py` process:
+loopback. Start the service's own two listeners in one `python -m scripts.run_api` process:
 
 ```dotenv
 TRITON_EVAL_API_HOST=0.0.0.0
@@ -38,8 +38,9 @@ TRITON_EVAL_API_TLS_CERTFILE=/absolute/service-tls/server.crt
 TRITON_EVAL_API_TLS_KEYFILE=/absolute/service-tls/server.key
 ```
 
-Set the service unit's `ExecStart` to its existing Python interpreter followed
-by the service checkout's `run_api.py`. The `uvicorn run_api:app` CLI serves
+Set the service unit's working directory to the service checkout and its
+`ExecStart` to the existing Python interpreter followed by `-m scripts.run_api`.
+The `uvicorn scripts.run_api:app` CLI serves
 only one port and does not activate this mode. Migrate the certificates and
 CA bundle into a service-owned directory, preserving certificate validity
 and restricting the private key. The lane-A verifier pins

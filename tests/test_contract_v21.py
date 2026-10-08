@@ -6,9 +6,9 @@ from pathlib import Path
 import pytest
 from conftest import make_caller, make_completed_result, make_request
 
-from triton_evaluation.admission import ForbiddenError, admit
 from triton_evaluation.api.contract import EvaluationRequest, EvaluationResult
-from triton_evaluation.instance import EvaluationInstance
+from triton_evaluation.service.admission import ForbiddenError, admit
+from triton_evaluation.service.instance import EvaluationInstance
 
 
 def published_v21_resource_validator():
@@ -254,9 +254,9 @@ async def test_leased_compile_http_body_validates_against_published_schema(
     from conftest import FakeClock
     from test_api import build_app, make_test_settings, post, seed_worker, trial_headers
 
-    from triton_evaluation import verdict_cache
     from triton_evaluation.evaluators.evaluation import EvaluationEvaluator
-    from triton_evaluation.worker import Worker
+    from triton_evaluation.runtime import verdict_cache
+    from triton_evaluation.runtime.worker import Worker
 
     settings = make_test_settings(tmp_path)
     app = build_app(tmp_path, release_catalog_files, settings=settings,

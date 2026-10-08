@@ -75,28 +75,28 @@ cleanup() {
 }
 trap cleanup INT TERM
 
-# API — uvicorn serves run_api.py's module-level `app`, so host/port come from env
+# API — uvicorn serves scripts.run_api's module-level `app`, so host/port come from env
 echo "Starting API on ${API_HOST}:${API_PORT} (log: ${LOG_DIR}/api.log)" >&2
-"${PYTHON_BIN}" -m uvicorn run_api:app --host "${API_HOST}" --port "${API_PORT}" \
+"${PYTHON_BIN}" -m uvicorn scripts.run_api:app --host "${API_HOST}" --port "${API_PORT}" \
   >"${LOG_DIR}/api.log" 2>&1 &
 pids+=("$!")
 
 # CPU workers execute compile-only attempts without claiming an NPU card.
 for ((i=0; i<CPU_WORKERS; i++)); do
   echo "Starting CPU worker ${i} (log: ${LOG_DIR}/worker_cpu_${i}.log)" >&2
-  "${PYTHON_BIN}" run_worker.py --cpu \
+  "${PYTHON_BIN}" -m scripts.run_worker --cpu \
     >"${LOG_DIR}/worker_cpu_${i}.log" 2>&1 &
   pids+=("$!")
 done
 
-# One worker per card; run_worker.py pins ASCEND_RT_VISIBLE_DEVICES to --card
+# One worker per card; scripts.run_worker pins ASCEND_RT_VISIBLE_DEVICES to --card
 worker_count=0
 IFS=',' read -ra CARD_ARR <<< "${CARDS}"
 for card in "${CARD_ARR[@]}"; do
   card="${card//[[:space:]]/}"
   [[ -z "${card}" ]] && continue
   echo "Starting worker on NPU card ${card} (log: ${LOG_DIR}/worker_${card}.log)" >&2
-  "${PYTHON_BIN}" run_worker.py --card "${card}" \
+  "${PYTHON_BIN}" -m scripts.run_worker --card "${card}" \
     >"${LOG_DIR}/worker_${card}.log" 2>&1 &
   pids+=("$!")
   worker_count=$((worker_count + 1))

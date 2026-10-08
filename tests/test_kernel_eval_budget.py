@@ -5,8 +5,8 @@ from concurrent.futures import ThreadPoolExecutor
 import pytest
 import redis
 
-from triton_evaluation.broker import StorageError
 from triton_evaluation.kernel_eval_budget import EvalBudgetRegistry
+from triton_evaluation.service.broker import StorageError
 
 
 def registry(client, maximum=18):

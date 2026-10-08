@@ -3,7 +3,7 @@
 `CardHealth` owns canary gating, drain state, recovery timing, and health
 publication. `Worker` owns evaluation attempts and consults the same health
 decision before sending an idle heartbeat or claiming another attempt.
-Domain terms are defined in [GLOSSARY.md](../../GLOSSARY.md).
+Domain terms are defined in [Domain vocabulary](../../README.md#domain-vocabulary).
 
 ## Interface and ownership
 

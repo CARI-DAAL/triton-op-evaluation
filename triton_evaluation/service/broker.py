@@ -58,7 +58,12 @@ from triton_evaluation.api.contract import (
     dump_contract,
 )
 from triton_evaluation.config import Settings
-from triton_evaluation.models import (
+from triton_evaluation.serialization import (
+    canonical_json_bytes,
+    load_canonical,
+    sha256_hex,
+)
+from triton_evaluation.service.models import (
     AlgorithmVersions,
     AttemptLease,
     CreateResourceCommand,
@@ -71,13 +76,8 @@ from triton_evaluation.models import (
     WorkerIdentity,
     new_attempt_id,
 )
-from triton_evaluation.security import Caller
-from triton_evaluation.serialization import (
-    canonical_json_bytes,
-    load_canonical,
-    sha256_hex,
-)
-from triton_evaluation.terminal_results import (
+from triton_evaluation.service.security import Caller
+from triton_evaluation.service.terminal_results import (
     complete_evaluation,
     persisted_check_outcomes,
 )

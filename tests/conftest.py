@@ -4,7 +4,6 @@ from types import SimpleNamespace
 import fakeredis
 import pytest
 
-from triton_evaluation.admission import admit
 from triton_evaluation.api.contract import (
     CheckSucceeded,
     CorrectnessResult,
@@ -12,18 +11,19 @@ from triton_evaluation.api.contract import (
     EvaluationResult,
     Provenance,
 )
-from triton_evaluation.broker import EvaluationStore
-from triton_evaluation.catalog import ReleaseCatalog
 from triton_evaluation.config import Settings
-from triton_evaluation.models import (
+from triton_evaluation.serialization import sha256_hex
+from triton_evaluation.service.admission import admit
+from triton_evaluation.service.broker import EvaluationStore
+from triton_evaluation.service.catalog import ReleaseCatalog
+from triton_evaluation.service.models import (
     AlgorithmVersions,
     CreateResourceCommand,
     WorkerIdentity,
     new_evaluation_id,
     new_worker_id,
 )
-from triton_evaluation.security import Caller
-from triton_evaluation.serialization import sha256_hex
+from triton_evaluation.service.security import Caller
 
 
 @pytest.fixture

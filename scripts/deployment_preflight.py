@@ -257,12 +257,12 @@ def _validate_mounts(volumes: list[dict], settings_env: Mapping[str, str],
 
 def _validate_secret_and_catalog(env: Mapping[str, str], runner) -> None:
     try:
-        from triton_evaluation.catalog import ReleaseCatalog
-        from triton_evaluation.security import CapabilityRegistry
+        from triton_evaluation.service.catalog import ReleaseCatalog
+        from triton_evaluation.service.security import CapabilityRegistry
     except ImportError:
         sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-        from triton_evaluation.catalog import ReleaseCatalog
-        from triton_evaluation.security import CapabilityRegistry
+        from triton_evaluation.service.catalog import ReleaseCatalog
+        from triton_evaluation.service.security import CapabilityRegistry
 
     try:
         CapabilityRegistry.from_secret_file(Path(env["TRITON_EVAL_CAPABILITY_SECRET_PATH"]))

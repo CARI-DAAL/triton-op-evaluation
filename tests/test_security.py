@@ -7,8 +7,8 @@ import secrets
 
 import pytest
 
-import triton_evaluation.security as security
-from triton_evaluation.security import (
+import triton_evaluation.service.security as security
+from triton_evaluation.service.security import (
     Caller,
     CapabilityRegistry,
     UnauthenticatedError,

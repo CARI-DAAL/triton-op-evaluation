@@ -6,12 +6,12 @@ new admissions, replays nor rejected requests execute it here.
 """
 import logging
 
-from .admission import admit
-from .api.contract import EvaluationRequest, EvaluationResource
-from .broker import EvaluationStore
-from .catalog import ManifestBindingError, ReleaseCatalog
-from .config import Settings
-from .models import (
+from triton_evaluation.api.contract import EvaluationRequest, EvaluationResource
+from triton_evaluation.config import Settings
+from triton_evaluation.service.admission import admit
+from triton_evaluation.service.broker import EvaluationStore
+from triton_evaluation.service.catalog import ManifestBindingError, ReleaseCatalog
+from triton_evaluation.service.models import (
     AlgorithmVersions,
     CreateResourceCommand,
     CreateResourceResult,
@@ -19,7 +19,7 @@ from .models import (
     WorkerCompatibility,
     new_evaluation_id,
 )
-from .security import Caller
+from triton_evaluation.service.security import Caller
 
 logger = logging.getLogger(__name__)
 

@@ -28,7 +28,7 @@ from triton_evaluation.api.contract import (
     Provenance,
     SkipInfo,
 )
-from triton_evaluation.models import PinnedProvenance
+from triton_evaluation.service.models import PinnedProvenance
 
 _CHECK_ORDER = ("compile", "correctness", "performance", "profile")
 _OUTCOME_ADAPTERS = {

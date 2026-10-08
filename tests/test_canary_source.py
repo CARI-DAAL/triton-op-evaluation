@@ -3,7 +3,7 @@ import inspect
 import sys
 from types import ModuleType, SimpleNamespace
 
-from triton_evaluation.health import _canary_namespace
+from triton_evaluation.runtime.health import _canary_namespace
 
 
 def test_canary_jit_can_read_its_source(monkeypatch):

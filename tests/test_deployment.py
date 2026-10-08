@@ -400,12 +400,12 @@ def test_container_readiness_checks_the_image_digest_build(
 @pytest.mark.parametrize(
     ("mode", "expected_args"),
     [
-        ("api", ("args=-m uvicorn run_api:app --host 127.0.0.1 --port 12000",)),
-        ("workers", ("args=run_worker.py --cpu", "args=run_worker.py --card 3")),
+        ("api", ("args=-m uvicorn scripts.run_api:app --host 127.0.0.1 --port 12000",)),
+        ("workers", ("args=-m scripts.run_worker --cpu", "args=-m scripts.run_worker --card 3")),
         ("all", (
-            "args=-m uvicorn run_api:app --host 127.0.0.1 --port 12000",
-            "args=run_worker.py --cpu",
-            "args=run_worker.py --card 3",
+            "args=-m uvicorn scripts.run_api:app --host 127.0.0.1 --port 12000",
+            "args=-m scripts.run_worker --cpu",
+            "args=-m scripts.run_worker --card 3",
         )),
     ],
 )
@@ -478,6 +478,7 @@ def test_host_launcher_adds_cann_arch_library_to_api_and_worker(tmp_path, cpu_wo
         """#!/usr/bin/env bash
 printf 'ld=%s\\n' "${LD_LIBRARY_PATH:-}"
 printf 'args=%s\\n' "$*"
+printf 'cwd=%s\\n' "$PWD"
 """,
     )
     log_dir = tmp_path / "logs"
@@ -497,15 +498,64 @@ printf 'args=%s\\n' "$*"
     env["LD_LIBRARY_PATH"] = "baseline-ld"
 
     result = subprocess.run(
-        ["bash", "scripts/start.sh"], cwd=PROJECT_ROOT, env=env,
+        ["bash", str(PROJECT_ROOT / "scripts/start.sh")], cwd=tmp_path, env=env,
         capture_output=True, text=True,
     )
     assert result.returncode == 0, result.stderr
     arch_library = f"{set_env.parent}/aarch64-linux/lib64"
+    assert f"cwd={PROJECT_ROOT}" in (log_dir / "api.log").read_text()
     assert arch_library in (log_dir / "api.log").read_text()
     assert arch_library in (log_dir / "worker_8.log").read_text()
+    assert "args=-m uvicorn scripts.run_api:app" in (log_dir / "api.log").read_text()
+    assert "args=-m scripts.run_worker --card 8" in (log_dir / "worker_8.log").read_text()
     cpu_logs = sorted(log_dir.glob("worker_cpu_*.log"))
     assert len(cpu_logs) == cpu_workers
     for cpu_log in cpu_logs:
         assert arch_library in cpu_log.read_text()
-        assert "args=run_worker.py --cpu" in cpu_log.read_text()
+        assert "args=-m scripts.run_worker --cpu" in cpu_log.read_text()
+
+
+def test_stop_without_pid_file_matches_api_cpu_and_npu_workers(tmp_path):
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    _write_executable(
+        fake_bin / "pkill",
+        """#!/usr/bin/env bash
+[[ "$1" == "-TERM" && "$2" == "-f" ]] || exit 2
+printf '%s\\n' \\
+  'python -m uvicorn scripts.run_api:app --host 127.0.0.1' \\
+  'python -m scripts.run_worker --cpu' \\
+  'python -m scripts.run_worker --card 3' \\
+  'python -m scripts.run_worker --cardinality 3' | grep -E "$3"
+""",
+    )
+    env = os.environ | {
+        "PATH": f"{fake_bin}:{os.environ['PATH']}",
+        "LOG_DIR": str(tmp_path / "logs"),
+        "TRITON_EVAL_ENV_FILE": str(tmp_path / "missing.env"),
+    }
+    result = subprocess.run(
+        ["bash", str(PROJECT_ROOT / "scripts/stop.sh")], cwd=tmp_path, env=env,
+        capture_output=True, text=True,
+    )
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.splitlines() == [
+        "python -m uvicorn scripts.run_api:app --host 127.0.0.1",
+        "python -m scripts.run_worker --cpu",
+        "python -m scripts.run_worker --card 3",
+    ]
+
+
+def test_api_entrypoint_loads_via_uvicorn_import_path(tmp_path, release_catalog_files):
+    env = os.environ | _complete_deployment_env(tmp_path, release_catalog_files)
+    result = subprocess.run(
+        [sys.executable, "-c", (
+            "from fastapi import FastAPI; "
+            "from uvicorn.importer import import_from_string; "
+            "from scripts.run_api import build_app; "
+            "assert isinstance(import_from_string('scripts.run_api:app'), FastAPI); "
+            "assert isinstance(build_app(), FastAPI)"
+        )],
+        cwd=PROJECT_ROOT, env=env, capture_output=True, text=True,
+    )
+    assert result.returncode == 0, result.stderr

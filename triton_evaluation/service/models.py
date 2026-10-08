@@ -7,9 +7,9 @@ import uuid
 from dataclasses import dataclass
 from typing import Literal
 
-from triton_evaluation.admission import CanonicalAdmission
 from triton_evaluation.api.contract import Check, EvaluationRequest, EvaluationResource, Purpose
-from triton_evaluation.security import CallerClass
+from triton_evaluation.service.admission import CanonicalAdmission
+from triton_evaluation.service.security import CallerClass
 
 # Quota buckets: trial and trusted derive from purpose; rollout is a
 # server-declared class for RL traffic (settings.rollout_caller_ids). An

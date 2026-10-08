@@ -13,9 +13,9 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 
 from triton_evaluation.api.contract import Check, EvaluationRequest
-from triton_evaluation.catalog import CatalogBinding, ReleaseCatalog
-from triton_evaluation.security import Caller
 from triton_evaluation.serialization import canonical_json_bytes, sha256_hex
+from triton_evaluation.service.catalog import CatalogBinding, ReleaseCatalog
+from triton_evaluation.service.security import Caller
 
 
 class ForbiddenError(Exception):

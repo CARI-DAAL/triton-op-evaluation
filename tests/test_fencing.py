@@ -11,7 +11,7 @@ from concurrent.futures import ThreadPoolExecutor
 import fakeredis
 from conftest import make_caller, make_completed_result, make_correctness_success
 
-from triton_evaluation.broker import EvaluationStore
+from triton_evaluation.service.broker import EvaluationStore
 
 
 def _key(settings, suffix):

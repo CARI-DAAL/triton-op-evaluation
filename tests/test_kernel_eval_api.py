@@ -9,7 +9,7 @@ from native_eval_helpers import TASK_ID, TOKEN, official_catalog, outcome
 from test_api import algorithms, build_app, make_test_settings, seed_worker, trial_headers
 
 from triton_evaluation.kernel_evaluation import TOOL_CALLER
-from triton_evaluation.models import WorkerIdentity, new_worker_id
+from triton_evaluation.service.models import WorkerIdentity, new_worker_id
 
 pytestmark = pytest.mark.anyio
 

@@ -19,7 +19,7 @@ alone cannot convey.
 
 ## Understand the implementation
 
-- [Domain vocabulary](../GLOSSARY.md)
+- [Domain vocabulary](../README.md#domain-vocabulary)
 - [Kernel evaluation caller intent](architecture/kernel-evaluation.md)
 - [Profile evidence ownership](architecture/profile-evidence.md)
 - [Card health](architecture/card-health.md)
@@ -30,7 +30,7 @@ alone cannot convey.
 
 ## Maintain it
 
-- [Contributing and repository conventions](../CONTRIBUTING.md)
+- [Contributing and repository conventions](../README.md#contributing)
 - [Test guide](../tests/README.md)
 - [Supported scripts](../scripts/README.md)
 - [Instance ownership decision](adr/0001-evaluation-instance-ownership.md)

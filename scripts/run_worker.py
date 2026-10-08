@@ -6,10 +6,10 @@ import signal
 
 import redis
 
-from triton_evaluation.broker import EvaluationStore
 from triton_evaluation.config import Settings
 from triton_evaluation.evaluators.evaluation import EvaluationEvaluator
-from triton_evaluation.worker import Worker
+from triton_evaluation.runtime.worker import Worker
+from triton_evaluation.service.broker import EvaluationStore
 
 logger = logging.getLogger(__name__)
 

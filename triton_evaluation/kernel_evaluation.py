@@ -18,13 +18,13 @@ from typing import Literal
 from pydantic import ValidationError
 
 from . import kernel_eval_renderer as renderer
-from .admission import ForbiddenError
 from .api.contract import EvaluationRequest, ProfileParams, dump_contract
-from .broker import StorageError
-from .catalog import ManifestBindingError
-from .instance import EvaluationInstance, InstanceNotReadyError, QueueUnavailableError
 from .kernel_eval_budget import EvalBudgetRegistry
-from .security import Caller
+from .service.admission import ForbiddenError
+from .service.broker import StorageError
+from .service.catalog import ManifestBindingError
+from .service.instance import EvaluationInstance, InstanceNotReadyError, QueueUnavailableError
+from .service.security import Caller
 
 logger = logging.getLogger(__name__)
 TOOL_CALLER = Caller("kernel-eval", "trial", frozenset({"trial:submit", "trial:read"}))
