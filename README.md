@@ -1,8 +1,8 @@
 # triton-evaluation
 
-Evaluate Triton-Ascend operators against a PyTorch reference for correctness,
-performance and profiling. Supply **PyTorch code, Triton code and input cases**;
-both implementations expose `run(*args)`.
+Measure or profile a PyTorch or Triton-Ascend operator, or compare a Triton
+implementation against PyTorch for correctness and speedup. Supply **input cases
+and at least one implementation**; each implementation exposes `run(*args)`.
 
 Use the bundled CLI from a developer machine or coding agent, or call the HTTP
 API directly. The evaluation service runs separately on an Ascend host. Accepted
@@ -41,9 +41,23 @@ python3 "$TRITON_EVAL_CLI" verify \
   --save-handle evaluation-handle.json
 ```
 
-The CLI waits for a result, writes JSON to stdout and progress to stderr. Use
-`benchmark` for correctness plus timing, or `profile` for profiling. Client
-wait expiry does not cancel accepted work; recover it on the same instance:
+The comparison above needs both implementations. To measure just one, keep the
+same cases and supply only its source:
+
+```bash
+python3 "$TRITON_EVAL_CLI" benchmark --torch torch_impl.py --cases cases.json
+python3 "$TRITON_EVAL_CLI" benchmark --triton triton_impl.py --cases cases.json
+```
+
+Use `profile` with either source selection for profiling. A single-implementation
+measurement reports latency and `correctness_verified: false`; it cannot establish
+correctness or a speedup. `verify` requires both implementations. Supplying both
+to `benchmark` retains correctness checks and comparative timing.
+
+The CLI waits for a result, writes its JSON resource to stdout and progress to
+stderr. A successful measurement exits zero while explicitly noting
+`correctness not verified` for a single implementation. Client wait expiry does
+not cancel accepted work; recover it on the same instance:
 
 ```bash
 # Set EVALUATION_ID to the ID returned by the service.
@@ -52,17 +66,31 @@ python3 "$TRITON_EVAL_CLI" get "$EVALUATION_ID"
 
 See the [client guide](plugins/triton-eval/README.md) for configuration and the
 [skill](plugins/triton-eval/skills/triton-eval/SKILL.md) for agent usage. The
-plugin follows the standard `plugin.json` and `skills/` layout and is independent
-of the server deployment.
+plugin is independent of the server deployment. Its directory keeps portable
+metadata, client compatibility manifests and skill content separate:
+
+```text
+plugins/triton-eval/              # Repository location; this is the plugin root
+├── plugin.json                  # Canonical portable manifest
+├── .codex-plugin/plugin.json    # Codex compatibility metadata
+├── .claude-plugin/plugin.json   # Claude Code metadata
+└── skills/triton-eval/          # Shared skill and bundled CLI
+    ├── SKILL.md
+    └── scripts/triton_eval.py
+```
+
+The hidden directories contain metadata only; the [client guide](plugins/triton-eval/README.md)
+links the official format and open-source examples behind this layout.
 
 ## API
 
-All submission endpoints accept the same three required fields:
+All submission endpoints use the same fields. `cases` is required, together
+with at least one of `torch_code` or `triton_code`:
 
 | Field | Contents |
 | --- | --- |
-| `torch_code` | PyTorch reference source defining `run(*args)` |
-| `triton_code` | Triton implementation source defining `run(*args)` |
+| `torch_code` | PyTorch source defining `run(*args)`; optional when Triton source is supplied |
+| `triton_code` | Triton source defining `run(*args)`; optional when PyTorch source is supplied |
 | `cases` | Ordered input arguments and an optional seed for each case |
 
 Inputs may be JSON scalars or tensor descriptions with `shape`, `dtype` and an
@@ -71,13 +99,14 @@ validation, optional execution settings and complete HTTP examples.
 
 | Endpoint | Purpose |
 | --- | --- |
-| `POST /verify` | Check correctness |
-| `POST /benchmark` | Check correctness, then measure performance |
+| `POST /verify` | Check correctness; requires both implementations |
+| `POST /benchmark` | Measure one implementation, or check correctness and speedup with both |
 | `POST /profile` | Collect profiling evidence |
 | `POST /evaluations` | Select checks, including syntax/import prechecks |
 | `GET /evaluations/{evaluation_id}` | Read or recover an evaluation |
 
-`/evaluations` defaults to correctness and performance. Evaluation endpoints
+`/evaluations` defaults to performance for one implementation, or correctness
+and performance for both. Evaluation endpoints
 use `Authorization: Bearer`. Provide an `Idempotency-Key`
 when a submission may need retrying. The operation shortcuts share the same
 request format, authentication and durable result lifecycle.
@@ -269,8 +298,9 @@ followed by a canary to determine whether recovery succeeded.
 ### Operator inputs
 
 **Operator request**:
-A PyTorch implementation, a Triton implementation and input cases for comparing
-their behavior under requested checks.
+Input cases and one or both implementations. A single implementation supports
+measurement and profiling; supplying PyTorch and Triton supports correctness
+checks and comparative performance.
 
 **Case**:
 One ordered list of positional inputs and a deterministic seed. Tensor inputs

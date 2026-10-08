@@ -15,6 +15,7 @@ from .base import (
     engine_failure,
     engine_timeout,
     log_engine_crash,
+    materialize,
     read_json,
     remaining_seconds,
     run_script,
@@ -40,6 +41,9 @@ class BenchmarkEvaluator:
             return engine_timeout(
                 "performance", "resource deadline expired before performance ran"
             )
+        single = request.implementation != "comparison"
+        if single:
+            materialize(request, work_dir)
         params = request.performance or PerformanceParams()
         if params.case_indices is not None and not params.case_indices:
             return engine_failure("performance", "performance case selection is empty")
@@ -47,7 +51,7 @@ class BenchmarkEvaluator:
         out_path = Path(work_dir) / "perf_result.json"
         cmd = [
             sys.executable,
-            str(Path(self.engine_dir) / "benchmark.py"),
+            str(Path(self.engine_dir) / ("single_benchmark.py" if single else "benchmark.py")),
             "--op_name",
             safe_module_stem(request),
             "--verify_dir",
@@ -61,6 +65,8 @@ class BenchmarkEvaluator:
             "--measurement-method",
             effective_method,
         ]
+        if single:
+            cmd += ["--implementation", request.implementation]
         if params.case_indices is not None:
             # Public indices are zero-based; the engine takes one-based labels.
             cmd += [
@@ -82,7 +88,7 @@ class BenchmarkEvaluator:
             return engine_timeout(
                 "performance", "performance exceeded the resource deadline"
             )
-        if outcome.exit_code == 2:
+        if outcome.exit_code == 2 and not single:
             return engine_failure(
                 "performance", "benchmark verify gate rejected the run"
             )

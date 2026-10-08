@@ -22,6 +22,7 @@ import csv
 import glob
 import math
 import os
+import string
 import re
 import signal
 import subprocess
@@ -117,8 +118,10 @@ def _column_mean(rows: list[dict[str, str]], name: str) -> float | None:
     return sum(present) / len(present) if present else None
 
 
-def _matches_custom(name: str, kernel_names: list[str]) -> bool:
-    return any(name == kernel or name.startswith(kernel) for kernel in kernel_names)
+def _matches_custom(name: str, kernel_names: list[str] | None) -> bool:
+    return bool(name) if kernel_names is None else any(
+        name == kernel or name.startswith(kernel) for kernel in kernel_names
+    )
 
 
 def _parse_kernel_dir(op_dir: str) -> tuple[dict[str, Any] | None, list[str]]:
@@ -222,7 +225,7 @@ def _failed_result(error: str, *, warnings: list[str] | None = None) -> dict[str
     }
 
 
-def parse_op_output(output_dir: str, kernel_names: list[str]) -> dict[str, Any]:
+def parse_op_output(output_dir: str, kernel_names: list[str] | None) -> dict[str, Any]:
     kernels: list[dict[str, Any]] = []
     warnings: list[str] = []
     basic_files = sorted(
@@ -253,7 +256,7 @@ def parse_op_output(output_dir: str, kernel_names: list[str]) -> dict[str, Any]:
     selectable = [item for item in kernels if item["duration_us"] is not None]
     if not selectable:
         result = _failed_result(
-            "no matching custom Triton kernel with a valid duration was parsed",
+            "no matching operator with a valid duration was parsed",
             warnings=warnings,
         )
         result["kernels"] = kernels
@@ -277,7 +280,7 @@ def parse_op_output(output_dir: str, kernel_names: list[str]) -> dict[str, Any]:
 def profile_op_case(
     *,
     app_cmd: list[str],
-    kernel_names: list[str],
+    kernel_names: list[str] | None,
     output_dir: str,
     launch_count: int | None,
     cwd: str,
@@ -288,7 +291,16 @@ def profile_op_case(
     command = [msprof_bin, "op", f"--output={output_dir}"]
     if launch_count is not None:
         command.append(f"--launch-count={launch_count}")
-    command.append(f"--kernel-name={'|'.join(kernel_names)}")
+    if kernel_names is None:
+        # msprof op supports prefix alternatives, not arbitrary regular expressions.
+        # Omitting the filter would collect only the first scheduled operator.
+        command.append("--kernel-name=" + "|".join(string.ascii_letters + string.digits + "_"))
+        if launch_count is None:
+            command.append("--launch-count=100")
+    else:
+        if not kernel_names:
+            return _failed_result("no Triton kernel names were supplied")
+        command.append(f"--kernel-name={'|'.join(kernel_names)}")
     command.extend(app_cmd)
     outcome = run_command(
         command,
@@ -305,4 +317,11 @@ def profile_op_case(
             f"msprof op exit={outcome.exit_code}; "
             f"stderr-tail={outcome.stderr[-1000:]}"
         )
-    return parse_op_output(output_dir, kernel_names)
+    result = parse_op_output(output_dir, kernel_names)
+    if kernel_names is None and result["status"] != "failed":
+        result["warnings"].append(
+            "Native operator capture includes application setup and is limited to "
+            f"{launch_count or 100} launches; it is not full-program attribution."
+        )
+        result["status"] = "partial"
+    return result

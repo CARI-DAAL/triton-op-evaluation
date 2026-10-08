@@ -42,6 +42,7 @@ from ..api.contract import (
     PerformanceResult,
     ProfileParams,
     ProfileResult,
+    SinglePerformanceResult,
     SkipInfo,
 )
 from ..config import BENCHMARK_TIMEOUT_SECONDS, VERIFY_BUDGET_CAP_SECONDS
@@ -68,7 +69,7 @@ _PRIOR_FAILED_MESSAGE = "a prior requested check did not complete"
 
 _CHECK_DATA_MODELS = {
     "correctness": CorrectnessResult,
-    "performance": PerformanceResult,
+    "performance": PerformanceResult | SinglePerformanceResult,
     "profile": ProfileResult,
 }
 
@@ -205,6 +206,38 @@ class EvaluationEvaluator:
             verdict = precheck() if precheck is not None else None
             return compile_outcome_from_precheck(verdict, (monotonic() - started) * 1000)
 
+        def performance_evidence(raw):
+            if request.implementation == "comparison":
+                return shape_performance(raw)
+            try:
+                result = SinglePerformanceResult.model_validate(raw)
+            except ValueError as error:
+                raise ShapingError("invalid standalone performance evidence") from error
+            method = request.performance.method
+            expected_method = (
+                "npu_event_v1" if method == "event" else "profiler_kernel_sum_v1"
+            )
+            if (result.implementation != request.implementation
+                    or result.measurement_method != expected_method):
+                raise ShapingError(
+                    "standalone performance evidence has a different subject or method"
+                )
+            selection = request.performance.case_indices
+            observed = {case.case_idx for case in result.per_case + result.unmeasured_cases}
+            if selection is not None and observed != set(selection):
+                raise ShapingError("standalone performance evidence has a different case selection")
+            return result
+
+        def profile_evidence(raw):
+            result = shape_profile_runs(raw, request.profile or ProfileParams())
+            if request.implementation != "comparison":
+                result = type(result).model_validate({
+                    **result.model_dump(mode="json"),
+                    "implementation": request.implementation,
+                    "correctness_verified": False,
+                })
+            return result
+
         if "compile" in requested:
             outcomes["compile"] = self._slot(
                 "compile",
@@ -232,11 +265,16 @@ class EvaluationEvaluator:
             infra_broken = correctness.status in ("failed", "timeout")
 
         if "performance" in requested:
-            correctness = outcomes["correctness"]
+            correctness = outcomes.get("correctness")
             if (
                 not infra_broken
-                and correctness.status == "succeeded"
-                and correctness.data.outcome == "correct"
+                and (
+                    request.implementation != "comparison"
+                    or (
+                        correctness is not None and correctness.status == "succeeded"
+                        and correctness.data.outcome == "correct"
+                    )
+                )
             ):
                 performance = self._slot(
                     "performance",
@@ -249,7 +287,7 @@ class EvaluationEvaluator:
                             deadline_at,
                             lease_valid,
                         ),
-                        shape_performance,
+                        performance_evidence,
                     ),
                     lease_valid,
                     progress,
@@ -289,7 +327,7 @@ class EvaluationEvaluator:
                             deadline_at,
                             lease_valid,
                         ),
-                        lambda raw: shape_profile_runs(raw, request.profile or ProfileParams()),
+                        profile_evidence,
                     ),
                     lease_valid,
                     progress,

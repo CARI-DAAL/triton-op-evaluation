@@ -19,6 +19,7 @@ from typing import Annotated, Generic, Literal, TypeVar
 from pydantic import (
     AfterValidator,
     BaseModel,
+    BeforeValidator,
     ConfigDict,
     Field,
     ValidationInfo,
@@ -134,11 +135,11 @@ class GradeContext(StrictModel):
 
 
 # Internal storage/engine model. Public input is api.operator.OperatorRequest.
-# Retain its schema description for byte-compatible historical record fixtures.
+# Existing fields and default serialization preserve historical record bytes.
 class EvaluationRequest(StrictModel):
     """A durable request for evaluation evidence.
 
-    Checks must be unique. Performance requires correctness; performance and
+    Checks must be unique. Comparison performance requires correctness; performance and
     profile parameters may only accompany their corresponding checks. Grade
     requests require grade_context; trial and rollout requests cannot carry it.
     Omitted check parameters use their declared defaults. Each source string
@@ -148,6 +149,9 @@ class EvaluationRequest(StrictModel):
 
     schema_version: SchemaVersion
     purpose: Purpose = "trial"
+    implementation: Literal["comparison", "torch", "triton"] = Field(
+        default="comparison", exclude_if=lambda value: value == "comparison"
+    )
     op_name: str = Field(min_length=1, max_length=128)
     reference_code: SourceCode
     kernel_code: SourceCode
@@ -166,7 +170,15 @@ class EvaluationRequest(StrictModel):
         if len(set(self.checks)) != len(self.checks):
             raise ValueError("checks must not contain duplicates")
         self.checks = sorted(self.checks, key=_CHECK_ORDER.index)
-        if "performance" in self.checks and "correctness" not in self.checks:
+        if self.implementation != "comparison":
+            if "correctness" in self.checks:
+                raise ValueError("the correctness check requires both implementations")
+            if self.purpose == "grade":
+                raise ValueError("grade records require comparison implementations")
+        if (
+            self.implementation == "comparison"
+            and "performance" in self.checks and "correctness" not in self.checks
+        ):
             raise ValueError("the performance check requires the correctness check")
         if "performance" in self.checks:
             if self.performance is None:
@@ -500,6 +512,48 @@ class PerformanceResult(StrictModel):
         return self
 
 
+def _unverified_only(value):
+    if value is not False:
+        raise ValueError("correctness_verified must be false")
+    return value
+
+
+_Unverified = Annotated[Literal[False], BeforeValidator(_unverified_only)]
+
+
+class SinglePerformanceCase(StrictModel):
+    case_idx: Annotated[int, Field(ge=0)]
+    input_shapes: list[InputShape]
+    latency_ms: Annotated[float, Field(gt=0)]
+    peak_memory_mb: Annotated[float, Field(ge=0)] | None = None
+
+
+class SinglePerformanceResult(StrictModel):
+    implementation: Literal["torch", "triton"]
+    correctness_verified: _Unverified
+    measurement_method: MeasurementMethod
+    selected_cases: Annotated[int, Field(ge=1)]
+    measured_cases: Annotated[int, Field(ge=1)]
+    coverage: Annotated[float, Field(ge=0, le=1)]
+    per_case: list[SinglePerformanceCase]
+    unmeasured_cases: list[UnmeasuredPerformanceCase]
+
+    @model_validator(mode="after")
+    def _case_arithmetic(self):
+        measured = len(self.per_case)
+        if self.measured_cases != measured:
+            raise ValueError("measured_cases must equal len(per_case)")
+        if self.selected_cases != measured + len(self.unmeasured_cases):
+            raise ValueError("selected_cases must equal measured plus unmeasured")
+        indices = [case.case_idx for case in self.per_case]
+        indices += [case.case_idx for case in self.unmeasured_cases]
+        if len(set(indices)) != len(indices):
+            raise ValueError("case_idx must be unique across both case lists")
+        if not math.isclose(self.coverage, measured / self.selected_cases, rel_tol=1e-9):
+            raise ValueError("coverage must equal measured_cases / selected_cases")
+        return self
+
+
 # ---------------------------------------------------------------------------
 # Profile (design section 4.4)
 # ---------------------------------------------------------------------------
@@ -618,23 +672,39 @@ def _check_profile_tallies(counts: ProfileCounts, cases: list) -> None:
 
 
 class OpProfileResult(StrictModel):
+    implementation: Literal["torch", "triton"] | None = Field(
+        default=None, exclude_if=lambda value: value is None,
+    )
+    correctness_verified: _Unverified | None = Field(
+        default=None, exclude_if=lambda value: value is None,
+    )
     mode: Literal["op"]
     counts: ProfileCounts
     cases: list[OpProfileCase]
 
     @model_validator(mode="after")
     def _tallies(self):
+        if (self.implementation is None) != (self.correctness_verified is None):
+            raise ValueError("implementation and correctness_verified must appear together")
         _check_profile_tallies(self.counts, self.cases)
         return self
 
 
 class DeepProfileResult(StrictModel):
+    implementation: Literal["torch", "triton"] | None = Field(
+        default=None, exclude_if=lambda value: value is None,
+    )
+    correctness_verified: _Unverified | None = Field(
+        default=None, exclude_if=lambda value: value is None,
+    )
     mode: Literal["deep"]
     counts: ProfileCounts
     cases: list[DeepProfileCase]
 
     @model_validator(mode="after")
     def _tallies(self):
+        if (self.implementation is None) != (self.correctness_verified is None):
+            raise ValueError("implementation and correctness_verified must appear together")
         _check_profile_tallies(self.counts, self.cases)
         return self
 
@@ -649,7 +719,8 @@ CorrectnessOutcome = Annotated[
     Field(discriminator="status"),
 ]
 PerformanceOutcome = Annotated[
-    CheckSucceeded[PerformanceResult] | CheckFailed | CheckSkipped | CheckTimedOut,
+    CheckSucceeded[PerformanceResult | SinglePerformanceResult]
+    | CheckFailed | CheckSkipped | CheckTimedOut,
     Field(discriminator="status"),
 ]
 ProfileOutcome = Annotated[

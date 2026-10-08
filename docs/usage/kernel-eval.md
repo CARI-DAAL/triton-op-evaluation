@@ -1,17 +1,18 @@
 # Verify, benchmark and profile an operator
 
-The three shortcuts accept the same `torch_code`, `triton_code` and `cases`
-request as [`POST /evaluations`](evaluations.md). Each uses the same
+The shortcuts use the same source-and-cases request as
+[`POST /evaluations`](evaluations.md). `cases` and at least one source are
+required; correctness additionally needs both sources. Each uses the same
 `Authorization: Bearer` capability and returns the same durable evaluation
 resource with HTTP 200 or 202.
 
 | Endpoint | Selected checks |
 | --- | --- |
-| `POST /verify` | Correctness |
-| `POST /benchmark` | Correctness and performance |
-| `POST /profile` | Profiling |
+| `POST /verify` | Correctness; requires both PyTorch and Triton |
+| `POST /benchmark` | Performance for one source; correctness and comparison for both |
+| `POST /profile` | Profiling; accepts one or both sources |
 
-Create `request.json` using the [three-field example](evaluations.md#submit), then:
+Create `request.json` using the [comparison example](evaluations.md#submit), then:
 
 ```bash
 curl -sS -i "$EVALUATION_URL/verify?wait_seconds=0" \
@@ -32,12 +33,32 @@ each call submits new work. Poll `/evaluations/{evaluation_id}` to recover the
 resource after the HTTP wait ends. There is no task catalog, separate tool token,
 trial-turn budget or observation-text envelope on these endpoints.
 
+## PyTorch profiling scope
+
+PyTorch-only profiling observes the profiling process, including initialization;
+it cannot isolate every reported launch to the supplied `run` function. The
+service limits op mode to 100 launches using supported native-name prefixes, so its case
+reports are partial and carry coverage warnings. Deep mode selects the longest
+observed kernel across the process and is also partial. Preserve these warnings
+when interpreting results; neither mode promises complete operator coverage.
+For the underlying profiler's filtering and launch-count options, see
+[msprof op parameters](https://www.hiascend.com/document/detail/en/canncommercial/850/devaids/optool/atlasopdev_16_0082.html).
+
 ## Bundled client
 
 The [triton-eval plugin](../../plugins/triton-eval/README.md) provides `verify`,
 `benchmark`, `profile` and `get` commands through its skill's standalone Python
 script. It reads source files and a JSON array of cases, sends the same public
-request, and polls the durable resource. Its documented recovery workflow keeps
+request, and polls the durable resource. For example, with the client path in
+`TRITON_EVAL_CLI` and URL/capability configured:
+
+```bash
+python3 "$TRITON_EVAL_CLI" benchmark --torch torch_impl.py --cases cases.json
+python3 "$TRITON_EVAL_CLI" profile --triton triton_impl.py --cases cases.json
+```
+
+These measure one implementation with `correctness_verified: false`; a zero
+exit status means the requested measurement succeeded. Its recovery workflow keeps
 the original instance and idempotency key after transport failures.
 
 ## Native HTTP and HTTPS
