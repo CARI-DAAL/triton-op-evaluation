@@ -52,6 +52,11 @@ changing these tests. Retired tool envelopes and bridge archives remain in
 
 ## External consumer and NPU checks
 
+See the [NPU validation plan](../docs/operations/npu-validation.md) for the current
+hardware coverage, proposed functional and recovery matrix, load/soak stages,
+and acceptance criteria. It distinguishes existing commands from tests still
+to be implemented.
+
 The optional consumer checkout must support `torch_code`, `triton_code` and
 `cases`. The previous source/factory submission interface is no longer accepted.
 
