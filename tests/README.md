@@ -32,6 +32,7 @@ their dependencies are available.
 | Evidence and scoring | `test_evaluation_evaluator.py`, `test_shaping.py`, `test_profile_evidence.py` |
 | Host smoke and NPU-gate orchestration (CPU) | `test_smoke_script.py`, `test_npu_release_gate.py` |
 | Operator requests and transport | `test_operator*`, `test_api*`, `test_durable_http.py` |
+| Torch baseline timing reuse | `test_baseline_cache.py`, `test_baseline_engine.py`, `test_baseline_evaluator.py` |
 | Engine, runtime and cache | `test_verify*`, `test_benchmark*`, `test_profile*`, `test_reference*`, `test_engine*` |
 
 Test modules share helpers through `conftest.py` and narrowly scoped helper files.
@@ -80,3 +81,12 @@ manifest or separate grade token; the subprocess uses the caller capability via
 `--no-speed` selects correctness only, and its exit status reflects correctness.
 Passing or skipped CPU checks are not evidence of NPU correctness, isolation
 recovery, latency or cache coverage.
+
+For baseline-cache changes, also exercise a fresh task on the deployed NPU:
+submit `benchmark` twice with different idempotency keys and check that per-case
+`baseline_cache_hit` changes from false to true, then submit with
+`--no-baseline-cache` and verify false. Submit once more with caching enabled to
+check that bypass did not overwrite the retained Torch times. Correctness and
+candidate timings must be present on every successful run. Repeat with a changed
+case shape or seed to confirm a miss. These hardware checks are separate from
+the readiness/correctness release gate above.

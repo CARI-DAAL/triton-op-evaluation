@@ -30,6 +30,8 @@ class Settings(BaseSettings):
     redis_url: str = "redis://localhost:6379/0"
     # Isolated durable state for the v2.1-only release.
     redis_prefix: str = Field(default="triton-eval:v2.1", min_length=1)
+    # Change this namespace when the fixed hardware or timing runtime changes.
+    baseline_cache_namespace: str = Field(default="torch-baseline-v1", min_length=1)
     engine_dir: str = _DEFAULT_ENGINE_DIR
     reference_device_policy: Literal["cpu-first", "npu-strict"] = "cpu-first"
     reference_diagnostics_dir: Path | None = None
@@ -134,11 +136,9 @@ class Settings(BaseSettings):
     )
     decoy_algorithm_version: str = Field(default="decoy-v1", pattern=_ALGORITHM_VERSION_PATTERN)
     benchmark_algorithm_version: str = Field(
-        # Provenance equals production e4a36f7: the ORIGINAL reference path
-        # measures a case once per request parameters. Reference caching is a
-        # pure optional accelerator; per-case sample evidence and the
-        # per-case reference_path record describe whatever path served.
-        default="geometric-mean-v1", pattern=_ALGORITHM_VERSION_PATTERN
+        # Scalar Torch baseline timing may be reused across candidate evaluations;
+        # each measured case records whether that timing came from the cache.
+        default="geometric-mean-baseline-v2", pattern=_ALGORITHM_VERSION_PATTERN
     )
     profiler_algorithm_version: str = Field(
         default="profiler-v1", pattern=_ALGORITHM_VERSION_PATTERN

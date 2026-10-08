@@ -45,6 +45,7 @@ from ..api.contract import (
     SkipInfo,
 )
 from ..config import BENCHMARK_TIMEOUT_SECONDS, VERIFY_BUDGET_CAP_SECONDS
+from ..runtime.baseline_cache import BaselineCache
 from ..service.models import PinnedProvenance
 from ..service.terminal_results import compile_outcome_from_precheck, complete_evaluation
 from .base import (
@@ -140,9 +141,10 @@ def _skipped(check: Check, code: str, depends_on: Check | None, message: str):
 
 
 class EvaluationEvaluator:
-    def __init__(self, engine_dir: str, settings=None):
+    def __init__(self, engine_dir: str, settings=None, baseline_cache: BaselineCache | None = None):
         self.engine_dir = engine_dir
         self.settings = settings
+        self.baseline_cache = baseline_cache
 
     def _verify_evaluator(self) -> VerifyEvaluator:
         cap = (
@@ -161,7 +163,9 @@ class EvaluationEvaluator:
             if self.settings is not None
             else BENCHMARK_TIMEOUT_SECONDS
         )
-        return BenchmarkEvaluator(self.engine_dir, timeout_seconds=timeout)
+        return BenchmarkEvaluator(
+            self.engine_dir, timeout_seconds=timeout, baseline_cache=self.baseline_cache,
+        )
 
     def _profile_evaluator(self) -> ProfileEvaluator:
         return ProfileEvaluator(self.engine_dir)

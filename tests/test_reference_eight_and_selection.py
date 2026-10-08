@@ -441,4 +441,4 @@ def test_partial_or_invalid_reference_measurement_stays_a_failed_case(
 def test_settings_declare_the_production_benchmark_protocol():
     # The general service presents production e4a36f7 provenance; caching is
     # an optional accelerator recorded per case, not a protocol change.
-    assert Settings().benchmark_algorithm_version == "geometric-mean-v1"
+    assert Settings().benchmark_algorithm_version == "geometric-mean-baseline-v2"

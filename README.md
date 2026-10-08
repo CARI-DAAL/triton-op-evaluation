@@ -94,6 +94,11 @@ Each running instance also exposes:
 - `/livez` and `/readyz` — liveness and execution readiness.
 - `/internal/metrics` — metrics for authenticated observers.
 
+Performance checks reuse Torch baseline timings by default. Set
+`performance.use_baseline_cache=false` (CLI: `--no-baseline-cache`) for a fresh
+measurement that leaves the cache unchanged. See
+[baseline timing reuse](docs/usage/evaluations.md#reuse-torch-baseline-timings).
+
 ## Deploy
 
 Each Ascend host runs an API, durable Redis, CPU workers for import prechecks,
