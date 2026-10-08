@@ -1,0 +1,77 @@
+{
+  "started_at": "2026-10-06T21:54:06.639503+00:00",
+  "api": {
+    "pid": 2570641,
+    "start_ticks": "44390092",
+    "cwd": "/home/e84381970/open-evo-work/runtime-artifacts/nb3-nb7-cache-integrate-20261006/checkout"
+  },
+  "git_commit": "e74b1f5c56e03eaf4dc1fe25fc918afe1005ae69",
+  "manifest": "/home/e84381970/open-evo-work/runtime-artifacts/nb3-nb7-cache-integrate-20261006/pkg/deploy-sandbox-manifest.json",
+  "manifest_sha256": "2e2daf239126b63a74885a95aaeee24dd229235d7030e4b25c6cd6c2428c41c4",
+  "evaluator_build": "sha256:089a0261c0c3286a51246f5cc427a9768a4680a947ca54138dec30666b396d79",
+  "reference_device_policy": "npu-strict",
+  "verdict_cache_enabled": "false",
+  "python": "/dev/shm/v3-ref8-venv/bin/python",
+  "probe_sha256": "691323bd8722280482a1453c9b6bb7ee52dba17bd05ad3e513d12423b2633268",
+  "script_sha256": "2af2db6224b1464ab176bbe63e8ee1aeb40f7cda076ae50da2d09feeba7bd03e",
+  "worker_map": {
+    "0": 2570643,
+    "1": 2570646,
+    "2": 2570653,
+    "3": 2570654,
+    "4": 2570655,
+    "5": 2570656,
+    "6": 2570657,
+    "7": 2570658,
+    "8": 2570659,
+    "9": 2570660,
+    "10": 2570647,
+    "11": 2570648,
+    "12": 2570649,
+    "13": 2570650,
+    "14": 2570651,
+    "15": 2570652
+  },
+  "sequential": true,
+  "results": [
+    {
+      "physical_card": 0,
+      "worker": {
+        "pid": 2570643,
+        "start_ticks": "44390093",
+        "cwd": "/home/e84381970/open-evo-work/runtime-artifacts/nb3-nb7-cache-integrate-20261006/checkout"
+      },
+      "started_at": "2026-10-06T21:54:06.651210+00:00",
+      "nonterminal_before": {
+        "state:queued": 0,
+        "state:running": 0,
+        "running-leases": 0,
+        "ready:npu:interactive": 0,
+        "ready:npu:bulk": 0,
+        "ready:cpu:interactive": 0,
+        "ready:cpu:bulk": 0
+      },
+      "exit_code": 1,
+      "stdout": "",
+      "stderr": "bwrap: execvp /dev/shm/v3-ref8-venv/bin/python: No such file or directory\n",
+      "timed_out": false,
+      "outcome": "exited",
+      "elapsed_seconds": 0.9720273190177977,
+      "ended_at": "2026-10-06T21:54:07.623259+00:00",
+      "nonterminal_after": {
+        "state:queued": 0,
+        "state:running": 0,
+        "running-leases": 0,
+        "ready:npu:interactive": 0,
+        "ready:npu:bulk": 0,
+        "ready:cpu:interactive": 0,
+        "ready:cpu:bulk": 0
+      },
+      "worker_unchanged": true,
+      "passed": false
+    }
+  ],
+  "all_passed": false,
+  "scope": "Minimal isolated tensor initialization and sum; not API admission",
+  "last_updated_at": "2026-10-06T21:54:07.625452+00:00"
+}

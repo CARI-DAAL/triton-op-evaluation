@@ -1,0 +1,26 @@
+{
+  "tag": "final",
+  "branch": "nb3-nb7-cache-integrate",
+  "git_commit": "e74b1f5c56e03eaf4dc1fe25fc918afe1005ae69",
+  "engine_dir": "/home/e84381970/open-evo-work/runtime-artifacts/nb3-nb7-cache-integrate-20261006/checkout/triton_evaluation/engine",
+  "sandbox_manifest_path": "/home/e84381970/open-evo-work/runtime-artifacts/nb3-nb7-cache-integrate-20261006/pkg/deploy-sandbox-manifest.json",
+  "sandbox_manifest_sha256": "2e2daf239126b63a74885a95aaeee24dd229235d7030e4b25c6cd6c2428c41c4",
+  "delta_vs_live_d2521b41": [
+    "engine ro-bind /root/.paseo/worktrees/0u9809pj/nb3-verify-input-materialization-fix-20261006/triton_evaluation/engine -> /home/e84381970/open-evo-work/runtime-artifacts/nb3-nb7-cache-integrate-20261006/checkout/triton_evaluation/engine"
+  ],
+  "runtime_overlay_path": "/home/e84381970/open-evo-work/runtime-artifacts/nb3-nb7-cache-integrate-20261006/pkg/deploy-runtime-overlay.json",
+  "runtime_overlay_sha256": "2f5808d12e01d996bda22867a68ec2f963f7ded8a349ed318306f247587fcef4",
+  "delta_vs_live_2d75d31e": [
+    "cache binding -> /home/e84381970/open-evo-work/runtime-artifacts/nb3-nb7-cache-integrate-20261006/pkg/model-bound-cache-index-v2prime.json (d1d59a1a6a4c6bbc773dec39c41556fb13cb990af2d0f9564a3d1c1d09d275d1)",
+    "timing policy -> /home/e84381970/open-evo-work/runtime-artifacts/nb3-nb7-cache-integrate-20261006/pkg/validated-timing-reuse-policy-v7.json (42fe8d0fc6ead4ae4879fc204f417530f6ac80835e9339ddd6d1219bce2a97bf)",
+    "cache state dir -> /dev/shm/nb3nb7-state-20261006"
+  ],
+  "evaluator_build": "sha256:089a0261c0c3286a51246f5cc427a9768a4680a947ca54138dec30666b396d79",
+  "model_bound_index_v2prime_sha256": "d1d59a1a6a4c6bbc773dec39c41556fb13cb990af2d0f9564a3d1c1d09d275d1",
+  "timing_reuse_policy_v7_sha256": "42fe8d0fc6ead4ae4879fc204f417530f6ac80835e9339ddd6d1219bce2a97bf",
+  "cache_dir_unchanged": "/dev/shm/v3-ocp-payload-run-20261004-a2/cache",
+  "profiler_runtime_unchanged": {
+    "/home/e84381970/open-evo-work/baseline-v3/diagnostics/PROFILER-RUNTIME-212b832-attempt3/profiler-runtime/manifest.json": "870732c56d8f8f53d1b7a739253a645552d74d5fdb73e95291f187618e83e70a"
+  },
+  "note": "PROVISIONAL hashes when built from scratch paths; final build re-runs this script with the stable runtime-artifacts engine/pkg paths at deploy time (after OWNERSHIP-GRANTED + worktree move)."
+}

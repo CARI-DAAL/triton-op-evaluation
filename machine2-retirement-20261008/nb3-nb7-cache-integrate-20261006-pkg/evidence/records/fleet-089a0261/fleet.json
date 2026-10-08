@@ -1,0 +1,618 @@
+{
+  "started_at": "2026-10-06T21:55:14.016611+00:00",
+  "api": {
+    "pid": 2570641,
+    "start_ticks": "44390092",
+    "cwd": "/home/e84381970/open-evo-work/runtime-artifacts/nb3-nb7-cache-integrate-20261006/checkout"
+  },
+  "git_commit": "e74b1f5c56e03eaf4dc1fe25fc918afe1005ae69",
+  "manifest": "/home/e84381970/open-evo-work/runtime-artifacts/nb3-nb7-cache-integrate-20261006/pkg/deploy-sandbox-manifest.json",
+  "manifest_sha256": "2e2daf239126b63a74885a95aaeee24dd229235d7030e4b25c6cd6c2428c41c4",
+  "evaluator_build": "sha256:089a0261c0c3286a51246f5cc427a9768a4680a947ca54138dec30666b396d79",
+  "reference_device_policy": "npu-strict",
+  "verdict_cache_enabled": "false",
+  "python": "/home/e84381970/open-evo-work/svc-validation-p0/repo/.venv-p0/bin/python",
+  "probe_sha256": "691323bd8722280482a1453c9b6bb7ee52dba17bd05ad3e513d12423b2633268",
+  "script_sha256": "2af2db6224b1464ab176bbe63e8ee1aeb40f7cda076ae50da2d09feeba7bd03e",
+  "worker_map": {
+    "0": 2570643,
+    "1": 2570646,
+    "2": 2570653,
+    "3": 2570654,
+    "4": 2570655,
+    "5": 2570656,
+    "6": 2570657,
+    "7": 2570658,
+    "8": 2570659,
+    "9": 2570660,
+    "10": 2570647,
+    "11": 2570648,
+    "12": 2570649,
+    "13": 2570650,
+    "14": 2570651,
+    "15": 2570652
+  },
+  "sequential": true,
+  "results": [
+    {
+      "physical_card": 0,
+      "worker": {
+        "pid": 2570643,
+        "start_ticks": "44390093",
+        "cwd": "/home/e84381970/open-evo-work/runtime-artifacts/nb3-nb7-cache-integrate-20261006/checkout"
+      },
+      "started_at": "2026-10-06T21:55:14.022009+00:00",
+      "nonterminal_before": {
+        "state:queued": 0,
+        "state:running": 0,
+        "running-leases": 0,
+        "ready:npu:interactive": 0,
+        "ready:npu:bulk": 0,
+        "ready:cpu:interactive": 0,
+        "ready:cpu:bulk": 0
+      },
+      "exit_code": 0,
+      "stdout": "before_torch\nbefore_torch_npu\nbefore_tensor\ntensor_ready npu:0 4.0\n",
+      "stderr": "[W1006 21:55:19.463749991 NPUCachingAllocator.cpp:202] Warning: The current CANN and Soc versions require processing for 32 padding size, with memory allocation. (function operator())\n",
+      "timed_out": false,
+      "outcome": "exited",
+      "elapsed_seconds": 8.29825852101203,
+      "ended_at": "2026-10-06T21:55:22.320290+00:00",
+      "nonterminal_after": {
+        "state:queued": 0,
+        "state:running": 0,
+        "running-leases": 0,
+        "ready:npu:interactive": 0,
+        "ready:npu:bulk": 0,
+        "ready:cpu:interactive": 0,
+        "ready:cpu:bulk": 0
+      },
+      "worker_unchanged": true,
+      "passed": true
+    },
+    {
+      "physical_card": 1,
+      "worker": {
+        "pid": 2570646,
+        "start_ticks": "44390093",
+        "cwd": "/home/e84381970/open-evo-work/runtime-artifacts/nb3-nb7-cache-integrate-20261006/checkout"
+      },
+      "started_at": "2026-10-06T21:55:22.324414+00:00",
+      "nonterminal_before": {
+        "state:queued": 0,
+        "state:running": 0,
+        "running-leases": 0,
+        "ready:npu:interactive": 0,
+        "ready:npu:bulk": 0,
+        "ready:cpu:interactive": 0,
+        "ready:cpu:bulk": 0
+      },
+      "exit_code": 0,
+      "stdout": "before_torch\nbefore_torch_npu\nbefore_tensor\ntensor_ready npu:0 4.0\n",
+      "stderr": "[W1006 21:55:27.761344594 NPUCachingAllocator.cpp:202] Warning: The current CANN and Soc versions require processing for 32 padding size, with memory allocation. (function operator())\n",
+      "timed_out": false,
+      "outcome": "exited",
+      "elapsed_seconds": 9.323436637991108,
+      "ended_at": "2026-10-06T21:55:31.647886+00:00",
+      "nonterminal_after": {
+        "state:queued": 0,
+        "state:running": 0,
+        "running-leases": 0,
+        "ready:npu:interactive": 0,
+        "ready:npu:bulk": 0,
+        "ready:cpu:interactive": 0,
+        "ready:cpu:bulk": 0
+      },
+      "worker_unchanged": true,
+      "passed": true
+    },
+    {
+      "physical_card": 2,
+      "worker": {
+        "pid": 2570653,
+        "start_ticks": "44390094",
+        "cwd": "/home/e84381970/open-evo-work/runtime-artifacts/nb3-nb7-cache-integrate-20261006/checkout"
+      },
+      "started_at": "2026-10-06T21:55:31.652776+00:00",
+      "nonterminal_before": {
+        "state:queued": 0,
+        "state:running": 0,
+        "running-leases": 0,
+        "ready:npu:interactive": 0,
+        "ready:npu:bulk": 0,
+        "ready:cpu:interactive": 0,
+        "ready:cpu:bulk": 0
+      },
+      "exit_code": 0,
+      "stdout": "before_torch\nbefore_torch_npu\nbefore_tensor\ntensor_ready npu:0 4.0\n",
+      "stderr": "[W1006 21:55:37.049899555 NPUCachingAllocator.cpp:202] Warning: The current CANN and Soc versions require processing for 32 padding size, with memory allocation. (function operator())\n",
+      "timed_out": false,
+      "outcome": "exited",
+      "elapsed_seconds": 9.538208868005313,
+      "ended_at": "2026-10-06T21:55:41.191006+00:00",
+      "nonterminal_after": {
+        "state:queued": 0,
+        "state:running": 0,
+        "running-leases": 0,
+        "ready:npu:interactive": 0,
+        "ready:npu:bulk": 0,
+        "ready:cpu:interactive": 0,
+        "ready:cpu:bulk": 0
+      },
+      "worker_unchanged": true,
+      "passed": true
+    },
+    {
+      "physical_card": 3,
+      "worker": {
+        "pid": 2570654,
+        "start_ticks": "44390095",
+        "cwd": "/home/e84381970/open-evo-work/runtime-artifacts/nb3-nb7-cache-integrate-20261006/checkout"
+      },
+      "started_at": "2026-10-06T21:55:41.194162+00:00",
+      "nonterminal_before": {
+        "state:queued": 0,
+        "state:running": 0,
+        "running-leases": 0,
+        "ready:npu:interactive": 0,
+        "ready:npu:bulk": 0,
+        "ready:cpu:interactive": 0,
+        "ready:cpu:bulk": 0
+      },
+      "exit_code": 0,
+      "stdout": "before_torch\nbefore_torch_npu\nbefore_tensor\ntensor_ready npu:0 4.0\n",
+      "stderr": "[W1006 21:55:46.588419676 NPUCachingAllocator.cpp:202] Warning: The current CANN and Soc versions require processing for 32 padding size, with memory allocation. (function operator())\n",
+      "timed_out": false,
+      "outcome": "exited",
+      "elapsed_seconds": 8.298302520997822,
+      "ended_at": "2026-10-06T21:55:49.492478+00:00",
+      "nonterminal_after": {
+        "state:queued": 0,
+        "state:running": 0,
+        "running-leases": 0,
+        "ready:npu:interactive": 0,
+        "ready:npu:bulk": 0,
+        "ready:cpu:interactive": 0,
+        "ready:cpu:bulk": 0
+      },
+      "worker_unchanged": true,
+      "passed": true
+    },
+    {
+      "physical_card": 4,
+      "worker": {
+        "pid": 2570655,
+        "start_ticks": "44390095",
+        "cwd": "/home/e84381970/open-evo-work/runtime-artifacts/nb3-nb7-cache-integrate-20261006/checkout"
+      },
+      "started_at": "2026-10-06T21:55:49.495910+00:00",
+      "nonterminal_before": {
+        "state:queued": 0,
+        "state:running": 0,
+        "running-leases": 0,
+        "ready:npu:interactive": 0,
+        "ready:npu:bulk": 0,
+        "ready:cpu:interactive": 0,
+        "ready:cpu:bulk": 0
+      },
+      "exit_code": 0,
+      "stdout": "before_torch\nbefore_torch_npu\nbefore_tensor\ntensor_ready npu:0 4.0\n",
+      "stderr": "[W1006 21:55:55.980643775 NPUCachingAllocator.cpp:202] Warning: The current CANN and Soc versions require processing for 32 padding size, with memory allocation. (function operator())\n",
+      "timed_out": false,
+      "outcome": "exited",
+      "elapsed_seconds": 9.391216730989981,
+      "ended_at": "2026-10-06T21:55:58.887140+00:00",
+      "nonterminal_after": {
+        "state:queued": 0,
+        "state:running": 0,
+        "running-leases": 0,
+        "ready:npu:interactive": 0,
+        "ready:npu:bulk": 0,
+        "ready:cpu:interactive": 0,
+        "ready:cpu:bulk": 0
+      },
+      "worker_unchanged": true,
+      "passed": true
+    },
+    {
+      "physical_card": 5,
+      "worker": {
+        "pid": 2570656,
+        "start_ticks": "44390095",
+        "cwd": "/home/e84381970/open-evo-work/runtime-artifacts/nb3-nb7-cache-integrate-20261006/checkout"
+      },
+      "started_at": "2026-10-06T21:55:58.890256+00:00",
+      "nonterminal_before": {
+        "state:queued": 0,
+        "state:running": 0,
+        "running-leases": 0,
+        "ready:npu:interactive": 0,
+        "ready:npu:bulk": 0,
+        "ready:cpu:interactive": 0,
+        "ready:cpu:bulk": 0
+      },
+      "exit_code": 0,
+      "stdout": "before_torch\nbefore_torch_npu\nbefore_tensor\ntensor_ready npu:0 4.0\n",
+      "stderr": "[W1006 21:56:04.326554459 NPUCachingAllocator.cpp:202] Warning: The current CANN and Soc versions require processing for 32 padding size, with memory allocation. (function operator())\n",
+      "timed_out": false,
+      "outcome": "exited",
+      "elapsed_seconds": 8.237661623046733,
+      "ended_at": "2026-10-06T21:56:07.127931+00:00",
+      "nonterminal_after": {
+        "state:queued": 0,
+        "state:running": 0,
+        "running-leases": 0,
+        "ready:npu:interactive": 0,
+        "ready:npu:bulk": 0,
+        "ready:cpu:interactive": 0,
+        "ready:cpu:bulk": 0
+      },
+      "worker_unchanged": true,
+      "passed": true
+    },
+    {
+      "physical_card": 6,
+      "worker": {
+        "pid": 2570657,
+        "start_ticks": "44390096",
+        "cwd": "/home/e84381970/open-evo-work/runtime-artifacts/nb3-nb7-cache-integrate-20261006/checkout"
+      },
+      "started_at": "2026-10-06T21:56:07.138109+00:00",
+      "nonterminal_before": {
+        "state:queued": 0,
+        "state:running": 0,
+        "running-leases": 0,
+        "ready:npu:interactive": 0,
+        "ready:npu:bulk": 0,
+        "ready:cpu:interactive": 0,
+        "ready:cpu:bulk": 0
+      },
+      "exit_code": 0,
+      "stdout": "before_torch\nbefore_torch_npu\nbefore_tensor\ntensor_ready npu:0 4.0\n",
+      "stderr": "[W1006 21:56:12.721781030 NPUCachingAllocator.cpp:202] Warning: The current CANN and Soc versions require processing for 32 padding size, with memory allocation. (function operator())\n",
+      "timed_out": false,
+      "outcome": "exited",
+      "elapsed_seconds": 8.460413517022971,
+      "ended_at": "2026-10-06T21:56:15.598568+00:00",
+      "nonterminal_after": {
+        "state:queued": 0,
+        "state:running": 0,
+        "running-leases": 0,
+        "ready:npu:interactive": 0,
+        "ready:npu:bulk": 0,
+        "ready:cpu:interactive": 0,
+        "ready:cpu:bulk": 0
+      },
+      "worker_unchanged": true,
+      "passed": true
+    },
+    {
+      "physical_card": 7,
+      "worker": {
+        "pid": 2570658,
+        "start_ticks": "44390096",
+        "cwd": "/home/e84381970/open-evo-work/runtime-artifacts/nb3-nb7-cache-integrate-20261006/checkout"
+      },
+      "started_at": "2026-10-06T21:56:15.602550+00:00",
+      "nonterminal_before": {
+        "state:queued": 0,
+        "state:running": 0,
+        "running-leases": 0,
+        "ready:npu:interactive": 0,
+        "ready:npu:bulk": 0,
+        "ready:cpu:interactive": 0,
+        "ready:cpu:bulk": 0
+      },
+      "exit_code": 0,
+      "stdout": "before_torch\nbefore_torch_npu\nbefore_tensor\ntensor_ready npu:0 4.0\n",
+      "stderr": "[W1006 21:56:21.099419955 NPUCachingAllocator.cpp:202] Warning: The current CANN and Soc versions require processing for 32 padding size, with memory allocation. (function operator())\n",
+      "timed_out": false,
+      "outcome": "exited",
+      "elapsed_seconds": 9.348014675953891,
+      "ended_at": "2026-10-06T21:56:24.950585+00:00",
+      "nonterminal_after": {
+        "state:queued": 0,
+        "state:running": 0,
+        "running-leases": 0,
+        "ready:npu:interactive": 0,
+        "ready:npu:bulk": 0,
+        "ready:cpu:interactive": 0,
+        "ready:cpu:bulk": 0
+      },
+      "worker_unchanged": true,
+      "passed": true
+    },
+    {
+      "physical_card": 8,
+      "worker": {
+        "pid": 2570659,
+        "start_ticks": "44390096",
+        "cwd": "/home/e84381970/open-evo-work/runtime-artifacts/nb3-nb7-cache-integrate-20261006/checkout"
+      },
+      "started_at": "2026-10-06T21:56:24.954596+00:00",
+      "nonterminal_before": {
+        "state:queued": 0,
+        "state:running": 0,
+        "running-leases": 0,
+        "ready:npu:interactive": 0,
+        "ready:npu:bulk": 0,
+        "ready:cpu:interactive": 0,
+        "ready:cpu:bulk": 0
+      },
+      "exit_code": 0,
+      "stdout": "before_torch\nbefore_torch_npu\nbefore_tensor\ntensor_ready npu:0 4.0\n",
+      "stderr": "[W1006 21:56:30.381687650 NPUCachingAllocator.cpp:202] Warning: The current CANN and Soc versions require processing for 32 padding size, with memory allocation. (function operator())\n",
+      "timed_out": false,
+      "outcome": "exited",
+      "elapsed_seconds": 8.36242314503761,
+      "ended_at": "2026-10-06T21:56:33.317054+00:00",
+      "nonterminal_after": {
+        "state:queued": 0,
+        "state:running": 0,
+        "running-leases": 0,
+        "ready:npu:interactive": 0,
+        "ready:npu:bulk": 0,
+        "ready:cpu:interactive": 0,
+        "ready:cpu:bulk": 0
+      },
+      "worker_unchanged": true,
+      "passed": true
+    },
+    {
+      "physical_card": 9,
+      "worker": {
+        "pid": 2570660,
+        "start_ticks": "44390096",
+        "cwd": "/home/e84381970/open-evo-work/runtime-artifacts/nb3-nb7-cache-integrate-20261006/checkout"
+      },
+      "started_at": "2026-10-06T21:56:33.322371+00:00",
+      "nonterminal_before": {
+        "state:queued": 0,
+        "state:running": 0,
+        "running-leases": 0,
+        "ready:npu:interactive": 0,
+        "ready:npu:bulk": 0,
+        "ready:cpu:interactive": 0,
+        "ready:cpu:bulk": 0
+      },
+      "exit_code": 0,
+      "stdout": "before_torch\nbefore_torch_npu\nbefore_tensor\ntensor_ready npu:0 4.0\n",
+      "stderr": "[W1006 21:56:38.767161568 NPUCachingAllocator.cpp:202] Warning: The current CANN and Soc versions require processing for 32 padding size, with memory allocation. (function operator())\n",
+      "timed_out": false,
+      "outcome": "exited",
+      "elapsed_seconds": 9.35772985802032,
+      "ended_at": "2026-10-06T21:56:42.680124+00:00",
+      "nonterminal_after": {
+        "state:queued": 0,
+        "state:running": 0,
+        "running-leases": 0,
+        "ready:npu:interactive": 0,
+        "ready:npu:bulk": 0,
+        "ready:cpu:interactive": 0,
+        "ready:cpu:bulk": 0
+      },
+      "worker_unchanged": true,
+      "passed": true
+    },
+    {
+      "physical_card": 10,
+      "worker": {
+        "pid": 2570647,
+        "start_ticks": "44390093",
+        "cwd": "/home/e84381970/open-evo-work/runtime-artifacts/nb3-nb7-cache-integrate-20261006/checkout"
+      },
+      "started_at": "2026-10-06T21:56:42.683792+00:00",
+      "nonterminal_before": {
+        "state:queued": 0,
+        "state:running": 0,
+        "running-leases": 0,
+        "ready:npu:interactive": 0,
+        "ready:npu:bulk": 0,
+        "ready:cpu:interactive": 0,
+        "ready:cpu:bulk": 0
+      },
+      "exit_code": 0,
+      "stdout": "before_torch\nbefore_torch_npu\nbefore_tensor\ntensor_ready npu:0 4.0\n",
+      "stderr": "[W1006 21:56:48.147800228 NPUCachingAllocator.cpp:202] Warning: The current CANN and Soc versions require processing for 32 padding size, with memory allocation. (function operator())\n",
+      "timed_out": false,
+      "outcome": "exited",
+      "elapsed_seconds": 8.341708598018158,
+      "ended_at": "2026-10-06T21:56:51.025526+00:00",
+      "nonterminal_after": {
+        "state:queued": 0,
+        "state:running": 0,
+        "running-leases": 0,
+        "ready:npu:interactive": 0,
+        "ready:npu:bulk": 0,
+        "ready:cpu:interactive": 0,
+        "ready:cpu:bulk": 0
+      },
+      "worker_unchanged": true,
+      "passed": true
+    },
+    {
+      "physical_card": 11,
+      "worker": {
+        "pid": 2570648,
+        "start_ticks": "44390093",
+        "cwd": "/home/e84381970/open-evo-work/runtime-artifacts/nb3-nb7-cache-integrate-20261006/checkout"
+      },
+      "started_at": "2026-10-06T21:56:51.029238+00:00",
+      "nonterminal_before": {
+        "state:queued": 0,
+        "state:running": 0,
+        "running-leases": 0,
+        "ready:npu:interactive": 0,
+        "ready:npu:bulk": 0,
+        "ready:cpu:interactive": 0,
+        "ready:cpu:bulk": 0
+      },
+      "exit_code": 0,
+      "stdout": "before_torch\nbefore_torch_npu\nbefore_tensor\ntensor_ready npu:0 4.0\n",
+      "stderr": "[W1006 21:56:56.509903900 NPUCachingAllocator.cpp:202] Warning: The current CANN and Soc versions require processing for 32 padding size, with memory allocation. (function operator())\n",
+      "timed_out": false,
+      "outcome": "exited",
+      "elapsed_seconds": 9.32463759998791,
+      "ended_at": "2026-10-06T21:57:00.353891+00:00",
+      "nonterminal_after": {
+        "state:queued": 0,
+        "state:running": 0,
+        "running-leases": 0,
+        "ready:npu:interactive": 0,
+        "ready:npu:bulk": 0,
+        "ready:cpu:interactive": 0,
+        "ready:cpu:bulk": 0
+      },
+      "worker_unchanged": true,
+      "passed": true
+    },
+    {
+      "physical_card": 12,
+      "worker": {
+        "pid": 2570649,
+        "start_ticks": "44390094",
+        "cwd": "/home/e84381970/open-evo-work/runtime-artifacts/nb3-nb7-cache-integrate-20261006/checkout"
+      },
+      "started_at": "2026-10-06T21:57:00.357394+00:00",
+      "nonterminal_before": {
+        "state:queued": 0,
+        "state:running": 0,
+        "running-leases": 0,
+        "ready:npu:interactive": 0,
+        "ready:npu:bulk": 0,
+        "ready:cpu:interactive": 0,
+        "ready:cpu:bulk": 0
+      },
+      "exit_code": 0,
+      "stdout": "before_torch\nbefore_torch_npu\nbefore_tensor\ntensor_ready npu:0 4.0\n",
+      "stderr": "[W1006 21:57:05.777558311 NPUCachingAllocator.cpp:202] Warning: The current CANN and Soc versions require processing for 32 padding size, with memory allocation. (function operator())\n",
+      "timed_out": false,
+      "outcome": "exited",
+      "elapsed_seconds": 8.30700201302534,
+      "ended_at": "2026-10-06T21:57:08.664411+00:00",
+      "nonterminal_after": {
+        "state:queued": 0,
+        "state:running": 0,
+        "running-leases": 0,
+        "ready:npu:interactive": 0,
+        "ready:npu:bulk": 0,
+        "ready:cpu:interactive": 0,
+        "ready:cpu:bulk": 0
+      },
+      "worker_unchanged": true,
+      "passed": true
+    },
+    {
+      "physical_card": 13,
+      "worker": {
+        "pid": 2570650,
+        "start_ticks": "44390094",
+        "cwd": "/home/e84381970/open-evo-work/runtime-artifacts/nb3-nb7-cache-integrate-20261006/checkout"
+      },
+      "started_at": "2026-10-06T21:57:08.668001+00:00",
+      "nonterminal_before": {
+        "state:queued": 0,
+        "state:running": 0,
+        "running-leases": 0,
+        "ready:npu:interactive": 0,
+        "ready:npu:bulk": 0,
+        "ready:cpu:interactive": 0,
+        "ready:cpu:bulk": 0
+      },
+      "exit_code": 0,
+      "stdout": "before_torch\nbefore_torch_npu\nbefore_tensor\ntensor_ready npu:0 4.0\n",
+      "stderr": "[W1006 21:57:14.076569859 NPUCachingAllocator.cpp:202] Warning: The current CANN and Soc versions require processing for 32 padding size, with memory allocation. (function operator())\n",
+      "timed_out": false,
+      "outcome": "exited",
+      "elapsed_seconds": 8.348117013985757,
+      "ended_at": "2026-10-06T21:57:17.016135+00:00",
+      "nonterminal_after": {
+        "state:queued": 0,
+        "state:running": 0,
+        "running-leases": 0,
+        "ready:npu:interactive": 0,
+        "ready:npu:bulk": 0,
+        "ready:cpu:interactive": 0,
+        "ready:cpu:bulk": 0
+      },
+      "worker_unchanged": true,
+      "passed": true
+    },
+    {
+      "physical_card": 14,
+      "worker": {
+        "pid": 2570651,
+        "start_ticks": "44390094",
+        "cwd": "/home/e84381970/open-evo-work/runtime-artifacts/nb3-nb7-cache-integrate-20261006/checkout"
+      },
+      "started_at": "2026-10-06T21:57:17.020391+00:00",
+      "nonterminal_before": {
+        "state:queued": 0,
+        "state:running": 0,
+        "running-leases": 0,
+        "ready:npu:interactive": 0,
+        "ready:npu:bulk": 0,
+        "ready:cpu:interactive": 0,
+        "ready:cpu:bulk": 0
+      },
+      "exit_code": 0,
+      "stdout": "before_torch\nbefore_torch_npu\nbefore_tensor\ntensor_ready npu:0 4.0\n",
+      "stderr": "[W1006 21:57:22.383021575 NPUCachingAllocator.cpp:202] Warning: The current CANN and Soc versions require processing for 32 padding size, with memory allocation. (function operator())\n",
+      "timed_out": false,
+      "outcome": "exited",
+      "elapsed_seconds": 8.26434286404401,
+      "ended_at": "2026-10-06T21:57:25.284765+00:00",
+      "nonterminal_after": {
+        "state:queued": 0,
+        "state:running": 0,
+        "running-leases": 0,
+        "ready:npu:interactive": 0,
+        "ready:npu:bulk": 0,
+        "ready:cpu:interactive": 0,
+        "ready:cpu:bulk": 0
+      },
+      "worker_unchanged": true,
+      "passed": true
+    },
+    {
+      "physical_card": 15,
+      "worker": {
+        "pid": 2570652,
+        "start_ticks": "44390094",
+        "cwd": "/home/e84381970/open-evo-work/runtime-artifacts/nb3-nb7-cache-integrate-20261006/checkout"
+      },
+      "started_at": "2026-10-06T21:57:25.290930+00:00",
+      "nonterminal_before": {
+        "state:queued": 0,
+        "state:running": 0,
+        "running-leases": 0,
+        "ready:npu:interactive": 0,
+        "ready:npu:bulk": 0,
+        "ready:cpu:interactive": 0,
+        "ready:cpu:bulk": 0
+      },
+      "exit_code": 0,
+      "stdout": "before_torch\nbefore_torch_npu\nbefore_tensor\ntensor_ready npu:0 4.0\n",
+      "stderr": "[W1006 21:57:30.624202415 NPUCachingAllocator.cpp:202] Warning: The current CANN and Soc versions require processing for 32 padding size, with memory allocation. (function operator())\n",
+      "timed_out": false,
+      "outcome": "exited",
+      "elapsed_seconds": 8.225648005958647,
+      "ended_at": "2026-10-06T21:57:33.516594+00:00",
+      "nonterminal_after": {
+        "state:queued": 0,
+        "state:running": 0,
+        "running-leases": 0,
+        "ready:npu:interactive": 0,
+        "ready:npu:bulk": 0,
+        "ready:cpu:interactive": 0,
+        "ready:cpu:bulk": 0
+      },
+      "worker_unchanged": true,
+      "passed": true
+    }
+  ],
+  "all_passed": true,
+  "scope": "Minimal isolated tensor initialization and sum; not API admission",
+  "last_updated_at": "2026-10-06T21:57:33.518607+00:00",
+  "ended_at": "2026-10-06T21:57:33.519655+00:00"
+}

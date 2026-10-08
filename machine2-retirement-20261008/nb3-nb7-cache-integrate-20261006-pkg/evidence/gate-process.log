@@ -1,0 +1,33 @@
+Traceback (most recent call last):
+  File "/home/e84381970/open-evo-work/baseline-v2/diagnostics/service-result-production-v1/probe_npu_reference_gate.py", line 305, in <module>
+    main()
+    ~~~~^^
+  File "/home/e84381970/open-evo-work/baseline-v2/diagnostics/service-result-production-v1/probe_npu_reference_gate.py", line 202, in main
+    result = api_call(request)
+  File "/home/e84381970/open-evo-work/baseline-v2/diagnostics/service-result-production-v1/probe_npu_reference_gate.py", line 30, in api_call
+    with urllib.request.urlopen(request, timeout=30) as response:
+         ~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^
+  File "/root/.local/share/uv/python/cpython-3.13.15-linux-aarch64-gnu/lib/python3.13/urllib/request.py", line 189, in urlopen
+    return opener.open(url, data, timeout)
+           ~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^
+  File "/root/.local/share/uv/python/cpython-3.13.15-linux-aarch64-gnu/lib/python3.13/urllib/request.py", line 495, in open
+    response = meth(req, response)
+  File "/root/.local/share/uv/python/cpython-3.13.15-linux-aarch64-gnu/lib/python3.13/urllib/request.py", line 604, in http_response
+    response = self.parent.error(
+        'http', request, response, code, msg, hdrs)
+  File "/root/.local/share/uv/python/cpython-3.13.15-linux-aarch64-gnu/lib/python3.13/urllib/request.py", line 533, in error
+    return self._call_chain(*args)
+           ~~~~~~~~~~~~~~~~^^^^^^^
+  File "/root/.local/share/uv/python/cpython-3.13.15-linux-aarch64-gnu/lib/python3.13/urllib/request.py", line 466, in _call_chain
+    result = func(*args)
+  File "/root/.local/share/uv/python/cpython-3.13.15-linux-aarch64-gnu/lib/python3.13/urllib/request.py", line 613, in http_error_default
+    raise HTTPError(req.full_url, code, msg, hdrs, fp)
+urllib.error.HTTPError: HTTP Error 403: Forbidden
+{"gate": "canary", "evaluation_id": "ev_0ee1d9f2eb4248abb6b94c44a247e7bd", "state": "queued"}
+{"gate": "canary", "passed": true, "reference_evidence_retained": false, "evaluation_id": "ev_0ee1d9f2eb4248abb6b94c44a247e7bd", "evaluator_build": "sha256:089a0261c0c3286a51246f5cc427a9768a4680a947ca54138dec30666b396d79", "observed_at": "2026-10-06T21:38:16.028450+00:00", "resource_state": "completed", "attempt_id": null, "attempt_count": 1, "recorded_binding": {"attempt_id": "at_3df720332bf34368a00f6fceead243d8", "card": 5}, "physical_card": 5, "binding_matches_current_attempt": false, "verdict_cache_enabled": "false", "execution_attempt_id": "at_3df720332bf34368a00f6fceead243d8", "binding_basis": "observed_while_running_and_matched_terminal_binding", "live_observation": {"observed_at": "2026-10-06T21:38:03.996926+00:00", "resource_state": "running", "attempt_id": "at_3df720332bf34368a00f6fceead243d8", "attempt_count": 1, "recorded_binding": {"attempt_id": "at_3df720332bf34368a00f6fceead243d8", "card": 5}, "physical_card": 5, "binding_matches_current_attempt": true, "verdict_cache_enabled": "false"}}
+{"gate": "compile", "evaluation_id": "ev_6e7906fe460847b8ac600ec4c5d8df52", "state": "queued"}
+{"gate": "compile", "passed": true, "reference_evidence_retained": false, "evaluation_id": "ev_6e7906fe460847b8ac600ec4c5d8df52", "evaluator_build": "sha256:089a0261c0c3286a51246f5cc427a9768a4680a947ca54138dec30666b396d79", "observed_at": "2026-10-06T21:38:46.114163+00:00", "resource_state": "completed", "attempt_id": null, "attempt_count": 1, "recorded_binding": null, "physical_card": null, "binding_matches_current_attempt": false, "verdict_cache_enabled": "false", "execution_attempt_id": null, "binding_basis": "unknown"}
+{"gate": "l3", "evaluation_id": "ev_c57f115d24df4311b5119f5331077e31", "state": "queued"}
+{"gate": "l3", "passed": true, "reference_evidence_retained": true, "evaluation_id": "ev_c57f115d24df4311b5119f5331077e31", "evaluator_build": "sha256:089a0261c0c3286a51246f5cc427a9768a4680a947ca54138dec30666b396d79", "observed_at": "2026-10-06T21:39:40.259721+00:00", "resource_state": "completed", "attempt_id": null, "attempt_count": 1, "recorded_binding": {"attempt_id": "at_429471309f194aa99e1e9e0f3310eeb1", "card": 15}, "physical_card": 15, "binding_matches_current_attempt": false, "verdict_cache_enabled": "false", "execution_attempt_id": "at_429471309f194aa99e1e9e0f3310eeb1", "binding_basis": "observed_while_running_and_matched_terminal_binding", "live_observation": {"observed_at": "2026-10-06T21:38:48.130058+00:00", "resource_state": "running", "attempt_id": "at_429471309f194aa99e1e9e0f3310eeb1", "attempt_count": 1, "recorded_binding": {"attempt_id": "at_429471309f194aa99e1e9e0f3310eeb1", "card": 15}, "physical_card": 15, "binding_matches_current_attempt": true, "verdict_cache_enabled": "false"}}
+{"gate": "bmm", "evaluation_id": "ev_068471d58d3447a1a0413459bea0ace8", "state": "queued"}
+{"gate": "bmm", "passed": true, "reference_evidence_retained": true, "evaluation_id": "ev_068471d58d3447a1a0413459bea0ace8", "evaluator_build": "sha256:089a0261c0c3286a51246f5cc427a9768a4680a947ca54138dec30666b396d79", "observed_at": "2026-10-06T21:48:19.613387+00:00", "resource_state": "completed", "attempt_id": null, "attempt_count": 1, "recorded_binding": {"attempt_id": "at_d7765c6bc71d4f98b581db95ed084f40", "card": 15}, "physical_card": 15, "binding_matches_current_attempt": false, "verdict_cache_enabled": "false", "execution_attempt_id": "at_d7765c6bc71d4f98b581db95ed084f40", "binding_basis": "observed_while_running_and_matched_terminal_binding", "live_observation": {"observed_at": "2026-10-06T21:39:42.275993+00:00", "resource_state": "running", "attempt_id": "at_d7765c6bc71d4f98b581db95ed084f40", "attempt_count": 1, "recorded_binding": {"attempt_id": "at_d7765c6bc71d4f98b581db95ed084f40", "card": 15}, "physical_card": 15, "binding_matches_current_attempt": true, "verdict_cache_enabled": "false"}}

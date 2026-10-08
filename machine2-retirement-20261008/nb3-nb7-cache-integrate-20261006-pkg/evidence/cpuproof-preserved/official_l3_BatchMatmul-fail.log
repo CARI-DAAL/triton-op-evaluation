@@ -1,0 +1,1325 @@
+fresh engine start official_l3_BatchMatmul fail
+engine start official_l3_BatchMatmul-fail
+2026-10-07 04:22:32,382   测试第 1/51 组输入...
+2026-10-07 04:22:32,382   [输入类型判定] 来源=tensor，候选 dtypes=['torch.float32', 'torch.float32']，最高精度=torch.float32，input_type=float
+2026-10-07 04:22:32,778   [输出概览] 共 1 个输出，non_compute=False
+2026-10-07 04:22:32,778   [输出 0] shape=[41, 608, 608], dtype=torch.float32
+2026-10-07 04:22:32,861   [评测模式] 模式=float_compute（浮点计算类），输入 dtype=torch.float32（float），输出 dtype=torch.float32；误差要求=三项 AND：(1)max_error_cap |diff|<=atol+rtol*|golden| [atol=1.000e-03, rtol=1.221e-04]，(2)matched_ratio>=0.9 [小值域 sv_thr=6.104e-05/sv_err=9.313e-10，正常域 rel_thr=1.221e-04]，(3)MERE<1.221e-04（finite=15156224/15156224）
+2026-10-07 04:22:56,238   [用例 1/51] 失败: AccuracyError: [用例 1/51] 验证失败 dtype=torch.float32: max_error_cap_violations=15156224/15156224 (atol=1.000000e-03, rtol=1.220703e-04, max_abs_diff=5.000076e-01, ok=False), matched_ratio=0.000000 (req>=0.9, ok=False), MERE=1.919435e-01 (rel_thr=1.220703e-04, ok=False); small_count=26, normal_count=15156198
+前 10 个 max_error_cap 违例位置:
+  位置[0]: framework=-3.955618e+01, impl=-3.905618e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=5.828635e-03)
+  位置[1]: framework=1.143697e+01, impl=1.193697e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=2.396114e-03)
+  位置[2]: framework=4.008992e+01, impl=4.058992e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=5.893789e-03)
+  位置[3]: framework=1.868588e+01, impl=1.918588e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=3.280991e-03)
+  位置[4]: framework=-8.838481e+00, impl=-8.338481e+00, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=2.078916e-03)
+  位置[5]: framework=-6.299780e+01, impl=-6.249780e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=8.690161e-03)
+  位置[6]: framework=8.318879e+00, impl=8.818879e+00, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=2.015488e-03)
+  位置[7]: framework=1.015641e+01, impl=1.065641e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=2.239796e-03)
+  位置[8]: framework=1.148322e+01, impl=1.198322e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=2.401760e-03)
+  位置[9]: framework=-9.208791e+01, impl=-9.158791e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.224120e-02)
+前 10 个 matched 未通过位置:
+  位置[0] (正常域): framework=-3.955618e+01, impl=-3.905618e+01, 相对误差=1.264025e-02 (允许<=1.220703e-04)
+  位置[1] (正常域): framework=1.143697e+01, impl=1.193697e+01, 相对误差=4.371788e-02 (允许<=1.220703e-04)
+  位置[2] (正常域): framework=4.008992e+01, impl=4.058992e+01, 相对误差=1.247196e-02 (允许<=1.220703e-04)
+  位置[3] (正常域): framework=1.868588e+01, impl=1.918588e+01, 相对误差=2.675817e-02 (允许<=1.220703e-04)
+  位置[4] (正常域): framework=-8.838481e+00, impl=-8.338481e+00, 相对误差=5.657081e-02 (允许<=1.220703e-04)
+  位置[5] (正常域): framework=-6.299780e+01, impl=-6.249780e+01, 相对误差=7.936786e-03 (允许<=1.220703e-04)
+  位置[6] (正常域): framework=8.318879e+00, impl=8.818879e+00, 相对误差=6.010425e-02 (允许<=1.220703e-04)
+  位置[7] (正常域): framework=1.015641e+01, impl=1.065641e+01, 相对误差=4.923000e-02 (允许<=1.220703e-04)
+  位置[8] (正常域): framework=1.148322e+01, impl=1.198322e+01, 相对误差=4.354181e-02 (允许<=1.220703e-04)
+  位置[9] (正常域): framework=-9.208791e+01, impl=-9.158791e+01, 相对误差=5.429595e-03 (允许<=1.220703e-04)
+
+2026-10-07 04:22:56,243   测试第 2/51 组输入...
+2026-10-07 04:22:56,243   [输入类型判定] 来源=tensor，候选 dtypes=['torch.float32', 'torch.float32']，最高精度=torch.float32，input_type=float
+2026-10-07 04:22:56,251   [输出概览] 共 1 个输出，non_compute=False
+2026-10-07 04:22:56,251   [输出 0] shape=[2, 12, 12], dtype=torch.float32
+2026-10-07 04:22:56,252   [评测模式] 模式=float_compute（浮点计算类），输入 dtype=torch.float32（float），输出 dtype=torch.float32；误差要求=三项 AND：(1)max_error_cap |diff|<=atol+rtol*|golden| [atol=1.000e-03, rtol=1.221e-04]，(2)matched_ratio>=0.9 [小值域 sv_thr=6.104e-05/sv_err=9.313e-10，正常域 rel_thr=1.221e-04]，(3)MERE<1.221e-04（finite=288/288）
+2026-10-07 04:22:56,255   [用例 2/51] 失败: AccuracyError: [用例 2/51] 验证失败 dtype=torch.float32: max_error_cap_violations=288/288 (atol=1.000000e-03, rtol=1.220703e-04, max_abs_diff=5.000005e-01, ok=False), matched_ratio=0.000000 (req>=0.9, ok=False), MERE=4.724818e-01 (rel_thr=1.220703e-04, ok=False); small_count=0, normal_count=288
+前 10 个 max_error_cap 违例位置:
+  位置[0]: framework=2.153151e+00, impl=2.653151e+00, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.262836e-03)
+  位置[1]: framework=1.413359e+00, impl=1.913359e+00, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.172529e-03)
+  位置[2]: framework=1.119280e+00, impl=1.619280e+00, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.136631e-03)
+  位置[3]: framework=-6.980950e+00, impl=-6.480950e+00, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.852167e-03)
+  位置[4]: framework=2.589386e+00, impl=3.089386e+00, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.316087e-03)
+  位置[5]: framework=-1.461827e+00, impl=-9.618268e-01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.178446e-03)
+  位置[6]: framework=-2.465029e+00, impl=-1.965029e+00, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.300907e-03)
+  位置[7]: framework=5.963043e-01, impl=1.096304e+00, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.072791e-03)
+  位置[8]: framework=6.138600e+00, impl=6.638600e+00, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.749341e-03)
+  位置[9]: framework=-1.787039e+00, impl=-1.287039e+00, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.218144e-03)
+前 10 个 matched 未通过位置:
+  位置[0] (正常域): framework=2.153151e+00, impl=2.653151e+00, 相对误差=2.322178e-01 (允许<=1.220703e-04)
+  位置[1] (正常域): framework=1.413359e+00, impl=1.913359e+00, 相对误差=3.537670e-01 (允许<=1.220703e-04)
+  位置[2] (正常域): framework=1.119280e+00, impl=1.619280e+00, 相对误差=4.467155e-01 (允许<=1.220703e-04)
+  位置[3] (正常域): framework=-6.980950e+00, impl=-6.480950e+00, 相对误差=7.162349e-02 (允许<=1.220703e-04)
+  位置[4] (正常域): framework=2.589386e+00, impl=3.089386e+00, 相对误差=1.930960e-01 (允许<=1.220703e-04)
+  位置[5] (正常域): framework=-1.461827e+00, impl=-9.618268e-01, 相对误差=3.420378e-01 (允许<=1.220703e-04)
+  位置[6] (正常域): framework=-2.465029e+00, impl=-1.965029e+00, 相对误差=2.028374e-01 (允许<=1.220703e-04)
+  位置[7] (正常域): framework=5.963043e-01, impl=1.096304e+00, 相对误差=8.384979e-01 (允许<=1.220703e-04)
+  位置[8] (正常域): framework=6.138600e+00, impl=6.638600e+00, 相对误差=8.145179e-02 (允许<=1.220703e-04)
+  位置[9] (正常域): framework=-1.787039e+00, impl=-1.287039e+00, 相对误差=2.797924e-01 (允许<=1.220703e-04)
+
+2026-10-07 04:22:56,256   测试第 3/51 组输入...
+2026-10-07 04:22:56,256   [输入类型判定] 来源=tensor，候选 dtypes=['torch.float16', 'torch.float16']，最高精度=torch.float16，input_type=float
+2026-10-07 04:22:56,256   [输出概览] 共 1 个输出，non_compute=False
+2026-10-07 04:22:56,256   [输出 0] shape=[2, 7, 7], dtype=torch.float16
+2026-10-07 04:22:56,257   [评测模式] 模式=float_compute（浮点计算类），输入 dtype=torch.float16（float），输出 dtype=torch.float16；误差要求=三项 AND：(1)max_error_cap |diff|<=atol+rtol*|golden| [atol=9.000e-02, rtol=9.766e-04]，(2)matched_ratio>=0.9 [小值域 sv_thr=4.883e-04/sv_err=1.526e-05，正常域 rel_thr=9.766e-04]，(3)MERE<9.766e-04（finite=98/98）
+2026-10-07 04:22:56,259   [用例 3/51] 失败: AccuracyError: [用例 3/51] 验证失败 dtype=torch.float16: max_error_cap_violations=98/98 (atol=9.000000e-02, rtol=9.765625e-04, max_abs_diff=5.009766e-01, ok=False), matched_ratio=0.000000 (req>=0.9, ok=False), MERE=9.955670e-01 (rel_thr=9.765625e-04, ok=False); small_count=0, normal_count=98
+前 10 个 max_error_cap 违例位置:
+  位置[0]: framework=1.519531e+00, impl=2.019531e+00, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=9.148392e-02)
+  位置[1]: framework=9.824219e-01, impl=1.482422e+00, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=9.095940e-02)
+  位置[2]: framework=-1.135156e+01, impl=-1.085156e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.010855e-01)
+  位置[3]: framework=-5.753906e+00, impl=-5.253906e+00, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=9.561905e-02)
+  位置[4]: framework=-2.716797e+00, impl=-2.216797e+00, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=9.265313e-02)
+  位置[5]: framework=1.485352e+00, impl=1.985352e+00, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=9.145054e-02)
+  位置[6]: framework=-8.781250e+00, impl=-8.281250e+00, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=9.857544e-02)
+  位置[7]: framework=4.921875e+00, impl=5.421875e+00, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=9.480652e-02)
+  位置[8]: framework=6.480469e+00, impl=6.980469e+00, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=9.632859e-02)
+  位置[9]: framework=3.083984e+00, impl=3.583984e+00, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=9.301171e-02)
+前 10 个 matched 未通过位置:
+  位置[0] (正常域): framework=1.519531e+00, impl=2.019531e+00, 相对误差=3.290488e-01 (允许<=9.765625e-04)
+  位置[1] (正常域): framework=9.824219e-01, impl=1.482422e+00, 相对误差=5.089462e-01 (允许<=9.765625e-04)
+  位置[2] (正常域): framework=-1.135156e+01, impl=-1.085156e+01, 相对误差=4.404680e-02 (允许<=9.765625e-04)
+  位置[3] (正常域): framework=-5.753906e+00, impl=-5.253906e+00, 相对误差=8.689748e-02 (允许<=9.765625e-04)
+  位置[4] (正常域): framework=-2.716797e+00, impl=-2.216797e+00, 相对误差=1.840403e-01 (允许<=9.765625e-04)
+  位置[5] (正常域): framework=1.485352e+00, impl=1.985352e+00, 相对误差=3.366206e-01 (允许<=9.765625e-04)
+  位置[6] (正常域): framework=-8.781250e+00, impl=-8.281250e+00, 相对误差=5.693950e-02 (允许<=9.765625e-04)
+  位置[7] (正常域): framework=4.921875e+00, impl=5.421875e+00, 相对误差=1.015873e-01 (允许<=9.765625e-04)
+  位置[8] (正常域): framework=6.480469e+00, impl=6.980469e+00, 相对误差=7.715491e-02 (允许<=9.765625e-04)
+  位置[9] (正常域): framework=3.083984e+00, impl=3.583984e+00, 相对误差=1.621279e-01 (允许<=9.765625e-04)
+
+2026-10-07 04:22:56,259   测试第 4/51 组输入...
+2026-10-07 04:22:56,260   [输入类型判定] 来源=tensor，候选 dtypes=['torch.float32', 'torch.float32']，最高精度=torch.float32，input_type=float
+2026-10-07 04:22:56,260   [输出概览] 共 1 个输出，non_compute=False
+2026-10-07 04:22:56,260   [输出 0] shape=[1, 3, 3], dtype=torch.float32
+2026-10-07 04:22:56,260   [评测模式] 模式=float_compute（浮点计算类），输入 dtype=torch.float32（float），输出 dtype=torch.float32；误差要求=三项 AND：(1)max_error_cap |diff|<=atol+rtol*|golden| [atol=1.000e-03, rtol=1.221e-04]，(2)matched_ratio>=0.9 [小值域 sv_thr=6.104e-05/sv_err=9.313e-10，正常域 rel_thr=1.221e-04]，(3)MERE<1.221e-04（finite=9/9）
+2026-10-07 04:22:56,262   [用例 4/51] 失败: AccuracyError: [用例 4/51] 验证失败 dtype=torch.float32: max_error_cap_violations=9/9 (atol=1.000000e-03, rtol=1.220703e-04, max_abs_diff=5.000000e-01, ok=False), matched_ratio=0.000000 (req>=0.9, ok=False), MERE=2.193652e-01 (rel_thr=1.220703e-04, ok=False); small_count=0, normal_count=9
+前 9 个 max_error_cap 违例位置:
+  位置[0]: framework=-2.317570e+00, impl=-1.817570e+00, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.282907e-03)
+  位置[1]: framework=8.051589e+00, impl=8.551589e+00, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.982860e-03)
+  位置[2]: framework=-7.341319e-01, impl=-2.341319e-01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.089616e-03)
+  位置[3]: framework=2.813312e+00, impl=3.313312e+00, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.343422e-03)
+  位置[4]: framework=-1.947172e+00, impl=-1.447172e+00, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.237692e-03)
+  位置[5]: framework=-2.246368e+00, impl=-1.746368e+00, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.274215e-03)
+  位置[6]: framework=2.703286e+00, impl=3.203286e+00, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.329991e-03)
+  位置[7]: framework=-8.101625e+00, impl=-7.601625e+00, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.988968e-03)
+  位置[8]: framework=4.480232e+00, impl=4.980232e+00, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.546903e-03)
+前 9 个 matched 未通过位置:
+  位置[0] (正常域): framework=-2.317570e+00, impl=-1.817570e+00, 相对误差=2.157432e-01 (允许<=1.220703e-04)
+  位置[1] (正常域): framework=8.051589e+00, impl=8.551589e+00, 相对误差=6.209954e-02 (允许<=1.220703e-04)
+  位置[2] (正常域): framework=-7.341319e-01, impl=-2.341319e-01, 相对误差=6.810764e-01 (允许<=1.220703e-04)
+  位置[3] (正常域): framework=2.813312e+00, impl=3.313312e+00, 相对误差=1.777265e-01 (允许<=1.220703e-04)
+  位置[4] (正常域): framework=-1.947172e+00, impl=-1.447172e+00, 相对误差=2.567827e-01 (允许<=1.220703e-04)
+  位置[5] (正常域): framework=-2.246368e+00, impl=-1.746368e+00, 相对误差=2.225815e-01 (允许<=1.220703e-04)
+  位置[6] (正常域): framework=2.703286e+00, impl=3.203286e+00, 相对误差=1.849601e-01 (允许<=1.220703e-04)
+  位置[7] (正常域): framework=-8.101625e+00, impl=-7.601625e+00, 相对误差=6.171601e-02 (允许<=1.220703e-04)
+  位置[8] (正常域): framework=4.480232e+00, impl=4.980232e+00, 相对误差=1.116014e-01 (允许<=1.220703e-04)
+
+2026-10-07 04:22:56,263   测试第 5/51 组输入...
+2026-10-07 04:22:56,263   [输入类型判定] 来源=tensor，候选 dtypes=['torch.float16', 'torch.float16']，最高精度=torch.float16，input_type=float
+2026-10-07 04:22:56,263   [输出概览] 共 1 个输出，non_compute=False
+2026-10-07 04:22:56,263   [输出 0] shape=[1, 3, 3], dtype=torch.float16
+2026-10-07 04:22:56,263   [评测模式] 模式=float_compute（浮点计算类），输入 dtype=torch.float16（float），输出 dtype=torch.float16；误差要求=三项 AND：(1)max_error_cap |diff|<=atol+rtol*|golden| [atol=9.000e-02, rtol=9.766e-04]，(2)matched_ratio>=0.9 [小值域 sv_thr=4.883e-04/sv_err=1.526e-05，正常域 rel_thr=9.766e-04]，(3)MERE<9.766e-04（finite=9/9）
+2026-10-07 04:22:56,265   [用例 5/51] 失败: AccuracyError: [用例 5/51] 验证失败 dtype=torch.float16: max_error_cap_violations=9/9 (atol=9.000000e-02, rtol=9.765625e-04, max_abs_diff=5.000000e-01, ok=False), matched_ratio=0.000000 (req>=0.9, ok=False), MERE=3.667006e-01 (rel_thr=9.765625e-04, ok=False); small_count=0, normal_count=9
+前 9 个 max_error_cap 违例位置:
+  位置[0]: framework=-1.122070e+00, impl=-6.220703e-01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=9.109578e-02)
+  位置[1]: framework=5.527344e+00, impl=6.027344e+00, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=9.539780e-02)
+  位置[2]: framework=3.820801e-01, impl=8.818359e-01, |diff|=4.997559e-01 (允许<=atol+rtol*|golden|=9.037313e-02)
+  位置[3]: framework=3.230469e+00, impl=3.730469e+00, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=9.315476e-02)
+  位置[4]: framework=-1.716797e+00, impl=-1.216797e+00, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=9.167656e-02)
+  位置[5]: framework=3.158203e+00, impl=3.658203e+00, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=9.308419e-02)
+  位置[6]: framework=2.156250e+00, impl=2.656250e+00, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=9.210572e-02)
+  位置[7]: framework=-4.019531e+00, impl=-3.519531e+00, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=9.392533e-02)
+  位置[8]: framework=1.008789e+00, impl=1.508789e+00, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=9.098515e-02)
+前 9 个 matched 未通过位置:
+  位置[0] (正常域): framework=-1.122070e+00, impl=-6.220703e-01, 相对误差=4.456048e-01 (允许<=9.765625e-04)
+  位置[1] (正常域): framework=5.527344e+00, impl=6.027344e+00, 相对误差=9.045936e-02 (允许<=9.765625e-04)
+  位置[2] (正常域): framework=3.820801e-01, impl=8.818359e-01, 相对误差=1.307987e+00 (允许<=9.765625e-04)
+  位置[3] (正常域): framework=3.230469e+00, impl=3.730469e+00, 相对误差=1.547763e-01 (允许<=9.765625e-04)
+  位置[4] (正常域): framework=-1.716797e+00, impl=-1.216797e+00, 相对误差=2.912400e-01 (允许<=9.765625e-04)
+  位置[5] (正常域): framework=3.158203e+00, impl=3.658203e+00, 相对误差=1.583179e-01 (允许<=9.765625e-04)
+  位置[6] (正常域): framework=2.156250e+00, impl=2.656250e+00, 相对误差=2.318841e-01 (允许<=9.765625e-04)
+  位置[7] (正常域): framework=-4.019531e+00, impl=-3.519531e+00, 相对误差=1.243926e-01 (允许<=9.765625e-04)
+  位置[8] (正常域): framework=1.008789e+00, impl=1.508789e+00, 相对误差=4.956437e-01 (允许<=9.765625e-04)
+
+2026-10-07 04:22:56,266   测试第 6/51 组输入...
+2026-10-07 04:22:56,266   [输入类型判定] 来源=tensor，候选 dtypes=['torch.float32', 'torch.float32']，最高精度=torch.float32，input_type=float
+2026-10-07 04:22:56,266   [输出概览] 共 1 个输出，non_compute=False
+2026-10-07 04:22:56,266   [输出 0] shape=[1, 2, 2], dtype=torch.float32
+2026-10-07 04:22:56,266   [评测模式] 模式=float_compute（浮点计算类），输入 dtype=torch.float32（float），输出 dtype=torch.float32；误差要求=三项 AND：(1)max_error_cap |diff|<=atol+rtol*|golden| [atol=1.000e-03, rtol=1.221e-04]，(2)matched_ratio>=0.9 [小值域 sv_thr=6.104e-05/sv_err=9.313e-10，正常域 rel_thr=1.221e-04]，(3)MERE<1.221e-04（finite=4/4）
+2026-10-07 04:22:56,268   [用例 6/51] 失败: AccuracyError: [用例 6/51] 验证失败 dtype=torch.float32: max_error_cap_violations=4/4 (atol=1.000000e-03, rtol=1.220703e-04, max_abs_diff=5.000000e-01, ok=False), matched_ratio=0.000000 (req>=0.9, ok=False), MERE=2.637823e-01 (rel_thr=1.220703e-04, ok=False); small_count=0, normal_count=4
+前 4 个 max_error_cap 违例位置:
+  位置[0]: framework=-2.838201e+00, impl=-2.338201e+00, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.346460e-03)
+  位置[1]: framework=2.049012e+00, impl=2.549012e+00, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.250124e-03)
+  位置[2]: framework=-2.182298e+00, impl=-1.682298e+00, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.266394e-03)
+  位置[3]: framework=1.232057e+00, impl=1.732057e+00, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.150398e-03)
+前 4 个 matched 未通过位置:
+  位置[0] (正常域): framework=-2.838201e+00, impl=-2.338201e+00, 相对误差=1.761679e-01 (允许<=1.220703e-04)
+  位置[1] (正常域): framework=2.049012e+00, impl=2.549012e+00, 相对误差=2.440200e-01 (允许<=1.220703e-04)
+  位置[2] (正常域): framework=-2.182298e+00, impl=-1.682298e+00, 相对误差=2.291162e-01 (允许<=1.220703e-04)
+  位置[3] (正常域): framework=1.232057e+00, impl=1.732057e+00, 相对误差=4.058252e-01 (允许<=1.220703e-04)
+
+2026-10-07 04:22:56,692   测试第 7/51 组输入...
+2026-10-07 04:22:56,692   [输入类型判定] 来源=tensor，候选 dtypes=['torch.float32', 'torch.float32']，最高精度=torch.float32，input_type=float
+2026-10-07 04:22:56,933   [输出概览] 共 1 个输出，non_compute=False
+2026-10-07 04:22:56,933   [输出 0] shape=[13, 864, 864], dtype=torch.float32
+2026-10-07 04:22:56,987   [评测模式] 模式=float_compute（浮点计算类），输入 dtype=torch.float32（float），输出 dtype=torch.float32；误差要求=三项 AND：(1)max_error_cap |diff|<=atol+rtol*|golden| [atol=1.000e-03, rtol=1.221e-04]，(2)matched_ratio>=0.9 [小值域 sv_thr=6.104e-05/sv_err=9.313e-10，正常域 rel_thr=1.221e-04]，(3)MERE<1.221e-04（finite=9704448/9704448）
+2026-10-07 04:23:10,218   [用例 7/51] 失败: AccuracyError: [用例 7/51] 验证失败 dtype=torch.float32: max_error_cap_violations=9704448/9704448 (atol=1.000000e-03, rtol=1.220703e-04, max_abs_diff=5.000076e-01, ok=False), matched_ratio=0.000000 (req>=0.9, ok=False), MERE=2.276162e-01 (rel_thr=1.220703e-04, ok=False); small_count=9, normal_count=9704439
+前 10 个 max_error_cap 违例位置:
+  位置[0]: framework=3.417524e+01, impl=3.467524e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=5.171782e-03)
+  位置[1]: framework=-6.075535e+01, impl=-6.025535e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=8.416425e-03)
+  位置[2]: framework=-4.190530e+01, impl=-4.140530e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=6.115393e-03)
+  位置[3]: framework=-1.755564e+01, impl=-1.705564e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=3.143023e-03)
+  位置[4]: framework=-1.828415e+01, impl=-1.778415e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=3.231952e-03)
+  位置[5]: framework=-7.785450e+00, impl=-7.285450e+00, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.950372e-03)
+  位置[6]: framework=-3.535939e+01, impl=-3.485939e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=5.316332e-03)
+  位置[7]: framework=4.577010e+01, impl=4.627010e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=6.587171e-03)
+  位置[8]: framework=-1.075274e+02, impl=-1.070274e+02, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.412590e-02)
+  位置[9]: framework=3.921780e+01, impl=3.971780e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=5.787330e-03)
+前 10 个 matched 未通过位置:
+  位置[0] (正常域): framework=3.417524e+01, impl=3.467524e+01, 相对误差=1.463048e-02 (允许<=1.220703e-04)
+  位置[1] (正常域): framework=-6.075535e+01, impl=-6.025535e+01, 相对误差=8.229728e-03 (允许<=1.220703e-04)
+  位置[2] (正常域): framework=-4.190530e+01, impl=-4.140530e+01, 相对误差=1.193167e-02 (允许<=1.220703e-04)
+  位置[3] (正常域): framework=-1.755564e+01, impl=-1.705564e+01, 相对误差=2.848087e-02 (允许<=1.220703e-04)
+  位置[4] (正常域): framework=-1.828415e+01, impl=-1.778415e+01, 相对误差=2.734608e-02 (允许<=1.220703e-04)
+  位置[5] (正常域): framework=-7.785450e+00, impl=-7.285450e+00, 相对误差=6.422237e-02 (允许<=1.220703e-04)
+  位置[6] (正常域): framework=-3.535939e+01, impl=-3.485939e+01, 相对误差=1.414052e-02 (允许<=1.220703e-04)
+  位置[7] (正常域): framework=4.577010e+01, impl=4.627010e+01, 相对误差=1.092416e-02 (允许<=1.220703e-04)
+  位置[8] (正常域): framework=-1.075274e+02, impl=-1.070274e+02, 相对误差=4.649980e-03 (允许<=1.220703e-04)
+  位置[9] (正常域): framework=3.921780e+01, impl=3.971780e+01, 相对误差=1.274931e-02 (允许<=1.220703e-04)
+
+2026-10-07 04:23:10,904   测试第 8/51 组输入...
+2026-10-07 04:23:10,904   [输入类型判定] 来源=tensor，候选 dtypes=['torch.float32', 'torch.float32']，最高精度=torch.float32，input_type=float
+2026-10-07 04:23:11,282   [输出概览] 共 1 个输出，non_compute=False
+2026-10-07 04:23:11,282   [输出 0] shape=[64, 496, 496], dtype=torch.float32
+2026-10-07 04:23:11,344   [评测模式] 模式=float_compute（浮点计算类），输入 dtype=torch.float32（float），输出 dtype=torch.float32；误差要求=三项 AND：(1)max_error_cap |diff|<=atol+rtol*|golden| [atol=1.000e-03, rtol=1.221e-04]，(2)matched_ratio>=0.9 [小值域 sv_thr=6.104e-05/sv_err=9.313e-10，正常域 rel_thr=1.221e-04]，(3)MERE<1.221e-04（finite=15745024/15745024）
+2026-10-07 04:23:34,358   [用例 8/51] 失败: AccuracyError: [用例 8/51] 验证失败 dtype=torch.float32: max_error_cap_violations=15745024/15745024 (atol=1.000000e-03, rtol=1.220703e-04, max_abs_diff=5.000076e-01, ok=False), matched_ratio=0.000000 (req>=0.9, ok=False), MERE=2.398277e-01 (rel_thr=1.220703e-04, ok=False); small_count=29, normal_count=15744995
+前 10 个 max_error_cap 违例位置:
+  位置[0]: framework=-3.674933e+00, impl=-3.174933e+00, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.448600e-03)
+  位置[1]: framework=3.791865e+01, impl=3.841865e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=5.628742e-03)
+  位置[2]: framework=-2.880244e+01, impl=-2.830244e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=4.515923e-03)
+  位置[3]: framework=-8.116484e+00, impl=-7.616484e+00, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.990782e-03)
+  位置[4]: framework=1.009399e+01, impl=1.059399e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=2.232176e-03)
+  位置[5]: framework=-2.044063e+01, impl=-1.994063e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=3.495194e-03)
+  位置[6]: framework=4.619571e+01, impl=4.669571e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=6.639125e-03)
+  位置[7]: framework=4.049003e+01, impl=4.099003e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=5.942631e-03)
+  位置[8]: framework=-2.156452e+01, impl=-2.106452e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=3.632388e-03)
+  位置[9]: framework=2.599747e+01, impl=2.649747e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=4.173519e-03)
+前 10 个 matched 未通过位置:
+  位置[0] (正常域): framework=-3.674933e+00, impl=-3.174933e+00, 相对误差=1.360569e-01 (允许<=1.220703e-04)
+  位置[1] (正常域): framework=3.791865e+01, impl=3.841865e+01, 相对误差=1.318612e-02 (允许<=1.220703e-04)
+  位置[2] (正常域): framework=-2.880244e+01, impl=-2.830244e+01, 相对误差=1.735964e-02 (允许<=1.220703e-04)
+  位置[3] (正常域): framework=-8.116484e+00, impl=-7.616484e+00, 相对误差=6.160303e-02 (允许<=1.220703e-04)
+  位置[4] (正常域): framework=1.009399e+01, impl=1.059399e+01, 相对误差=4.953443e-02 (允许<=1.220703e-04)
+  位置[5] (正常域): framework=-2.044063e+01, impl=-1.994063e+01, 相对误差=2.446109e-02 (允许<=1.220703e-04)
+  位置[6] (正常域): framework=4.619571e+01, impl=4.669571e+01, 相对误差=1.082352e-02 (允许<=1.220703e-04)
+  位置[7] (正常域): framework=4.049003e+01, impl=4.099003e+01, 相对误差=1.234872e-02 (允许<=1.220703e-04)
+  位置[8] (正常域): framework=-2.156452e+01, impl=-2.106452e+01, 相对误差=2.318623e-02 (允许<=1.220703e-04)
+  位置[9] (正常域): framework=2.599747e+01, impl=2.649747e+01, 相对误差=1.923264e-02 (允许<=1.220703e-04)
+
+2026-10-07 04:23:34,494   测试第 9/51 组输入...
+2026-10-07 04:23:34,494   [输入类型判定] 来源=tensor，候选 dtypes=['torch.float32', 'torch.float32']，最高精度=torch.float32，input_type=float
+2026-10-07 04:23:34,569   [输出概览] 共 1 个输出，non_compute=False
+2026-10-07 04:23:34,569   [输出 0] shape=[36, 286, 286], dtype=torch.float32
+2026-10-07 04:23:34,615   [评测模式] 模式=float_compute（浮点计算类），输入 dtype=torch.float32（float），输出 dtype=torch.float32；误差要求=三项 AND：(1)max_error_cap |diff|<=atol+rtol*|golden| [atol=1.000e-03, rtol=1.221e-04]，(2)matched_ratio>=0.9 [小值域 sv_thr=6.104e-05/sv_err=9.313e-10，正常域 rel_thr=1.221e-04]，(3)MERE<1.221e-04（finite=2944656/2944656）
+2026-10-07 04:23:38,659   [用例 9/51] 失败: AccuracyError: [用例 9/51] 验证失败 dtype=torch.float32: max_error_cap_violations=2944656/2944656 (atol=1.000000e-03, rtol=1.220703e-04, max_abs_diff=5.000038e-01, ok=False), matched_ratio=0.000000 (req>=0.9, ok=False), MERE=3.245903e-01 (rel_thr=1.220703e-04, ok=False); small_count=9, normal_count=2944647
+前 10 个 max_error_cap 违例位置:
+  位置[0]: framework=-1.233698e+01, impl=-1.183698e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=2.505979e-03)
+  位置[1]: framework=-4.508615e+01, impl=-4.458615e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=6.503680e-03)
+  位置[2]: framework=3.173111e+01, impl=3.223111e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=4.873427e-03)
+  位置[3]: framework=1.183373e+01, impl=1.233373e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=2.444547e-03)
+  位置[4]: framework=-2.458912e+01, impl=-2.408912e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=4.001602e-03)
+  位置[5]: framework=-9.110710e+00, impl=-8.610710e+00, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=2.112147e-03)
+  位置[6]: framework=1.381647e+01, impl=1.431647e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=2.686582e-03)
+  位置[7]: framework=3.450280e+01, impl=3.500280e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=5.211767e-03)
+  位置[8]: framework=-1.456235e+01, impl=-1.406235e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=2.777631e-03)
+  位置[9]: framework=-1.496334e+01, impl=-1.446334e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=2.826580e-03)
+前 10 个 matched 未通过位置:
+  位置[0] (正常域): framework=-1.233698e+01, impl=-1.183698e+01, 相对误差=4.052857e-02 (允许<=1.220703e-04)
+  位置[1] (正常域): framework=-4.508615e+01, impl=-4.458615e+01, 相对误差=1.108988e-02 (允许<=1.220703e-04)
+  位置[2] (正常域): framework=3.173111e+01, impl=3.223111e+01, 相对误差=1.575740e-02 (允许<=1.220703e-04)
+  位置[3] (正常域): framework=1.183373e+01, impl=1.233373e+01, 相对误差=4.225212e-02 (允许<=1.220703e-04)
+  位置[4] (正常域): framework=-2.458912e+01, impl=-2.408912e+01, 相对误差=2.033419e-02 (允许<=1.220703e-04)
+  位置[5] (正常域): framework=-9.110710e+00, impl=-8.610710e+00, 相对误差=5.488046e-02 (允许<=1.220703e-04)
+  位置[6] (正常域): framework=1.381647e+01, impl=1.431647e+01, 相对误差=3.618868e-02 (允许<=1.220703e-04)
+  位置[7] (正常域): framework=3.450280e+01, impl=3.500280e+01, 相对误差=1.449158e-02 (允许<=1.220703e-04)
+  位置[8] (正常域): framework=-1.456235e+01, impl=-1.406235e+01, 相对误差=3.433511e-02 (允许<=1.220703e-04)
+  位置[9] (正常域): framework=-1.496334e+01, impl=-1.446334e+01, 相对误差=3.341500e-02 (允许<=1.220703e-04)
+
+2026-10-07 04:23:38,911   测试第 10/51 组输入...
+2026-10-07 04:23:38,912   [输入类型判定] 来源=tensor，候选 dtypes=['torch.bfloat16', 'torch.bfloat16']，最高精度=torch.bfloat16，input_type=float
+2026-10-07 04:23:38,970   [输出概览] 共 1 个输出，non_compute=False
+2026-10-07 04:23:38,970   [输出 0] shape=[9, 607, 607], dtype=torch.bfloat16
+2026-10-07 04:23:39,018   [评测模式] 模式=float_compute（浮点计算类），输入 dtype=torch.bfloat16（float），输出 dtype=torch.bfloat16；误差要求=三项 AND：(1)max_error_cap |diff|<=atol+rtol*|golden| [atol=1.000e-01, rtol=7.812e-03]，(2)matched_ratio>=0.9 [小值域 sv_thr=3.906e-03/sv_err=1.526e-05，正常域 rel_thr=7.812e-03]，(3)MERE<7.812e-03（finite=3316041/3316041）
+2026-10-07 04:23:43,603   [用例 10/51] 失败: AccuracyError: [用例 10/51] 验证失败 dtype=torch.bfloat16: max_error_cap_violations=2864170/3316041 (atol=1.000000e-01, rtol=7.812500e-03, max_abs_diff=1.000000e+00, ok=False), matched_ratio=0.063456 (req>=0.9, ok=False), MERE=1.648698e-01 (rel_thr=7.812500e-03, ok=False); small_count=319, normal_count=3315722
+前 10 个 max_error_cap 违例位置:
+  位置[0]: framework=-2.500000e+01, impl=-2.450000e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=2.953125e-01)
+  位置[1]: framework=-8.125000e+00, impl=-7.625000e+00, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.634766e-01)
+  位置[2]: framework=-3.600000e+01, impl=-3.550000e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=3.812500e-01)
+  位置[3]: framework=-1.637500e+01, impl=-1.587500e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=2.279297e-01)
+  位置[5]: framework=-1.612500e+01, impl=-1.562500e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=2.259766e-01)
+  位置[7]: framework=1.450000e+01, impl=1.500000e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=2.132812e-01)
+  位置[8]: framework=1.000000e+01, impl=1.050000e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.781250e-01)
+  位置[9]: framework=-4.275000e+01, impl=-4.225000e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=4.339844e-01)
+  位置[10]: framework=2.325000e+01, impl=2.375000e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=2.816406e-01)
+  位置[12]: framework=-2.828125e+00, impl=-2.328125e+00, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.220947e-01)
+前 10 个 matched 未通过位置:
+  位置[0] (正常域): framework=-2.500000e+01, impl=-2.450000e+01, 相对误差=2.000000e-02 (允许<=7.812500e-03)
+  位置[1] (正常域): framework=-8.125000e+00, impl=-7.625000e+00, 相对误差=6.153846e-02 (允许<=7.812500e-03)
+  位置[2] (正常域): framework=-3.600000e+01, impl=-3.550000e+01, 相对误差=1.388889e-02 (允许<=7.812500e-03)
+  位置[3] (正常域): framework=-1.637500e+01, impl=-1.587500e+01, 相对误差=3.053435e-02 (允许<=7.812500e-03)
+  位置[4] (正常域): framework=5.700000e+01, impl=5.750000e+01, 相对误差=8.771930e-03 (允许<=7.812500e-03)
+  位置[5] (正常域): framework=-1.612500e+01, impl=-1.562500e+01, 相对误差=3.100775e-02 (允许<=7.812500e-03)
+  位置[6] (正常域): framework=-5.775000e+01, impl=-5.725000e+01, 相对误差=8.658009e-03 (允许<=7.812500e-03)
+  位置[7] (正常域): framework=1.450000e+01, impl=1.500000e+01, 相对误差=3.448276e-02 (允许<=7.812500e-03)
+  位置[8] (正常域): framework=1.000000e+01, impl=1.050000e+01, 相对误差=5.000000e-02 (允许<=7.812500e-03)
+  位置[9] (正常域): framework=-4.275000e+01, impl=-4.225000e+01, 相对误差=1.169591e-02 (允许<=7.812500e-03)
+
+2026-10-07 04:23:43,768   测试第 11/51 组输入...
+2026-10-07 04:23:43,768   [输入类型判定] 来源=tensor，候选 dtypes=['torch.float16', 'torch.float16']，最高精度=torch.float16，input_type=float
+2026-10-07 04:23:47,568   [输出概览] 共 1 个输出，non_compute=False
+2026-10-07 04:23:47,569   [输出 0] shape=[16, 500, 500], dtype=torch.float16
+2026-10-07 04:23:47,623   [评测模式] 模式=float_compute（浮点计算类），输入 dtype=torch.float16（float），输出 dtype=torch.float16；误差要求=三项 AND：(1)max_error_cap |diff|<=atol+rtol*|golden| [atol=9.000e-02, rtol=9.766e-04]，(2)matched_ratio>=0.9 [小值域 sv_thr=4.883e-04/sv_err=1.526e-05，正常域 rel_thr=9.766e-04]，(3)MERE<9.766e-04（finite=4000000/4000000）
+2026-10-07 04:23:53,150   [用例 11/51] 失败: AccuracyError: [用例 11/51] 验证失败 dtype=torch.float16: max_error_cap_violations=4000000/4000000 (atol=9.000000e-02, rtol=9.765625e-04, max_abs_diff=5.625000e-01, ok=False), matched_ratio=0.000000 (req>=0.9, ok=False), MERE=2.195561e-01 (rel_thr=9.765625e-04, ok=False); small_count=61, normal_count=3999939
+前 10 个 max_error_cap 违例位置:
+  位置[0]: framework=-4.012500e+01, impl=-3.962500e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.291846e-01)
+  位置[1]: framework=4.215625e+01, impl=4.265625e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.311682e-01)
+  位置[2]: framework=1.718750e+01, impl=1.768750e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.067847e-01)
+  位置[3]: framework=1.321875e+01, impl=1.371875e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.029089e-01)
+  位置[4]: framework=1.773438e+01, impl=1.823438e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.073187e-01)
+  位置[5]: framework=2.026562e+01, impl=2.076562e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.097907e-01)
+  位置[6]: framework=-3.821875e+01, impl=-3.771875e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.273230e-01)
+  位置[7]: framework=1.996875e+01, impl=2.046875e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.095007e-01)
+  位置[8]: framework=-3.148438e+01, impl=-3.098438e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.207465e-01)
+  位置[9]: framework=-3.306250e+01, impl=-3.256250e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.222876e-01)
+前 10 个 matched 未通过位置:
+  位置[0] (正常域): framework=-4.012500e+01, impl=-3.962500e+01, 相对误差=1.246106e-02 (允许<=9.765625e-04)
+  位置[1] (正常域): framework=4.215625e+01, impl=4.265625e+01, 相对误差=1.186064e-02 (允许<=9.765625e-04)
+  位置[2] (正常域): framework=1.718750e+01, impl=1.768750e+01, 相对误差=2.909091e-02 (允许<=9.765625e-04)
+  位置[3] (正常域): framework=1.321875e+01, impl=1.371875e+01, 相对误差=3.782506e-02 (允许<=9.765625e-04)
+  位置[4] (正常域): framework=1.773438e+01, impl=1.823438e+01, 相对误差=2.819383e-02 (允许<=9.765625e-04)
+  位置[5] (正常域): framework=2.026562e+01, impl=2.076562e+01, 相对误差=2.467232e-02 (允许<=9.765625e-04)
+  位置[6] (正常域): framework=-3.821875e+01, impl=-3.771875e+01, 相对误差=1.308258e-02 (允许<=9.765625e-04)
+  位置[7] (正常域): framework=1.996875e+01, impl=2.046875e+01, 相对误差=2.503912e-02 (允许<=9.765625e-04)
+  位置[8] (正常域): framework=-3.148438e+01, impl=-3.098438e+01, 相对误差=1.588089e-02 (允许<=9.765625e-04)
+  位置[9] (正常域): framework=-3.306250e+01, impl=-3.256250e+01, 相对误差=1.512287e-02 (允许<=9.765625e-04)
+
+2026-10-07 04:23:53,653   测试第 12/51 组输入...
+2026-10-07 04:23:53,653   [输入类型判定] 来源=tensor，候选 dtypes=['torch.bfloat16', 'torch.bfloat16']，最高精度=torch.bfloat16，input_type=float
+2026-10-07 04:23:53,749   [输出概览] 共 1 个输出，non_compute=False
+2026-10-07 04:23:53,749   [输出 0] shape=[30, 472, 472], dtype=torch.bfloat16
+2026-10-07 04:23:53,793   [评测模式] 模式=float_compute（浮点计算类），输入 dtype=torch.bfloat16（float），输出 dtype=torch.bfloat16；误差要求=三项 AND：(1)max_error_cap |diff|<=atol+rtol*|golden| [atol=1.000e-01, rtol=7.812e-03]，(2)matched_ratio>=0.9 [小值域 sv_thr=3.906e-03/sv_err=1.526e-05，正常域 rel_thr=7.812e-03]，(3)MERE<7.812e-03（finite=6683520/6683520）
+2026-10-07 04:24:05,230   [用例 12/51] 失败: AccuracyError: [用例 12/51] 验证失败 dtype=torch.bfloat16: max_error_cap_violations=6073021/6683520 (atol=1.000000e-01, rtol=7.812500e-03, max_abs_diff=1.000000e+00, ok=False), matched_ratio=0.035393 (req>=0.9, ok=False), MERE=1.903034e-01 (rel_thr=7.812500e-03, ok=False); small_count=672, normal_count=6682848
+前 10 个 max_error_cap 违例位置:
+  位置[0]: framework=1.703125e+00, impl=2.203125e+00, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.133057e-01)
+  位置[1]: framework=-2.725000e+01, impl=-2.675000e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=3.128906e-01)
+  位置[2]: framework=-2.400000e+01, impl=-2.350000e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=2.875000e-01)
+  位置[3]: framework=-3.225000e+01, impl=-3.175000e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=3.519531e-01)
+  位置[4]: framework=2.275000e+01, impl=2.325000e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=2.777344e-01)
+  位置[5]: framework=-9.437500e+00, impl=-8.937500e+00, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.737305e-01)
+  位置[6]: framework=5.656250e+00, impl=6.156250e+00, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.441894e-01)
+  位置[8]: framework=-1.581250e+01, impl=-1.531250e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=2.235352e-01)
+  位置[10]: framework=8.625000e+00, impl=9.125000e+00, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.673828e-01)
+  位置[11]: framework=-2.187500e+00, impl=-1.687500e+00, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.170898e-01)
+前 10 个 matched 未通过位置:
+  位置[0] (正常域): framework=1.703125e+00, impl=2.203125e+00, 相对误差=2.935780e-01 (允许<=7.812500e-03)
+  位置[1] (正常域): framework=-2.725000e+01, impl=-2.675000e+01, 相对误差=1.834862e-02 (允许<=7.812500e-03)
+  位置[2] (正常域): framework=-2.400000e+01, impl=-2.350000e+01, 相对误差=2.083333e-02 (允许<=7.812500e-03)
+  位置[3] (正常域): framework=-3.225000e+01, impl=-3.175000e+01, 相对误差=1.550388e-02 (允许<=7.812500e-03)
+  位置[4] (正常域): framework=2.275000e+01, impl=2.325000e+01, 相对误差=2.197802e-02 (允许<=7.812500e-03)
+  位置[5] (正常域): framework=-9.437500e+00, impl=-8.937500e+00, 相对误差=5.298013e-02 (允许<=7.812500e-03)
+  位置[6] (正常域): framework=5.656250e+00, impl=6.156250e+00, 相对误差=8.839779e-02 (允许<=7.812500e-03)
+  位置[7] (正常域): framework=-5.275000e+01, impl=-5.225000e+01, 相对误差=9.478673e-03 (允许<=7.812500e-03)
+  位置[8] (正常域): framework=-1.581250e+01, impl=-1.531250e+01, 相对误差=3.162055e-02 (允许<=7.812500e-03)
+  位置[9] (正常域): framework=-5.625000e+01, impl=-5.575000e+01, 相对误差=8.888889e-03 (允许<=7.812500e-03)
+
+2026-10-07 04:24:05,523   测试第 13/51 组输入...
+2026-10-07 04:24:05,524   [输入类型判定] 来源=tensor，候选 dtypes=['torch.float16', 'torch.float16']，最高精度=torch.float16，input_type=float
+2026-10-07 04:24:08,342   [输出概览] 共 1 个输出，non_compute=False
+2026-10-07 04:24:08,342   [输出 0] shape=[122, 244, 244], dtype=torch.float16
+2026-10-07 04:24:08,401   [评测模式] 模式=float_compute（浮点计算类），输入 dtype=torch.float16（float），输出 dtype=torch.float16；误差要求=三项 AND：(1)max_error_cap |diff|<=atol+rtol*|golden| [atol=9.000e-02, rtol=9.766e-04]，(2)matched_ratio>=0.9 [小值域 sv_thr=4.883e-04/sv_err=1.526e-05，正常域 rel_thr=9.766e-04]，(3)MERE<9.766e-04（finite=7263392/7263392）
+2026-10-07 04:24:18,277   [用例 13/51] 失败: AccuracyError: [用例 13/51] 验证失败 dtype=torch.float16: max_error_cap_violations=7263392/7263392 (atol=9.000000e-02, rtol=9.765625e-04, max_abs_diff=5.312500e-01, ok=False), matched_ratio=0.000000 (req>=0.9, ok=False), MERE=3.409868e-01 (rel_thr=9.765625e-04, ok=False); small_count=138, normal_count=7263254
+前 10 个 max_error_cap 违例位置:
+  位置[0]: framework=2.076562e+01, impl=2.126562e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.102789e-01)
+  位置[1]: framework=-8.906250e+00, impl=-8.406250e+00, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=9.869751e-02)
+  位置[2]: framework=3.380859e+00, impl=3.880859e+00, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=9.330162e-02)
+  位置[3]: framework=2.378125e+01, impl=2.428125e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.132239e-01)
+  位置[4]: framework=1.236719e+01, impl=1.286719e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.020773e-01)
+  位置[5]: framework=3.521484e+00, impl=4.023438e+00, |diff|=5.019531e-01 (允许<=atol+rtol*|golden|=9.343895e-02)
+  位置[6]: framework=-8.007812e+00, impl=-7.507812e+00, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=9.782013e-02)
+  位置[7]: framework=2.100000e+01, impl=2.150000e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.105078e-01)
+  位置[8]: framework=2.623438e+01, impl=2.673438e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.156195e-01)
+  位置[9]: framework=-1.017188e+01, impl=-9.671875e+00, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=9.993348e-02)
+前 10 个 matched 未通过位置:
+  位置[0] (正常域): framework=2.076562e+01, impl=2.126562e+01, 相对误差=2.407825e-02 (允许<=9.765625e-04)
+  位置[1] (正常域): framework=-8.906250e+00, impl=-8.406250e+00, 相对误差=5.614035e-02 (允许<=9.765625e-04)
+  位置[2] (正常域): framework=3.380859e+00, impl=3.880859e+00, 相对误差=1.478914e-01 (允许<=9.765625e-04)
+  位置[3] (正常域): framework=2.378125e+01, impl=2.428125e+01, 相对误差=2.102497e-02 (允许<=9.765625e-04)
+  位置[4] (正常域): framework=1.236719e+01, impl=1.286719e+01, 相对误差=4.042956e-02 (允许<=9.765625e-04)
+  位置[5] (正常域): framework=3.521484e+00, impl=4.023438e+00, 相对误差=1.425402e-01 (允许<=9.765625e-04)
+  位置[6] (正常域): framework=-8.007812e+00, impl=-7.507812e+00, 相对误差=6.243902e-02 (允许<=9.765625e-04)
+  位置[7] (正常域): framework=2.100000e+01, impl=2.150000e+01, 相对误差=2.380952e-02 (允许<=9.765625e-04)
+  位置[8] (正常域): framework=2.623438e+01, impl=2.673438e+01, 相对误差=1.905896e-02 (允许<=9.765625e-04)
+  位置[9] (正常域): framework=-1.017188e+01, impl=-9.671875e+00, 相对误差=4.915515e-02 (允许<=9.765625e-04)
+
+2026-10-07 04:24:18,841   测试第 14/51 组输入...
+2026-10-07 04:24:18,841   [输入类型判定] 来源=tensor，候选 dtypes=['torch.bfloat16', 'torch.bfloat16']，最高精度=torch.bfloat16，input_type=float
+2026-10-07 04:24:18,952   [输出概览] 共 1 个输出，non_compute=False
+2026-10-07 04:24:18,952   [输出 0] shape=[31, 492, 492], dtype=torch.bfloat16
+2026-10-07 04:24:19,007   [评测模式] 模式=float_compute（浮点计算类），输入 dtype=torch.bfloat16（float），输出 dtype=torch.bfloat16；误差要求=三项 AND：(1)max_error_cap |diff|<=atol+rtol*|golden| [atol=1.000e-01, rtol=7.812e-03]，(2)matched_ratio>=0.9 [小值域 sv_thr=3.906e-03/sv_err=1.526e-05，正常域 rel_thr=7.812e-03]，(3)MERE<7.812e-03（finite=7503984/7503984）
+2026-10-07 04:24:30,447   [用例 14/51] 失败: AccuracyError: [用例 14/51] 验证失败 dtype=torch.bfloat16: max_error_cap_violations=6769002/7503984 (atol=1.000000e-01, rtol=7.812500e-03, max_abs_diff=1.000000e+00, ok=False), matched_ratio=0.039121 (req>=0.9, ok=False), MERE=1.853797e-01 (rel_thr=7.812500e-03, ok=False); small_count=790, normal_count=7503194
+前 10 个 max_error_cap 违例位置:
+  位置[0]: framework=-6.468750e+00, impl=-5.968750e+00, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.505371e-01)
+  位置[1]: framework=1.887500e+01, impl=1.937500e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=2.474609e-01)
+  位置[2]: framework=-1.556250e+01, impl=-1.506250e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=2.215820e-01)
+  位置[3]: framework=7.750000e+00, impl=8.250000e+00, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.605469e-01)
+  位置[4]: framework=-2.200000e+01, impl=-2.150000e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=2.718750e-01)
+  位置[5]: framework=7.460938e-01, impl=1.250000e+00, |diff|=5.039062e-01 (允许<=atol+rtol*|golden|=1.058289e-01)
+  位置[6]: framework=-7.468750e+00, impl=-6.968750e+00, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.583496e-01)
+  位置[7]: framework=-2.175000e+01, impl=-2.125000e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=2.699219e-01)
+  位置[8]: framework=3.450000e+01, impl=3.500000e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=3.695312e-01)
+  位置[9]: framework=7.906250e+00, impl=8.375000e+00, |diff|=4.687500e-01 (允许<=atol+rtol*|golden|=1.617676e-01)
+前 10 个 matched 未通过位置:
+  位置[0] (正常域): framework=-6.468750e+00, impl=-5.968750e+00, 相对误差=7.729468e-02 (允许<=7.812500e-03)
+  位置[1] (正常域): framework=1.887500e+01, impl=1.937500e+01, 相对误差=2.649007e-02 (允许<=7.812500e-03)
+  位置[2] (正常域): framework=-1.556250e+01, impl=-1.506250e+01, 相对误差=3.212851e-02 (允许<=7.812500e-03)
+  位置[3] (正常域): framework=7.750000e+00, impl=8.250000e+00, 相对误差=6.451613e-02 (允许<=7.812500e-03)
+  位置[4] (正常域): framework=-2.200000e+01, impl=-2.150000e+01, 相对误差=2.272727e-02 (允许<=7.812500e-03)
+  位置[5] (正常域): framework=7.460938e-01, impl=1.250000e+00, 相对误差=6.753926e-01 (允许<=7.812500e-03)
+  位置[6] (正常域): framework=-7.468750e+00, impl=-6.968750e+00, 相对误差=6.694560e-02 (允许<=7.812500e-03)
+  位置[7] (正常域): framework=-2.175000e+01, impl=-2.125000e+01, 相对误差=2.298851e-02 (允许<=7.812500e-03)
+  位置[8] (正常域): framework=3.450000e+01, impl=3.500000e+01, 相对误差=1.449275e-02 (允许<=7.812500e-03)
+  位置[9] (正常域): framework=7.906250e+00, impl=8.375000e+00, 相对误差=5.928854e-02 (允许<=7.812500e-03)
+
+2026-10-07 04:24:31,069   测试第 15/51 组输入...
+2026-10-07 04:24:31,069   [输入类型判定] 来源=tensor，候选 dtypes=['torch.float32', 'torch.float32']，最高精度=torch.float32，input_type=float
+2026-10-07 04:24:31,398   [输出概览] 共 1 个输出，non_compute=False
+2026-10-07 04:24:31,398   [输出 0] shape=[96, 368, 368], dtype=torch.float32
+2026-10-07 04:24:31,460   [评测模式] 模式=float_compute（浮点计算类），输入 dtype=torch.float32（float），输出 dtype=torch.float32；误差要求=三项 AND：(1)max_error_cap |diff|<=atol+rtol*|golden| [atol=1.000e-03, rtol=1.221e-04]，(2)matched_ratio>=0.9 [小值域 sv_thr=6.104e-05/sv_err=9.313e-10，正常域 rel_thr=1.221e-04]，(3)MERE<1.221e-04（finite=13000704/13000704）
+2026-10-07 04:24:49,401   [用例 15/51] 失败: AccuracyError: [用例 15/51] 验证失败 dtype=torch.float32: max_error_cap_violations=13000704/13000704 (atol=1.000000e-03, rtol=1.220703e-04, max_abs_diff=5.000076e-01, ok=False), matched_ratio=0.000000 (req>=0.9, ok=False), MERE=3.328100e-01 (rel_thr=1.220703e-04, ok=False); small_count=27, normal_count=13000677
+前 10 个 max_error_cap 违例位置:
+  位置[0]: framework=2.037985e+01, impl=2.087985e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=3.487775e-03)
+  位置[1]: framework=-2.825583e+01, impl=-2.775583e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=4.449198e-03)
+  位置[2]: framework=-4.234310e+01, impl=-4.184310e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=6.168835e-03)
+  位置[3]: framework=3.764828e+01, impl=3.814828e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=5.595738e-03)
+  位置[4]: framework=-4.783192e+01, impl=-4.733192e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=6.838857e-03)
+  位置[5]: framework=7.092411e+00, impl=7.592411e+00, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.865773e-03)
+  位置[6]: framework=-2.085113e+01, impl=-2.035113e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=3.545304e-03)
+  位置[7]: framework=4.585188e+00, impl=5.085188e+00, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.559715e-03)
+  位置[8]: framework=1.795948e+00, impl=2.295948e+00, |diff|=4.999999e-01 (允许<=atol+rtol*|golden|=1.219232e-03)
+  位置[9]: framework=-6.577907e+00, impl=-6.077907e+00, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.802967e-03)
+前 10 个 matched 未通过位置:
+  位置[0] (正常域): framework=2.037985e+01, impl=2.087985e+01, 相对误差=2.453403e-02 (允许<=1.220703e-04)
+  位置[1] (正常域): framework=-2.825583e+01, impl=-2.775583e+01, 相对误差=1.769546e-02 (允许<=1.220703e-04)
+  位置[2] (正常域): framework=-4.234310e+01, impl=-4.184310e+01, 相对误差=1.180830e-02 (允许<=1.220703e-04)
+  位置[3] (正常域): framework=3.764828e+01, impl=3.814828e+01, 相对误差=1.328082e-02 (允许<=1.220703e-04)
+  位置[4] (正常域): framework=-4.783192e+01, impl=-4.733192e+01, 相对误差=1.045327e-02 (允许<=1.220703e-04)
+  位置[5] (正常域): framework=7.092411e+00, impl=7.592411e+00, 相对误差=7.049789e-02 (允许<=1.220703e-04)
+  位置[6] (正常域): framework=-2.085113e+01, impl=-2.035113e+01, 相对误差=2.397952e-02 (允许<=1.220703e-04)
+  位置[7] (正常域): framework=4.585188e+00, impl=5.085188e+00, 相对误差=1.090468e-01 (允许<=1.220703e-04)
+  位置[8] (正常域): framework=1.795948e+00, impl=2.295948e+00, 相对误差=2.784045e-01 (允许<=1.220703e-04)
+  位置[9] (正常域): framework=-6.577907e+00, impl=-6.077907e+00, 相对误差=7.601202e-02 (允许<=1.220703e-04)
+
+2026-10-07 04:24:49,716   测试第 16/51 组输入...
+2026-10-07 04:24:49,716   [输入类型判定] 来源=tensor，候选 dtypes=['torch.float16', 'torch.float16']，最高精度=torch.float16，input_type=float
+2026-10-07 04:24:57,581   [输出概览] 共 1 个输出，non_compute=False
+2026-10-07 04:24:57,581   [输出 0] shape=[31, 504, 504], dtype=torch.float16
+2026-10-07 04:24:57,631   [评测模式] 模式=float_compute（浮点计算类），输入 dtype=torch.float16（float），输出 dtype=torch.float16；误差要求=三项 AND：(1)max_error_cap |diff|<=atol+rtol*|golden| [atol=9.000e-02, rtol=9.766e-04]，(2)matched_ratio>=0.9 [小值域 sv_thr=4.883e-04/sv_err=1.526e-05，正常域 rel_thr=9.766e-04]，(3)MERE<9.766e-04（finite=7874496/7874496）
+2026-10-07 04:25:09,479   [用例 16/51] 失败: AccuracyError: [用例 16/51] 验证失败 dtype=torch.float16: max_error_cap_violations=7874496/7874496 (atol=9.000000e-02, rtol=9.765625e-04, max_abs_diff=5.625000e-01, ok=False), matched_ratio=0.000000 (req>=0.9, ok=False), MERE=2.055739e-01 (rel_thr=9.765625e-04, ok=False); small_count=107, normal_count=7874389
+前 10 个 max_error_cap 违例位置:
+  位置[0]: framework=3.115625e+01, impl=3.165625e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.204260e-01)
+  位置[1]: framework=-3.647461e-01, impl=1.352539e-01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=9.035620e-02)
+  位置[2]: framework=2.475000e+01, impl=2.525000e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.141699e-01)
+  位置[3]: framework=-3.715625e+01, impl=-3.665625e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.262854e-01)
+  位置[4]: framework=-1.281250e+01, impl=-1.231250e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.025122e-01)
+  位置[5]: framework=-2.840625e+01, impl=-2.790625e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.177405e-01)
+  位置[6]: framework=-6.675000e+01, impl=-6.625000e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.551856e-01)
+  位置[7]: framework=4.128125e+01, impl=4.178125e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.303137e-01)
+  位置[8]: framework=3.596875e+01, impl=3.646875e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.251257e-01)
+  位置[9]: framework=6.558594e+00, impl=7.058594e+00, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=9.640488e-02)
+前 10 个 matched 未通过位置:
+  位置[0] (正常域): framework=3.115625e+01, impl=3.165625e+01, 相对误差=1.604814e-02 (允许<=9.765625e-04)
+  位置[1] (正常域): framework=-3.647461e-01, impl=1.352539e-01, 相对误差=1.370816e+00 (允许<=9.765625e-04)
+  位置[2] (正常域): framework=2.475000e+01, impl=2.525000e+01, 相对误差=2.020202e-02 (允许<=9.765625e-04)
+  位置[3] (正常域): framework=-3.715625e+01, impl=-3.665625e+01, 相对误差=1.345669e-02 (允许<=9.765625e-04)
+  位置[4] (正常域): framework=-1.281250e+01, impl=-1.231250e+01, 相对误差=3.902439e-02 (允许<=9.765625e-04)
+  位置[5] (正常域): framework=-2.840625e+01, impl=-2.790625e+01, 相对误差=1.760176e-02 (允许<=9.765625e-04)
+  位置[6] (正常域): framework=-6.675000e+01, impl=-6.625000e+01, 相对误差=7.490637e-03 (允许<=9.765625e-04)
+  位置[7] (正常域): framework=4.128125e+01, impl=4.178125e+01, 相对误差=1.211204e-02 (允许<=9.765625e-04)
+  位置[8] (正常域): framework=3.596875e+01, impl=3.646875e+01, 相对误差=1.390096e-02 (允许<=9.765625e-04)
+  位置[9] (正常域): framework=6.558594e+00, impl=7.058594e+00, 相对误差=7.623585e-02 (允许<=9.765625e-04)
+
+2026-10-07 04:25:10,069   测试第 17/51 组输入...
+2026-10-07 04:25:10,069   [输入类型判定] 来源=tensor，候选 dtypes=['torch.bfloat16', 'torch.bfloat16']，最高精度=torch.bfloat16，input_type=float
+2026-10-07 04:25:10,184   [输出概览] 共 1 个输出，non_compute=False
+2026-10-07 04:25:10,184   [输出 0] shape=[50, 398, 398], dtype=torch.bfloat16
+2026-10-07 04:25:10,235   [评测模式] 模式=float_compute（浮点计算类），输入 dtype=torch.bfloat16（float），输出 dtype=torch.bfloat16；误差要求=三项 AND：(1)max_error_cap |diff|<=atol+rtol*|golden| [atol=1.000e-01, rtol=7.812e-03]，(2)matched_ratio>=0.9 [小值域 sv_thr=3.906e-03/sv_err=1.526e-05，正常域 rel_thr=7.812e-03]，(3)MERE<7.812e-03（finite=7920200/7920200）
+2026-10-07 04:25:20,990   [用例 17/51] 失败: AccuracyError: [用例 17/51] 验证失败 dtype=torch.bfloat16: max_error_cap_violations=7397131/7920200 (atol=1.000000e-01, rtol=7.812500e-03, max_abs_diff=1.000000e+00, ok=False), matched_ratio=0.021971 (req>=0.9, ok=False), MERE=2.672467e-01 (rel_thr=7.812500e-03, ok=False); small_count=859, normal_count=7919341
+前 10 个 max_error_cap 违例位置:
+  位置[0]: framework=5.050000e+01, impl=5.100000e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=4.945312e-01)
+  位置[1]: framework=-2.050000e+01, impl=-2.000000e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=2.601562e-01)
+  位置[2]: framework=1.287500e+01, impl=1.337500e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=2.005859e-01)
+  位置[3]: framework=-2.412500e+01, impl=-2.362500e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=2.884766e-01)
+  位置[4]: framework=-7.781250e+00, impl=-7.281250e+00, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.607910e-01)
+  位置[5]: framework=7.937500e+00, impl=8.437500e+00, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.620117e-01)
+  位置[6]: framework=3.850000e+01, impl=3.900000e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=4.007812e-01)
+  位置[7]: framework=-4.650000e+01, impl=-4.600000e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=4.632812e-01)
+  位置[8]: framework=3.525000e+01, impl=3.575000e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=3.753906e-01)
+  位置[9]: framework=1.550000e+01, impl=1.600000e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=2.210937e-01)
+前 10 个 matched 未通过位置:
+  位置[0] (正常域): framework=5.050000e+01, impl=5.100000e+01, 相对误差=9.900990e-03 (允许<=7.812500e-03)
+  位置[1] (正常域): framework=-2.050000e+01, impl=-2.000000e+01, 相对误差=2.439024e-02 (允许<=7.812500e-03)
+  位置[2] (正常域): framework=1.287500e+01, impl=1.337500e+01, 相对误差=3.883495e-02 (允许<=7.812500e-03)
+  位置[3] (正常域): framework=-2.412500e+01, impl=-2.362500e+01, 相对误差=2.072539e-02 (允许<=7.812500e-03)
+  位置[4] (正常域): framework=-7.781250e+00, impl=-7.281250e+00, 相对误差=6.425703e-02 (允许<=7.812500e-03)
+  位置[5] (正常域): framework=7.937500e+00, impl=8.437500e+00, 相对误差=6.299213e-02 (允许<=7.812500e-03)
+  位置[6] (正常域): framework=3.850000e+01, impl=3.900000e+01, 相对误差=1.298701e-02 (允许<=7.812500e-03)
+  位置[7] (正常域): framework=-4.650000e+01, impl=-4.600000e+01, 相对误差=1.075269e-02 (允许<=7.812500e-03)
+  位置[8] (正常域): framework=3.525000e+01, impl=3.575000e+01, 相对误差=1.418440e-02 (允许<=7.812500e-03)
+  位置[9] (正常域): framework=1.550000e+01, impl=1.600000e+01, 相对误差=3.225806e-02 (允许<=7.812500e-03)
+
+2026-10-07 04:25:22,624   测试第 18/51 组输入...
+2026-10-07 04:25:22,625   [输入类型判定] 来源=tensor，候选 dtypes=['torch.bfloat16', 'torch.bfloat16']，最高精度=torch.bfloat16，input_type=float
+2026-10-07 04:25:22,950   [输出概览] 共 1 个输出，non_compute=False
+2026-10-07 04:25:22,950   [输出 0] shape=[32, 832, 832], dtype=torch.bfloat16
+2026-10-07 04:25:23,011   [评测模式] 模式=float_compute（浮点计算类），输入 dtype=torch.bfloat16（float），输出 dtype=torch.bfloat16；误差要求=三项 AND：(1)max_error_cap |diff|<=atol+rtol*|golden| [atol=1.000e-01, rtol=7.812e-03]，(2)matched_ratio>=0.9 [小值域 sv_thr=3.906e-03/sv_err=1.526e-05，正常域 rel_thr=7.812e-03]，(3)MERE<7.812e-03（finite=22151168/22151168）
+2026-10-07 04:25:54,680   [用例 18/51] 失败: AccuracyError: [用例 18/51] 验证失败 dtype=torch.bfloat16: max_error_cap_violations=17646028/22151168 (atol=1.000000e-01, rtol=7.812500e-03, max_abs_diff=1.000000e+00, ok=False), matched_ratio=0.112761 (req>=0.9, ok=False), MERE=1.783603e-01 (rel_thr=7.812500e-03, ok=False); small_count=1698, normal_count=22149470
+前 10 个 max_error_cap 违例位置:
+  位置[0]: framework=5.437500e+00, impl=5.937500e+00, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.424805e-01)
+  位置[1]: framework=1.450000e+01, impl=1.500000e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=2.132812e-01)
+  位置[2]: framework=1.900000e+01, impl=1.950000e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=2.484375e-01)
+  位置[3]: framework=-2.000000e+01, impl=-1.950000e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=2.562500e-01)
+  位置[4]: framework=-1.101562e+00, impl=-6.015625e-01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.086060e-01)
+  位置[5]: framework=-2.112500e+01, impl=-2.062500e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=2.650391e-01)
+  位置[6]: framework=2.387500e+01, impl=2.437500e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=2.865234e-01)
+  位置[7]: framework=6.093750e+00, impl=6.593750e+00, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.476074e-01)
+  位置[8]: framework=2.162500e+01, impl=2.212500e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=2.689453e-01)
+  位置[9]: framework=4.850000e+01, impl=4.900000e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=4.789062e-01)
+前 10 个 matched 未通过位置:
+  位置[0] (正常域): framework=5.437500e+00, impl=5.937500e+00, 相对误差=9.195402e-02 (允许<=7.812500e-03)
+  位置[1] (正常域): framework=1.450000e+01, impl=1.500000e+01, 相对误差=3.448276e-02 (允许<=7.812500e-03)
+  位置[2] (正常域): framework=1.900000e+01, impl=1.950000e+01, 相对误差=2.631579e-02 (允许<=7.812500e-03)
+  位置[3] (正常域): framework=-2.000000e+01, impl=-1.950000e+01, 相对误差=2.500000e-02 (允许<=7.812500e-03)
+  位置[4] (正常域): framework=-1.101562e+00, impl=-6.015625e-01, 相对误差=4.539007e-01 (允许<=7.812500e-03)
+  位置[5] (正常域): framework=-2.112500e+01, impl=-2.062500e+01, 相对误差=2.366864e-02 (允许<=7.812500e-03)
+  位置[6] (正常域): framework=2.387500e+01, impl=2.437500e+01, 相对误差=2.094241e-02 (允许<=7.812500e-03)
+  位置[7] (正常域): framework=6.093750e+00, impl=6.593750e+00, 相对误差=8.205128e-02 (允许<=7.812500e-03)
+  位置[8] (正常域): framework=2.162500e+01, impl=2.212500e+01, 相对误差=2.312139e-02 (允许<=7.812500e-03)
+  位置[9] (正常域): framework=4.850000e+01, impl=4.900000e+01, 相对误差=1.030928e-02 (允许<=7.812500e-03)
+
+2026-10-07 04:25:55,327   测试第 19/51 组输入...
+2026-10-07 04:25:55,327   [输入类型判定] 来源=tensor，候选 dtypes=['torch.bfloat16', 'torch.bfloat16']，最高精度=torch.bfloat16，input_type=float
+2026-10-07 04:25:55,440   [输出概览] 共 1 个输出，non_compute=False
+2026-10-07 04:25:55,441   [输出 0] shape=[130, 260, 260], dtype=torch.bfloat16
+2026-10-07 04:25:55,489   [评测模式] 模式=float_compute（浮点计算类），输入 dtype=torch.bfloat16（float），输出 dtype=torch.bfloat16；误差要求=三项 AND：(1)max_error_cap |diff|<=atol+rtol*|golden| [atol=1.000e-01, rtol=7.812e-03]，(2)matched_ratio>=0.9 [小值域 sv_thr=3.906e-03/sv_err=1.526e-05，正常域 rel_thr=7.812e-03]，(3)MERE<7.812e-03（finite=8788000/8788000）
+2026-10-07 04:26:07,504   [用例 19/51] 失败: AccuracyError: [用例 19/51] 验证失败 dtype=torch.bfloat16: max_error_cap_violations=8586729/8788000 (atol=1.000000e-01, rtol=7.812500e-03, max_abs_diff=6.250000e-01, ok=False), matched_ratio=0.004623 (req>=0.9, ok=False), MERE=3.965544e-01 (rel_thr=7.812500e-03, ok=False); small_count=1241, normal_count=8786759
+前 10 个 max_error_cap 违例位置:
+  位置[0]: framework=-2.512500e+01, impl=-2.462500e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=2.962891e-01)
+  位置[1]: framework=-1.950000e+01, impl=-1.900000e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=2.523437e-01)
+  位置[2]: framework=7.375000e+00, impl=7.875000e+00, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.576172e-01)
+  位置[3]: framework=-1.953125e+00, impl=-1.453125e+00, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.152588e-01)
+  位置[4]: framework=-7.875000e+00, impl=-7.375000e+00, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.615234e-01)
+  位置[5]: framework=9.687500e+00, impl=1.018750e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.756836e-01)
+  位置[6]: framework=-3.650000e+01, impl=-3.600000e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=3.851562e-01)
+  位置[7]: framework=-3.984375e-01, impl=1.015625e-01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.031128e-01)
+  位置[8]: framework=-3.250000e+01, impl=-3.200000e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=3.539062e-01)
+  位置[9]: framework=-9.625000e+00, impl=-9.125000e+00, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.751953e-01)
+前 10 个 matched 未通过位置:
+  位置[0] (正常域): framework=-2.512500e+01, impl=-2.462500e+01, 相对误差=1.990050e-02 (允许<=7.812500e-03)
+  位置[1] (正常域): framework=-1.950000e+01, impl=-1.900000e+01, 相对误差=2.564103e-02 (允许<=7.812500e-03)
+  位置[2] (正常域): framework=7.375000e+00, impl=7.875000e+00, 相对误差=6.779661e-02 (允许<=7.812500e-03)
+  位置[3] (正常域): framework=-1.953125e+00, impl=-1.453125e+00, 相对误差=2.560000e-01 (允许<=7.812500e-03)
+  位置[4] (正常域): framework=-7.875000e+00, impl=-7.375000e+00, 相对误差=6.349207e-02 (允许<=7.812500e-03)
+  位置[5] (正常域): framework=9.687500e+00, impl=1.018750e+01, 相对误差=5.161290e-02 (允许<=7.812500e-03)
+  位置[6] (正常域): framework=-3.650000e+01, impl=-3.600000e+01, 相对误差=1.369863e-02 (允许<=7.812500e-03)
+  位置[7] (正常域): framework=-3.984375e-01, impl=1.015625e-01, 相对误差=1.254902e+00 (允许<=7.812500e-03)
+  位置[8] (正常域): framework=-3.250000e+01, impl=-3.200000e+01, 相对误差=1.538462e-02 (允许<=7.812500e-03)
+  位置[9] (正常域): framework=-9.625000e+00, impl=-9.125000e+00, 相对误差=5.194805e-02 (允许<=7.812500e-03)
+
+2026-10-07 04:26:08,198   测试第 20/51 组输入...
+2026-10-07 04:26:08,198   [输入类型判定] 来源=tensor，候选 dtypes=['torch.bfloat16', 'torch.bfloat16']，最高精度=torch.bfloat16，input_type=float
+2026-10-07 04:26:08,315   [输出概览] 共 1 个输出，non_compute=False
+2026-10-07 04:26:08,316   [输出 0] shape=[133, 265, 265], dtype=torch.bfloat16
+2026-10-07 04:26:08,364   [评测模式] 模式=float_compute（浮点计算类），输入 dtype=torch.bfloat16（float），输出 dtype=torch.bfloat16；误差要求=三项 AND：(1)max_error_cap |diff|<=atol+rtol*|golden| [atol=1.000e-01, rtol=7.812e-03]，(2)matched_ratio>=0.9 [小值域 sv_thr=3.906e-03/sv_err=1.526e-05，正常域 rel_thr=7.812e-03]，(3)MERE<7.812e-03（finite=9339925/9339925）
+2026-10-07 04:26:21,382   [用例 20/51] 失败: AccuracyError: [用例 20/51] 验证失败 dtype=torch.bfloat16: max_error_cap_violations=9112763/9339925 (atol=1.000000e-01, rtol=7.812500e-03, max_abs_diff=6.250000e-01, ok=False), matched_ratio=0.005030 (req>=0.9, ok=False), MERE=2.879070e-01 (rel_thr=7.812500e-03, ok=False); small_count=1260, normal_count=9338665
+前 10 个 max_error_cap 违例位置:
+  位置[0]: framework=1.925000e+01, impl=1.975000e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=2.503906e-01)
+  位置[1]: framework=-4.375000e+00, impl=-3.875000e+00, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.341797e-01)
+  位置[2]: framework=-5.125000e+00, impl=-4.625000e+00, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.400391e-01)
+  位置[3]: framework=3.650000e+01, impl=3.700000e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=3.851562e-01)
+  位置[4]: framework=-3.093750e+00, impl=-2.593750e+00, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.241699e-01)
+  位置[5]: framework=1.443750e+01, impl=1.493750e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=2.127930e-01)
+  位置[6]: framework=3.359375e+00, impl=3.859375e+00, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.262451e-01)
+  位置[7]: framework=1.075000e+01, impl=1.125000e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.839844e-01)
+  位置[8]: framework=-5.250000e+00, impl=-4.750000e+00, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.410156e-01)
+  位置[9]: framework=-8.937500e+00, impl=-8.437500e+00, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.698242e-01)
+前 10 个 matched 未通过位置:
+  位置[0] (正常域): framework=1.925000e+01, impl=1.975000e+01, 相对误差=2.597403e-02 (允许<=7.812500e-03)
+  位置[1] (正常域): framework=-4.375000e+00, impl=-3.875000e+00, 相对误差=1.142857e-01 (允许<=7.812500e-03)
+  位置[2] (正常域): framework=-5.125000e+00, impl=-4.625000e+00, 相对误差=9.756097e-02 (允许<=7.812500e-03)
+  位置[3] (正常域): framework=3.650000e+01, impl=3.700000e+01, 相对误差=1.369863e-02 (允许<=7.812500e-03)
+  位置[4] (正常域): framework=-3.093750e+00, impl=-2.593750e+00, 相对误差=1.616162e-01 (允许<=7.812500e-03)
+  位置[5] (正常域): framework=1.443750e+01, impl=1.493750e+01, 相对误差=3.463203e-02 (允许<=7.812500e-03)
+  位置[6] (正常域): framework=3.359375e+00, impl=3.859375e+00, 相对误差=1.488372e-01 (允许<=7.812500e-03)
+  位置[7] (正常域): framework=1.075000e+01, impl=1.125000e+01, 相对误差=4.651163e-02 (允许<=7.812500e-03)
+  位置[8] (正常域): framework=-5.250000e+00, impl=-4.750000e+00, 相对误差=9.523810e-02 (允许<=7.812500e-03)
+  位置[9] (正常域): framework=-8.937500e+00, impl=-8.437500e+00, 相对误差=5.594406e-02 (允许<=7.812500e-03)
+
+2026-10-07 04:26:21,762   测试第 21/51 组输入...
+2026-10-07 04:26:21,763   [输入类型判定] 来源=tensor，候选 dtypes=['torch.float16', 'torch.float16']，最高精度=torch.float16，input_type=float
+2026-10-07 04:26:44,082   [输出概览] 共 1 个输出，non_compute=False
+2026-10-07 04:26:44,083   [输出 0] shape=[8, 1088, 1088], dtype=torch.float16
+2026-10-07 04:26:44,142   [评测模式] 模式=float_compute（浮点计算类），输入 dtype=torch.float16（float），输出 dtype=torch.float16；误差要求=三项 AND：(1)max_error_cap |diff|<=atol+rtol*|golden| [atol=9.000e-02, rtol=9.766e-04]，(2)matched_ratio>=0.9 [小值域 sv_thr=4.883e-04/sv_err=1.526e-05，正常域 rel_thr=9.766e-04]，(3)MERE<9.766e-04（finite=9469952/9469952）
+2026-10-07 04:26:56,964   [用例 21/51] 失败: AccuracyError: [用例 21/51] 验证失败 dtype=torch.float16: max_error_cap_violations=9469952/9469952 (atol=9.000000e-02, rtol=9.765625e-04, max_abs_diff=5.625000e-01, ok=False), matched_ratio=0.000000 (req>=0.9, ok=False), MERE=1.841885e-01 (rel_thr=9.765625e-04, ok=False); small_count=99, normal_count=9469853
+前 10 个 max_error_cap 违例位置:
+  位置[0]: framework=-2.705078e+00, impl=-2.205078e+00, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=9.264168e-02)
+  位置[1]: framework=1.123750e+02, impl=1.128750e+02, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.997412e-01)
+  位置[2]: framework=-2.204688e+01, impl=-2.154688e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.115302e-01)
+  位置[3]: framework=-1.567188e+01, impl=-1.517188e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.053046e-01)
+  位置[4]: framework=-4.843750e+01, impl=-4.793750e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.373022e-01)
+  位置[5]: framework=-2.931250e+01, impl=-2.881250e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.186255e-01)
+  位置[6]: framework=5.818750e+01, impl=5.868750e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.468237e-01)
+  位置[7]: framework=-2.242188e+01, impl=-2.192188e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.118964e-01)
+  位置[8]: framework=1.201562e+01, impl=1.251562e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.017340e-01)
+  位置[9]: framework=-4.128125e+01, impl=-4.078125e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.303137e-01)
+前 10 个 matched 未通过位置:
+  位置[0] (正常域): framework=-2.705078e+00, impl=-2.205078e+00, 相对误差=1.848375e-01 (允许<=9.765625e-04)
+  位置[1] (正常域): framework=1.123750e+02, impl=1.128750e+02, 相对误差=4.449388e-03 (允许<=9.765625e-04)
+  位置[2] (正常域): framework=-2.204688e+01, impl=-2.154688e+01, 相对误差=2.267895e-02 (允许<=9.765625e-04)
+  位置[3] (正常域): framework=-1.567188e+01, impl=-1.517188e+01, 相对误差=3.190429e-02 (允许<=9.765625e-04)
+  位置[4] (正常域): framework=-4.843750e+01, impl=-4.793750e+01, 相对误差=1.032258e-02 (允许<=9.765625e-04)
+  位置[5] (正常域): framework=-2.931250e+01, impl=-2.881250e+01, 相对误差=1.705757e-02 (允许<=9.765625e-04)
+  位置[6] (正常域): framework=5.818750e+01, impl=5.868750e+01, 相对误差=8.592911e-03 (允许<=9.765625e-04)
+  位置[7] (正常域): framework=-2.242188e+01, impl=-2.192188e+01, 相对误差=2.229965e-02 (允许<=9.765625e-04)
+  位置[8] (正常域): framework=1.201562e+01, impl=1.251562e+01, 相对误差=4.161248e-02 (允许<=9.765625e-04)
+  位置[9] (正常域): framework=-4.128125e+01, impl=-4.078125e+01, 相对误差=1.211204e-02 (允许<=9.765625e-04)
+
+2026-10-07 04:26:57,672   测试第 22/51 组输入...
+2026-10-07 04:26:57,672   [输入类型判定] 来源=tensor，候选 dtypes=['torch.bfloat16', 'torch.bfloat16']，最高精度=torch.bfloat16，input_type=float
+2026-10-07 04:26:57,796   [输出概览] 共 1 个输出，non_compute=False
+2026-10-07 04:26:57,796   [输出 0] shape=[8, 1088, 1088], dtype=torch.bfloat16
+2026-10-07 04:26:57,842   [评测模式] 模式=float_compute（浮点计算类），输入 dtype=torch.bfloat16（float），输出 dtype=torch.bfloat16；误差要求=三项 AND：(1)max_error_cap |diff|<=atol+rtol*|golden| [atol=1.000e-01, rtol=7.812e-03]，(2)matched_ratio>=0.9 [小值域 sv_thr=3.906e-03/sv_err=1.526e-05，正常域 rel_thr=7.812e-03]，(3)MERE<7.812e-03（finite=9469952/9469952）
+2026-10-07 04:27:10,938   [用例 22/51] 失败: AccuracyError: [用例 22/51] 验证失败 dtype=torch.bfloat16: max_error_cap_violations=6949941/9469952 (atol=1.000000e-01, rtol=7.812500e-03, max_abs_diff=1.000000e+00, ok=False), matched_ratio=0.165542 (req>=0.9, ok=False), MERE=7.049131e-01 (rel_thr=7.812500e-03, ok=False); small_count=648, normal_count=9469304
+前 10 个 max_error_cap 违例位置:
+  位置[0]: framework=9.062500e+00, impl=9.562500e+00, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.708008e-01)
+  位置[1]: framework=-8.187500e+00, impl=-7.687500e+00, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.639648e-01)
+  位置[4]: framework=-2.775000e+01, impl=-2.725000e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=3.167969e-01)
+  位置[5]: framework=-3.750000e+01, impl=-3.700000e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=3.929687e-01)
+  位置[6]: framework=3.359375e+00, impl=3.859375e+00, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.262451e-01)
+  位置[8]: framework=-1.087500e+01, impl=-1.037500e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.849609e-01)
+  位置[9]: framework=-4.950000e+01, impl=-4.900000e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=4.867187e-01)
+  位置[10]: framework=-2.475000e+01, impl=-2.425000e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=2.933594e-01)
+  位置[11]: framework=-1.225000e+01, impl=-1.175000e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.957031e-01)
+  位置[12]: framework=-3.554688e-01, impl=1.445312e-01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.027771e-01)
+前 10 个 matched 未通过位置:
+  位置[0] (正常域): framework=9.062500e+00, impl=9.562500e+00, 相对误差=5.517241e-02 (允许<=7.812500e-03)
+  位置[1] (正常域): framework=-8.187500e+00, impl=-7.687500e+00, 相对误差=6.106870e-02 (允许<=7.812500e-03)
+  位置[3] (正常域): framework=-6.100000e+01, impl=-6.050000e+01, 相对误差=8.196721e-03 (允许<=7.812500e-03)
+  位置[4] (正常域): framework=-2.775000e+01, impl=-2.725000e+01, 相对误差=1.801802e-02 (允许<=7.812500e-03)
+  位置[5] (正常域): framework=-3.750000e+01, impl=-3.700000e+01, 相对误差=1.333333e-02 (允许<=7.812500e-03)
+  位置[6] (正常域): framework=3.359375e+00, impl=3.859375e+00, 相对误差=1.488372e-01 (允许<=7.812500e-03)
+  位置[8] (正常域): framework=-1.087500e+01, impl=-1.037500e+01, 相对误差=4.597701e-02 (允许<=7.812500e-03)
+  位置[9] (正常域): framework=-4.950000e+01, impl=-4.900000e+01, 相对误差=1.010101e-02 (允许<=7.812500e-03)
+  位置[10] (正常域): framework=-2.475000e+01, impl=-2.425000e+01, 相对误差=2.020202e-02 (允许<=7.812500e-03)
+  位置[11] (正常域): framework=-1.225000e+01, impl=-1.175000e+01, 相对误差=4.081633e-02 (允许<=7.812500e-03)
+
+2026-10-07 04:27:11,403   测试第 23/51 组输入...
+2026-10-07 04:27:11,403   [输入类型判定] 来源=tensor，候选 dtypes=['torch.float32', 'torch.float32']，最高精度=torch.float32，input_type=float
+2026-10-07 04:27:11,641   [输出概览] 共 1 个输出，non_compute=False
+2026-10-07 04:27:11,641   [输出 0] shape=[136, 271, 271], dtype=torch.float32
+2026-10-07 04:27:11,691   [评测模式] 模式=float_compute（浮点计算类），输入 dtype=torch.float32（float），输出 dtype=torch.float32；误差要求=三项 AND：(1)max_error_cap |diff|<=atol+rtol*|golden| [atol=1.000e-03, rtol=1.221e-04]，(2)matched_ratio>=0.9 [小值域 sv_thr=6.104e-05/sv_err=9.313e-10，正常域 rel_thr=1.221e-04]，(3)MERE<1.221e-04（finite=9987976/9987976）
+2026-10-07 04:27:24,941   [用例 23/51] 失败: AccuracyError: [用例 23/51] 验证失败 dtype=torch.float32: max_error_cap_violations=9987976/9987976 (atol=1.000000e-03, rtol=1.220703e-04, max_abs_diff=5.000038e-01, ok=False), matched_ratio=0.000000 (req>=0.9, ok=False), MERE=3.270563e-01 (rel_thr=1.220703e-04, ok=False); small_count=23, normal_count=9987953
+前 10 个 max_error_cap 违例位置:
+  位置[0]: framework=-2.156789e+01, impl=-2.106789e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=3.632799e-03)
+  位置[1]: framework=-1.672012e+00, impl=-1.172012e+00, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.204103e-03)
+  位置[2]: framework=-4.527011e+00, impl=-4.027011e+00, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.552614e-03)
+  位置[3]: framework=3.006305e+01, impl=3.056305e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=4.669806e-03)
+  位置[4]: framework=-2.196789e+01, impl=-2.146789e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=3.681628e-03)
+  位置[5]: framework=-1.006505e+01, impl=-9.565054e+00, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=2.228644e-03)
+  位置[6]: framework=6.771797e-02, impl=5.677180e-01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.008266e-03)
+  位置[7]: framework=1.473825e+01, impl=1.523825e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=2.799103e-03)
+  位置[8]: framework=1.368782e+01, impl=1.418782e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=2.670877e-03)
+  位置[9]: framework=8.464245e+00, impl=8.964245e+00, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=2.033233e-03)
+前 10 个 matched 未通过位置:
+  位置[0] (正常域): framework=-2.156789e+01, impl=-2.106789e+01, 相对误差=2.318261e-02 (允许<=1.220703e-04)
+  位置[1] (正常域): framework=-1.672012e+00, impl=-1.172012e+00, 相对误差=2.990409e-01 (允许<=1.220703e-04)
+  位置[2] (正常域): framework=-4.527011e+00, impl=-4.027011e+00, 相对误差=1.104482e-01 (允许<=1.220703e-04)
+  位置[3] (正常域): framework=3.006305e+01, impl=3.056305e+01, 相对误差=1.663171e-02 (允许<=1.220703e-04)
+  位置[4] (正常域): framework=-2.196789e+01, impl=-2.146789e+01, 相对误差=2.276049e-02 (允许<=1.220703e-04)
+  位置[5] (正常域): framework=-1.006505e+01, impl=-9.565054e+00, 相对误差=4.967683e-02 (允许<=1.220703e-04)
+  位置[6] (正常域): framework=6.771797e-02, impl=5.677180e-01, 相对误差=7.383554e+00 (允许<=1.220703e-04)
+  位置[7] (正常域): framework=1.473825e+01, impl=1.523825e+01, 相对误差=3.392533e-02 (允许<=1.220703e-04)
+  位置[8] (正常域): framework=1.368782e+01, impl=1.418782e+01, 相对误差=3.652882e-02 (允许<=1.220703e-04)
+  位置[9] (正常域): framework=8.464245e+00, impl=8.964245e+00, 相对误差=5.907201e-02 (允许<=1.220703e-04)
+
+2026-10-07 04:27:25,637   测试第 24/51 组输入...
+2026-10-07 04:27:25,637   [输入类型判定] 来源=tensor，候选 dtypes=['torch.float16', 'torch.float16']，最高精度=torch.float16，input_type=float
+2026-10-07 04:27:42,099   [输出概览] 共 1 个输出，non_compute=False
+2026-10-07 04:27:42,099   [输出 0] shape=[64, 528, 528], dtype=torch.float16
+2026-10-07 04:27:42,151   [评测模式] 模式=float_compute（浮点计算类），输入 dtype=torch.float16（float），输出 dtype=torch.float16；误差要求=三项 AND：(1)max_error_cap |diff|<=atol+rtol*|golden| [atol=9.000e-02, rtol=9.766e-04]，(2)matched_ratio>=0.9 [小值域 sv_thr=4.883e-04/sv_err=1.526e-05，正常域 rel_thr=9.766e-04]，(3)MERE<9.766e-04（finite=17842176/17842176）
+2026-10-07 04:28:06,037   [用例 24/51] 失败: AccuracyError: [用例 24/51] 验证失败 dtype=torch.float16: max_error_cap_violations=17842176/17842176 (atol=9.000000e-02, rtol=9.765625e-04, max_abs_diff=5.625000e-01, ok=False), matched_ratio=0.000000 (req>=0.9, ok=False), MERE=5.579417e-01 (rel_thr=9.765625e-04, ok=False); small_count=211, normal_count=17841965
+前 10 个 max_error_cap 违例位置:
+  位置[0]: framework=2.962891e+00, impl=3.462891e+00, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=9.289345e-02)
+  位置[1]: framework=-1.336719e+01, impl=-1.286719e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.030539e-01)
+  位置[2]: framework=-6.445312e+00, impl=-5.945312e+00, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=9.629425e-02)
+  位置[3]: framework=4.665625e+01, impl=4.715625e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.355627e-01)
+  位置[4]: framework=2.056250e+01, impl=2.106250e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.100806e-01)
+  位置[5]: framework=1.182031e+01, impl=1.232031e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.015433e-01)
+  位置[6]: framework=5.262500e+01, impl=5.312500e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.413916e-01)
+  位置[7]: framework=4.300000e+01, impl=4.350000e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.319922e-01)
+  位置[8]: framework=8.959961e-01, impl=1.396484e+00, |diff|=5.004883e-01 (允许<=atol+rtol*|golden|=9.087500e-02)
+  位置[9]: framework=8.359375e+00, impl=8.859375e+00, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=9.816346e-02)
+前 10 个 matched 未通过位置:
+  位置[0] (正常域): framework=2.962891e+00, impl=3.462891e+00, 相对误差=1.687541e-01 (允许<=9.765625e-04)
+  位置[1] (正常域): framework=-1.336719e+01, impl=-1.286719e+01, 相对误差=3.740503e-02 (允许<=9.765625e-04)
+  位置[2] (正常域): framework=-6.445312e+00, impl=-5.945312e+00, 相对误差=7.757576e-02 (允许<=9.765625e-04)
+  位置[3] (正常域): framework=4.665625e+01, impl=4.715625e+01, 相对误差=1.071668e-02 (允许<=9.765625e-04)
+  位置[4] (正常域): framework=2.056250e+01, impl=2.106250e+01, 相对误差=2.431611e-02 (允许<=9.765625e-04)
+  位置[5] (正常域): framework=1.182031e+01, impl=1.232031e+01, 相对误差=4.230007e-02 (允许<=9.765625e-04)
+  位置[6] (正常域): framework=5.262500e+01, impl=5.312500e+01, 相对误差=9.501188e-03 (允许<=9.765625e-04)
+  位置[7] (正常域): framework=4.300000e+01, impl=4.350000e+01, 相对误差=1.162791e-02 (允许<=9.765625e-04)
+  位置[8] (正常域): framework=8.959961e-01, impl=1.396484e+00, 相对误差=5.585830e-01 (允许<=9.765625e-04)
+  位置[9] (正常域): framework=8.359375e+00, impl=8.859375e+00, 相对误差=5.981309e-02 (允许<=9.765625e-04)
+
+2026-10-07 04:28:06,810   测试第 25/51 组输入...
+2026-10-07 04:28:06,810   [输入类型判定] 来源=tensor，候选 dtypes=['torch.float16', 'torch.float16']，最高精度=torch.float16，input_type=float
+2026-10-07 04:28:28,347   [输出概览] 共 1 个输出，non_compute=False
+2026-10-07 04:28:28,347   [输出 0] shape=[64, 560, 560], dtype=torch.float16
+2026-10-07 04:28:28,434   [评测模式] 模式=float_compute（浮点计算类），输入 dtype=torch.float16（float），输出 dtype=torch.float16；误差要求=三项 AND：(1)max_error_cap |diff|<=atol+rtol*|golden| [atol=9.000e-02, rtol=9.766e-04]，(2)matched_ratio>=0.9 [小值域 sv_thr=4.883e-04/sv_err=1.526e-05，正常域 rel_thr=9.766e-04]，(3)MERE<9.766e-04（finite=20070400/20070400）
+2026-10-07 04:28:55,701   [用例 25/51] 失败: AccuracyError: [用例 25/51] 验证失败 dtype=torch.float16: max_error_cap_violations=20070400/20070400 (atol=9.000000e-02, rtol=9.765625e-04, max_abs_diff=5.625000e-01, ok=False), matched_ratio=0.000000 (req>=0.9, ok=False), MERE=4.453830e-01 (rel_thr=9.765625e-04, ok=False); small_count=238, normal_count=20070162
+前 10 个 max_error_cap 违例位置:
+  位置[0]: framework=-4.209375e+01, impl=-4.159375e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.311072e-01)
+  位置[1]: framework=2.134375e+01, impl=2.184375e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.108435e-01)
+  位置[2]: framework=2.073438e+01, impl=2.123438e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.102484e-01)
+  位置[3]: framework=-2.765625e+01, impl=-2.715625e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.170081e-01)
+  位置[4]: framework=7.450000e+01, impl=7.500000e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.627539e-01)
+  位置[5]: framework=1.098438e+01, impl=1.148438e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.007269e-01)
+  位置[6]: framework=-2.626953e+00, impl=-2.126953e+00, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=9.256539e-02)
+  位置[7]: framework=-8.443750e+01, impl=-8.393750e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.724585e-01)
+  位置[8]: framework=7.343750e+00, impl=7.843750e+00, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=9.717163e-02)
+  位置[9]: framework=-4.818750e+01, impl=-4.768750e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.370581e-01)
+前 10 个 matched 未通过位置:
+  位置[0] (正常域): framework=-4.209375e+01, impl=-4.159375e+01, 相对误差=1.187825e-02 (允许<=9.765625e-04)
+  位置[1] (正常域): framework=2.134375e+01, impl=2.184375e+01, 相对误差=2.342606e-02 (允许<=9.765625e-04)
+  位置[2] (正常域): framework=2.073438e+01, impl=2.123438e+01, 相对误差=2.411454e-02 (允许<=9.765625e-04)
+  位置[3] (正常域): framework=-2.765625e+01, impl=-2.715625e+01, 相对误差=1.807910e-02 (允许<=9.765625e-04)
+  位置[4] (正常域): framework=7.450000e+01, impl=7.500000e+01, 相对误差=6.711409e-03 (允许<=9.765625e-04)
+  位置[5] (正常域): framework=1.098438e+01, impl=1.148438e+01, 相对误差=4.551920e-02 (允许<=9.765625e-04)
+  位置[6] (正常域): framework=-2.626953e+00, impl=-2.126953e+00, 相对误差=1.903346e-01 (允许<=9.765625e-04)
+  位置[7] (正常域): framework=-8.443750e+01, impl=-8.393750e+01, 相对误差=5.921539e-03 (允许<=9.765625e-04)
+  位置[8] (正常域): framework=7.343750e+00, impl=7.843750e+00, 相对误差=6.808510e-02 (允许<=9.765625e-04)
+  位置[9] (正常域): framework=-4.818750e+01, impl=-4.768750e+01, 相对误差=1.037613e-02 (允许<=9.765625e-04)
+
+2026-10-07 04:28:57,619   测试第 26/51 组输入...
+2026-10-07 04:28:57,620   [输入类型判定] 来源=tensor，候选 dtypes=['torch.bfloat16', 'torch.bfloat16']，最高精度=torch.bfloat16，input_type=float
+2026-10-07 04:28:57,980   [输出概览] 共 1 个输出，non_compute=False
+2026-10-07 04:28:57,980   [输出 0] shape=[80, 576, 576], dtype=torch.bfloat16
+2026-10-07 04:28:58,056   [评测模式] 模式=float_compute（浮点计算类），输入 dtype=torch.bfloat16（float），输出 dtype=torch.bfloat16；误差要求=三项 AND：(1)max_error_cap |diff|<=atol+rtol*|golden| [atol=1.000e-01, rtol=7.812e-03]，(2)matched_ratio>=0.9 [小值域 sv_thr=3.906e-03/sv_err=1.526e-05，正常域 rel_thr=7.812e-03]，(3)MERE<7.812e-03（finite=26542080/26542080）
+2026-10-07 04:29:32,829   [用例 26/51] 失败: AccuracyError: [用例 26/51] 验证失败 dtype=torch.bfloat16: max_error_cap_violations=23257301/26542080 (atol=1.000000e-01, rtol=7.812500e-03, max_abs_diff=1.000000e+00, ok=False), matched_ratio=0.055012 (req>=0.9, ok=False), MERE=2.029244e-01 (rel_thr=7.812500e-03, ok=False); small_count=2525, normal_count=26539555
+前 10 个 max_error_cap 违例位置:
+  位置[0]: framework=-9.687500e+00, impl=-9.187500e+00, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.756836e-01)
+  位置[1]: framework=2.484375e+00, impl=2.984375e+00, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.194092e-01)
+  位置[2]: framework=2.550000e+01, impl=2.600000e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=2.992187e-01)
+  位置[3]: framework=-2.487500e+01, impl=-2.437500e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=2.943359e-01)
+  位置[4]: framework=1.131250e+01, impl=1.181250e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.883789e-01)
+  位置[5]: framework=8.312500e+00, impl=8.812500e+00, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.649414e-01)
+  位置[7]: framework=-4.825000e+01, impl=-4.775000e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=4.769531e-01)
+  位置[8]: framework=-1.600000e+01, impl=-1.550000e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=2.250000e-01)
+  位置[9]: framework=3.575000e+01, impl=3.625000e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=3.792969e-01)
+  位置[10]: framework=1.637500e+01, impl=1.687500e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=2.279297e-01)
+前 10 个 matched 未通过位置:
+  位置[0] (正常域): framework=-9.687500e+00, impl=-9.187500e+00, 相对误差=5.161290e-02 (允许<=7.812500e-03)
+  位置[1] (正常域): framework=2.484375e+00, impl=2.984375e+00, 相对误差=2.012579e-01 (允许<=7.812500e-03)
+  位置[2] (正常域): framework=2.550000e+01, impl=2.600000e+01, 相对误差=1.960784e-02 (允许<=7.812500e-03)
+  位置[3] (正常域): framework=-2.487500e+01, impl=-2.437500e+01, 相对误差=2.010050e-02 (允许<=7.812500e-03)
+  位置[4] (正常域): framework=1.131250e+01, impl=1.181250e+01, 相对误差=4.419890e-02 (允许<=7.812500e-03)
+  位置[5] (正常域): framework=8.312500e+00, impl=8.812500e+00, 相对误差=6.015038e-02 (允许<=7.812500e-03)
+  位置[6] (正常域): framework=-5.650000e+01, impl=-5.600000e+01, 相对误差=8.849557e-03 (允许<=7.812500e-03)
+  位置[7] (正常域): framework=-4.825000e+01, impl=-4.775000e+01, 相对误差=1.036269e-02 (允许<=7.812500e-03)
+  位置[8] (正常域): framework=-1.600000e+01, impl=-1.550000e+01, 相对误差=3.125000e-02 (允许<=7.812500e-03)
+  位置[9] (正常域): framework=3.575000e+01, impl=3.625000e+01, 相对误差=1.398601e-02 (允许<=7.812500e-03)
+
+2026-10-07 04:29:33,881   测试第 27/51 组输入...
+2026-10-07 04:29:33,881   [输入类型判定] 来源=tensor，候选 dtypes=['torch.float16', 'torch.float16']，最高精度=torch.float16，input_type=float
+2026-10-07 04:30:06,056   [输出概览] 共 1 个输出，non_compute=False
+2026-10-07 04:30:06,057   [输出 0] shape=[80, 576, 576], dtype=torch.float16
+2026-10-07 04:30:06,109   [评测模式] 模式=float_compute（浮点计算类），输入 dtype=torch.float16（float），输出 dtype=torch.float16；误差要求=三项 AND：(1)max_error_cap |diff|<=atol+rtol*|golden| [atol=9.000e-02, rtol=9.766e-04]，(2)matched_ratio>=0.9 [小值域 sv_thr=4.883e-04/sv_err=1.526e-05，正常域 rel_thr=9.766e-04]，(3)MERE<9.766e-04（finite=26542080/26542080）
+2026-10-07 04:30:42,462   [用例 27/51] 失败: AccuracyError: [用例 27/51] 验证失败 dtype=torch.float16: max_error_cap_violations=26542080/26542080 (atol=9.000000e-02, rtol=9.765625e-04, max_abs_diff=5.625000e-01, ok=False), matched_ratio=0.000000 (req>=0.9, ok=False), MERE=2.408236e-01 (rel_thr=9.765625e-04, ok=False); small_count=300, normal_count=26541780
+前 10 个 max_error_cap 违例位置:
+  位置[0]: framework=8.289062e+00, impl=8.789062e+00, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=9.809479e-02)
+  位置[1]: framework=4.712500e+01, impl=4.762500e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.360205e-01)
+  位置[2]: framework=3.578125e+01, impl=3.628125e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.249426e-01)
+  位置[3]: framework=3.684375e+01, impl=3.734375e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.259802e-01)
+  位置[4]: framework=-2.856250e+01, impl=-2.806250e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.178931e-01)
+  位置[5]: framework=4.984375e+01, impl=5.034375e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.386755e-01)
+  位置[6]: framework=-4.712500e+01, impl=-4.662500e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.360205e-01)
+  位置[7]: framework=-2.932812e+01, impl=-2.882812e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.186408e-01)
+  位置[8]: framework=-1.558594e+01, impl=-1.508594e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.052206e-01)
+  位置[9]: framework=-2.707031e+00, impl=-2.207031e+00, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=9.264359e-02)
+前 10 个 matched 未通过位置:
+  位置[0] (正常域): framework=8.289062e+00, impl=8.789062e+00, 相对误差=6.032045e-02 (允许<=9.765625e-04)
+  位置[1] (正常域): framework=4.712500e+01, impl=4.762500e+01, 相对误差=1.061008e-02 (允许<=9.765625e-04)
+  位置[2] (正常域): framework=3.578125e+01, impl=3.628125e+01, 相对误差=1.397380e-02 (允许<=9.765625e-04)
+  位置[3] (正常域): framework=3.684375e+01, impl=3.734375e+01, 相对误差=1.357082e-02 (允许<=9.765625e-04)
+  位置[4] (正常域): framework=-2.856250e+01, impl=-2.806250e+01, 相对误差=1.750547e-02 (允许<=9.765625e-04)
+  位置[5] (正常域): framework=4.984375e+01, impl=5.034375e+01, 相对误差=1.003135e-02 (允许<=9.765625e-04)
+  位置[6] (正常域): framework=-4.712500e+01, impl=-4.662500e+01, 相对误差=1.061008e-02 (允许<=9.765625e-04)
+  位置[7] (正常域): framework=-2.932812e+01, impl=-2.882812e+01, 相对误差=1.704848e-02 (允许<=9.765625e-04)
+  位置[8] (正常域): framework=-1.558594e+01, impl=-1.508594e+01, 相对误差=3.208020e-02 (允许<=9.765625e-04)
+  位置[9] (正常域): framework=-2.707031e+00, impl=-2.207031e+00, 相对误差=1.847042e-01 (允许<=9.765625e-04)
+
+2026-10-07 04:30:43,022   测试第 28/51 组输入...
+2026-10-07 04:30:43,022   [输入类型判定] 来源=tensor，候选 dtypes=['torch.float32', 'torch.float32']，最高精度=torch.float32，input_type=float
+2026-10-07 04:30:43,322   [输出概览] 共 1 个输出，non_compute=False
+2026-10-07 04:30:43,322   [输出 0] shape=[37, 584, 584], dtype=torch.float32
+2026-10-07 04:30:43,373   [评测模式] 模式=float_compute（浮点计算类），输入 dtype=torch.float32（float），输出 dtype=torch.float32；误差要求=三项 AND：(1)max_error_cap |diff|<=atol+rtol*|golden| [atol=1.000e-03, rtol=1.221e-04]，(2)matched_ratio>=0.9 [小值域 sv_thr=6.104e-05/sv_err=9.313e-10，正常域 rel_thr=1.221e-04]，(3)MERE<1.221e-04（finite=12619072/12619072）
+2026-10-07 04:31:00,913   [用例 28/51] 失败: AccuracyError: [用例 28/51] 验证失败 dtype=torch.float32: max_error_cap_violations=12619072/12619072 (atol=1.000000e-03, rtol=1.220703e-04, max_abs_diff=5.000076e-01, ok=False), matched_ratio=0.000000 (req>=0.9, ok=False), MERE=2.999714e-01 (rel_thr=1.220703e-04, ok=False); small_count=23, normal_count=12619049
+前 10 个 max_error_cap 违例位置:
+  位置[0]: framework=-3.835670e+01, impl=-3.785670e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=5.682215e-03)
+  位置[1]: framework=3.161161e+01, impl=3.211161e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=4.858839e-03)
+  位置[2]: framework=2.516170e+01, impl=2.566170e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=4.071496e-03)
+  位置[3]: framework=2.143018e+01, impl=2.193018e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=3.615988e-03)
+  位置[4]: framework=1.367661e-01, impl=6.367661e-01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.016695e-03)
+  位置[5]: framework=2.891343e+01, impl=2.941343e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=4.529472e-03)
+  位置[6]: framework=4.000303e+01, impl=4.050303e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=5.883182e-03)
+  位置[7]: framework=4.095509e+01, impl=4.145509e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=5.999401e-03)
+  位置[8]: framework=8.670921e+01, impl=8.720921e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.158462e-02)
+  位置[9]: framework=-6.116879e+00, impl=-5.616879e+00, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.746689e-03)
+前 10 个 matched 未通过位置:
+  位置[0] (正常域): framework=-3.835670e+01, impl=-3.785670e+01, 相对误差=1.303553e-02 (允许<=1.220703e-04)
+  位置[1] (正常域): framework=3.161161e+01, impl=3.211161e+01, 相对误差=1.581698e-02 (允许<=1.220703e-04)
+  位置[2] (正常域): framework=2.516170e+01, impl=2.566170e+01, 相对误差=1.987148e-02 (允许<=1.220703e-04)
+  位置[3] (正常域): framework=2.143018e+01, impl=2.193018e+01, 相对误差=2.333159e-02 (允许<=1.220703e-04)
+  位置[4] (正常域): framework=1.367661e-01, impl=6.367661e-01, 相对误差=3.655875e+00 (允许<=1.220703e-04)
+  位置[5] (正常域): framework=2.891343e+01, impl=2.941343e+01, 相对误差=1.729300e-02 (允许<=1.220703e-04)
+  位置[6] (正常域): framework=4.000303e+01, impl=4.050303e+01, 相对误差=1.249905e-02 (允许<=1.220703e-04)
+  位置[7] (正常域): framework=4.095509e+01, impl=4.145509e+01, 相对误差=1.220850e-02 (允许<=1.220703e-04)
+  位置[8] (正常域): framework=8.670921e+01, impl=8.720921e+01, 相对误差=5.766400e-03 (允许<=1.220703e-04)
+  位置[9] (正常域): framework=-6.116879e+00, impl=-5.616879e+00, 相对误差=8.174103e-02 (允许<=1.220703e-04)
+
+2026-10-07 04:31:02,228   测试第 29/51 组输入...
+2026-10-07 04:31:02,228   [输入类型判定] 来源=tensor，候选 dtypes=['torch.bfloat16', 'torch.bfloat16']，最高精度=torch.bfloat16，input_type=float
+2026-10-07 04:31:02,461   [输出概览] 共 1 个输出，non_compute=False
+2026-10-07 04:31:02,461   [输出 0] shape=[64, 528, 528], dtype=torch.bfloat16
+2026-10-07 04:31:02,507   [评测模式] 模式=float_compute（浮点计算类），输入 dtype=torch.bfloat16（float），输出 dtype=torch.bfloat16；误差要求=三项 AND：(1)max_error_cap |diff|<=atol+rtol*|golden| [atol=1.000e-01, rtol=7.812e-03]，(2)matched_ratio>=0.9 [小值域 sv_thr=3.906e-03/sv_err=1.526e-05，正常域 rel_thr=7.812e-03]，(3)MERE<7.812e-03（finite=17842176/17842176）
+2026-10-07 04:31:26,960   [用例 29/51] 失败: AccuracyError: [用例 29/51] 验证失败 dtype=torch.bfloat16: max_error_cap_violations=15872609/17842176 (atol=1.000000e-01, rtol=7.812500e-03, max_abs_diff=1.000000e+00, ok=False), matched_ratio=0.046578 (req>=0.9, ok=False), MERE=2.397708e-01 (rel_thr=7.812500e-03, ok=False); small_count=1746, normal_count=17840430
+前 10 个 max_error_cap 违例位置:
+  位置[0]: framework=1.131250e+01, impl=1.181250e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.883789e-01)
+  位置[1]: framework=-2.350000e+01, impl=-2.300000e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=2.835937e-01)
+  位置[2]: framework=2.387500e+01, impl=2.437500e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=2.865234e-01)
+  位置[3]: framework=-1.812500e+00, impl=-1.312500e+00, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.141602e-01)
+  位置[5]: framework=3.025000e+01, impl=3.075000e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=3.363281e-01)
+  位置[6]: framework=4.525000e+01, impl=4.575000e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=4.535156e-01)
+  位置[7]: framework=-2.350000e+01, impl=-2.300000e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=2.835937e-01)
+  位置[8]: framework=1.118750e+01, impl=1.168750e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.874023e-01)
+  位置[9]: framework=3.275000e+01, impl=3.325000e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=3.558594e-01)
+  位置[10]: framework=3.525000e+01, impl=3.575000e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=3.753906e-01)
+前 10 个 matched 未通过位置:
+  位置[0] (正常域): framework=1.131250e+01, impl=1.181250e+01, 相对误差=4.419890e-02 (允许<=7.812500e-03)
+  位置[1] (正常域): framework=-2.350000e+01, impl=-2.300000e+01, 相对误差=2.127660e-02 (允许<=7.812500e-03)
+  位置[2] (正常域): framework=2.387500e+01, impl=2.437500e+01, 相对误差=2.094241e-02 (允许<=7.812500e-03)
+  位置[3] (正常域): framework=-1.812500e+00, impl=-1.312500e+00, 相对误差=2.758620e-01 (允许<=7.812500e-03)
+  位置[4] (正常域): framework=-5.175000e+01, impl=-5.125000e+01, 相对误差=9.661836e-03 (允许<=7.812500e-03)
+  位置[5] (正常域): framework=3.025000e+01, impl=3.075000e+01, 相对误差=1.652892e-02 (允许<=7.812500e-03)
+  位置[6] (正常域): framework=4.525000e+01, impl=4.575000e+01, 相对误差=1.104972e-02 (允许<=7.812500e-03)
+  位置[7] (正常域): framework=-2.350000e+01, impl=-2.300000e+01, 相对误差=2.127660e-02 (允许<=7.812500e-03)
+  位置[8] (正常域): framework=1.118750e+01, impl=1.168750e+01, 相对误差=4.469274e-02 (允许<=7.812500e-03)
+  位置[9] (正常域): framework=3.275000e+01, impl=3.325000e+01, 相对误差=1.526718e-02 (允许<=7.812500e-03)
+
+2026-10-07 04:31:28,274   测试第 30/51 组输入...
+2026-10-07 04:31:28,274   [输入类型判定] 来源=tensor，候选 dtypes=['torch.bfloat16', 'torch.bfloat16']，最高精度=torch.bfloat16，input_type=float
+2026-10-07 04:31:28,514   [输出概览] 共 1 个输出，non_compute=False
+2026-10-07 04:31:28,514   [输出 0] shape=[64, 528, 528], dtype=torch.bfloat16
+2026-10-07 04:31:28,593   [评测模式] 模式=float_compute（浮点计算类），输入 dtype=torch.bfloat16（float），输出 dtype=torch.bfloat16；误差要求=三项 AND：(1)max_error_cap |diff|<=atol+rtol*|golden| [atol=1.000e-01, rtol=7.812e-03]，(2)matched_ratio>=0.9 [小值域 sv_thr=3.906e-03/sv_err=1.526e-05，正常域 rel_thr=7.812e-03]，(3)MERE<7.812e-03（finite=17842176/17842176）
+2026-10-07 04:31:53,189   [用例 30/51] 失败: AccuracyError: [用例 30/51] 验证失败 dtype=torch.bfloat16: max_error_cap_violations=15873508/17842176 (atol=1.000000e-01, rtol=7.812500e-03, max_abs_diff=1.000000e+00, ok=False), matched_ratio=0.046537 (req>=0.9, ok=False), MERE=2.224071e-01 (rel_thr=7.812500e-03, ok=False); small_count=1785, normal_count=17840391
+前 10 个 max_error_cap 违例位置:
+  位置[0]: framework=-4.125000e+01, impl=-4.075000e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=4.222656e-01)
+  位置[1]: framework=7.125000e+00, impl=7.625000e+00, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.556641e-01)
+  位置[2]: framework=2.850000e+01, impl=2.900000e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=3.226562e-01)
+  位置[3]: framework=7.812500e+00, impl=8.312500e+00, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.610352e-01)
+  位置[5]: framework=-1.700000e+01, impl=-1.650000e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=2.328125e-01)
+  位置[6]: framework=-2.650000e+01, impl=-2.600000e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=3.070312e-01)
+  位置[7]: framework=-1.675000e+01, impl=-1.625000e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=2.308594e-01)
+  位置[8]: framework=1.537500e+01, impl=1.587500e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=2.201172e-01)
+  位置[9]: framework=1.256250e+01, impl=1.306250e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.981445e-01)
+  位置[11]: framework=-3.325000e+01, impl=-3.275000e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=3.597656e-01)
+前 10 个 matched 未通过位置:
+  位置[0] (正常域): framework=-4.125000e+01, impl=-4.075000e+01, 相对误差=1.212121e-02 (允许<=7.812500e-03)
+  位置[1] (正常域): framework=7.125000e+00, impl=7.625000e+00, 相对误差=7.017544e-02 (允许<=7.812500e-03)
+  位置[2] (正常域): framework=2.850000e+01, impl=2.900000e+01, 相对误差=1.754386e-02 (允许<=7.812500e-03)
+  位置[3] (正常域): framework=7.812500e+00, impl=8.312500e+00, 相对误差=6.400000e-02 (允许<=7.812500e-03)
+  位置[4] (正常域): framework=-5.975000e+01, impl=-5.925000e+01, 相对误差=8.368201e-03 (允许<=7.812500e-03)
+  位置[5] (正常域): framework=-1.700000e+01, impl=-1.650000e+01, 相对误差=2.941176e-02 (允许<=7.812500e-03)
+  位置[6] (正常域): framework=-2.650000e+01, impl=-2.600000e+01, 相对误差=1.886792e-02 (允许<=7.812500e-03)
+  位置[7] (正常域): framework=-1.675000e+01, impl=-1.625000e+01, 相对误差=2.985075e-02 (允许<=7.812500e-03)
+  位置[8] (正常域): framework=1.537500e+01, impl=1.587500e+01, 相对误差=3.252032e-02 (允许<=7.812500e-03)
+  位置[9] (正常域): framework=1.256250e+01, impl=1.306250e+01, 相对误差=3.980099e-02 (允许<=7.812500e-03)
+
+2026-10-07 04:31:53,814   测试第 31/51 组输入...
+2026-10-07 04:31:53,815   [输入类型判定] 来源=tensor，候选 dtypes=['torch.float32', 'torch.float32']，最高精度=torch.float32，input_type=float
+2026-10-07 04:31:54,144   [输出概览] 共 1 个输出，non_compute=False
+2026-10-07 04:31:54,144   [输出 0] shape=[60, 482, 482], dtype=torch.float32
+2026-10-07 04:31:54,195   [评测模式] 模式=float_compute（浮点计算类），输入 dtype=torch.float32（float），输出 dtype=torch.float32；误差要求=三项 AND：(1)max_error_cap |diff|<=atol+rtol*|golden| [atol=1.000e-03, rtol=1.221e-04]，(2)matched_ratio>=0.9 [小值域 sv_thr=6.104e-05/sv_err=9.313e-10，正常域 rel_thr=1.221e-04]，(3)MERE<1.221e-04（finite=13939440/13939440）
+2026-10-07 04:32:13,662   [用例 31/51] 失败: AccuracyError: [用例 31/51] 验证失败 dtype=torch.float32: max_error_cap_violations=13939440/13939440 (atol=1.000000e-03, rtol=1.220703e-04, max_abs_diff=5.000076e-01, ok=False), matched_ratio=0.000000 (req>=0.9, ok=False), MERE=2.151477e-01 (rel_thr=1.220703e-04, ok=False); small_count=24, normal_count=13939416
+前 10 个 max_error_cap 违例位置:
+  位置[0]: framework=-1.381086e+01, impl=-1.331086e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=2.685896e-03)
+  位置[1]: framework=4.333743e+01, impl=4.383743e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=6.290213e-03)
+  位置[2]: framework=-2.054181e+01, impl=-2.004181e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=3.507546e-03)
+  位置[3]: framework=-1.462921e+01, impl=-1.412921e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=2.785792e-03)
+  位置[4]: framework=3.329455e+01, impl=3.379455e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=5.064277e-03)
+  位置[5]: framework=2.144957e+01, impl=2.194957e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=3.618356e-03)
+  位置[6]: framework=8.160754e-02, impl=5.816075e-01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.009962e-03)
+  位置[7]: framework=2.456469e+01, impl=2.506469e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=3.998620e-03)
+  位置[8]: framework=9.557335e-01, impl=1.455734e+00, |diff|=5.000001e-01 (允许<=atol+rtol*|golden|=1.116667e-03)
+  位置[9]: framework=-2.245543e+01, impl=-2.195543e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=3.741141e-03)
+前 10 个 matched 未通过位置:
+  位置[0] (正常域): framework=-1.381086e+01, impl=-1.331086e+01, 相对误差=3.620340e-02 (允许<=1.220703e-04)
+  位置[1] (正常域): framework=4.333743e+01, impl=4.383743e+01, 相对误差=1.153737e-02 (允许<=1.220703e-04)
+  位置[2] (正常域): framework=-2.054181e+01, impl=-2.004181e+01, 相对误差=2.434060e-02 (允许<=1.220703e-04)
+  位置[3] (正常域): framework=-1.462921e+01, impl=-1.412921e+01, 相对误差=3.417820e-02 (允许<=1.220703e-04)
+  位置[4] (正常域): framework=3.329455e+01, impl=3.379455e+01, 相对误差=1.501747e-02 (允许<=1.220703e-04)
+  位置[5] (正常域): framework=2.144957e+01, impl=2.194957e+01, 相对误差=2.331049e-02 (允许<=1.220703e-04)
+  位置[6] (正常域): framework=8.160754e-02, impl=5.816075e-01, 相对误差=6.126878e+00 (允许<=1.220703e-04)
+  位置[7] (正常域): framework=2.456469e+01, impl=2.506469e+01, 相对误差=2.035442e-02 (允许<=1.220703e-04)
+  位置[8] (正常域): framework=9.557335e-01, impl=1.455734e+00, 相对误差=5.231584e-01 (允许<=1.220703e-04)
+  位置[9] (正常域): framework=-2.245543e+01, impl=-2.195543e+01, 相对误差=2.226633e-02 (允许<=1.220703e-04)
+
+2026-10-07 04:32:14,847   测试第 32/51 组输入...
+2026-10-07 04:32:14,847   [输入类型判定] 来源=tensor，候选 dtypes=['torch.float16', 'torch.float16']，最高精度=torch.float16，input_type=float
+2026-10-07 04:33:11,807   [输出概览] 共 1 个输出，non_compute=False
+2026-10-07 04:33:11,807   [输出 0] shape=[49, 785, 785], dtype=torch.float16
+2026-10-07 04:33:11,865   [评测模式] 模式=float_compute（浮点计算类），输入 dtype=torch.float16（float），输出 dtype=torch.float16；误差要求=三项 AND：(1)max_error_cap |diff|<=atol+rtol*|golden| [atol=9.000e-02, rtol=9.766e-04]，(2)matched_ratio>=0.9 [小值域 sv_thr=4.883e-04/sv_err=1.526e-05，正常域 rel_thr=9.766e-04]，(3)MERE<9.766e-04（finite=30195025/30195025）
+2026-10-07 04:33:51,690   [用例 32/51] 失败: AccuracyError: [用例 32/51] 验证失败 dtype=torch.float16: max_error_cap_violations=30195025/30195025 (atol=9.000000e-02, rtol=9.765625e-04, max_abs_diff=5.625000e-01, ok=False), matched_ratio=0.000000 (req>=0.9, ok=False), MERE=3.308660e-01 (rel_thr=9.765625e-04, ok=False); small_count=316, normal_count=30194709
+前 10 个 max_error_cap 违例位置:
+  位置[0]: framework=-9.789062e+00, impl=-9.289062e+00, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=9.955963e-02)
+  位置[1]: framework=-5.493750e+01, impl=-5.443750e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.436499e-01)
+  位置[2]: framework=5.446875e+01, impl=5.496875e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.431921e-01)
+  位置[3]: framework=-3.590625e+01, impl=-3.540625e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.250647e-01)
+  位置[4]: framework=-4.203125e+01, impl=-4.153125e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.310461e-01)
+  位置[5]: framework=1.210938e+01, impl=1.260938e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.018256e-01)
+  位置[6]: framework=1.139844e+01, impl=1.189844e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.011313e-01)
+  位置[7]: framework=5.781250e+01, impl=5.831250e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.464575e-01)
+  位置[8]: framework=5.043750e+01, impl=5.093750e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.392554e-01)
+  位置[9]: framework=3.031250e+00, impl=3.531250e+00, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=9.296021e-02)
+前 10 个 matched 未通过位置:
+  位置[0] (正常域): framework=-9.789062e+00, impl=-9.289062e+00, 相对误差=5.107741e-02 (允许<=9.765625e-04)
+  位置[1] (正常域): framework=-5.493750e+01, impl=-5.443750e+01, 相对误差=9.101251e-03 (允许<=9.765625e-04)
+  位置[2] (正常域): framework=5.446875e+01, impl=5.496875e+01, 相对误差=9.179575e-03 (允许<=9.765625e-04)
+  位置[3] (正常域): framework=-3.590625e+01, impl=-3.540625e+01, 相对误差=1.392515e-02 (允许<=9.765625e-04)
+  位置[4] (正常域): framework=-4.203125e+01, impl=-4.153125e+01, 相对误差=1.189591e-02 (允许<=9.765625e-04)
+  位置[5] (正常域): framework=1.210938e+01, impl=1.260938e+01, 相对误差=4.129032e-02 (允许<=9.765625e-04)
+  位置[6] (正常域): framework=1.139844e+01, impl=1.189844e+01, 相对误差=4.386566e-02 (允许<=9.765625e-04)
+  位置[7] (正常域): framework=5.781250e+01, impl=5.831250e+01, 相对误差=8.648649e-03 (允许<=9.765625e-04)
+  位置[8] (正常域): framework=5.043750e+01, impl=5.093750e+01, 相对误差=9.913259e-03 (允许<=9.765625e-04)
+  位置[9] (正常域): framework=3.031250e+00, impl=3.531250e+00, 相对误差=1.649484e-01 (允许<=9.765625e-04)
+
+2026-10-07 04:33:53,038   测试第 33/51 组输入...
+2026-10-07 04:33:53,038   [输入类型判定] 来源=tensor，候选 dtypes=['torch.float16', 'torch.float16']，最高精度=torch.float16，input_type=float
+2026-10-07 04:34:16,336   [输出概览] 共 1 个输出，non_compute=False
+2026-10-07 04:34:16,336   [输出 0] shape=[205, 411, 411], dtype=torch.float16
+2026-10-07 04:34:16,397   [评测模式] 模式=float_compute（浮点计算类），输入 dtype=torch.float16（float），输出 dtype=torch.float16；误差要求=三项 AND：(1)max_error_cap |diff|<=atol+rtol*|golden| [atol=9.000e-02, rtol=9.766e-04]，(2)matched_ratio>=0.9 [小值域 sv_thr=4.883e-04/sv_err=1.526e-05，正常域 rel_thr=9.766e-04]，(3)MERE<9.766e-04（finite=34628805/34628805）
+2026-10-07 04:35:04,382   [用例 33/51] 失败: AccuracyError: [用例 33/51] 验证失败 dtype=torch.float16: max_error_cap_violations=34628805/34628805 (atol=9.000000e-02, rtol=9.765625e-04, max_abs_diff=5.625000e-01, ok=False), matched_ratio=0.000000 (req>=0.9, ok=False), MERE=2.461262e-01 (rel_thr=9.765625e-04, ok=False); small_count=480, normal_count=34628325
+前 10 个 max_error_cap 违例位置:
+  位置[0]: framework=-2.623047e+00, impl=-2.123047e+00, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=9.256157e-02)
+  位置[1]: framework=4.387207e-01, impl=9.384766e-01, |diff|=4.997559e-01 (允许<=atol+rtol*|golden|=9.042844e-02)
+  位置[2]: framework=-5.578125e+01, impl=-5.528125e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.444739e-01)
+  位置[3]: framework=4.306250e+01, impl=4.356250e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.320532e-01)
+  位置[4]: framework=-2.640625e+00, impl=-2.140625e+00, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=9.257874e-02)
+  位置[5]: framework=2.889062e+01, impl=2.939062e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.182135e-01)
+  位置[6]: framework=3.456250e+01, impl=3.506250e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.237524e-01)
+  位置[7]: framework=2.090625e+01, impl=2.140625e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.104163e-01)
+  位置[8]: framework=2.345312e+01, impl=2.395312e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.129034e-01)
+  位置[9]: framework=-1.117188e+01, impl=-1.067188e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.009100e-01)
+前 10 个 matched 未通过位置:
+  位置[0] (正常域): framework=-2.623047e+00, impl=-2.123047e+00, 相对误差=1.906180e-01 (允许<=9.765625e-04)
+  位置[1] (正常域): framework=4.387207e-01, impl=9.384766e-01, 相对误差=1.139121e+00 (允许<=9.765625e-04)
+  位置[2] (正常域): framework=-5.578125e+01, impl=-5.528125e+01, 相对误差=8.963586e-03 (允许<=9.765625e-04)
+  位置[3] (正常域): framework=4.306250e+01, impl=4.356250e+01, 相对误差=1.161103e-02 (允许<=9.765625e-04)
+  位置[4] (正常域): framework=-2.640625e+00, impl=-2.140625e+00, 相对误差=1.893491e-01 (允许<=9.765625e-04)
+  位置[5] (正常域): framework=2.889062e+01, impl=2.939062e+01, 相对误差=1.730665e-02 (允许<=9.765625e-04)
+  位置[6] (正常域): framework=3.456250e+01, impl=3.506250e+01, 相对误差=1.446655e-02 (允许<=9.765625e-04)
+  位置[7] (正常域): framework=2.090625e+01, impl=2.140625e+01, 相对误差=2.391629e-02 (允许<=9.765625e-04)
+  位置[8] (正常域): framework=2.345312e+01, impl=2.395312e+01, 相对误差=2.131912e-02 (允许<=9.765625e-04)
+  位置[9] (正常域): framework=-1.117188e+01, impl=-1.067188e+01, 相对误差=4.475525e-02 (允许<=9.765625e-04)
+
+2026-10-07 04:35:05,844   测试第 34/51 组输入...
+2026-10-07 04:35:05,844   [输入类型判定] 来源=tensor，候选 dtypes=['torch.float16', 'torch.float16']，最高精度=torch.float16，input_type=float
+2026-10-07 04:35:57,624   [输出概览] 共 1 个输出，non_compute=False
+2026-10-07 04:35:57,624   [输出 0] shape=[84, 668, 668], dtype=torch.float16
+2026-10-07 04:35:57,684   [评测模式] 模式=float_compute（浮点计算类），输入 dtype=torch.float16（float），输出 dtype=torch.float16；误差要求=三项 AND：(1)max_error_cap |diff|<=atol+rtol*|golden| [atol=9.000e-02, rtol=9.766e-04]，(2)matched_ratio>=0.9 [小值域 sv_thr=4.883e-04/sv_err=1.526e-05，正常域 rel_thr=9.766e-04]，(3)MERE<9.766e-04（finite=37482816/37482816）
+2026-10-07 04:36:50,730   [用例 34/51] 失败: AccuracyError: [用例 34/51] 验证失败 dtype=torch.float16: max_error_cap_violations=37482816/37482816 (atol=9.000000e-02, rtol=9.765625e-04, max_abs_diff=5.625000e-01, ok=False), matched_ratio=0.000000 (req>=0.9, ok=False), MERE=3.200281e-01 (rel_thr=9.765625e-04, ok=False); small_count=405, normal_count=37482411
+前 10 个 max_error_cap 违例位置:
+  位置[0]: framework=1.171875e+01, impl=1.221875e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.014441e-01)
+  位置[1]: framework=-5.980469e+00, impl=-5.480469e+00, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=9.584031e-02)
+  位置[2]: framework=-6.011719e+00, impl=-5.511719e+00, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=9.587082e-02)
+  位置[3]: framework=-6.031250e+01, impl=-5.981250e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.488989e-01)
+  位置[4]: framework=-5.581250e+01, impl=-5.531250e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.445044e-01)
+  位置[5]: framework=-3.390625e+01, impl=-3.340625e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.231116e-01)
+  位置[6]: framework=-1.859375e+01, impl=-1.809375e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.081580e-01)
+  位置[7]: framework=-2.818359e+00, impl=-2.318359e+00, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=9.275231e-02)
+  位置[8]: framework=-2.501562e+01, impl=-2.451562e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.144293e-01)
+  位置[9]: framework=-7.208252e-02, impl=4.279785e-01, |diff|=5.000610e-01 (允许<=atol+rtol*|golden|=9.007040e-02)
+前 10 个 matched 未通过位置:
+  位置[0] (正常域): framework=1.171875e+01, impl=1.221875e+01, 相对误差=4.266667e-02 (允许<=9.765625e-04)
+  位置[1] (正常域): framework=-5.980469e+00, impl=-5.480469e+00, 相对误差=8.360548e-02 (允许<=9.765625e-04)
+  位置[2] (正常域): framework=-6.011719e+00, impl=-5.511719e+00, 相对误差=8.317089e-02 (允许<=9.765625e-04)
+  位置[3] (正常域): framework=-6.031250e+01, impl=-5.981250e+01, 相对误差=8.290156e-03 (允许<=9.765625e-04)
+  位置[4] (正常域): framework=-5.581250e+01, impl=-5.531250e+01, 相对误差=8.958567e-03 (允许<=9.765625e-04)
+  位置[5] (正常域): framework=-3.390625e+01, impl=-3.340625e+01, 相对误差=1.474654e-02 (允许<=9.765625e-04)
+  位置[6] (正常域): framework=-1.859375e+01, impl=-1.809375e+01, 相对误差=2.689076e-02 (允许<=9.765625e-04)
+  位置[7] (正常域): framework=-2.818359e+00, impl=-2.318359e+00, 相对误差=1.774082e-01 (允许<=9.765625e-04)
+  位置[8] (正常域): framework=-2.501562e+01, impl=-2.451562e+01, 相对误差=1.998751e-02 (允许<=9.765625e-04)
+  位置[9] (正常域): framework=-7.208252e-02, impl=4.279785e-01, 相对误差=6.937332e+00 (允许<=9.765625e-04)
+
+2026-10-07 04:36:53,646   测试第 35/51 组输入...
+2026-10-07 04:36:53,646   [输入类型判定] 来源=tensor，候选 dtypes=['torch.bfloat16', 'torch.bfloat16']，最高精度=torch.bfloat16，input_type=float
+2026-10-07 04:36:54,194   [输出概览] 共 1 个输出，non_compute=False
+2026-10-07 04:36:54,194   [输出 0] shape=[215, 429, 429], dtype=torch.bfloat16
+2026-10-07 04:36:54,289   [评测模式] 模式=float_compute（浮点计算类），输入 dtype=torch.bfloat16（float），输出 dtype=torch.bfloat16；误差要求=三项 AND：(1)max_error_cap |diff|<=atol+rtol*|golden| [atol=1.000e-01, rtol=7.812e-03]，(2)matched_ratio>=0.9 [小值域 sv_thr=3.906e-03/sv_err=1.526e-05，正常域 rel_thr=7.812e-03]，(3)MERE<7.812e-03（finite=39568815/39568815）
+2026-10-07 04:37:49,112   [用例 35/51] 失败: AccuracyError: [用例 35/51] 验证失败 dtype=torch.bfloat16: max_error_cap_violations=36541187/39568815 (atol=1.000000e-01, rtol=7.812500e-03, max_abs_diff=1.000000e+00, ok=False), matched_ratio=0.027260 (req>=0.9, ok=False), MERE=3.837922e-01 (rel_thr=7.812500e-03, ok=False); small_count=4374, normal_count=39564441
+前 10 个 max_error_cap 违例位置:
+  位置[0]: framework=2.762500e+01, impl=2.812500e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=3.158203e-01)
+  位置[1]: framework=4.218750e+00, impl=4.718750e+00, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.329590e-01)
+  位置[2]: framework=3.015625e+00, impl=3.515625e+00, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.235596e-01)
+  位置[4]: framework=-2.900000e+01, impl=-2.850000e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=3.265625e-01)
+  位置[5]: framework=4.850000e+01, impl=4.900000e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=4.789062e-01)
+  位置[6]: framework=-1.025000e+01, impl=-9.750000e+00, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.800781e-01)
+  位置[7]: framework=-2.975000e+01, impl=-2.925000e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=3.324219e-01)
+  位置[8]: framework=4.025000e+01, impl=4.075000e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=4.144531e-01)
+  位置[9]: framework=-4.781250e+00, impl=-4.281250e+00, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.373535e-01)
+  位置[10]: framework=-1.268750e+01, impl=-1.218750e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.991211e-01)
+前 10 个 matched 未通过位置:
+  位置[0] (正常域): framework=2.762500e+01, impl=2.812500e+01, 相对误差=1.809955e-02 (允许<=7.812500e-03)
+  位置[1] (正常域): framework=4.218750e+00, impl=4.718750e+00, 相对误差=1.185185e-01 (允许<=7.812500e-03)
+  位置[2] (正常域): framework=3.015625e+00, impl=3.515625e+00, 相对误差=1.658031e-01 (允许<=7.812500e-03)
+  位置[4] (正常域): framework=-2.900000e+01, impl=-2.850000e+01, 相对误差=1.724138e-02 (允许<=7.812500e-03)
+  位置[5] (正常域): framework=4.850000e+01, impl=4.900000e+01, 相对误差=1.030928e-02 (允许<=7.812500e-03)
+  位置[6] (正常域): framework=-1.025000e+01, impl=-9.750000e+00, 相对误差=4.878049e-02 (允许<=7.812500e-03)
+  位置[7] (正常域): framework=-2.975000e+01, impl=-2.925000e+01, 相对误差=1.680672e-02 (允许<=7.812500e-03)
+  位置[8] (正常域): framework=4.025000e+01, impl=4.075000e+01, 相对误差=1.242236e-02 (允许<=7.812500e-03)
+  位置[9] (正常域): framework=-4.781250e+00, impl=-4.281250e+00, 相对误差=1.045752e-01 (允许<=7.812500e-03)
+  位置[10] (正常域): framework=-1.268750e+01, impl=-1.218750e+01, 相对误差=3.940887e-02 (允许<=7.812500e-03)
+
+2026-10-07 04:37:51,715   测试第 36/51 组输入...
+2026-10-07 04:37:51,715   [输入类型判定] 来源=tensor，候选 dtypes=['torch.float32', 'torch.float32']，最高精度=torch.float32，input_type=float
+2026-10-07 04:37:53,089   [输出概览] 共 1 个输出，non_compute=False
+2026-10-07 04:37:53,089   [输出 0] shape=[244, 488, 488], dtype=torch.float32
+2026-10-07 04:37:53,197   [评测模式] 模式=float_compute（浮点计算类），输入 dtype=torch.float32（float），输出 dtype=torch.float32；误差要求=三项 AND：(1)max_error_cap |diff|<=atol+rtol*|golden| [atol=1.000e-03, rtol=1.221e-04]，(2)matched_ratio>=0.9 [小值域 sv_thr=6.104e-05/sv_err=9.313e-10，正常域 rel_thr=1.221e-04]，(3)MERE<1.221e-04（finite=58107136/58107136）
+2026-10-07 04:39:14,311   [用例 36/51] 失败: AccuracyError: [用例 36/51] 验证失败 dtype=torch.float32: max_error_cap_violations=58107136/58107136 (atol=1.000000e-03, rtol=1.220703e-04, max_abs_diff=5.000076e-01, ok=False), matched_ratio=0.000000 (req>=0.9, ok=False), MERE=2.603221e-01 (rel_thr=1.220703e-04, ok=False); small_count=86, normal_count=58107050
+前 10 个 max_error_cap 违例位置:
+  位置[0]: framework=4.231876e+01, impl=4.281876e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=6.165865e-03)
+  位置[1]: framework=2.762825e+01, impl=2.812825e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=4.372589e-03)
+  位置[2]: framework=-2.487024e+01, impl=-2.437024e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=4.035918e-03)
+  位置[3]: framework=-1.262047e+00, impl=-7.620467e-01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.154058e-03)
+  位置[4]: framework=1.890667e+01, impl=1.940667e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=3.307944e-03)
+  位置[5]: framework=-1.091459e+01, impl=-1.041459e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=2.332347e-03)
+  位置[6]: framework=4.327123e+00, impl=4.827123e+00, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.528213e-03)
+  位置[7]: framework=-1.878910e+01, impl=-1.828910e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=3.293591e-03)
+  位置[8]: framework=-3.764965e+00, impl=-3.264965e+00, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.459591e-03)
+  位置[9]: framework=2.820689e+01, impl=2.870689e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=4.443224e-03)
+前 10 个 matched 未通过位置:
+  位置[0] (正常域): framework=4.231876e+01, impl=4.281876e+01, 相对误差=1.181509e-02 (允许<=1.220703e-04)
+  位置[1] (正常域): framework=2.762825e+01, impl=2.812825e+01, 相对误差=1.809742e-02 (允许<=1.220703e-04)
+  位置[2] (正常域): framework=-2.487024e+01, impl=-2.437024e+01, 相对误差=2.010435e-02 (允许<=1.220703e-04)
+  位置[3] (正常域): framework=-1.262047e+00, impl=-7.620467e-01, 相对误差=3.961818e-01 (允许<=1.220703e-04)
+  位置[4] (正常域): framework=1.890667e+01, impl=1.940667e+01, 相对误差=2.644569e-02 (允许<=1.220703e-04)
+  位置[5] (正常域): framework=-1.091459e+01, impl=-1.041459e+01, 相对误差=4.581026e-02 (允许<=1.220703e-04)
+  位置[6] (正常域): framework=4.327123e+00, impl=4.827123e+00, 相对误差=1.155502e-01 (允许<=1.220703e-04)
+  位置[7] (正常域): framework=-1.878910e+01, impl=-1.828910e+01, 相对误差=2.661118e-02 (允许<=1.220703e-04)
+  位置[8] (正常域): framework=-3.764965e+00, impl=-3.264965e+00, 相对误差=1.328034e-01 (允许<=1.220703e-04)
+  位置[9] (正常域): framework=2.820689e+01, impl=2.870689e+01, 相对误差=1.772617e-02 (允许<=1.220703e-04)
+
+2026-10-07 04:39:17,070   测试第 37/51 组输入...
+2026-10-07 04:39:17,070   [输入类型判定] 来源=tensor，候选 dtypes=['torch.float32', 'torch.float32']，最高精度=torch.float32，input_type=float
+2026-10-07 04:39:18,493   [输出概览] 共 1 个输出，non_compute=False
+2026-10-07 04:39:18,493   [输出 0] shape=[250, 500, 500], dtype=torch.float32
+2026-10-07 04:39:18,605   [评测模式] 模式=float_compute（浮点计算类），输入 dtype=torch.float32（float），输出 dtype=torch.float32；误差要求=三项 AND：(1)max_error_cap |diff|<=atol+rtol*|golden| [atol=1.000e-03, rtol=1.221e-04]，(2)matched_ratio>=0.9 [小值域 sv_thr=6.104e-05/sv_err=9.313e-10，正常域 rel_thr=1.221e-04]，(3)MERE<1.221e-04（finite=62500000/62500000）
+2026-10-07 04:40:45,657   [用例 37/51] 失败: AccuracyError: [用例 37/51] 验证失败 dtype=torch.float32: max_error_cap_violations=62500000/62500000 (atol=1.000000e-03, rtol=1.220703e-04, max_abs_diff=5.000076e-01, ok=False), matched_ratio=0.000000 (req>=0.9, ok=False), MERE=2.095931e-01 (rel_thr=1.220703e-04, ok=False); small_count=88, normal_count=62499912
+前 10 个 max_error_cap 违例位置:
+  位置[0]: framework=1.752945e+01, impl=1.802945e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=3.139826e-03)
+  位置[1]: framework=-3.584779e-01, impl=1.415221e-01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.043760e-03)
+  位置[2]: framework=-2.699792e+01, impl=-2.649792e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=4.295644e-03)
+  位置[3]: framework=-3.168427e+01, impl=-3.118427e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=4.867709e-03)
+  位置[4]: framework=-1.567309e+01, impl=-1.517309e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=2.913218e-03)
+  位置[5]: framework=1.143597e+01, impl=1.193597e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=2.395992e-03)
+  位置[6]: framework=3.628144e+01, impl=3.678144e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=5.428887e-03)
+  位置[7]: framework=4.843021e+00, impl=5.343021e+00, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.591189e-03)
+  位置[8]: framework=-8.506534e+00, impl=-8.006534e+00, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=2.038395e-03)
+  位置[9]: framework=-1.770850e+01, impl=-1.720850e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=3.161682e-03)
+前 10 个 matched 未通过位置:
+  位置[0] (正常域): framework=1.752945e+01, impl=1.802945e+01, 相对误差=2.852342e-02 (允许<=1.220703e-04)
+  位置[1] (正常域): framework=-3.584779e-01, impl=1.415221e-01, 相对误差=1.394786e+00 (允许<=1.220703e-04)
+  位置[2] (正常域): framework=-2.699792e+01, impl=-2.649792e+01, 相对误差=1.851995e-02 (允许<=1.220703e-04)
+  位置[3] (正常域): framework=-3.168427e+01, impl=-3.118427e+01, 相对误差=1.578070e-02 (允许<=1.220703e-04)
+  位置[4] (正常域): framework=-1.567309e+01, impl=-1.517309e+01, 相对误差=3.190183e-02 (允许<=1.220703e-04)
+  位置[5] (正常域): framework=1.143597e+01, impl=1.193597e+01, 相对误差=4.372171e-02 (允许<=1.220703e-04)
+  位置[6] (正常域): framework=3.628144e+01, impl=3.678144e+01, 相对误差=1.378115e-02 (允许<=1.220703e-04)
+  位置[7] (正常域): framework=4.843021e+00, impl=5.343021e+00, 相对误差=1.032413e-01 (允许<=1.220703e-04)
+  位置[8] (正常域): framework=-8.506534e+00, impl=-8.006534e+00, 相对误差=5.877835e-02 (允许<=1.220703e-04)
+  位置[9] (正常域): framework=-1.770850e+01, impl=-1.720850e+01, 相对误差=2.823503e-02 (允许<=1.220703e-04)
+
+2026-10-07 04:40:48,613   测试第 38/51 组输入...
+2026-10-07 04:40:48,614   [输入类型判定] 来源=tensor，候选 dtypes=['torch.float32', 'torch.float32']，最高精度=torch.float32，input_type=float
+2026-10-07 04:40:50,497   [输出概览] 共 1 个输出，non_compute=False
+2026-10-07 04:40:50,497   [输出 0] shape=[16, 1999, 1999], dtype=torch.float32
+2026-10-07 04:40:50,622   [评测模式] 模式=float_compute（浮点计算类），输入 dtype=torch.float32（float），输出 dtype=torch.float32；误差要求=三项 AND：(1)max_error_cap |diff|<=atol+rtol*|golden| [atol=1.000e-03, rtol=1.221e-04]，(2)matched_ratio>=0.9 [小值域 sv_thr=6.104e-05/sv_err=9.313e-10，正常域 rel_thr=1.221e-04]，(3)MERE<1.221e-04（finite=63936016/63936016）
+2026-10-07 04:42:19,538   [用例 38/51] 失败: AccuracyError: [用例 38/51] 验证失败 dtype=torch.float32: max_error_cap_violations=63936016/63936016 (atol=1.000000e-03, rtol=1.220703e-04, max_abs_diff=5.000153e-01, ok=False), matched_ratio=0.000000 (req>=0.9, ok=False), MERE=1.541290e-01 (rel_thr=1.220703e-04, ok=False); small_count=51, normal_count=63935965
+前 10 个 max_error_cap 违例位置:
+  位置[0]: framework=3.132360e+01, impl=3.182360e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=4.823682e-03)
+  位置[1]: framework=-7.622373e+01, impl=-7.572373e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.030465e-02)
+  位置[2]: framework=-7.225453e+01, impl=-7.175453e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=9.820133e-03)
+  位置[3]: framework=-3.049663e+01, impl=-2.999663e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=4.722734e-03)
+  位置[4]: framework=1.084653e+02, impl=1.089653e+02, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.424039e-02)
+  位置[5]: framework=-4.327164e+01, impl=-4.277164e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=6.282182e-03)
+  位置[6]: framework=-1.609105e+00, impl=-1.109105e+00, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.196424e-03)
+  位置[7]: framework=-3.788694e+01, impl=-3.738694e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=5.624871e-03)
+  位置[8]: framework=1.294886e+01, impl=1.344886e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=2.580672e-03)
+  位置[9]: framework=5.270068e+01, impl=5.320068e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=7.433189e-03)
+前 10 个 matched 未通过位置:
+  位置[0] (正常域): framework=3.132360e+01, impl=3.182360e+01, 相对误差=1.596240e-02 (允许<=1.220703e-04)
+  位置[1] (正常域): framework=-7.622373e+01, impl=-7.572373e+01, 相对误差=6.559637e-03 (允许<=1.220703e-04)
+  位置[2] (正常域): framework=-7.225453e+01, impl=-7.175453e+01, 相对误差=6.919981e-03 (允许<=1.220703e-04)
+  位置[3] (正常域): framework=-3.049663e+01, impl=-2.999663e+01, 相对误差=1.639525e-02 (允许<=1.220703e-04)
+  位置[4] (正常域): framework=1.084653e+02, impl=1.089653e+02, 相对误差=4.609770e-03 (允许<=1.220703e-04)
+  位置[5] (正常域): framework=-4.327164e+01, impl=-4.277164e+01, 相对误差=1.155491e-02 (允许<=1.220703e-04)
+  位置[6] (正常域): framework=-1.609105e+00, impl=-1.109105e+00, 相对误差=3.107317e-01 (允许<=1.220703e-04)
+  位置[7] (正常域): framework=-3.788694e+01, impl=-3.738694e+01, 相对误差=1.319716e-02 (允许<=1.220703e-04)
+  位置[8] (正常域): framework=1.294886e+01, impl=1.344886e+01, 相对误差=3.861343e-02 (允许<=1.220703e-04)
+  位置[9] (正常域): framework=5.270068e+01, impl=5.320068e+01, 相对误差=9.487543e-03 (允许<=1.220703e-04)
+
+2026-10-07 04:42:23,528   测试第 39/51 组输入...
+2026-10-07 04:42:23,528   [输入类型判定] 来源=tensor，候选 dtypes=['torch.float32', 'torch.float32']，最高精度=torch.float32，input_type=float
+2026-10-07 04:42:25,882   [输出概览] 共 1 个输出，non_compute=False
+2026-10-07 04:42:25,882   [输出 0] shape=[44, 1424, 1424], dtype=torch.float32
+2026-10-07 04:42:26,087   [评测模式] 模式=float_compute（浮点计算类），输入 dtype=torch.float32（float），输出 dtype=torch.float32；误差要求=三项 AND：(1)max_error_cap |diff|<=atol+rtol*|golden| [atol=1.000e-03, rtol=1.221e-04]，(2)matched_ratio>=0.9 [小值域 sv_thr=6.104e-05/sv_err=9.313e-10，正常域 rel_thr=1.221e-04]，(3)MERE<1.221e-04（finite=89222144/89222144）
+2026-10-07 04:44:33,969   [用例 39/51] 失败: AccuracyError: [用例 39/51] 验证失败 dtype=torch.float32: max_error_cap_violations=89222144/89222144 (atol=1.000000e-03, rtol=1.220703e-04, max_abs_diff=5.000076e-01, ok=False), matched_ratio=0.000000 (req>=0.9, ok=False), MERE=1.361262e-01 (rel_thr=1.220703e-04, ok=False); small_count=84, normal_count=89222060
+前 10 个 max_error_cap 违例位置:
+  位置[0]: framework=-1.560901e+01, impl=-1.510901e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=2.905397e-03)
+  位置[1]: framework=1.843699e+01, impl=1.893699e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=3.250609e-03)
+  位置[2]: framework=-5.681347e+01, impl=-5.631347e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=7.935238e-03)
+  位置[3]: framework=5.225798e+00, impl=5.725798e+00, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.637915e-03)
+  位置[4]: framework=-1.013190e+01, impl=-9.631896e+00, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=2.236804e-03)
+  位置[5]: framework=-2.343807e+01, impl=-2.293807e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=3.861092e-03)
+  位置[6]: framework=9.054188e+00, impl=9.554188e+00, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=2.105248e-03)
+  位置[7]: framework=-4.101513e+01, impl=-4.051513e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=6.006730e-03)
+  位置[8]: framework=-3.954935e+01, impl=-3.904935e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=5.827801e-03)
+  位置[9]: framework=-1.370087e+02, impl=-1.365087e+02, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.772470e-02)
+前 10 个 matched 未通过位置:
+  位置[0] (正常域): framework=-1.560901e+01, impl=-1.510901e+01, 相对误差=3.203278e-02 (允许<=1.220703e-04)
+  位置[1] (正常域): framework=1.843699e+01, impl=1.893699e+01, 相对误差=2.711940e-02 (允许<=1.220703e-04)
+  位置[2] (正常域): framework=-5.681347e+01, impl=-5.631347e+01, 相对误差=8.800730e-03 (允许<=1.220703e-04)
+  位置[3] (正常域): framework=5.225798e+00, impl=5.725798e+00, 相对误差=9.567916e-02 (允许<=1.220703e-04)
+  位置[4] (正常域): framework=-1.013190e+01, impl=-9.631896e+00, 相对误差=4.934910e-02 (允许<=1.220703e-04)
+  位置[5] (正常域): framework=-2.343807e+01, impl=-2.293807e+01, 相对误差=2.133281e-02 (允许<=1.220703e-04)
+  位置[6] (正常域): framework=9.054188e+00, impl=9.554188e+00, 相对误差=5.522307e-02 (允许<=1.220703e-04)
+  位置[7] (正常域): framework=-4.101513e+01, impl=-4.051513e+01, 相对误差=1.219062e-02 (允许<=1.220703e-04)
+  位置[8] (正常域): framework=-3.954935e+01, impl=-3.904935e+01, 相对误差=1.264243e-02 (允许<=1.220703e-04)
+  位置[9] (正常域): framework=-1.370087e+02, impl=-1.365087e+02, 相对误差=3.649403e-03 (允许<=1.220703e-04)
+
+2026-10-07 04:44:37,688   测试第 40/51 组输入...
+2026-10-07 04:44:37,688   [输入类型判定] 来源=tensor，候选 dtypes=['torch.float16', 'torch.float16']，最高精度=torch.float16，input_type=float
+2026-10-07 04:49:42,116   [输出概览] 共 1 个输出，non_compute=False
+2026-10-07 04:49:42,116   [输出 0] shape=[45, 1456, 1456], dtype=torch.float16
+2026-10-07 04:49:42,262   [评测模式] 模式=float_compute（浮点计算类），输入 dtype=torch.float16（float），输出 dtype=torch.float16；误差要求=三项 AND：(1)max_error_cap |diff|<=atol+rtol*|golden| [atol=9.000e-02, rtol=9.766e-04]，(2)matched_ratio>=0.9 [小值域 sv_thr=4.883e-04/sv_err=1.526e-05，正常域 rel_thr=9.766e-04]，(3)MERE<9.766e-04（finite=95397120/95397120）
+2026-10-07 04:51:58,295   [用例 40/51] 失败: AccuracyError: [用例 40/51] 验证失败 dtype=torch.float16: max_error_cap_violations=95397120/95397120 (atol=9.000000e-02, rtol=9.765625e-04, max_abs_diff=5.625000e-01, ok=False), matched_ratio=0.000000 (req>=0.9, ok=False), MERE=1.818303e-01 (rel_thr=9.765625e-04, ok=False); small_count=709, normal_count=95396411
+前 10 个 max_error_cap 违例位置:
+  位置[0]: framework=-1.059375e+01, impl=-1.009375e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.003455e-01)
+  位置[1]: framework=-1.434570e+00, impl=-9.345703e-01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=9.140095e-02)
+  位置[2]: framework=-7.275000e+01, impl=-7.225000e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.610449e-01)
+  位置[3]: framework=-1.367969e+01, impl=-1.317969e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.033591e-01)
+  位置[4]: framework=5.054688e+00, impl=5.554688e+00, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=9.493622e-02)
+  位置[5]: framework=-2.800000e+01, impl=-2.750000e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.173438e-01)
+  位置[6]: framework=-1.004375e+02, impl=-9.993750e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.880835e-01)
+  位置[7]: framework=1.069375e+02, impl=1.074375e+02, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.944312e-01)
+  位置[8]: framework=-5.175000e+01, impl=-5.125000e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.405371e-01)
+  位置[9]: framework=-4.414062e+00, impl=-3.914062e+00, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=9.431061e-02)
+前 10 个 matched 未通过位置:
+  位置[0] (正常域): framework=-1.059375e+01, impl=-1.009375e+01, 相对误差=4.719764e-02 (允许<=9.765625e-04)
+  位置[1] (正常域): framework=-1.434570e+00, impl=-9.345703e-01, 相对误差=3.485364e-01 (允许<=9.765625e-04)
+  位置[2] (正常域): framework=-7.275000e+01, impl=-7.225000e+01, 相对误差=6.872852e-03 (允许<=9.765625e-04)
+  位置[3] (正常域): framework=-1.367969e+01, impl=-1.317969e+01, 相对误差=3.655054e-02 (允许<=9.765625e-04)
+  位置[4] (正常域): framework=5.054688e+00, impl=5.554688e+00, 相对误差=9.891808e-02 (允许<=9.765625e-04)
+  位置[5] (正常域): framework=-2.800000e+01, impl=-2.750000e+01, 相对误差=1.785714e-02 (允许<=9.765625e-04)
+  位置[6] (正常域): framework=-1.004375e+02, impl=-9.993750e+01, 相对误差=4.978220e-03 (允许<=9.765625e-04)
+  位置[7] (正常域): framework=1.069375e+02, impl=1.074375e+02, 相对误差=4.675628e-03 (允许<=9.765625e-04)
+  位置[8] (正常域): framework=-5.175000e+01, impl=-5.125000e+01, 相对误差=9.661836e-03 (允许<=9.765625e-04)
+  位置[9] (正常域): framework=-4.414062e+00, impl=-3.914062e+00, 相对误差=1.132743e-01 (允许<=9.765625e-04)
+
+2026-10-07 04:52:03,166   测试第 41/51 组输入...
+2026-10-07 04:52:03,166   [输入类型判定] 来源=tensor，候选 dtypes=['torch.float16', 'torch.float16']，最高精度=torch.float16，input_type=float
+2026-10-07 04:56:23,808   [输出概览] 共 1 个输出，non_compute=False
+2026-10-07 04:56:23,808   [输出 0] shape=[125, 997, 997], dtype=torch.float16
+2026-10-07 04:56:23,978   [评测模式] 模式=float_compute（浮点计算类），输入 dtype=torch.float16（float），输出 dtype=torch.float16；误差要求=三项 AND：(1)max_error_cap |diff|<=atol+rtol*|golden| [atol=9.000e-02, rtol=9.766e-04]，(2)matched_ratio>=0.9 [小值域 sv_thr=4.883e-04/sv_err=1.526e-05，正常域 rel_thr=9.766e-04]，(3)MERE<9.766e-04（finite=124251125/124251125）
+2026-10-07 04:59:10,591   [用例 41/51] 失败: AccuracyError: [用例 41/51] 验证失败 dtype=torch.float16: max_error_cap_violations=124251125/124251125 (atol=9.000000e-02, rtol=9.765625e-04, max_abs_diff=5.625000e-01, ok=False), matched_ratio=0.000000 (req>=0.9, ok=False), MERE=2.746488e-01 (rel_thr=9.765625e-04, ok=False); small_count=1082, normal_count=124250043
+前 10 个 max_error_cap 违例位置:
+  位置[0]: framework=1.900000e+01, impl=1.950000e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.085547e-01)
+  位置[1]: framework=-1.984375e+01, impl=-1.934375e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.093787e-01)
+  位置[2]: framework=2.804688e+01, impl=2.854688e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.173895e-01)
+  位置[3]: framework=4.937500e+01, impl=4.987500e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.382178e-01)
+  位置[4]: framework=-1.350000e+01, impl=-1.300000e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.031836e-01)
+  位置[5]: framework=5.568750e+01, impl=5.618750e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.443823e-01)
+  位置[6]: framework=-1.678125e+01, impl=-1.628125e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.063879e-01)
+  位置[7]: framework=-5.178125e+01, impl=-5.128125e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.405676e-01)
+  位置[8]: framework=-2.854688e+01, impl=-2.804688e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.178778e-01)
+  位置[9]: framework=-4.700000e+01, impl=-4.650000e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.358984e-01)
+前 10 个 matched 未通过位置:
+  位置[0] (正常域): framework=1.900000e+01, impl=1.950000e+01, 相对误差=2.631579e-02 (允许<=9.765625e-04)
+  位置[1] (正常域): framework=-1.984375e+01, impl=-1.934375e+01, 相对误差=2.519685e-02 (允许<=9.765625e-04)
+  位置[2] (正常域): framework=2.804688e+01, impl=2.854688e+01, 相对误差=1.782730e-02 (允许<=9.765625e-04)
+  位置[3] (正常域): framework=4.937500e+01, impl=4.987500e+01, 相对误差=1.012658e-02 (允许<=9.765625e-04)
+  位置[4] (正常域): framework=-1.350000e+01, impl=-1.300000e+01, 相对误差=3.703704e-02 (允许<=9.765625e-04)
+  位置[5] (正常域): framework=5.568750e+01, impl=5.618750e+01, 相对误差=8.978676e-03 (允许<=9.765625e-04)
+  位置[6] (正常域): framework=-1.678125e+01, impl=-1.628125e+01, 相对误差=2.979516e-02 (允许<=9.765625e-04)
+  位置[7] (正常域): framework=-5.178125e+01, impl=-5.128125e+01, 相对误差=9.656005e-03 (允许<=9.765625e-04)
+  位置[8] (正常域): framework=-2.854688e+01, impl=-2.804688e+01, 相对误差=1.751505e-02 (允许<=9.765625e-04)
+  位置[9] (正常域): framework=-4.700000e+01, impl=-4.650000e+01, 相对误差=1.063830e-02 (允许<=9.765625e-04)
+
+2026-10-07 04:59:16,549   测试第 42/51 组输入...
+2026-10-07 04:59:16,549   [输入类型判定] 来源=tensor，候选 dtypes=['torch.float32', 'torch.float32']，最高精度=torch.float32，input_type=float
+2026-10-07 04:59:19,876   [输出概览] 共 1 个输出，non_compute=False
+2026-10-07 04:59:19,876   [输出 0] shape=[322, 645, 645], dtype=torch.float32
+2026-10-07 04:59:20,162   [评测模式] 模式=float_compute（浮点计算类），输入 dtype=torch.float32（float），输出 dtype=torch.float32；误差要求=三项 AND：(1)max_error_cap |diff|<=atol+rtol*|golden| [atol=1.000e-03, rtol=1.221e-04]，(2)matched_ratio>=0.9 [小值域 sv_thr=6.104e-05/sv_err=9.313e-10，正常域 rel_thr=1.221e-04]，(3)MERE<1.221e-04（finite=133960050/133960050）
+2026-10-07 05:02:33,647   [用例 42/51] 失败: AccuracyError: [用例 42/51] 验证失败 dtype=torch.float32: max_error_cap_violations=133960050/133960050 (atol=1.000000e-03, rtol=1.220703e-04, max_abs_diff=5.000076e-01, ok=False), matched_ratio=0.000000 (req>=0.9, ok=False), MERE=2.607269e-01 (rel_thr=1.220703e-04, ok=False); small_count=187, normal_count=133959863
+前 10 个 max_error_cap 违例位置:
+  位置[0]: framework=1.051576e+01, impl=1.101576e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=2.283662e-03)
+  位置[1]: framework=-6.222445e+01, impl=-6.172445e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=8.595758e-03)
+  位置[2]: framework=-8.639744e+00, impl=-8.139744e+00, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=2.054656e-03)
+  位置[3]: framework=-2.627551e+01, impl=-2.577551e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=4.207460e-03)
+  位置[4]: framework=-3.453201e+01, impl=-3.403201e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=5.215333e-03)
+  位置[5]: framework=-1.252500e-01, impl=3.747500e-01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.015289e-03)
+  位置[6]: framework=-4.355072e+01, impl=-4.305072e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=6.316250e-03)
+  位置[7]: framework=2.317251e+01, impl=2.367251e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=3.828675e-03)
+  位置[8]: framework=2.556659e+01, impl=2.606659e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=4.120922e-03)
+  位置[9]: framework=9.316805e+01, impl=9.366805e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.237305e-02)
+前 10 个 matched 未通过位置:
+  位置[0] (正常域): framework=1.051576e+01, impl=1.101576e+01, 相对误差=4.754769e-02 (允许<=1.220703e-04)
+  位置[1] (正常域): framework=-6.222445e+01, impl=-6.172445e+01, 相对误差=8.035427e-03 (允许<=1.220703e-04)
+  位置[2] (正常域): framework=-8.639744e+00, impl=-8.139744e+00, 相对误差=5.787209e-02 (允许<=1.220703e-04)
+  位置[3] (正常域): framework=-2.627551e+01, impl=-2.577551e+01, 相对误差=1.902912e-02 (允许<=1.220703e-04)
+  位置[4] (正常域): framework=-3.453201e+01, impl=-3.403201e+01, 相对误差=1.447932e-02 (允许<=1.220703e-04)
+  位置[5] (正常域): framework=-1.252500e-01, impl=3.747500e-01, 相对误差=3.992013e+00 (允许<=1.220703e-04)
+  位置[6] (正常域): framework=-4.355072e+01, impl=-4.305072e+01, 相对误差=1.148087e-02 (允许<=1.220703e-04)
+  位置[7] (正常域): framework=2.317251e+01, impl=2.367251e+01, 相对误差=2.157729e-02 (允许<=1.220703e-04)
+  位置[8] (正常域): framework=2.556659e+01, impl=2.606659e+01, 相对误差=1.955677e-02 (允许<=1.220703e-04)
+  位置[9] (正常域): framework=9.316805e+01, impl=9.366805e+01, 相对误差=5.366647e-03 (允许<=1.220703e-04)
+
+2026-10-07 05:02:39,578   测试第 43/51 组输入...
+2026-10-07 05:02:39,578   [输入类型判定] 来源=tensor，候选 dtypes=['torch.float32', 'torch.float32']，最高精度=torch.float32，input_type=float
+2026-10-07 05:02:43,434   [输出概览] 共 1 个输出，non_compute=False
+2026-10-07 05:02:43,434   [输出 0] shape=[51, 1622, 1622], dtype=torch.float32
+2026-10-07 05:02:43,714   [评测模式] 模式=float_compute（浮点计算类），输入 dtype=torch.float32（float），输出 dtype=torch.float32；误差要求=三项 AND：(1)max_error_cap |diff|<=atol+rtol*|golden| [atol=1.000e-03, rtol=1.221e-04]，(2)matched_ratio>=0.9 [小值域 sv_thr=6.104e-05/sv_err=9.313e-10，正常域 rel_thr=1.221e-04]，(3)MERE<1.221e-04（finite=134175084/134175084）
+2026-10-07 05:05:47,249   [用例 43/51] 失败: AccuracyError: [用例 43/51] 验证失败 dtype=torch.float32: max_error_cap_violations=134175084/134175084 (atol=1.000000e-03, rtol=1.220703e-04, max_abs_diff=5.000153e-01, ok=False), matched_ratio=0.000000 (req>=0.9, ok=False), MERE=1.222259e-01 (rel_thr=1.220703e-04, ok=False); small_count=116, normal_count=134174968
+前 10 个 max_error_cap 违例位置:
+  位置[0]: framework=-1.037219e+02, impl=-1.032219e+02, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.366136e-02)
+  位置[1]: framework=-5.579632e+00, impl=-5.079632e+00, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.681108e-03)
+  位置[2]: framework=-3.935093e+01, impl=-3.885093e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=5.803580e-03)
+  位置[3]: framework=4.160609e+00, impl=4.660609e+00, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.507887e-03)
+  位置[4]: framework=-4.479328e+00, impl=-3.979328e+00, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.546793e-03)
+  位置[5]: framework=-4.664669e+01, impl=-4.614669e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=6.694176e-03)
+  位置[6]: framework=-5.108446e+01, impl=-5.058446e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=7.235896e-03)
+  位置[7]: framework=4.939737e+01, impl=4.989737e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=7.029952e-03)
+  位置[8]: framework=1.877645e+01, impl=1.927645e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=3.292047e-03)
+  位置[9]: framework=6.839894e+00, impl=7.339894e+00, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.834948e-03)
+前 10 个 matched 未通过位置:
+  位置[0] (正常域): framework=-1.037219e+02, impl=-1.032219e+02, 相对误差=4.820584e-03 (允许<=1.220703e-04)
+  位置[1] (正常域): framework=-5.579632e+00, impl=-5.079632e+00, 相对误差=8.961164e-02 (允许<=1.220703e-04)
+  位置[2] (正常域): framework=-3.935093e+01, impl=-3.885093e+01, 相对误差=1.270618e-02 (允许<=1.220703e-04)
+  位置[3] (正常域): framework=4.160609e+00, impl=4.660609e+00, 相对误差=1.201747e-01 (允许<=1.220703e-04)
+  位置[4] (正常域): framework=-4.479328e+00, impl=-3.979328e+00, 相对误差=1.116239e-01 (允许<=1.220703e-04)
+  位置[5] (正常域): framework=-4.664669e+01, impl=-4.614669e+01, 相对误差=1.071887e-02 (允许<=1.220703e-04)
+  位置[6] (正常域): framework=-5.108446e+01, impl=-5.058446e+01, 相对误差=9.787712e-03 (允许<=1.220703e-04)
+  位置[7] (正常域): framework=4.939737e+01, impl=4.989737e+01, 相对误差=1.012200e-02 (允许<=1.220703e-04)
+  位置[8] (正常域): framework=1.877645e+01, impl=1.927645e+01, 相对误差=2.662911e-02 (允许<=1.220703e-04)
+  位置[9] (正常域): framework=6.839894e+00, impl=7.339894e+00, 相对误差=7.310054e-02 (允许<=1.220703e-04)
+
+2026-10-07 05:05:53,149   测试第 44/51 组输入...
+2026-10-07 05:05:53,149   [输入类型判定] 来源=tensor，候选 dtypes=['torch.float32', 'torch.float32']，最高精度=torch.float32，input_type=float
+2026-10-07 05:05:56,682   [输出概览] 共 1 个输出，non_compute=False
+2026-10-07 05:05:56,682   [输出 0] shape=[128, 1024, 1024], dtype=torch.float32
+2026-10-07 05:05:56,961   [评测模式] 模式=float_compute（浮点计算类），输入 dtype=torch.float32（float），输出 dtype=torch.float32；误差要求=三项 AND：(1)max_error_cap |diff|<=atol+rtol*|golden| [atol=1.000e-03, rtol=1.221e-04]，(2)matched_ratio>=0.9 [小值域 sv_thr=6.104e-05/sv_err=9.313e-10，正常域 rel_thr=1.221e-04]，(3)MERE<1.221e-04（finite=134217728/134217728）
+2026-10-07 05:09:03,555   [用例 44/51] 失败: AccuracyError: [用例 44/51] 验证失败 dtype=torch.float32: max_error_cap_violations=134217728/134217728 (atol=1.000000e-03, rtol=1.220703e-04, max_abs_diff=5.000076e-01, ok=False), matched_ratio=0.000000 (req>=0.9, ok=False), MERE=1.699977e-01 (rel_thr=1.220703e-04, ok=False); small_count=151, normal_count=134217577
+前 10 个 max_error_cap 违例位置:
+  位置[0]: framework=2.497679e+01, impl=2.547679e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=4.048925e-03)
+  位置[1]: framework=7.423228e+01, impl=7.473228e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.006156e-02)
+  位置[2]: framework=1.288418e+01, impl=1.338418e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=2.572776e-03)
+  位置[3]: framework=1.650653e+01, impl=1.700653e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=3.014958e-03)
+  位置[4]: framework=6.330018e+01, impl=6.380018e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=8.727073e-03)
+  位置[5]: framework=-6.047980e+01, impl=-5.997980e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=8.382789e-03)
+  位置[6]: framework=-3.773296e+01, impl=-3.723296e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=5.606075e-03)
+  位置[7]: framework=-5.448167e+01, impl=-5.398167e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=7.650595e-03)
+  位置[8]: framework=-1.141618e+01, impl=-1.091618e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=2.393577e-03)
+  位置[9]: framework=-3.937822e+01, impl=-3.887822e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=5.806912e-03)
+前 10 个 matched 未通过位置:
+  位置[0] (正常域): framework=2.497679e+01, impl=2.547679e+01, 相对误差=2.001859e-02 (允许<=1.220703e-04)
+  位置[1] (正常域): framework=7.423228e+01, impl=7.473228e+01, 相对误差=6.735615e-03 (允许<=1.220703e-04)
+  位置[2] (正常域): framework=1.288418e+01, impl=1.338418e+01, 相对误差=3.880729e-02 (允许<=1.220703e-04)
+  位置[3] (正常域): framework=1.650653e+01, impl=1.700653e+01, 相对误差=3.029104e-02 (允许<=1.220703e-04)
+  位置[4] (正常域): framework=6.330018e+01, impl=6.380018e+01, 相对误差=7.898872e-03 (允许<=1.220703e-04)
+  位置[5] (正常域): framework=-6.047980e+01, impl=-5.997980e+01, 相对误差=8.267222e-03 (允许<=1.220703e-04)
+  位置[6] (正常域): framework=-3.773296e+01, impl=-3.723296e+01, 相对误差=1.325101e-02 (允许<=1.220703e-04)
+  位置[7] (正常域): framework=-5.448167e+01, impl=-5.398167e+01, 相对误差=9.177398e-03 (允许<=1.220703e-04)
+  位置[8] (正常域): framework=-1.141618e+01, impl=-1.091618e+01, 相对误差=4.379749e-02 (允许<=1.220703e-04)
+  位置[9] (正常域): framework=-3.937822e+01, impl=-3.887822e+01, 相对误差=1.269737e-02 (允许<=1.220703e-04)
+
+2026-10-07 05:09:14,735   测试第 45/51 组输入...
+2026-10-07 05:09:14,735   [输入类型判定] 来源=tensor，候选 dtypes=['torch.bfloat16', 'torch.bfloat16']，最高精度=torch.bfloat16，input_type=float
+2026-10-07 05:09:16,841   [输出概览] 共 1 个输出，non_compute=False
+2026-10-07 05:09:16,841   [输出 0] shape=[53, 1697, 1697], dtype=torch.bfloat16
+2026-10-07 05:09:17,074   [评测模式] 模式=float_compute（浮点计算类），输入 dtype=torch.bfloat16（float），输出 dtype=torch.bfloat16；误差要求=三项 AND：(1)max_error_cap |diff|<=atol+rtol*|golden| [atol=1.000e-01, rtol=7.812e-03]，(2)matched_ratio>=0.9 [小值域 sv_thr=3.906e-03/sv_err=1.526e-05，正常域 rel_thr=7.812e-03]，(3)MERE<7.812e-03（finite=152629877/152629877）
+2026-10-07 05:12:57,411   [用例 45/51] 失败: AccuracyError: [用例 45/51] 验证失败 dtype=torch.bfloat16: max_error_cap_violations=95680188/152629877 (atol=1.000000e-01, rtol=7.812500e-03, max_abs_diff=1.000000e+00, ok=False), matched_ratio=0.266732 (req>=0.9, ok=False), MERE=1.247926e-01 (rel_thr=7.812500e-03, ok=False); small_count=8410, normal_count=152621467
+前 10 个 max_error_cap 违例位置:
+  位置[3]: framework=4.937500e+00, impl=5.437500e+00, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.385742e-01)
+  位置[4]: framework=-4.300000e+01, impl=-4.250000e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=4.359375e-01)
+  位置[5]: framework=3.250000e+01, impl=3.300000e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=3.539062e-01)
+  位置[6]: framework=3.475000e+01, impl=3.525000e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=3.714844e-01)
+  位置[7]: framework=9.296875e-01, impl=1.429688e+00, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.072632e-01)
+  位置[9]: framework=-2.462500e+01, impl=-2.412500e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=2.923828e-01)
+  位置[10]: framework=1.131250e+01, impl=1.181250e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.883789e-01)
+  位置[11]: framework=4.550000e+01, impl=4.600000e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=4.554687e-01)
+  位置[12]: framework=-2.987500e+01, impl=-2.937500e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=3.333984e-01)
+  位置[14]: framework=-1.000000e+00, impl=-5.000000e-01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.078125e-01)
+前 10 个 matched 未通过位置:
+  位置[1] (正常域): framework=-6.025000e+01, impl=-5.975000e+01, 相对误差=8.298756e-03 (允许<=7.812500e-03)
+  位置[3] (正常域): framework=4.937500e+00, impl=5.437500e+00, 相对误差=1.012658e-01 (允许<=7.812500e-03)
+  位置[4] (正常域): framework=-4.300000e+01, impl=-4.250000e+01, 相对误差=1.162791e-02 (允许<=7.812500e-03)
+  位置[5] (正常域): framework=3.250000e+01, impl=3.300000e+01, 相对误差=1.538462e-02 (允许<=7.812500e-03)
+  位置[6] (正常域): framework=3.475000e+01, impl=3.525000e+01, 相对误差=1.438849e-02 (允许<=7.812500e-03)
+  位置[7] (正常域): framework=9.296875e-01, impl=1.429688e+00, 相对误差=5.378150e-01 (允许<=7.812500e-03)
+  位置[9] (正常域): framework=-2.462500e+01, impl=-2.412500e+01, 相对误差=2.030457e-02 (允许<=7.812500e-03)
+  位置[10] (正常域): framework=1.131250e+01, impl=1.181250e+01, 相对误差=4.419890e-02 (允许<=7.812500e-03)
+  位置[11] (正常域): framework=4.550000e+01, impl=4.600000e+01, 相对误差=1.098901e-02 (允许<=7.812500e-03)
+  位置[12] (正常域): framework=-2.987500e+01, impl=-2.937500e+01, 相对误差=1.673640e-02 (允许<=7.812500e-03)
+
+2026-10-07 05:13:11,457   测试第 46/51 组输入...
+2026-10-07 05:13:11,457   [输入类型判定] 来源=tensor，候选 dtypes=['torch.bfloat16', 'torch.bfloat16']，最高精度=torch.bfloat16，input_type=float
+2026-10-07 05:13:14,210   [输出概览] 共 1 个输出，non_compute=False
+2026-10-07 05:13:14,211   [输出 0] shape=[144, 1153, 1153], dtype=torch.bfloat16
+2026-10-07 05:13:14,486   [评测模式] 模式=float_compute（浮点计算类），输入 dtype=torch.bfloat16（float），输出 dtype=torch.bfloat16；误差要求=三项 AND：(1)max_error_cap |diff|<=atol+rtol*|golden| [atol=1.000e-01, rtol=7.812e-03]，(2)matched_ratio>=0.9 [小值域 sv_thr=3.906e-03/sv_err=1.526e-05，正常域 rel_thr=7.812e-03]，(3)MERE<7.812e-03（finite=191434896/191434896）
+2026-10-07 05:17:40,627   [用例 46/51] 失败: AccuracyError: [用例 46/51] 验证失败 dtype=torch.bfloat16: max_error_cap_violations=137860242/191434896 (atol=1.000000e-01, rtol=7.812500e-03, max_abs_diff=1.000000e+00, ok=False), matched_ratio=0.177847 (req>=0.9, ok=False), MERE=1.838219e-01 (rel_thr=7.812500e-03, ok=False); small_count=12549, normal_count=191422347
+前 10 个 max_error_cap 违例位置:
+  位置[1]: framework=3.875000e+01, impl=3.925000e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=4.027344e-01)
+  位置[2]: framework=2.737500e+01, impl=2.787500e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=3.138672e-01)
+  位置[3]: framework=-5.906250e+00, impl=-5.406250e+00, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.461426e-01)
+  位置[4]: framework=-2.350000e+01, impl=-2.300000e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=2.835937e-01)
+  位置[8]: framework=1.468750e+01, impl=1.518750e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=2.147461e-01)
+  位置[9]: framework=-1.476562e+00, impl=-9.765625e-01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.115356e-01)
+  位置[12]: framework=3.950000e+01, impl=4.000000e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=4.085937e-01)
+  位置[13]: framework=-6.156250e+00, impl=-5.656250e+00, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.480957e-01)
+  位置[14]: framework=1.531250e+00, impl=2.031250e+00, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=1.119629e-01)
+  位置[16]: framework=-2.362500e+01, impl=-2.312500e+01, |diff|=5.000000e-01 (允许<=atol+rtol*|golden|=2.845703e-01)
+前 10 个 matched 未通过位置:
+  位置[1] (正常域): framework=3.875000e+01, impl=3.925000e+01, 相对误差=1.290323e-02 (允许<=7.812500e-03)
+  位置[2] (正常域): framework=2.737500e+01, impl=2.787500e+01, 相对误差=1.826484e-02 (允许<=7.812500e-03)
+  位置[3] (正常域): framework=-5.906250e+00, impl=-5.406250e+00, 相对误差=8.465608e-02 (允许<=7.812500e-03)
+  位置[4] (正常域): framework=-2.350000e+01, impl=-2.300000e+01, 相对误差=2.127660e-02 (允许<=7.812500e-03)
+  位置[5] (正常域): framework=-5.200000e+01, impl=-5.150000e+01, 相对误差=9.615385e-03 (允许<=7.812500e-03)
+  位置[7] (正常域): framework=-5.825000e+01, impl=-5.775000e+01, 相对误差=8.583691e-03 (允许<=7.812500e-03)
+  位置[8] (正常域): framework=1.468750e+01, impl=1.518750e+01, 相对误差=3.404255e-02 (允许<=7.812500e-03)
+  位置[9] (正常域): framework=-1.476562e+00, impl=-9.765625e-01, 相对误差=3.386243e-01 (允许<=7.812500e-03)
+  位置[10] (正常域): framework=5.900000e+01, impl=5.950000e+01, 相对误差=8.474576e-03 (允许<=7.812500e-03)
+  位置[12] (正常域): framework=3.950000e+01, impl=4.000000e+01, 相对误差=1.265823e-02 (允许<=7.812500e-03)
+
+2026-10-07 05:17:48,979   测试第 47/51 组输入...
+2026-10-07 05:17:48,979   [输入类型判定] 来源=tensor，候选 dtypes=['torch.float16', 'torch.float16']，最高精度=torch.float16，input_type=float
+2026-10-07 05:30:10,206   [输出概览] 共 1 个输出，non_compute=False
+2026-10-07 05:30:10,206   [输出 0] shape=[94, 1510, 1510], dtype=torch.float16
+2026-10-07 05:30:10,527   [评测模式] 模式=float_compute（浮点计算类），输入 dtype=torch.float16（float），输出 dtype=torch.float16；误差要求=三项 AND：(1)max_error_cap |diff|<=atol+rtol*|golden| [atol=9.000e-02, rtol=9.766e-04]，(2)matched_ratio>=0.9 [小值域 sv_thr=4.883e-04/sv_err=1.526e-05，正常域 rel_thr=9.766e-04]，(3)MERE<9.766e-04（finite=214329400/214329400）

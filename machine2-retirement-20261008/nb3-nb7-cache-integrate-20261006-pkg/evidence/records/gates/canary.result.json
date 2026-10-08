@@ -1,0 +1,58 @@
+{
+  "created_at": "2026-10-06T21:38:03.878000Z",
+  "deadline_at": "2026-10-06T21:41:03.878000Z",
+  "evaluation_id": "ev_0ee1d9f2eb4248abb6b94c44a247e7bd",
+  "finished_at": "2026-10-06T21:38:14.485000Z",
+  "reference_digest": "1f2fd5bd17e81c34510441eb87fba770aad508c00995ce46dc81951a547429c8",
+  "request_digest": "2d71decb34de5f98ed820e9ff2f53e002b31c596faa401dd7cad810b6cb742f6",
+  "result": {
+    "compile": null,
+    "correctness": {
+      "data": {
+        "decoy": false,
+        "domain_failure": {
+          "case_idx": null,
+          "code": "SUBJECT_RUNTIME_ERROR",
+          "message": "candidate initialization failed: HQHostCanaryBlocked",
+          "phase": "initialize"
+        },
+        "failures": [],
+        "outcome": "runtime_error",
+        "passed": false,
+        "passed_cases": 0,
+        "total_cases": 50
+      },
+      "error": null,
+      "reason": null,
+      "status": "succeeded"
+    },
+    "performance": null,
+    "profile": null,
+    "provenance": {
+      "benchmark_algorithm": "geometric-mean-v1",
+      "correctness_algorithm": "correctness-v1:npu-strict-v1",
+      "decoy_algorithm": "decoy-v1",
+      "evaluator_build": "sha256:089a0261c0c3286a51246f5cc427a9768a4680a947ca54138dec30666b396d79",
+      "execution_environment": {
+        "driver_version": "26.0.rc1",
+        "hardware_count": 1,
+        "hardware_model": "Ascend910",
+        "runtime_version": "CANN-9.1.1",
+        "toolchain_version": "CANN 9.1.1 / python 3.10 / torch 2.9.0 / torch_npu 2.9.0.post8 / triton_ascend 3.2.0",
+        "torch_npu_version": "2.9.0.post8",
+        "torch_version": "2.9.0",
+        "triton_version": "3.2.0"
+      },
+      "grade_eligible": true,
+      "manifest_id": "npukernelbench-machine2-v1",
+      "problem_id": "kernelbench_l3_3_MatmulBothTrans",
+      "profiler_algorithm": "profiler-v1",
+      "schema_version": "2.1"
+    }
+  },
+  "revision": 3,
+  "schema_version": "2.1",
+  "started_at": "2026-10-06T21:38:03.944000Z",
+  "state": "completed",
+  "updated_at": "2026-10-06T21:38:14.485000Z"
+}

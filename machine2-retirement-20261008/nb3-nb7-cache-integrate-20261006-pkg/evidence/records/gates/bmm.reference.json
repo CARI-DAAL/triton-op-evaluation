@@ -1,0 +1,627 @@
+{
+  "evaluation_id": "ev_068471d58d3447a1a0413459bea0ace8",
+  "attempt_id": "at_d7765c6bc71d4f98b581db95ed084f40",
+  "request_digest": "ae8022b11c8b94e6022d134e7c86952120c0c059e1a66ee3a311ce517c4a8725",
+  "evaluator_build": "sha256:089a0261c0c3286a51246f5cc427a9768a4680a947ca54138dec30666b396d79",
+  "correctness_algorithm": "correctness-v1:npu-strict-v1",
+  "configured_reference_device_policy": "npu-strict",
+  "physical_card": 15,
+  "status": "recorded",
+  "observations": {
+    "reference_device_policy": "npu-strict",
+    "cases": [
+      {
+        "case_idx": 1,
+        "selected_reference_device": "npu",
+        "reference_completed": true,
+        "output_devices": [
+          {
+            "output_index": 0,
+            "device": "npu:0"
+          }
+        ],
+        "reference_source": "fresh"
+      },
+      {
+        "case_idx": 2,
+        "selected_reference_device": "npu",
+        "reference_completed": true,
+        "output_devices": [
+          {
+            "output_index": 0,
+            "device": "npu:0"
+          }
+        ],
+        "reference_source": "fresh"
+      },
+      {
+        "case_idx": 3,
+        "selected_reference_device": "npu",
+        "reference_completed": true,
+        "output_devices": [
+          {
+            "output_index": 0,
+            "device": "npu:0"
+          }
+        ],
+        "reference_source": "fresh"
+      },
+      {
+        "case_idx": 4,
+        "selected_reference_device": "npu",
+        "reference_completed": true,
+        "output_devices": [
+          {
+            "output_index": 0,
+            "device": "npu:0"
+          }
+        ],
+        "reference_source": "fresh"
+      },
+      {
+        "case_idx": 5,
+        "selected_reference_device": "npu",
+        "reference_completed": true,
+        "output_devices": [
+          {
+            "output_index": 0,
+            "device": "npu:0"
+          }
+        ],
+        "reference_source": "fresh"
+      },
+      {
+        "case_idx": 6,
+        "selected_reference_device": "npu",
+        "reference_completed": true,
+        "output_devices": [
+          {
+            "output_index": 0,
+            "device": "npu:0"
+          }
+        ],
+        "reference_source": "fresh"
+      },
+      {
+        "case_idx": 7,
+        "selected_reference_device": "npu",
+        "reference_completed": true,
+        "output_devices": [
+          {
+            "output_index": 0,
+            "device": "npu:0"
+          }
+        ],
+        "reference_source": "fresh"
+      },
+      {
+        "case_idx": 8,
+        "selected_reference_device": "npu",
+        "reference_completed": true,
+        "output_devices": [
+          {
+            "output_index": 0,
+            "device": "npu:0"
+          }
+        ],
+        "reference_source": "fresh"
+      },
+      {
+        "case_idx": 9,
+        "selected_reference_device": "npu",
+        "reference_completed": true,
+        "output_devices": [
+          {
+            "output_index": 0,
+            "device": "npu:0"
+          }
+        ],
+        "reference_source": "fresh"
+      },
+      {
+        "case_idx": 10,
+        "selected_reference_device": "npu",
+        "reference_completed": true,
+        "output_devices": [
+          {
+            "output_index": 0,
+            "device": "npu:0"
+          }
+        ],
+        "reference_source": "fresh"
+      },
+      {
+        "case_idx": 11,
+        "selected_reference_device": "npu",
+        "reference_completed": true,
+        "output_devices": [
+          {
+            "output_index": 0,
+            "device": "npu:0"
+          }
+        ],
+        "reference_source": "fresh"
+      },
+      {
+        "case_idx": 12,
+        "selected_reference_device": "npu",
+        "reference_completed": true,
+        "output_devices": [
+          {
+            "output_index": 0,
+            "device": "npu:0"
+          }
+        ],
+        "reference_source": "fresh"
+      },
+      {
+        "case_idx": 13,
+        "selected_reference_device": "npu",
+        "reference_completed": true,
+        "output_devices": [
+          {
+            "output_index": 0,
+            "device": "npu:0"
+          }
+        ],
+        "reference_source": "fresh"
+      },
+      {
+        "case_idx": 14,
+        "selected_reference_device": "npu",
+        "reference_completed": true,
+        "output_devices": [
+          {
+            "output_index": 0,
+            "device": "npu:0"
+          }
+        ],
+        "reference_source": "fresh"
+      },
+      {
+        "case_idx": 15,
+        "selected_reference_device": "npu",
+        "reference_completed": true,
+        "output_devices": [
+          {
+            "output_index": 0,
+            "device": "npu:0"
+          }
+        ],
+        "reference_source": "fresh"
+      },
+      {
+        "case_idx": 16,
+        "selected_reference_device": "npu",
+        "reference_completed": true,
+        "output_devices": [
+          {
+            "output_index": 0,
+            "device": "npu:0"
+          }
+        ],
+        "reference_source": "fresh"
+      },
+      {
+        "case_idx": 17,
+        "selected_reference_device": "npu",
+        "reference_completed": true,
+        "output_devices": [
+          {
+            "output_index": 0,
+            "device": "npu:0"
+          }
+        ],
+        "reference_source": "fresh"
+      },
+      {
+        "case_idx": 18,
+        "selected_reference_device": "npu",
+        "reference_completed": true,
+        "output_devices": [
+          {
+            "output_index": 0,
+            "device": "npu:0"
+          }
+        ],
+        "reference_source": "fresh"
+      },
+      {
+        "case_idx": 19,
+        "selected_reference_device": "npu",
+        "reference_completed": true,
+        "output_devices": [
+          {
+            "output_index": 0,
+            "device": "npu:0"
+          }
+        ],
+        "reference_source": "fresh"
+      },
+      {
+        "case_idx": 20,
+        "selected_reference_device": "npu",
+        "reference_completed": true,
+        "output_devices": [
+          {
+            "output_index": 0,
+            "device": "npu:0"
+          }
+        ],
+        "reference_source": "fresh"
+      },
+      {
+        "case_idx": 21,
+        "selected_reference_device": "npu",
+        "reference_completed": true,
+        "output_devices": [
+          {
+            "output_index": 0,
+            "device": "npu:0"
+          }
+        ],
+        "reference_source": "fresh"
+      },
+      {
+        "case_idx": 22,
+        "selected_reference_device": "npu",
+        "reference_completed": true,
+        "output_devices": [
+          {
+            "output_index": 0,
+            "device": "npu:0"
+          }
+        ],
+        "reference_source": "fresh"
+      },
+      {
+        "case_idx": 23,
+        "selected_reference_device": "npu",
+        "reference_completed": true,
+        "output_devices": [
+          {
+            "output_index": 0,
+            "device": "npu:0"
+          }
+        ],
+        "reference_source": "fresh"
+      },
+      {
+        "case_idx": 24,
+        "selected_reference_device": "npu",
+        "reference_completed": true,
+        "output_devices": [
+          {
+            "output_index": 0,
+            "device": "npu:0"
+          }
+        ],
+        "reference_source": "fresh"
+      },
+      {
+        "case_idx": 25,
+        "selected_reference_device": "npu",
+        "reference_completed": true,
+        "output_devices": [
+          {
+            "output_index": 0,
+            "device": "npu:0"
+          }
+        ],
+        "reference_source": "fresh"
+      },
+      {
+        "case_idx": 26,
+        "selected_reference_device": "npu",
+        "reference_completed": true,
+        "output_devices": [
+          {
+            "output_index": 0,
+            "device": "npu:0"
+          }
+        ],
+        "reference_source": "fresh"
+      },
+      {
+        "case_idx": 27,
+        "selected_reference_device": "npu",
+        "reference_completed": true,
+        "output_devices": [
+          {
+            "output_index": 0,
+            "device": "npu:0"
+          }
+        ],
+        "reference_source": "fresh"
+      },
+      {
+        "case_idx": 28,
+        "selected_reference_device": "npu",
+        "reference_completed": true,
+        "output_devices": [
+          {
+            "output_index": 0,
+            "device": "npu:0"
+          }
+        ],
+        "reference_source": "fresh"
+      },
+      {
+        "case_idx": 29,
+        "selected_reference_device": "npu",
+        "reference_completed": true,
+        "output_devices": [
+          {
+            "output_index": 0,
+            "device": "npu:0"
+          }
+        ],
+        "reference_source": "fresh"
+      },
+      {
+        "case_idx": 30,
+        "selected_reference_device": "npu",
+        "reference_completed": true,
+        "output_devices": [
+          {
+            "output_index": 0,
+            "device": "npu:0"
+          }
+        ],
+        "reference_source": "fresh"
+      },
+      {
+        "case_idx": 31,
+        "selected_reference_device": "npu",
+        "reference_completed": true,
+        "output_devices": [
+          {
+            "output_index": 0,
+            "device": "npu:0"
+          }
+        ],
+        "reference_source": "fresh"
+      },
+      {
+        "case_idx": 32,
+        "selected_reference_device": "npu",
+        "reference_completed": true,
+        "output_devices": [
+          {
+            "output_index": 0,
+            "device": "npu:0"
+          }
+        ],
+        "reference_source": "fresh"
+      },
+      {
+        "case_idx": 33,
+        "selected_reference_device": "npu",
+        "reference_completed": true,
+        "output_devices": [
+          {
+            "output_index": 0,
+            "device": "npu:0"
+          }
+        ],
+        "reference_source": "fresh"
+      },
+      {
+        "case_idx": 34,
+        "selected_reference_device": "npu",
+        "reference_completed": true,
+        "output_devices": [
+          {
+            "output_index": 0,
+            "device": "npu:0"
+          }
+        ],
+        "reference_source": "fresh"
+      },
+      {
+        "case_idx": 35,
+        "selected_reference_device": "npu",
+        "reference_completed": true,
+        "output_devices": [
+          {
+            "output_index": 0,
+            "device": "npu:0"
+          }
+        ],
+        "reference_source": "fresh"
+      },
+      {
+        "case_idx": 36,
+        "selected_reference_device": "npu",
+        "reference_completed": true,
+        "output_devices": [
+          {
+            "output_index": 0,
+            "device": "npu:0"
+          }
+        ],
+        "reference_source": "fresh"
+      },
+      {
+        "case_idx": 37,
+        "selected_reference_device": "npu",
+        "reference_completed": true,
+        "output_devices": [
+          {
+            "output_index": 0,
+            "device": "npu:0"
+          }
+        ],
+        "reference_source": "fresh"
+      },
+      {
+        "case_idx": 38,
+        "selected_reference_device": "npu",
+        "reference_completed": true,
+        "output_devices": [
+          {
+            "output_index": 0,
+            "device": "npu:0"
+          }
+        ],
+        "reference_source": "fresh"
+      },
+      {
+        "case_idx": 39,
+        "selected_reference_device": "npu",
+        "reference_completed": true,
+        "output_devices": [
+          {
+            "output_index": 0,
+            "device": "npu:0"
+          }
+        ],
+        "reference_source": "fresh"
+      },
+      {
+        "case_idx": 40,
+        "selected_reference_device": "npu",
+        "reference_completed": true,
+        "output_devices": [
+          {
+            "output_index": 0,
+            "device": "npu:0"
+          }
+        ],
+        "reference_source": "fresh"
+      },
+      {
+        "case_idx": 41,
+        "selected_reference_device": "npu",
+        "reference_completed": true,
+        "output_devices": [
+          {
+            "output_index": 0,
+            "device": "npu:0"
+          }
+        ],
+        "reference_source": "fresh"
+      },
+      {
+        "case_idx": 42,
+        "selected_reference_device": "npu",
+        "reference_completed": true,
+        "output_devices": [
+          {
+            "output_index": 0,
+            "device": "npu:0"
+          }
+        ],
+        "reference_source": "fresh"
+      },
+      {
+        "case_idx": 43,
+        "selected_reference_device": "npu",
+        "reference_completed": true,
+        "output_devices": [
+          {
+            "output_index": 0,
+            "device": "npu:0"
+          }
+        ],
+        "reference_source": "fresh"
+      },
+      {
+        "case_idx": 44,
+        "selected_reference_device": "npu",
+        "reference_completed": true,
+        "output_devices": [
+          {
+            "output_index": 0,
+            "device": "npu:0"
+          }
+        ],
+        "reference_source": "fresh"
+      },
+      {
+        "case_idx": 45,
+        "selected_reference_device": "npu",
+        "reference_completed": true,
+        "output_devices": [
+          {
+            "output_index": 0,
+            "device": "npu:0"
+          }
+        ],
+        "reference_source": "fresh"
+      },
+      {
+        "case_idx": 46,
+        "selected_reference_device": "npu",
+        "reference_completed": true,
+        "output_devices": [
+          {
+            "output_index": 0,
+            "device": "npu:0"
+          }
+        ],
+        "reference_source": "fresh"
+      },
+      {
+        "case_idx": 47,
+        "selected_reference_device": "npu",
+        "reference_completed": true,
+        "output_devices": [
+          {
+            "output_index": 0,
+            "device": "npu:0"
+          }
+        ],
+        "reference_source": "fresh"
+      },
+      {
+        "case_idx": 48,
+        "selected_reference_device": "npu",
+        "reference_completed": true,
+        "output_devices": [
+          {
+            "output_index": 0,
+            "device": "npu:0"
+          }
+        ],
+        "reference_source": "fresh"
+      },
+      {
+        "case_idx": 49,
+        "selected_reference_device": "npu",
+        "reference_completed": true,
+        "output_devices": [
+          {
+            "output_index": 0,
+            "device": "npu:0"
+          }
+        ],
+        "reference_source": "fresh"
+      },
+      {
+        "case_idx": 50,
+        "selected_reference_device": "npu",
+        "reference_completed": true,
+        "output_devices": [
+          {
+            "output_index": 0,
+            "device": "npu:0"
+          }
+        ],
+        "reference_source": "fresh"
+      },
+      {
+        "case_idx": 51,
+        "selected_reference_device": "npu",
+        "reference_completed": true,
+        "output_devices": [
+          {
+            "output_index": 0,
+            "device": "npu:0"
+          }
+        ],
+        "reference_source": "fresh"
+      }
+    ]
+  }
+}

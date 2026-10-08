@@ -1,0 +1,52 @@
+# nb3-nb7-cache-integrate-20261006 — REPORT (final)
+
+## Summary
+- **5/5 AC MET。** 合并 c03fd80+f5e43f1（分支 nb3-nb7-cache-integrate，tip e74b1f5，worktree+包在稳定目录 runtime-artifacts/nb3-nb7-cache-integrate-20261006/），21:35Z 一次部署 live=BUILD sha256:089a0261（commit e74b1f5/manifest 2e2daf23/overlay 2f5808d1/index v2prime d1d59a1a/policy v7 42fe8d0f），准入 gates 4/4+fleet 16/16+inflight 16/16/16，ADMISSION CONFIRMED（approval 49d1d147…，confirm_service_runtime CLEAN）；两次官方 canary 全过，零回滚。
+- AC1 合并：唯一生产代码零冲突；冲突 tests/test_reference_cache.py:415 按review解 `lambda _t, **_k: True`；**另修同类** tests/test_model_bound_cache.py engine fixture 旧签名 double（c03fd80 调用带 wait_seconds kwarg）→ e74b1f5。合并树7个pin面字节=review §2 逐字节。测试：NB7套件 99P/1S/3F（3失败在 f5e43f1 基线复现=旧worktree未提交工件依赖，evidence在案）；NB3套件 44P；ruff 与 f5e43f1 输出完全相同（0新增）。分支已在 service repo（=先行任务 origin 落点），未 PR。
+- AC2 重导：v2prime d1d59a1a（1046条、0歧义、sealed 4c165dfc/deployment 84154dfb 逐字节不动、target deployment 5dce1c3f、algorithm_files 重钉 verify f1f5372b/benchmark d65b54d4/_common c705f9aa）；policy v7 42fe8d0f（vs v6 仅 benchmark.py pin 683cc5fb→d65b54d4 + source_state_dir→迁移稳定C路径（live v5-rebound 428ea024 同一先例）+evidence；全链 load 校验=authorized；npu_model/cross_card/timing契约/源digest/哨兵/预算全不动）；1046数据未改（逐case manifest sha=索引pin=文件digest 复核）；最终包全稳定路径，无旧worktree依赖。
+- 旧BMM CPUproof（AC1条款）：receipts 未落地；按 lead 指示核实进程身份（2215537/2299458 proof_equiv.py BMM pass/fail、cwd=NB7 worktree、0 NPU fd）后保全 partial 输出 SIGTERM，记录 interrupted/unfinished，**不作为CPU等价证明**（Conv两任务fail组合 receipts 已有，pass组合在 NB7 proof-final）。
+- AC3 部署准入：交接基线备份（api.env 06b6a150/approval 0fc66774/3 units/manifest d2521b41/overlay 2d75d31e+SHA256SUMS，backup/）；零inflight+df(52G,73%)+CPUproof收尾确认后一次restart 18/18；gates：canary ev_0ee1d9f2(card5)/compile ev_6e7906fe/l3 ev_c57f115d(card15,50case)/bmm ev_068471d5(card15,51/51+perf succeeded，grade身份走fresh+原路径=NB3准入同形态)；fleet 16/16（首跑card0失败=runner用了未挂载的scratch venv python，按NB3先例换服务venv-p0 python重跑，失败证据保留）；approval合法轮转（pre-nb3nb7-20261007 保留）。
+- AC4 canary A（官方请求#1）：**实际TaskAgent容器**（triton-agent-cpu，host net）kernel_eval 协议→native /verify，task_id=official_l3_BatchMatmul+kernel f23c0f8a（NB3同kernel字节）：EID ev_63688c7d，attempt at_ec4f47a8，card **14**（非封存8、非card0 lease），183.7s，correct **51/51**，reference_source **cache 51/51**（hit 51/51），live input hash==sealed **51/51**，manifest pin 三方核对 51/51（sealed card-8 条目跨卡服务）。
+- AC4 canary B（官方请求#2）：同容器同协议 /benchmark 同题同kernel：EID ev_8de4c2f5，attempt at_74dc90c9，card **9**，484.7s（<900 facade；perf完成）：correctness **51/51**（cache 51/51）；performance succeeded、measured 51/51、coverage 1；**timing命中 cached_manifest 51/51（每case 8样本，v2 timing-hit 路径首次NPU实跑）**，performance_cache deployment=5dce1c3f（=v2prime target）status hit；**sentinel case1 当前卡实测 0.98305ms vs cached 0.9865ms → drift +0.35% < 3%**，零 invalidation 标记；speedup 0.509（信息项，非判据）。
+- AC5：无失败→零回滚；终态 health 200/readyz ready/18 units/零inflight/全部EID terminal=completed；secrets清理（gate-token删除、token仅env引用不打印）；card0 lease 426999 未触碰；bridge/TLS/staging(STOPPED) 未动；**NB3未提前标done**：TLS/bridge退役23 fixtures 仍开放；验证已过、PR待后续指示。
+- 决策/偏差记录：①gates首跑403（trial token→grade请求需 grade:submit，换grader token重跑，无NPU消耗）；②fanout/PAUSE 准入窗口标记（admit机制要求，experiments保持quiesced）；③容器内挂载 client.json 为旧11907/tok（Sep代），用模板工具既定 TRITON_EVAL_SERVICE_URL 覆盖指向原生API 12907+kernel_eval token 从容器内执行（关闭NB3 host-POST偏差，非伪造容器）；④policy v7 为 cache-miss 回退路径（authorized已验证），本次命中全走 v2' 部署 pin 路径。
+- 预算：runtime 21:29–22:20 ≈51/100min；官方请求 2/2；部署 1/1；回滚 0。
+
+## Verbatim constraints and identifiers (copied)
+- "在实际service repo创建独立branch/worktree nb3-nb7-cache-integrate，自c03fd80合f5e43f1，不改main/旧branch"；"合并解lambda _t, **_k: True"；"原1046数据/8次中位不变、不全重测"；"最终绑定用迁移稳定路径，不重新引入旧worktree依赖"；"一次部署+现有标准准入gates4/4、fleet16/16、inflight16"；"A实际TaskAgent容器kernel_eval工具->native /verify official_l3_BatchMatmul+f23c0f8a…不能改成hostPOST冒充容器"；"B同题同kernel完整service evaluation…timing命中数/逐case来源/当前卡sentinel/耗时及EID/attempt/card/build全记录。用同型号且非封存card8的空闲卡，复用既有调度，不造runner"；"cachemiss本身非infra失败，但缺少所需命中/性能证据不能算AC通过"；"NB3整体仍待TLS/bridge退役23fixtures，不提前标done"；"若复用旧BMM CPUproof需完成receipt，不把进程退出当证明"；"PID复用或归属不清不要杀"；"不要碰card0 lease426999"；"失败按原契约回滚停止，不自动扩大预算或追加请求；验证过再PR"。
+- OWNERSHIP-GRANTED 2026-10-06 21:29Z（lead）：迁移2c16551d done6/6+inspect idle，生产+staging配置唯一owner移交本任务；基线 live 7b008d25/89fdd56f、P4、d2521b41/2d75d31e/428ea024/c1acb240/api.env 06b6a150；"原A/B/C worktree已删除，禁止从旧报告恢复旧路径；你的备份/失败回滚必须是现在稳定路径基线"。
+- 分支/工件：branch nb3-nb7-cache-integrate=e74b1f5c56e03eaf4dc1fe25fc918afe1005ae69（merge 0fffb8c 自 c03fd80+f5e43f1）；worktree=/home/e84381970/open-evo-work/runtime-artifacts/nb3-nb7-cache-integrate-20261006/checkout；pkg=…/pkg（index v2prime d1d59a1a6a4c6bbc773dec39c41556fb13cb990af2d0f9564a3d1c1d09d275d1、policy v7 42fe8d0fc6ead4ae4879fc204f417530f6ac80835e9339ddd6d1219bce2a97bf、manifest 2e2daf23…、overlay 2f5808d1…、receipts）；evidence镜像=…/pkg/evidence/。
+- 关系链（old/new）：sealed 4c165dfc+deployment 84154dfb（不动）→ v2prime（target 5dce1c3f，algorithm_files重钉本分支）；policy v5 1b128616→v6 6369ff37（NB7，不动）→v7 42fe8d0f（+benchmark.py pin d65b54d4、state_dir稳定化）；live v5-rebound 428ea024（迁移，不动）；live manifest/overlay d2521b41/2d75d31e→本部署 2e2daf23/2f5808d1（engine ro-bind→稳定checkout，cache/policy/state-dir三点delta）；BUILD 89fdd56f→089a0261（git_commit e74b1f5+manifest sha+verdict_cache false+npu-strict）。
+
+## Evidence
+
+### 1. 准入（records 在 .scratch/.../deploy/records/ 与 …/pkg/evidence/）
+- gates/：canary ev_0ee1d9f2eb4248abb6b94c44a247e7bd card5 PASS；compile ev_6e7906fe460847b8ac600ec4c5d8df52 PASS；l3 ev_c57f115d24df4311b5119f5331077e31 card15 50case PASS（reference evidence retained，npu:0全case）；bmm ev_068471d58d3447a1a0413459bea0ace8 card15 51/51 correctness+performance succeeded（measured 51，fresh+原路径计时——grade身份非official源，policy按设计不授权，正确性fresh=NB3准入同形态）；gate-summary all_passed；403首跑无NPU消耗。
+- fleet-089a0261/：16/16 cards passed（workers unchanged；probe=tensor_ready npu:0 4.0）；fleet-failed-run1（card0：scratch venv python未挂载→bwrap execvp ENOENT；换服务venv-p0 python=NB3先例）。runtime-conditions 16/16/16；launch-binding api_pid 2570641。
+- approval：service-isolation.approved.json=49d1d147ccc9c01e8499f5198d408cedd6ba14c607158242e186a5afcf2a5590（BUILD 089a0261、commit e74b1f5、manifest 2e2daf23）；旧件→service-isolation.approved.pre-nb3nb7-20261007.json；backup/=交接基线（api.env 06b6a150、approval 0fc66774、3 units、d2521b41/2d75d31e、SHA256SUMS-backup）。
+
+### 2. Canary A（容器内 native /verify）
+- 执行面：docker exec triton-agent-cpu（host network）→ POST http://192.169.0.227:12907/verify（kernel_eval协议，Bearer KERNEL_EVAL_TOKEN env引用），body={task_id official_l3_BatchMatmul, kernel_code sha256 f23c0f8ab59b901f…（2920B，与NB3 request-full-bmm51.json kernel字节相同）, session nb3nb7-canaryA-a1}，Idempotency-Key nb3nb7-canaryA-20261006-1。
+- 结果（canaryA-stdout.txt + reference-devices/ev_63688c7d…/at_ec4f47a8….json）：HTTP 200，183.7s；correct true，correctness_raw 51/51 outcome=correct，infra_error false，decoy false，request_status completed，eval_budget 1/18；card 14，BUILD 089a0261。
+- 缓存证据：reference_source=cache **51/51**、reference_cache_status=hit **51/51**；逐case：binding key∈v2prime 51/51、live raw_input_sha256==sealed binding.input_sha256 **51/51**、case manifest sha==index pin==文件digest **51/51**；sealed 源卡=8（跨卡型号绑定服务）；cache hit 时 reference_completed=false（设计：命中不执行reference；输出经未变 compare()）。inputhashsealed 51/51 = NB3 d175a65 输入契约在合并树保持。
+
+### 3. Canary B（容器内 native /benchmark，完整 evaluation）
+- EID ev_8de4c2f5a2854c1abe10fe0a81c86aff，attempt at_74dc90c9a7534e6f89bfcbc91f2a155d，card 9，BUILD 089a0261，484.7s（<900s facade）。
+- correctness：succeeded 51/51（reference_source cache 51/51）。
+- performance：succeeded，measured_cases 51，coverage 1，method profiler_kernel_sum_v1，overall_speedup 0.509（该kernel慢于torch.bmm参考——信息项）；**逐case reference_latency_samples_source=cached_manifest 51/51，每case 8样本**（v2' timing-hit 路径首次NPU实跑；per-case manifest列表=performance_cache.manifests 51条）；reference_timing_policy_sha256=null（命中走v2'部署pin路径而非policy工件路径，policy v7为authorized回退）。
+- sentinel（当前卡9实测 vs 服务值）：case 1，cached 0.9865ms，measured 0.98305ms，relative drift **+0.3497% < ±3%**；performance_cache.deployment_sha256=5dce1c3f…（==v2prime target deployment）、status hit、reference_memory_measured false；state dirs（/dev/shm/nb3nb7-state-20261006 与 稳定C state/）零 invalid 标记=无drift失效。
+
+### 4. 部署时间线（deploy/deploy-timeline.txt 由本报告引用处记录）
+- 21:30Z CPUproof SIGTERM（interrupted，partial保全 cpuproof-preserved/）；21:33Z worktree move→稳定目录+pkg复制；21:34Z final包重导（manifest 2e2daf23/overlay 2f5808d1/BUILD 089a0261）+state dir创建；21:35:27Z DEPLOY-START（queues全0）；21:35:28Z INSTALLED（api.env 7键+3 units+daemon-reload）；21:35:44Z RESTARTED 18/18 health200 readyz ready；21:36-21:52Z gates 4/4；21:54-21:58Z fleet 16/16；22:00Z ADMISSION CONFIRMED；22:05-22:08Z canary A；22:10-22:18Z canary B；22:19Z 终态核验。
+- api.env sha：06b6a150（交接）→2ba10a85…（部署后；7键delta程序化生成+pin对文件digest断言，无手抄）。
+
+### 5. 测试/工件重导证据（prep阶段）
+- 合并：0fffb8c（冲突1处按review解）+e74b1f5（test_model_bound_cache.py:242 同类double签名修复）；合并树pin面=review §2（verify f1f5372b/benchmark d65b54d4/_common c705f9aa/sandbox 6d473280/reference_cache efccb418/reference_timing_reuse c5930ec2/reference_diagnostics 8fe1181d）。
+- 测试（--basetemp自有scratch已清）：NB7套件 99P/1S/3F==基线（3失败在f5e43f1 detach worktree复现：test_real_policy_binds/denies（C工作区未提交policy v2）+test_real_bmm51…（已删nb7-live-reuse-run2路径））；NB3套件 44P（verify_engine 31+official_input_groups 9+benchmark_gate/event_stats）；ruff：merged输出与f5e43f1完全一致（diff-rc=0）。
+- v2prime/policy v7 构建与校验：package/build_nb3nb7_artifacts.py（recipe=NB7 build_model_bound.py+v5→v6先例）+verify_prep_artifacts.py（CacheIndexV2解析1046条、v7全链load=authorized、pins==branch bytes、delta vs v6={benchmark.py}、sealed manifest抽查）；deploy-package-receipt-{provisional,final}.json。
+- BMM CPUproof：cpuproof-preserved/receipt-interrupted.json（PIDs 2215537/2299458，cmd/cwd/NPU-fd核实，SIGTERM后both-terminated，receipts未产出不冒充）。
+
+### 6. 终态与未触碰项
+- live：commit e74b1f5（branch nb3-nb7-cache-integrate）/BUILD sha256:089a0261…/manifest 2e2daf23…/overlay 2f5808d1…/index v2prime d1d59a1a…/policy v7 42fe8d0f…；18/18 active；health 200 readyz ready；零inflight（queues 0）；EIDs 全部 completed（ev_0ee1d9f2/ev_6e7906fe/ev_c57f115d/ev_068471d5/ev_63688c7d/ev_8de4c2f5，replacement_pending 0）。
+- 未触碰：card0 lease PID 426999；bridge 11908/11909（pid 1202176）；TLS/cert；staging 12926/12927 保持 STOPPED；sealed /dev/shm 数据；迁移 stable 目录只读引用；main/旧分支；fanout历史approval。
+- 开放（给lead）：①PR待指示（验证已过）；②NB3剩余 TLS/bridge退役23 fixtures（本任务范围外）；③容器挂载 client.json 为旧代(11907/token)——本次用 TRITON_EVAL_SERVICE_URL 覆盖执行，容器配置刷新属后续运维决策；④gates的bmm（grade身份）走fresh+原路径计时为既定形态，official身份命中证据在canary A/B。

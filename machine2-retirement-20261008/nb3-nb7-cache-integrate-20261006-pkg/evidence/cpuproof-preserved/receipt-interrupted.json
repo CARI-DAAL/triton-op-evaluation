@@ -1,0 +1,29 @@
+{
+ "recorded_at": "2026-10-06T21:30:20.594134+00:00",
+ "decision": "interrupted-unfinished (lead OWNERSHIP-GRANTED instruction 2026-10-07)",
+ "processes": [
+  {
+   "pid": 2215537,
+   "cmd": "proof_equiv.py official_l3_BatchMatmul:fail",
+   "cwd": "/root/.paseo/worktrees/0u9809pj/nb7-model-bound-cache-20261006",
+   "cpu_only": true,
+   "npu_fd_count": 0
+  },
+  {
+   "pid": 2299458,
+   "cmd": "proof_equiv.py official_l3_BatchMatmul:pass",
+   "cwd": "/root/.paseo/worktrees/0u9809pj/nb7-model-bound-cache-20261006",
+   "cpu_only": true,
+   "npu_fd_count": 0
+  }
+ ],
+ "status": "BMM51 CPU equivalence receipts NOT produced; NOT claimed as CPU-equivalence proof. Completed receipts remain only: official_l3_ConvStandard2d-fail + official_l3_ConvTranspose2d-fail (04:22) in /tmp/nb7mb-proof2 + NB7 proof-final Conv{Standard2d,Transpose2d} pass combos.",
+ "partial_output_preserved": [
+  "cpuproof-preserved/official_l3_BatchMatmul-pass.log",
+  "cpuproof-preserved/official_l3_BatchMatmul-fail.log"
+ ],
+ "last_lines": {
+  "pass": "05:17:34 case 51/51 fresh-pass phase",
+  "fail": "05:30:10 mid-case evaluation"
+ }
+}

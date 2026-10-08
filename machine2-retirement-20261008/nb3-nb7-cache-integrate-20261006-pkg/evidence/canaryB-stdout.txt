@@ -1,0 +1,365 @@
+{"http": 200, "elapsed_s": 484.7}
+{
+ "correct": true,
+ "correctness_raw": {
+  "decoy": false,
+  "domain_failure": null,
+  "failures": [],
+  "outcome": "correct",
+  "passed": true,
+  "passed_cases": 51,
+  "total_cases": 51
+ },
+ "decoy": false,
+ "speedup": 0.509181249878675,
+ "compiled": true,
+ "error": null,
+ "error_class": null,
+ "max_abs_err": null,
+ "mean_abs_err": null,
+ "pass_rate": null,
+ "infra_error": false,
+ "total_cases": 51,
+ "passed_cases": 51,
+ "failures": [],
+ "benchmark_available": true,
+ "benchmark": {
+  "speedup_vs_torch": 0.509181249878675,
+  "total_cases": 51,
+  "passed_cases": 51,
+  "coverage": 1,
+  "per_shape_results": [
+   {
+    "case_idx": 0,
+    "input_desc": [
+     {
+      "input_index": 0,
+      "dimensions": [
+       41,
+       608,
+       1216
+      ],
+      "dtype": "torch.float32"
+     },
+     {
+      "input_index": 1,
+      "dimensions": [
+       41,
+       1216,
+       608
+      ],
+      "dtype": "torch.float32"
+     }
+    ],
+    "status": "pass",
+    "framework": {
+     "avg_latency_ms": 0.9865
+    },
+    "implementation": {
+     "avg_latency_ms": 1.5442
+    },
+    "speedup_vs_torch": 0.638842118896516
+   },
+   {
+    "case_idx": 1,
+    "input_desc": [
+     {
+      "input_index": 0,
+      "dimensions": [
+       2,
+       12,
+       24
+      ],
+      "dtype": "torch.float32"
+     },
+     {
+      "input_index": 1,
+      "dimensions": [
+       2,
+       24,
+       12
+      ],
+      "dtype": "torch.float32"
+     }
+    ],
+    "status": "pass",
+    "framework": {
+     "avg_latency_ms": 0.0026
+    },
+    "implementation": {
+     "avg_latency_ms": 0.0022
+    },
+    "speedup_vs_torch": 1.1818181818181817
+   },
+   {
+    "case_idx": 2,
+    "input_desc": [
+     {
+      "input_index": 0,
+      "dimensions": [
+       2,
+       7,
+       15
+      ],
+      "dtype": "torch.float16"
+     },
+     {
+      "input_index": 1,
+      "dimensions": [
+       2,
+       15,
+       7
+      ],
+      "dtype": "torch.float16"
+     }
+    ],
+    "status": "pass",
+    "framework": {
+     "avg_latency_ms": 0.0031
+    },
+    "implementation": {
+     "avg_latency_ms": 0.0028
+    },
+    "speedup_vs_torch": 1.1071428571428572
+   },
+   {
+    "case_idx": 3,
+    "input_desc": [
+     {
+      "input_index": 0,
+      "dimensions": [
+       1,
+       3,
+       7
+      ],
+      "dtype": "torch.float32"
+     },
+     {
+      "input_index": 1,
+      "dimensions": [
+       1,
+       7,
+       3
+      ],
+      "dtype": "torch.float32"
+     }
+    ],
+    "status": "pass",
+    "framework": {
+     "avg_latency_ms": 0.0022
+    },
+    "implementation": {
+     "avg_latency_ms": 0.0019
+    },
+    "speedup_vs_torch": 1.1578947368421053
+   },
+   {
+    "case_idx": 4,
+    "input_desc": [
+     {
+      "input_index": 0,
+      "dimensions": [
+       1,
+       3,
+       6
+      ],
+      "dtype": "torch.float16"
+     },
+     {
+      "input_index": 1,
+      "dimensions": [
+       1,
+       6,
+       3
+      ],
+      "dtype": "torch.float16"
+     }
+    ],
+    "status": "pass",
+    "framework": {
+     "avg_latency_ms": 0.0021
+    },
+    "implementation": {
+     "avg_latency_ms": 0.0017
+    },
+    "speedup_vs_torch": 1.2352941176470589
+   },
+   {
+    "case_idx": 5,
+    "input_desc": [
+     {
+      "input_index": 0,
+      "dimensions": [
+       1,
+       2,
+       3
+      ],
+      "dtype": "torch.float32"
+     },
+     {
+      "input_index": 1,
+      "dimensions": [
+       1,
+       3,
+       2
+      ],
+      "dtype": "torch.float32"
+     }
+    ],
+    "status": "pass",
+    "framework": {
+     "avg_latency_ms": 0.002
+    },
+    "implementation": {
+     "avg_latency_ms": 0.0015
+    },
+    "speedup_vs_torch": 1.3333333333333333
+   },
+   {
+    "case_idx": 6,
+    "input_desc": [
+     {
+      "input_index": 0,
+      "dimensions": [
+       13,
+       864,
+       1728
+      ],
+      "dtype": "torch.float32"
+     },
+     {
+      "input_index": 1,
+      "dimensions": [
+       13,
+       1728,
+       864
+      ],
+      "dtype": "torch.float32"
+     }
+    ],
+    "status": "pass",
+    "framework": {
+     "avg_latency_ms": 0.8512
+    },
+    "implementation": {
+     "avg_latency_ms": 1.0798
+    },
+    "speedup_vs_torch": 0.7882941285423225
+   },
+   {
+    "case_idx": 7,
+    "input_desc": [
+     {
+      "input_index": 0,
+      "dimensions": [
+       64,
+       496,
+       992
+      ],
+      "dtype": "torch.float32"
+     },
+     {
+      "input_index": 1,
+      "dimensions": [
+       64,
+       992,
+       496
+      ],
+      "dtype": "torch.float32"
+     }
+    ],
+    "status": "pass",
+    "framework": {
+     "avg_latency_ms": 0.8494
+    },
+    "implementation": {
+     "avg_latency_ms": 1.7898
+    },
+    "speedup_vs_torch": 0.47457816515811824
+   },
+   {
+    "case_idx": 8,
+    "input_desc": [
+     {
+      "input_index": 0,
+      "dimensions": [
+       36,
+       286,
+       571
+      ],
+      "dtype": "torch.float32"
+     },
+     {
+      "input_index": 1,
+      "dimensions": [
+       36,
+       571,
+       286
+      ],
+      "dtype": "torch.float32"
+     }
+    ],
+    "status": "pass",
+    "framework": {
+     "avg_latency_ms": 0.1701
+    },
+    "implementation": {
+     "avg_latency_ms": 0.2704
+    },
+    "speedup_vs_torch": 0.6290680473372782
+   },
+   {
+    "case_idx": 9,
+    "input_desc": [
+     {
+      "input_index": 0,
+      "dimensions": [
+       9,
+       607,
+       1213
+      ],
+      "dtype": "torch.bfloat16"
+     },
+     {
+      "input_index": 1,
+      "dimensions": [
+       9,
+       1213,
+       607
+      ],
+      "dtype": "torch.bfloat16"
+     }
+    ],
+    "status": "pass",
+    "framework": {
+     "avg_latency_ms": 0.189
+    },
+    "implementation": {
+     "avg_latency_ms": 0.262
+    },
+    "speedup_vs_torch": 0.7213740458015266
+   },
+   {
+    "case_idx": 10,
+    "input_desc": [
+     {
+      "input_index": 0,
+      "dimensions": [
+       16,
+       500,
+       1001
+      ],
+      "dtype": "torch.float16"
+     },
+     {
+      "input_index": 1,
+      "dimensions": [
+       16,
+       1001,
+       500
+      ],
+      "dtype": "torch.float16"
+     }
+    ],
+    "status": "pass",
+ 

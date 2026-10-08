@@ -1,0 +1,34 @@
+{"http": 200, "elapsed_s": 183.7}
+{
+ "correct": true,
+ "correctness_raw": {
+  "decoy": false,
+  "domain_failure": null,
+  "failures": [],
+  "outcome": "correct",
+  "passed": true,
+  "passed_cases": 51,
+  "total_cases": 51
+ },
+ "decoy": false,
+ "speedup": 0.0,
+ "compiled": true,
+ "error": null,
+ "error_class": null,
+ "max_abs_err": null,
+ "mean_abs_err": null,
+ "pass_rate": null,
+ "infra_error": false,
+ "total_cases": 51,
+ "passed_cases": 51,
+ "failures": [],
+ "benchmark_available": false,
+ "benchmark": null,
+ "action": "verify",
+ "artifact_sha256": "f23c0f8ab59b901feeee95caeee4b0fb31af4b097dd0de17257e542b9c47df0c",
+ "eval_turn": 1,
+ "eval_budget": "1/18",
+ "request_status": "completed",
+ "diagnostics": "kernel_metrics: dominant=_bmm_kernel time_ms=1.588031738\n  aic_cube_ratio=0.396\nbottleneck_hint: no_obvious_bottleneck",
+ "observation": "[kernel_eval]\naction=verify\nartifact_sha256=f23c0f8ab59b901feeee95caeee4b0fb31af4b097dd0de17257e542b9c47df0c\neval_budget=1/18\nrequest_status=completed\n[kernel_eval][verify][correct] cases=51/51\nkernel_metrics: dominant=_bmm_kernel time_ms=1.588031738\n  aic_cube_ratio=0.396\nbottleneck_hint: no_obvious_bottleneck"
+}

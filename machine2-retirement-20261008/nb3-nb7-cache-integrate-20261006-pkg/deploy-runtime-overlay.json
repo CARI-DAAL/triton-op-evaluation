@@ -1,0 +1,13 @@
+{
+ "schema_version": "engine-runtime-overlay-v1",
+ "environment": {
+  "TRITON_EVAL_PROFILER_RUNTIME_MANIFEST": "/home/e84381970/open-evo-work/baseline-v3/diagnostics/PROFILER-RUNTIME-212b832-attempt3/profiler-runtime/manifest.json",
+  "TRITON_EVAL_PROFILER_RUNTIME_SHA256": "870732c56d8f8f53d1b7a739253a645552d74d5fdb73e95291f187618e83e70a",
+  "TRITON_EVAL_REFERENCE_CACHE_DIR": "/dev/shm/v3-ocp-payload-run-20261004-a2/cache",
+  "TRITON_EVAL_REFERENCE_CACHE_BINDING": "/home/e84381970/open-evo-work/runtime-artifacts/nb3-nb7-cache-integrate-20261006/pkg/model-bound-cache-index-v2prime.json",
+  "TRITON_EVAL_REFERENCE_CACHE_SHA256": "d1d59a1a6a4c6bbc773dec39c41556fb13cb990af2d0f9564a3d1c1d09d275d1",
+  "TRITON_EVAL_REFERENCE_CACHE_STATE_DIR": "/dev/shm/nb3nb7-state-20261006",
+  "TRITON_EVAL_REFERENCE_TIMING_REUSE_POLICY": "/home/e84381970/open-evo-work/runtime-artifacts/nb3-nb7-cache-integrate-20261006/pkg/validated-timing-reuse-policy-v7.json",
+  "TRITON_EVAL_REFERENCE_TIMING_REUSE_SHA256": "42fe8d0fc6ead4ae4879fc204f417530f6ac80835e9339ddd6d1219bce2a97bf"
+ }
+}

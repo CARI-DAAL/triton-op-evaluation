@@ -1,0 +1,12 @@
+{
+ "recorded_at": "2026-10-06T21:58:54.856499+0000",
+ "api_pid": 2570641,
+ "api_start_ticks": "44390092",
+ "repo": "/home/e84381970/open-evo-work/runtime-artifacts/nb3-nb7-cache-integrate-20261006/checkout",
+ "evaluator_build": "sha256:089a0261c0c3286a51246f5cc427a9768a4680a947ca54138dec30666b396d79",
+ "manifest_sha256": "2e2daf239126b63a74885a95aaeee24dd229235d7030e4b25c6cd6c2428c41c4",
+ "helper_path": "/home/e84381970/open-evo-work/baseline-v2/diagnostics/service-result-production-v1/probe_npu_reference_gate.py",
+ "helper_sha256": "3a3980913e56975257124690e7a4b14f4d9a6f7bbf80d5775587b694d5898b89",
+ "fleet_path": "/home/e84381970/open-evo-work/.scratch/nb3-nb7-cache-integrate-20261006/deploy/records/fleet-089a0261/fleet.json",
+ "fleet_sha256": "440f0e767e074960565eabb61e1afdc0f0ab86f350ca6e5af9bf6b0be99f8bf4"
+}

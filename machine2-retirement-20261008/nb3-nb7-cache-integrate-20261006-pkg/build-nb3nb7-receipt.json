@@ -1,0 +1,68 @@
+{
+ "branch": "nb3-nb7-cache-integrate",
+ "tip": "e74b1f5c56e03eaf4dc1fe25fc918afe1005ae69",
+ "parents": [
+  "c03fd80 (nb3-official-npu-repair-20261006)",
+  "f5e43f1b777a747636c02939ffb6e65ea7d90223 (nb7-model-bound-cache-20261006)"
+ ],
+ "model_bound_index_v2prime": {
+  "path": "/home/e84381970/open-evo-work/.scratch/nb3-nb7-cache-integrate-20261006/package/model-bound-cache-index-v2prime.json",
+  "sha256": "d1d59a1a6a4c6bbc773dec39c41556fb13cb990af2d0f9564a3d1c1d09d275d1",
+  "npu_model": "Ascend910_9362",
+  "source_index_sha256": "4c165dfca2675951c7dabf3caeabbef22f54d69a44e1540e95110b470db4fa87",
+  "source_deployment_sha256": "84154dfb56d4a06a818cee7e110589d27817fce784881edaa864210412932f5d",
+  "target_deployment_sha256": "5dce1c3f947e57ed4c7fae2ce2534da826d603c823dc987e3dd7d7f0291f67a9",
+  "report": {
+   "source_entries": 1046,
+   "model_bound_entries": 1046,
+   "ambiguous_excluded": 0,
+   "sealed_cards": [
+    "0",
+    "1",
+    "10",
+    "11",
+    "12",
+    "13",
+    "14",
+    "15",
+    "2",
+    "3",
+    "4",
+    "5",
+    "6",
+    "7",
+    "8",
+    "9"
+   ]
+  }
+ },
+ "timing_reuse_policy_v7": {
+  "path": "/home/e84381970/open-evo-work/.scratch/nb3-nb7-cache-integrate-20261006/package/validated-timing-reuse-policy-v7.json",
+  "sha256": "42fe8d0fc6ead4ae4879fc204f417530f6ac80835e9339ddd6d1219bce2a97bf",
+  "delta_vs_v6_6369ff37": {
+   "target_service_source_sha256_changed": {
+    "engine/benchmark.py": [
+     "683cc5fbe33cad1679287a77cfc9ecae5ea6d59cb9dd4d8a646251a6d0646ea8",
+     "d65b54d46647f41b392e0d308e49d2b7325a11aa0ca9e5725c2108feb3cbb040"
+    ]
+   },
+   "source_state_dir_changed": {
+    "from": "/root/.paseo/worktrees/0u9809pj/v3-service-reference8-20261005/.scratch/v3-service-reference8/timing-reuse-delivery/state",
+    "to": "/home/e84381970/open-evo-work/runtime-artifacts/worktree-detach-20261006/c-v3-service-reference8/timing-reuse-delivery/state",
+    "precedent": "live v5-rebound 428ea024 (migration worktree-detach-20261006)"
+   },
+   "evidence_keys_added": [
+    "nb3nb7_integration_2026_10_07"
+   ],
+   "supersedes_policy_updated": true,
+   "everything_else_unchanged": true
+  },
+  "pins_asserted_equal_to_branch_bytes": true,
+  "no_old_worktree_dependency": true
+ },
+ "algorithm_files_repin": {
+  "_common_utils.py": "c705f9aa53f588cda01ce8d5c4b85434fa460fb0fefd319ef13cf27e50222642",
+  "benchmark.py": "d65b54d46647f41b392e0d308e49d2b7325a11aa0ca9e5725c2108feb3cbb040",
+  "verify.py": "f1f5372b6c79ca052e56557862ceca555b7547115e0d4c083902c70d153945a9"
+ }
+}

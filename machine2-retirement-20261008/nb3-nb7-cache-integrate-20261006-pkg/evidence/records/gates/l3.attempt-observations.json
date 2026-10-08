@@ -1,0 +1,15 @@
+[
+  {
+    "observed_at": "2026-10-06T21:38:48.130058+00:00",
+    "resource_state": "running",
+    "attempt_id": "at_429471309f194aa99e1e9e0f3310eeb1",
+    "attempt_count": 1,
+    "recorded_binding": {
+      "attempt_id": "at_429471309f194aa99e1e9e0f3310eeb1",
+      "card": 15
+    },
+    "physical_card": 15,
+    "binding_matches_current_attempt": true,
+    "verdict_cache_enabled": "false"
+  }
+]

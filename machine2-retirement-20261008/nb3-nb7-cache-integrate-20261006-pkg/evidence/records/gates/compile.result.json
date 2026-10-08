@@ -1,0 +1,41 @@
+{
+  "created_at": "2026-10-06T21:38:16.035000Z",
+  "deadline_at": "2026-10-06T22:08:16.035000Z",
+  "evaluation_id": "ev_6e7906fe460847b8ac600ec4c5d8df52",
+  "finished_at": "2026-10-06T21:38:44.513000Z",
+  "reference_digest": "adb9e8a450670341c2be7785386fac1e8cec85cdd62a2a634ecbf68bc3aa949d",
+  "request_digest": "49a096aa9c53dbdc1bfba2516f1eaee821bd6441d31a231291efb635c71c6acf",
+  "result": {
+    "compile": {
+      "data": {
+        "compiler_stage": null,
+        "duration_ms": 27684.724973980337,
+        "error_excerpt": null,
+        "outcome": "compiled"
+      },
+      "error": null,
+      "reason": null,
+      "status": "succeeded"
+    },
+    "correctness": null,
+    "performance": null,
+    "profile": null,
+    "provenance": {
+      "benchmark_algorithm": "geometric-mean-v1",
+      "correctness_algorithm": "correctness-v1:npu-strict-v1",
+      "decoy_algorithm": "decoy-v1",
+      "evaluator_build": "sha256:089a0261c0c3286a51246f5cc427a9768a4680a947ca54138dec30666b396d79",
+      "execution_environment": null,
+      "grade_eligible": false,
+      "manifest_id": "npukernelbench-machine2-v1",
+      "problem_id": "kernelbench_l3_1_BatchMatmul",
+      "profiler_algorithm": "profiler-v1",
+      "schema_version": "2.1"
+    }
+  },
+  "revision": 3,
+  "schema_version": "2.1",
+  "started_at": "2026-10-06T21:38:16.818000Z",
+  "state": "completed",
+  "updated_at": "2026-10-06T21:38:44.513000Z"
+}

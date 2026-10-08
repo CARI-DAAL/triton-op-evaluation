@@ -1,0 +1,6 @@
+{
+ "trial_max_inflight": 16,
+ "trusted_max_inflight": 16,
+ "fleet_cards": 16,
+ "recorded_at": "2026-10-06T21:58Z"
+}

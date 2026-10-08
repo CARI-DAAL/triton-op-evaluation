@@ -1,0 +1,10 @@
+{
+  "url": "http://127.0.0.1:12907",
+  "request_file_sha256": "de99931a71941a00303d906982983455192ed577bd1c415fece8fb8a8f4cb21e",
+  "request_path": "/home/e84381970/open-evo-work/baseline-v1/diagnostics/service-npu-reference-v1/requests/bmm.request.json",
+  "session_id": "hq-service-gate-685c65d6453d4822a54d55c0990a934a",
+  "idempotency_key": "hq-service-gate-c3719e2d0f954aceb0b866f0aa438c97",
+  "diagnostic": true,
+  "baseline_sample": false,
+  "evaluation_id": "ev_068471d58d3447a1a0413459bea0ace8"
+}

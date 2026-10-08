@@ -1,0 +1,254 @@
+fresh engine start official_l3_BatchMatmul pass
+engine start official_l3_BatchMatmul-pass
+2026-10-07 04:28:27,944   测试第 1/51 组输入...
+2026-10-07 04:28:27,945   [输入类型判定] 来源=tensor，候选 dtypes=['torch.float32', 'torch.float32']，最高精度=torch.float32，input_type=float
+2026-10-07 04:28:28,328   [输出概览] 共 1 个输出，non_compute=False
+2026-10-07 04:28:28,328   [输出 0] shape=[41, 608, 608], dtype=torch.float32
+2026-10-07 04:28:28,406   [评测模式] 模式=float_compute（浮点计算类），输入 dtype=torch.float32（float），输出 dtype=torch.float32；误差要求=三项 AND：(1)max_error_cap |diff|<=atol+rtol*|golden| [atol=1.000e-03, rtol=1.221e-04]，(2)matched_ratio>=0.9 [小值域 sv_thr=6.104e-05/sv_err=9.313e-10，正常域 rel_thr=1.221e-04]，(3)MERE<1.221e-04（finite=15156224/15156224）
+2026-10-07 04:28:28,491   测试第 2/51 组输入...
+2026-10-07 04:28:28,491   [输入类型判定] 来源=tensor，候选 dtypes=['torch.float32', 'torch.float32']，最高精度=torch.float32，input_type=float
+2026-10-07 04:28:28,498   [输出概览] 共 1 个输出，non_compute=False
+2026-10-07 04:28:28,498   [输出 0] shape=[2, 12, 12], dtype=torch.float32
+2026-10-07 04:28:28,499   [评测模式] 模式=float_compute（浮点计算类），输入 dtype=torch.float32（float），输出 dtype=torch.float32；误差要求=三项 AND：(1)max_error_cap |diff|<=atol+rtol*|golden| [atol=1.000e-03, rtol=1.221e-04]，(2)matched_ratio>=0.9 [小值域 sv_thr=6.104e-05/sv_err=9.313e-10，正常域 rel_thr=1.221e-04]，(3)MERE<1.221e-04（finite=288/288）
+2026-10-07 04:28:28,500   测试第 3/51 组输入...
+2026-10-07 04:28:28,500   [输入类型判定] 来源=tensor，候选 dtypes=['torch.float16', 'torch.float16']，最高精度=torch.float16，input_type=float
+2026-10-07 04:28:28,500   [输出概览] 共 1 个输出，non_compute=False
+2026-10-07 04:28:28,501   [输出 0] shape=[2, 7, 7], dtype=torch.float16
+2026-10-07 04:28:28,501   [评测模式] 模式=float_compute（浮点计算类），输入 dtype=torch.float16（float），输出 dtype=torch.float16；误差要求=三项 AND：(1)max_error_cap |diff|<=atol+rtol*|golden| [atol=9.000e-02, rtol=9.766e-04]，(2)matched_ratio>=0.9 [小值域 sv_thr=4.883e-04/sv_err=1.526e-05，正常域 rel_thr=9.766e-04]，(3)MERE<9.766e-04（finite=98/98）
+2026-10-07 04:28:28,502   测试第 4/51 组输入...
+2026-10-07 04:28:28,502   [输入类型判定] 来源=tensor，候选 dtypes=['torch.float32', 'torch.float32']，最高精度=torch.float32，input_type=float
+2026-10-07 04:28:28,502   [输出概览] 共 1 个输出，non_compute=False
+2026-10-07 04:28:28,502   [输出 0] shape=[1, 3, 3], dtype=torch.float32
+2026-10-07 04:28:28,502   [评测模式] 模式=float_compute（浮点计算类），输入 dtype=torch.float32（float），输出 dtype=torch.float32；误差要求=三项 AND：(1)max_error_cap |diff|<=atol+rtol*|golden| [atol=1.000e-03, rtol=1.221e-04]，(2)matched_ratio>=0.9 [小值域 sv_thr=6.104e-05/sv_err=9.313e-10，正常域 rel_thr=1.221e-04]，(3)MERE<1.221e-04（finite=9/9）
+2026-10-07 04:28:28,504   测试第 5/51 组输入...
+2026-10-07 04:28:28,504   [输入类型判定] 来源=tensor，候选 dtypes=['torch.float16', 'torch.float16']，最高精度=torch.float16，input_type=float
+2026-10-07 04:28:28,504   [输出概览] 共 1 个输出，non_compute=False
+2026-10-07 04:28:28,504   [输出 0] shape=[1, 3, 3], dtype=torch.float16
+2026-10-07 04:28:28,504   [评测模式] 模式=float_compute（浮点计算类），输入 dtype=torch.float16（float），输出 dtype=torch.float16；误差要求=三项 AND：(1)max_error_cap |diff|<=atol+rtol*|golden| [atol=9.000e-02, rtol=9.766e-04]，(2)matched_ratio>=0.9 [小值域 sv_thr=4.883e-04/sv_err=1.526e-05，正常域 rel_thr=9.766e-04]，(3)MERE<9.766e-04（finite=9/9）
+2026-10-07 04:28:28,505   测试第 6/51 组输入...
+2026-10-07 04:28:28,505   [输入类型判定] 来源=tensor，候选 dtypes=['torch.float32', 'torch.float32']，最高精度=torch.float32，input_type=float
+2026-10-07 04:28:28,506   [输出概览] 共 1 个输出，non_compute=False
+2026-10-07 04:28:28,506   [输出 0] shape=[1, 2, 2], dtype=torch.float32
+2026-10-07 04:28:28,506   [评测模式] 模式=float_compute（浮点计算类），输入 dtype=torch.float32（float），输出 dtype=torch.float32；误差要求=三项 AND：(1)max_error_cap |diff|<=atol+rtol*|golden| [atol=1.000e-03, rtol=1.221e-04]，(2)matched_ratio>=0.9 [小值域 sv_thr=6.104e-05/sv_err=9.313e-10，正常域 rel_thr=1.221e-04]，(3)MERE<1.221e-04（finite=4/4）
+2026-10-07 04:28:28,943   测试第 7/51 组输入...
+2026-10-07 04:28:28,943   [输入类型判定] 来源=tensor，候选 dtypes=['torch.float32', 'torch.float32']，最高精度=torch.float32，input_type=float
+2026-10-07 04:28:29,186   [输出概览] 共 1 个输出，non_compute=False
+2026-10-07 04:28:29,186   [输出 0] shape=[13, 864, 864], dtype=torch.float32
+2026-10-07 04:28:29,241   [评测模式] 模式=float_compute（浮点计算类），输入 dtype=torch.float32（float），输出 dtype=torch.float32；误差要求=三项 AND：(1)max_error_cap |diff|<=atol+rtol*|golden| [atol=1.000e-03, rtol=1.221e-04]，(2)matched_ratio>=0.9 [小值域 sv_thr=6.104e-05/sv_err=9.313e-10，正常域 rel_thr=1.221e-04]，(3)MERE<1.221e-04（finite=9704448/9704448）
+2026-10-07 04:28:29,997   测试第 8/51 组输入...
+2026-10-07 04:28:29,997   [输入类型判定] 来源=tensor，候选 dtypes=['torch.float32', 'torch.float32']，最高精度=torch.float32，input_type=float
+2026-10-07 04:28:30,363   [输出概览] 共 1 个输出，non_compute=False
+2026-10-07 04:28:30,363   [输出 0] shape=[64, 496, 496], dtype=torch.float32
+2026-10-07 04:28:30,416   [评测模式] 模式=float_compute（浮点计算类），输入 dtype=torch.float32（float），输出 dtype=torch.float32；误差要求=三项 AND：(1)max_error_cap |diff|<=atol+rtol*|golden| [atol=1.000e-03, rtol=1.221e-04]，(2)matched_ratio>=0.9 [小值域 sv_thr=6.104e-05/sv_err=9.313e-10，正常域 rel_thr=1.221e-04]，(3)MERE<1.221e-04（finite=15745024/15745024）
+2026-10-07 04:28:30,610   测试第 9/51 组输入...
+2026-10-07 04:28:30,611   [输入类型判定] 来源=tensor，候选 dtypes=['torch.float32', 'torch.float32']，最高精度=torch.float32，input_type=float
+2026-10-07 04:28:30,695   [输出概览] 共 1 个输出，non_compute=False
+2026-10-07 04:28:30,695   [输出 0] shape=[36, 286, 286], dtype=torch.float32
+2026-10-07 04:28:30,743   [评测模式] 模式=float_compute（浮点计算类），输入 dtype=torch.float32（float），输出 dtype=torch.float32；误差要求=三项 AND：(1)max_error_cap |diff|<=atol+rtol*|golden| [atol=1.000e-03, rtol=1.221e-04]，(2)matched_ratio>=0.9 [小值域 sv_thr=6.104e-05/sv_err=9.313e-10，正常域 rel_thr=1.221e-04]，(3)MERE<1.221e-04（finite=2944656/2944656）
+2026-10-07 04:28:31,030   测试第 10/51 组输入...
+2026-10-07 04:28:31,031   [输入类型判定] 来源=tensor，候选 dtypes=['torch.bfloat16', 'torch.bfloat16']，最高精度=torch.bfloat16，input_type=float
+2026-10-07 04:28:31,078   [输出概览] 共 1 个输出，non_compute=False
+2026-10-07 04:28:31,078   [输出 0] shape=[9, 607, 607], dtype=torch.bfloat16
+2026-10-07 04:28:31,126   [评测模式] 模式=float_compute（浮点计算类），输入 dtype=torch.bfloat16（float），输出 dtype=torch.bfloat16；误差要求=三项 AND：(1)max_error_cap |diff|<=atol+rtol*|golden| [atol=1.000e-01, rtol=7.812e-03]，(2)matched_ratio>=0.9 [小值域 sv_thr=3.906e-03/sv_err=1.526e-05，正常域 rel_thr=7.812e-03]，(3)MERE<7.812e-03（finite=3316041/3316041）
+2026-10-07 04:28:31,331   测试第 11/51 组输入...
+2026-10-07 04:28:31,331   [输入类型判定] 来源=tensor，候选 dtypes=['torch.float16', 'torch.float16']，最高精度=torch.float16，input_type=float
+2026-10-07 04:28:35,115   [输出概览] 共 1 个输出，non_compute=False
+2026-10-07 04:28:35,116   [输出 0] shape=[16, 500, 500], dtype=torch.float16
+2026-10-07 04:28:35,176   [评测模式] 模式=float_compute（浮点计算类），输入 dtype=torch.float16（float），输出 dtype=torch.float16；误差要求=三项 AND：(1)max_error_cap |diff|<=atol+rtol*|golden| [atol=9.000e-02, rtol=9.766e-04]，(2)matched_ratio>=0.9 [小值域 sv_thr=4.883e-04/sv_err=1.526e-05，正常域 rel_thr=9.766e-04]，(3)MERE<9.766e-04（finite=4000000/4000000）
+2026-10-07 04:28:35,717   测试第 12/51 组输入...
+2026-10-07 04:28:35,717   [输入类型判定] 来源=tensor，候选 dtypes=['torch.bfloat16', 'torch.bfloat16']，最高精度=torch.bfloat16，input_type=float
+2026-10-07 04:28:35,830   [输出概览] 共 1 个输出，non_compute=False
+2026-10-07 04:28:35,830   [输出 0] shape=[30, 472, 472], dtype=torch.bfloat16
+2026-10-07 04:28:35,887   [评测模式] 模式=float_compute（浮点计算类），输入 dtype=torch.bfloat16（float），输出 dtype=torch.bfloat16；误差要求=三项 AND：(1)max_error_cap |diff|<=atol+rtol*|golden| [atol=1.000e-01, rtol=7.812e-03]，(2)matched_ratio>=0.9 [小值域 sv_thr=3.906e-03/sv_err=1.526e-05，正常域 rel_thr=7.812e-03]，(3)MERE<7.812e-03（finite=6683520/6683520）
+2026-10-07 04:28:36,229   测试第 13/51 组输入...
+2026-10-07 04:28:36,229   [输入类型判定] 来源=tensor，候选 dtypes=['torch.float16', 'torch.float16']，最高精度=torch.float16，input_type=float
+2026-10-07 04:28:38,976   [输出概览] 共 1 个输出，non_compute=False
+2026-10-07 04:28:38,976   [输出 0] shape=[122, 244, 244], dtype=torch.float16
+2026-10-07 04:28:39,027   [评测模式] 模式=float_compute（浮点计算类），输入 dtype=torch.float16（float），输出 dtype=torch.float16；误差要求=三项 AND：(1)max_error_cap |diff|<=atol+rtol*|golden| [atol=9.000e-02, rtol=9.766e-04]，(2)matched_ratio>=0.9 [小值域 sv_thr=4.883e-04/sv_err=1.526e-05，正常域 rel_thr=9.766e-04]，(3)MERE<9.766e-04（finite=7263392/7263392）
+2026-10-07 04:28:39,634   测试第 14/51 组输入...
+2026-10-07 04:28:39,634   [输入类型判定] 来源=tensor，候选 dtypes=['torch.bfloat16', 'torch.bfloat16']，最高精度=torch.bfloat16，input_type=float
+2026-10-07 04:28:39,755   [输出概览] 共 1 个输出，non_compute=False
+2026-10-07 04:28:39,756   [输出 0] shape=[31, 492, 492], dtype=torch.bfloat16
+2026-10-07 04:28:39,816   [评测模式] 模式=float_compute（浮点计算类），输入 dtype=torch.bfloat16（float），输出 dtype=torch.bfloat16；误差要求=三项 AND：(1)max_error_cap |diff|<=atol+rtol*|golden| [atol=1.000e-01, rtol=7.812e-03]，(2)matched_ratio>=0.9 [小值域 sv_thr=3.906e-03/sv_err=1.526e-05，正常域 rel_thr=7.812e-03]，(3)MERE<7.812e-03（finite=7503984/7503984）
+2026-10-07 04:28:40,452   测试第 15/51 组输入...
+2026-10-07 04:28:40,452   [输入类型判定] 来源=tensor，候选 dtypes=['torch.float32', 'torch.float32']，最高精度=torch.float32，input_type=float
+2026-10-07 04:28:40,756   [输出概览] 共 1 个输出，non_compute=False
+2026-10-07 04:28:40,756   [输出 0] shape=[96, 368, 368], dtype=torch.float32
+2026-10-07 04:28:40,808   [评测模式] 模式=float_compute（浮点计算类），输入 dtype=torch.float32（float），输出 dtype=torch.float32；误差要求=三项 AND：(1)max_error_cap |diff|<=atol+rtol*|golden| [atol=1.000e-03, rtol=1.221e-04]，(2)matched_ratio>=0.9 [小值域 sv_thr=6.104e-05/sv_err=9.313e-10，正常域 rel_thr=1.221e-04]，(3)MERE<1.221e-04（finite=13000704/13000704）
+2026-10-07 04:28:41,166   测试第 16/51 组输入...
+2026-10-07 04:28:41,167   [输入类型判定] 来源=tensor，候选 dtypes=['torch.float16', 'torch.float16']，最高精度=torch.float16，input_type=float
+2026-10-07 04:28:48,378   [输出概览] 共 1 个输出，non_compute=False
+2026-10-07 04:28:48,379   [输出 0] shape=[31, 504, 504], dtype=torch.float16
+2026-10-07 04:28:48,441   [评测模式] 模式=float_compute（浮点计算类），输入 dtype=torch.float16（float），输出 dtype=torch.float16；误差要求=三项 AND：(1)max_error_cap |diff|<=atol+rtol*|golden| [atol=9.000e-02, rtol=9.766e-04]，(2)matched_ratio>=0.9 [小值域 sv_thr=4.883e-04/sv_err=1.526e-05，正常域 rel_thr=9.766e-04]，(3)MERE<9.766e-04（finite=7874496/7874496）
+2026-10-07 04:28:49,076   测试第 17/51 组输入...
+2026-10-07 04:28:49,076   [输入类型判定] 来源=tensor，候选 dtypes=['torch.bfloat16', 'torch.bfloat16']，最高精度=torch.bfloat16，input_type=float
+2026-10-07 04:28:49,183   [输出概览] 共 1 个输出，non_compute=False
+2026-10-07 04:28:49,183   [输出 0] shape=[50, 398, 398], dtype=torch.bfloat16
+2026-10-07 04:28:49,237   [评测模式] 模式=float_compute（浮点计算类），输入 dtype=torch.bfloat16（float），输出 dtype=torch.bfloat16；误差要求=三项 AND：(1)max_error_cap |diff|<=atol+rtol*|golden| [atol=1.000e-01, rtol=7.812e-03]，(2)matched_ratio>=0.9 [小值域 sv_thr=3.906e-03/sv_err=1.526e-05，正常域 rel_thr=7.812e-03]，(3)MERE<7.812e-03（finite=7920200/7920200）
+2026-10-07 04:28:50,910   测试第 18/51 组输入...
+2026-10-07 04:28:50,910   [输入类型判定] 来源=tensor，候选 dtypes=['torch.bfloat16', 'torch.bfloat16']，最高精度=torch.bfloat16，input_type=float
+2026-10-07 04:28:51,202   [输出概览] 共 1 个输出，non_compute=False
+2026-10-07 04:28:51,202   [输出 0] shape=[32, 832, 832], dtype=torch.bfloat16
+2026-10-07 04:28:51,265   [评测模式] 模式=float_compute（浮点计算类），输入 dtype=torch.bfloat16（float），输出 dtype=torch.bfloat16；误差要求=三项 AND：(1)max_error_cap |diff|<=atol+rtol*|golden| [atol=1.000e-01, rtol=7.812e-03]，(2)matched_ratio>=0.9 [小值域 sv_thr=3.906e-03/sv_err=1.526e-05，正常域 rel_thr=7.812e-03]，(3)MERE<7.812e-03（finite=22151168/22151168）
+2026-10-07 04:28:51,972   测试第 19/51 组输入...
+2026-10-07 04:28:51,972   [输入类型判定] 来源=tensor，候选 dtypes=['torch.bfloat16', 'torch.bfloat16']，最高精度=torch.bfloat16，input_type=float
+2026-10-07 04:28:52,088   [输出概览] 共 1 个输出，non_compute=False
+2026-10-07 04:28:52,088   [输出 0] shape=[130, 260, 260], dtype=torch.bfloat16
+2026-10-07 04:28:52,138   [评测模式] 模式=float_compute（浮点计算类），输入 dtype=torch.bfloat16（float），输出 dtype=torch.bfloat16；误差要求=三项 AND：(1)max_error_cap |diff|<=atol+rtol*|golden| [atol=1.000e-01, rtol=7.812e-03]，(2)matched_ratio>=0.9 [小值域 sv_thr=3.906e-03/sv_err=1.526e-05，正常域 rel_thr=7.812e-03]，(3)MERE<7.812e-03（finite=8788000/8788000）
+2026-10-07 04:28:52,872   测试第 20/51 组输入...
+2026-10-07 04:28:52,872   [输入类型判定] 来源=tensor，候选 dtypes=['torch.bfloat16', 'torch.bfloat16']，最高精度=torch.bfloat16，input_type=float
+2026-10-07 04:28:52,999   [输出概览] 共 1 个输出，non_compute=False
+2026-10-07 04:28:52,999   [输出 0] shape=[133, 265, 265], dtype=torch.bfloat16
+2026-10-07 04:28:53,050   [评测模式] 模式=float_compute（浮点计算类），输入 dtype=torch.bfloat16（float），输出 dtype=torch.bfloat16；误差要求=三项 AND：(1)max_error_cap |diff|<=atol+rtol*|golden| [atol=1.000e-01, rtol=7.812e-03]，(2)matched_ratio>=0.9 [小值域 sv_thr=3.906e-03/sv_err=1.526e-05，正常域 rel_thr=7.812e-03]，(3)MERE<7.812e-03（finite=9339925/9339925）
+2026-10-07 04:28:53,475   测试第 21/51 组输入...
+2026-10-07 04:28:53,475   [输入类型判定] 来源=tensor，候选 dtypes=['torch.float16', 'torch.float16']，最高精度=torch.float16，input_type=float
+2026-10-07 04:29:15,138   [输出概览] 共 1 个输出，non_compute=False
+2026-10-07 04:29:15,138   [输出 0] shape=[8, 1088, 1088], dtype=torch.float16
+2026-10-07 04:29:15,193   [评测模式] 模式=float_compute（浮点计算类），输入 dtype=torch.float16（float），输出 dtype=torch.float16；误差要求=三项 AND：(1)max_error_cap |diff|<=atol+rtol*|golden| [atol=9.000e-02, rtol=9.766e-04]，(2)matched_ratio>=0.9 [小值域 sv_thr=4.883e-04/sv_err=1.526e-05，正常域 rel_thr=9.766e-04]，(3)MERE<9.766e-04（finite=9469952/9469952）
+2026-10-07 04:29:15,949   测试第 22/51 组输入...
+2026-10-07 04:29:15,949   [输入类型判定] 来源=tensor，候选 dtypes=['torch.bfloat16', 'torch.bfloat16']，最高精度=torch.bfloat16，input_type=float
+2026-10-07 04:29:16,086   [输出概览] 共 1 个输出，non_compute=False
+2026-10-07 04:29:16,087   [输出 0] shape=[8, 1088, 1088], dtype=torch.bfloat16
+2026-10-07 04:29:16,138   [评测模式] 模式=float_compute（浮点计算类），输入 dtype=torch.bfloat16（float），输出 dtype=torch.bfloat16；误差要求=三项 AND：(1)max_error_cap |diff|<=atol+rtol*|golden| [atol=1.000e-01, rtol=7.812e-03]，(2)matched_ratio>=0.9 [小值域 sv_thr=3.906e-03/sv_err=1.526e-05，正常域 rel_thr=7.812e-03]，(3)MERE<7.812e-03（finite=9469952/9469952）
+2026-10-07 04:29:16,666   测试第 23/51 组输入...
+2026-10-07 04:29:16,666   [输入类型判定] 来源=tensor，候选 dtypes=['torch.float32', 'torch.float32']，最高精度=torch.float32，input_type=float
+2026-10-07 04:29:16,906   [输出概览] 共 1 个输出，non_compute=False
+2026-10-07 04:29:16,906   [输出 0] shape=[136, 271, 271], dtype=torch.float32
+2026-10-07 04:29:16,957   [评测模式] 模式=float_compute（浮点计算类），输入 dtype=torch.float32（float），输出 dtype=torch.float32；误差要求=三项 AND：(1)max_error_cap |diff|<=atol+rtol*|golden| [atol=1.000e-03, rtol=1.221e-04]，(2)matched_ratio>=0.9 [小值域 sv_thr=6.104e-05/sv_err=9.313e-10，正常域 rel_thr=1.221e-04]，(3)MERE<1.221e-04（finite=9987976/9987976）
+2026-10-07 04:29:17,694   测试第 24/51 组输入...
+2026-10-07 04:29:17,694   [输入类型判定] 来源=tensor，候选 dtypes=['torch.float16', 'torch.float16']，最高精度=torch.float16，input_type=float
+2026-10-07 04:29:34,318   [输出概览] 共 1 个输出，non_compute=False
+2026-10-07 04:29:34,318   [输出 0] shape=[64, 528, 528], dtype=torch.float16
+2026-10-07 04:29:34,369   [评测模式] 模式=float_compute（浮点计算类），输入 dtype=torch.float16（float），输出 dtype=torch.float16；误差要求=三项 AND：(1)max_error_cap |diff|<=atol+rtol*|golden| [atol=9.000e-02, rtol=9.766e-04]，(2)matched_ratio>=0.9 [小值域 sv_thr=4.883e-04/sv_err=1.526e-05，正常域 rel_thr=9.766e-04]，(3)MERE<9.766e-04（finite=17842176/17842176）
+2026-10-07 04:29:35,200   测试第 25/51 组输入...
+2026-10-07 04:29:35,200   [输入类型判定] 来源=tensor，候选 dtypes=['torch.float16', 'torch.float16']，最高精度=torch.float16，input_type=float
+2026-10-07 04:29:57,488   [输出概览] 共 1 个输出，non_compute=False
+2026-10-07 04:29:57,488   [输出 0] shape=[64, 560, 560], dtype=torch.float16
+2026-10-07 04:29:57,543   [评测模式] 模式=float_compute（浮点计算类），输入 dtype=torch.float16（float），输出 dtype=torch.float16；误差要求=三项 AND：(1)max_error_cap |diff|<=atol+rtol*|golden| [atol=9.000e-02, rtol=9.766e-04]，(2)matched_ratio>=0.9 [小值域 sv_thr=4.883e-04/sv_err=1.526e-05，正常域 rel_thr=9.766e-04]，(3)MERE<9.766e-04（finite=20070400/20070400）
+2026-10-07 04:29:59,523   测试第 26/51 组输入...
+2026-10-07 04:29:59,523   [输入类型判定] 来源=tensor，候选 dtypes=['torch.bfloat16', 'torch.bfloat16']，最高精度=torch.bfloat16，input_type=float
+2026-10-07 04:29:59,880   [输出概览] 共 1 个输出，non_compute=False
+2026-10-07 04:29:59,880   [输出 0] shape=[80, 576, 576], dtype=torch.bfloat16
+2026-10-07 04:29:59,946   [评测模式] 模式=float_compute（浮点计算类），输入 dtype=torch.bfloat16（float），输出 dtype=torch.bfloat16；误差要求=三项 AND：(1)max_error_cap |diff|<=atol+rtol*|golden| [atol=1.000e-01, rtol=7.812e-03]，(2)matched_ratio>=0.9 [小值域 sv_thr=3.906e-03/sv_err=1.526e-05，正常域 rel_thr=7.812e-03]，(3)MERE<7.812e-03（finite=26542080/26542080）
+2026-10-07 04:30:01,064   测试第 27/51 组输入...
+2026-10-07 04:30:01,064   [输入类型判定] 来源=tensor，候选 dtypes=['torch.float16', 'torch.float16']，最高精度=torch.float16，input_type=float
+2026-10-07 04:30:31,794   [输出概览] 共 1 个输出，non_compute=False
+2026-10-07 04:30:31,795   [输出 0] shape=[80, 576, 576], dtype=torch.float16
+2026-10-07 04:30:31,854   [评测模式] 模式=float_compute（浮点计算类），输入 dtype=torch.float16（float），输出 dtype=torch.float16；误差要求=三项 AND：(1)max_error_cap |diff|<=atol+rtol*|golden| [atol=9.000e-02, rtol=9.766e-04]，(2)matched_ratio>=0.9 [小值域 sv_thr=4.883e-04/sv_err=1.526e-05，正常域 rel_thr=9.766e-04]，(3)MERE<9.766e-04（finite=26542080/26542080）
+2026-10-07 04:30:32,501   测试第 28/51 组输入...
+2026-10-07 04:30:32,501   [输入类型判定] 来源=tensor，候选 dtypes=['torch.float32', 'torch.float32']，最高精度=torch.float32，input_type=float
+2026-10-07 04:30:32,825   [输出概览] 共 1 个输出，non_compute=False
+2026-10-07 04:30:32,826   [输出 0] shape=[37, 584, 584], dtype=torch.float32
+2026-10-07 04:30:32,880   [评测模式] 模式=float_compute（浮点计算类），输入 dtype=torch.float32（float），输出 dtype=torch.float32；误差要求=三项 AND：(1)max_error_cap |diff|<=atol+rtol*|golden| [atol=1.000e-03, rtol=1.221e-04]，(2)matched_ratio>=0.9 [小值域 sv_thr=6.104e-05/sv_err=9.313e-10，正常域 rel_thr=1.221e-04]，(3)MERE<1.221e-04（finite=12619072/12619072）
+2026-10-07 04:30:34,247   测试第 29/51 组输入...
+2026-10-07 04:30:34,247   [输入类型判定] 来源=tensor，候选 dtypes=['torch.bfloat16', 'torch.bfloat16']，最高精度=torch.bfloat16，input_type=float
+2026-10-07 04:30:34,482   [输出概览] 共 1 个输出，non_compute=False
+2026-10-07 04:30:34,482   [输出 0] shape=[64, 528, 528], dtype=torch.bfloat16
+2026-10-07 04:30:34,538   [评测模式] 模式=float_compute（浮点计算类），输入 dtype=torch.bfloat16（float），输出 dtype=torch.bfloat16；误差要求=三项 AND：(1)max_error_cap |diff|<=atol+rtol*|golden| [atol=1.000e-01, rtol=7.812e-03]，(2)matched_ratio>=0.9 [小值域 sv_thr=3.906e-03/sv_err=1.526e-05，正常域 rel_thr=7.812e-03]，(3)MERE<7.812e-03（finite=17842176/17842176）
+2026-10-07 04:30:35,904   测试第 30/51 组输入...
+2026-10-07 04:30:35,904   [输入类型判定] 来源=tensor，候选 dtypes=['torch.bfloat16', 'torch.bfloat16']，最高精度=torch.bfloat16，input_type=float
+2026-10-07 04:30:36,146   [输出概览] 共 1 个输出，non_compute=False
+2026-10-07 04:30:36,146   [输出 0] shape=[64, 528, 528], dtype=torch.bfloat16
+2026-10-07 04:30:36,205   [评测模式] 模式=float_compute（浮点计算类），输入 dtype=torch.bfloat16（float），输出 dtype=torch.bfloat16；误差要求=三项 AND：(1)max_error_cap |diff|<=atol+rtol*|golden| [atol=1.000e-01, rtol=7.812e-03]，(2)matched_ratio>=0.9 [小值域 sv_thr=3.906e-03/sv_err=1.526e-05，正常域 rel_thr=7.812e-03]，(3)MERE<7.812e-03（finite=17842176/17842176）
+2026-10-07 04:30:36,908   测试第 31/51 组输入...
+2026-10-07 04:30:36,909   [输入类型判定] 来源=tensor，候选 dtypes=['torch.float32', 'torch.float32']，最高精度=torch.float32，input_type=float
+2026-10-07 04:30:37,248   [输出概览] 共 1 个输出，non_compute=False
+2026-10-07 04:30:37,248   [输出 0] shape=[60, 482, 482], dtype=torch.float32
+2026-10-07 04:30:37,302   [评测模式] 模式=float_compute（浮点计算类），输入 dtype=torch.float32（float），输出 dtype=torch.float32；误差要求=三项 AND：(1)max_error_cap |diff|<=atol+rtol*|golden| [atol=1.000e-03, rtol=1.221e-04]，(2)matched_ratio>=0.9 [小值域 sv_thr=6.104e-05/sv_err=9.313e-10，正常域 rel_thr=1.221e-04]，(3)MERE<1.221e-04（finite=13939440/13939440）
+2026-10-07 04:30:38,531   测试第 32/51 组输入...
+2026-10-07 04:30:38,531   [输入类型判定] 来源=tensor，候选 dtypes=['torch.float16', 'torch.float16']，最高精度=torch.float16，input_type=float
+2026-10-07 04:31:28,462   [输出概览] 共 1 个输出，non_compute=False
+2026-10-07 04:31:28,462   [输出 0] shape=[49, 785, 785], dtype=torch.float16
+2026-10-07 04:31:28,561   [评测模式] 模式=float_compute（浮点计算类），输入 dtype=torch.float16（float），输出 dtype=torch.float16；误差要求=三项 AND：(1)max_error_cap |diff|<=atol+rtol*|golden| [atol=9.000e-02, rtol=9.766e-04]，(2)matched_ratio>=0.9 [小值域 sv_thr=4.883e-04/sv_err=1.526e-05，正常域 rel_thr=9.766e-04]，(3)MERE<9.766e-04（finite=30195025/30195025）
+2026-10-07 04:31:30,033   测试第 33/51 组输入...
+2026-10-07 04:31:30,033   [输入类型判定] 来源=tensor，候选 dtypes=['torch.float16', 'torch.float16']，最高精度=torch.float16，input_type=float
+2026-10-07 04:31:53,458   [输出概览] 共 1 个输出，non_compute=False
+2026-10-07 04:31:53,459   [输出 0] shape=[205, 411, 411], dtype=torch.float16
+2026-10-07 04:31:53,515   [评测模式] 模式=float_compute（浮点计算类），输入 dtype=torch.float16（float），输出 dtype=torch.float16；误差要求=三项 AND：(1)max_error_cap |diff|<=atol+rtol*|golden| [atol=9.000e-02, rtol=9.766e-04]，(2)matched_ratio>=0.9 [小值域 sv_thr=4.883e-04/sv_err=1.526e-05，正常域 rel_thr=9.766e-04]，(3)MERE<9.766e-04（finite=34628805/34628805）
+2026-10-07 04:31:55,050   测试第 34/51 组输入...
+2026-10-07 04:31:55,050   [输入类型判定] 来源=tensor，候选 dtypes=['torch.float16', 'torch.float16']，最高精度=torch.float16，input_type=float
+2026-10-07 04:32:46,777   [输出概览] 共 1 个输出，non_compute=False
+2026-10-07 04:32:46,778   [输出 0] shape=[84, 668, 668], dtype=torch.float16
+2026-10-07 04:32:46,844   [评测模式] 模式=float_compute（浮点计算类），输入 dtype=torch.float16（float），输出 dtype=torch.float16；误差要求=三项 AND：(1)max_error_cap |diff|<=atol+rtol*|golden| [atol=9.000e-02, rtol=9.766e-04]，(2)matched_ratio>=0.9 [小值域 sv_thr=4.883e-04/sv_err=1.526e-05，正常域 rel_thr=9.766e-04]，(3)MERE<9.766e-04（finite=37482816/37482816）
+2026-10-07 04:32:49,827   测试第 35/51 组输入...
+2026-10-07 04:32:49,827   [输入类型判定] 来源=tensor，候选 dtypes=['torch.bfloat16', 'torch.bfloat16']，最高精度=torch.bfloat16，input_type=float
+2026-10-07 04:32:50,353   [输出概览] 共 1 个输出，non_compute=False
+2026-10-07 04:32:50,353   [输出 0] shape=[215, 429, 429], dtype=torch.bfloat16
+2026-10-07 04:32:50,436   [评测模式] 模式=float_compute（浮点计算类），输入 dtype=torch.bfloat16（float），输出 dtype=torch.bfloat16；误差要求=三项 AND：(1)max_error_cap |diff|<=atol+rtol*|golden| [atol=1.000e-01, rtol=7.812e-03]，(2)matched_ratio>=0.9 [小值域 sv_thr=3.906e-03/sv_err=1.526e-05，正常域 rel_thr=7.812e-03]，(3)MERE<7.812e-03（finite=39568815/39568815）
+2026-10-07 04:32:53,127   测试第 36/51 组输入...
+2026-10-07 04:32:53,127   [输入类型判定] 来源=tensor，候选 dtypes=['torch.float32', 'torch.float32']，最高精度=torch.float32，input_type=float
+2026-10-07 04:32:54,493   [输出概览] 共 1 个输出，non_compute=False
+2026-10-07 04:32:54,494   [输出 0] shape=[244, 488, 488], dtype=torch.float32
+2026-10-07 04:32:54,624   [评测模式] 模式=float_compute（浮点计算类），输入 dtype=torch.float32（float），输出 dtype=torch.float32；误差要求=三项 AND：(1)max_error_cap |diff|<=atol+rtol*|golden| [atol=1.000e-03, rtol=1.221e-04]，(2)matched_ratio>=0.9 [小值域 sv_thr=6.104e-05/sv_err=9.313e-10，正常域 rel_thr=1.221e-04]，(3)MERE<1.221e-04（finite=58107136/58107136）
+2026-10-07 04:32:57,533   测试第 37/51 组输入...
+2026-10-07 04:32:57,533   [输入类型判定] 来源=tensor，候选 dtypes=['torch.float32', 'torch.float32']，最高精度=torch.float32，input_type=float
+2026-10-07 04:32:58,968   [输出概览] 共 1 个输出，non_compute=False
+2026-10-07 04:32:58,968   [输出 0] shape=[250, 500, 500], dtype=torch.float32
+2026-10-07 04:32:59,070   [评测模式] 模式=float_compute（浮点计算类），输入 dtype=torch.float32（float），输出 dtype=torch.float32；误差要求=三项 AND：(1)max_error_cap |diff|<=atol+rtol*|golden| [atol=1.000e-03, rtol=1.221e-04]，(2)matched_ratio>=0.9 [小值域 sv_thr=6.104e-05/sv_err=9.313e-10，正常域 rel_thr=1.221e-04]，(3)MERE<1.221e-04（finite=62500000/62500000）
+2026-10-07 04:33:02,019   测试第 38/51 组输入...
+2026-10-07 04:33:02,019   [输入类型判定] 来源=tensor，候选 dtypes=['torch.float32', 'torch.float32']，最高精度=torch.float32，input_type=float
+2026-10-07 04:33:03,698   [输出概览] 共 1 个输出，non_compute=False
+2026-10-07 04:33:03,698   [输出 0] shape=[16, 1999, 1999], dtype=torch.float32
+2026-10-07 04:33:03,804   [评测模式] 模式=float_compute（浮点计算类），输入 dtype=torch.float32（float），输出 dtype=torch.float32；误差要求=三项 AND：(1)max_error_cap |diff|<=atol+rtol*|golden| [atol=1.000e-03, rtol=1.221e-04]，(2)matched_ratio>=0.9 [小值域 sv_thr=6.104e-05/sv_err=9.313e-10，正常域 rel_thr=1.221e-04]，(3)MERE<1.221e-04（finite=63936016/63936016）
+2026-10-07 04:33:07,986   测试第 39/51 组输入...
+2026-10-07 04:33:07,986   [输入类型判定] 来源=tensor，候选 dtypes=['torch.float32', 'torch.float32']，最高精度=torch.float32，input_type=float
+2026-10-07 04:33:10,482   [输出概览] 共 1 个输出，non_compute=False
+2026-10-07 04:33:10,482   [输出 0] shape=[44, 1424, 1424], dtype=torch.float32
+2026-10-07 04:33:10,660   [评测模式] 模式=float_compute（浮点计算类），输入 dtype=torch.float32（float），输出 dtype=torch.float32；误差要求=三项 AND：(1)max_error_cap |diff|<=atol+rtol*|golden| [atol=1.000e-03, rtol=1.221e-04]，(2)matched_ratio>=0.9 [小值域 sv_thr=6.104e-05/sv_err=9.313e-10，正常域 rel_thr=1.221e-04]，(3)MERE<1.221e-04（finite=89222144/89222144）
+2026-10-07 04:33:14,608   测试第 40/51 组输入...
+2026-10-07 04:33:14,608   [输入类型判定] 来源=tensor，候选 dtypes=['torch.float16', 'torch.float16']，最高精度=torch.float16，input_type=float
+2026-10-07 04:38:24,638   [输出概览] 共 1 个输出，non_compute=False
+2026-10-07 04:38:24,638   [输出 0] shape=[45, 1456, 1456], dtype=torch.float16
+2026-10-07 04:38:24,766   [评测模式] 模式=float_compute（浮点计算类），输入 dtype=torch.float16（float），输出 dtype=torch.float16；误差要求=三项 AND：(1)max_error_cap |diff|<=atol+rtol*|golden| [atol=9.000e-02, rtol=9.766e-04]，(2)matched_ratio>=0.9 [小值域 sv_thr=4.883e-04/sv_err=1.526e-05，正常域 rel_thr=9.766e-04]，(3)MERE<9.766e-04（finite=95397120/95397120）
+2026-10-07 04:38:29,781   测试第 41/51 组输入...
+2026-10-07 04:38:29,781   [输入类型判定] 来源=tensor，候选 dtypes=['torch.float16', 'torch.float16']，最高精度=torch.float16，input_type=float
+2026-10-07 04:42:53,851   [输出概览] 共 1 个输出，non_compute=False
+2026-10-07 04:42:53,851   [输出 0] shape=[125, 997, 997], dtype=torch.float16
+2026-10-07 04:42:54,015   [评测模式] 模式=float_compute（浮点计算类），输入 dtype=torch.float16（float），输出 dtype=torch.float16；误差要求=三项 AND：(1)max_error_cap |diff|<=atol+rtol*|golden| [atol=9.000e-02, rtol=9.766e-04]，(2)matched_ratio>=0.9 [小值域 sv_thr=4.883e-04/sv_err=1.526e-05，正常域 rel_thr=9.766e-04]，(3)MERE<9.766e-04（finite=124251125/124251125）
+2026-10-07 04:43:00,180   测试第 42/51 组输入...
+2026-10-07 04:43:00,180   [输入类型判定] 来源=tensor，候选 dtypes=['torch.float32', 'torch.float32']，最高精度=torch.float32，input_type=float
+2026-10-07 04:43:03,451   [输出概览] 共 1 个输出，non_compute=False
+2026-10-07 04:43:03,452   [输出 0] shape=[322, 645, 645], dtype=torch.float32
+2026-10-07 04:43:03,690   [评测模式] 模式=float_compute（浮点计算类），输入 dtype=torch.float32（float），输出 dtype=torch.float32；误差要求=三项 AND：(1)max_error_cap |diff|<=atol+rtol*|golden| [atol=1.000e-03, rtol=1.221e-04]，(2)matched_ratio>=0.9 [小值域 sv_thr=6.104e-05/sv_err=9.313e-10，正常域 rel_thr=1.221e-04]，(3)MERE<1.221e-04（finite=133960050/133960050）
+2026-10-07 04:43:09,838   测试第 43/51 组输入...
+2026-10-07 04:43:09,839   [输入类型判定] 来源=tensor，候选 dtypes=['torch.float32', 'torch.float32']，最高精度=torch.float32，input_type=float
+2026-10-07 04:43:13,521   [输出概览] 共 1 个输出，non_compute=False
+2026-10-07 04:43:13,521   [输出 0] shape=[51, 1622, 1622], dtype=torch.float32
+2026-10-07 04:43:13,763   [评测模式] 模式=float_compute（浮点计算类），输入 dtype=torch.float32（float），输出 dtype=torch.float32；误差要求=三项 AND：(1)max_error_cap |diff|<=atol+rtol*|golden| [atol=1.000e-03, rtol=1.221e-04]，(2)matched_ratio>=0.9 [小值域 sv_thr=6.104e-05/sv_err=9.313e-10，正常域 rel_thr=1.221e-04]，(3)MERE<1.221e-04（finite=134175084/134175084）
+2026-10-07 04:43:19,973   测试第 44/51 组输入...
+2026-10-07 04:43:19,973   [输入类型判定] 来源=tensor，候选 dtypes=['torch.float32', 'torch.float32']，最高精度=torch.float32，input_type=float
+2026-10-07 04:43:23,440   [输出概览] 共 1 个输出，non_compute=False
+2026-10-07 04:43:23,441   [输出 0] shape=[128, 1024, 1024], dtype=torch.float32
+2026-10-07 04:43:23,683   [评测模式] 模式=float_compute（浮点计算类），输入 dtype=torch.float32（float），输出 dtype=torch.float32；误差要求=三项 AND：(1)max_error_cap |diff|<=atol+rtol*|golden| [atol=1.000e-03, rtol=1.221e-04]，(2)matched_ratio>=0.9 [小值域 sv_thr=6.104e-05/sv_err=9.313e-10，正常域 rel_thr=1.221e-04]，(3)MERE<1.221e-04（finite=134217728/134217728）
+2026-10-07 04:43:35,128   测试第 45/51 组输入...
+2026-10-07 04:43:35,128   [输入类型判定] 来源=tensor，候选 dtypes=['torch.bfloat16', 'torch.bfloat16']，最高精度=torch.bfloat16，input_type=float
+2026-10-07 04:43:37,263   [输出概览] 共 1 个输出，non_compute=False
+2026-10-07 04:43:37,263   [输出 0] shape=[53, 1697, 1697], dtype=torch.bfloat16
+2026-10-07 04:43:37,437   [评测模式] 模式=float_compute（浮点计算类），输入 dtype=torch.bfloat16（float），输出 dtype=torch.bfloat16；误差要求=三项 AND：(1)max_error_cap |diff|<=atol+rtol*|golden| [atol=1.000e-01, rtol=7.812e-03]，(2)matched_ratio>=0.9 [小值域 sv_thr=3.906e-03/sv_err=1.526e-05，正常域 rel_thr=7.812e-03]，(3)MERE<7.812e-03（finite=152629877/152629877）
+2026-10-07 04:43:51,735   测试第 46/51 组输入...
+2026-10-07 04:43:51,735   [输入类型判定] 来源=tensor，候选 dtypes=['torch.bfloat16', 'torch.bfloat16']，最高精度=torch.bfloat16，input_type=float
+2026-10-07 04:43:54,205   [输出概览] 共 1 个输出，non_compute=False
+2026-10-07 04:43:54,205   [输出 0] shape=[144, 1153, 1153], dtype=torch.bfloat16
+2026-10-07 04:43:54,425   [评测模式] 模式=float_compute（浮点计算类），输入 dtype=torch.bfloat16（float），输出 dtype=torch.bfloat16；误差要求=三项 AND：(1)max_error_cap |diff|<=atol+rtol*|golden| [atol=1.000e-01, rtol=7.812e-03]，(2)matched_ratio>=0.9 [小值域 sv_thr=3.906e-03/sv_err=1.526e-05，正常域 rel_thr=7.812e-03]，(3)MERE<7.812e-03（finite=191434896/191434896）
+2026-10-07 04:44:03,132   测试第 47/51 组输入...
+2026-10-07 04:44:03,132   [输入类型判定] 来源=tensor，候选 dtypes=['torch.float16', 'torch.float16']，最高精度=torch.float16，input_type=float
+2026-10-07 04:56:28,153   [输出概览] 共 1 个输出，non_compute=False
+2026-10-07 04:56:28,154   [输出 0] shape=[94, 1510, 1510], dtype=torch.float16
+2026-10-07 04:56:28,434   [评测模式] 模式=float_compute（浮点计算类），输入 dtype=torch.float16（float），输出 dtype=torch.float16；误差要求=三项 AND：(1)max_error_cap |diff|<=atol+rtol*|golden| [atol=9.000e-02, rtol=9.766e-04]，(2)matched_ratio>=0.9 [小值域 sv_thr=4.883e-04/sv_err=1.526e-05，正常域 rel_thr=9.766e-04]，(3)MERE<9.766e-04（finite=214329400/214329400）
+2026-10-07 04:56:39,331   测试第 48/51 组输入...
+2026-10-07 04:56:39,332   [输入类型判定] 来源=tensor，候选 dtypes=['torch.float16', 'torch.float16']，最高精度=torch.float16，input_type=float
+2026-10-07 05:09:13,454   [输出概览] 共 1 个输出，non_compute=False
+2026-10-07 05:09:13,454   [输出 0] shape=[161, 1291, 1291], dtype=torch.float16
+2026-10-07 05:09:13,761   [评测模式] 模式=float_compute（浮点计算类），输入 dtype=torch.float16（float），输出 dtype=torch.float16；误差要求=三项 AND：(1)max_error_cap |diff|<=atol+rtol*|golden| [atol=9.000e-02, rtol=9.766e-04]，(2)matched_ratio>=0.9 [小值域 sv_thr=4.883e-04/sv_err=1.526e-05，正常域 rel_thr=9.766e-04]，(3)MERE<9.766e-04（finite=268335641/268335641）
+2026-10-07 05:09:24,759   测试第 49/51 组输入...
+2026-10-07 05:09:24,760   [输入类型判定] 来源=tensor，候选 dtypes=['torch.float16', 'torch.float16']，最高精度=torch.float16，input_type=float
+2026-10-07 05:16:57,872   [输出概览] 共 1 个输出，non_compute=False
+2026-10-07 05:16:57,873   [输出 0] shape=[406, 813, 813], dtype=torch.float16
+2026-10-07 05:16:58,341   [评测模式] 模式=float_compute（浮点计算类），输入 dtype=torch.float16（float），输出 dtype=torch.float16；误差要求=三项 AND：(1)max_error_cap |diff|<=atol+rtol*|golden| [atol=9.000e-02, rtol=9.766e-04]，(2)matched_ratio>=0.9 [小值域 sv_thr=4.883e-04/sv_err=1.526e-05，正常域 rel_thr=9.766e-04]，(3)MERE<9.766e-04（finite=268353414/268353414）
+2026-10-07 05:17:18,654   测试第 50/51 组输入...
+2026-10-07 05:17:18,654   [输入类型判定] 来源=tensor，候选 dtypes=['torch.bfloat16', 'torch.bfloat16']，最高精度=torch.bfloat16，input_type=float
+2026-10-07 05:17:22,613   [输出概览] 共 1 个输出，non_compute=False
+2026-10-07 05:17:22,613   [输出 0] shape=[406, 813, 813], dtype=torch.bfloat16
+2026-10-07 05:17:23,118   [评测模式] 模式=float_compute（浮点计算类），输入 dtype=torch.bfloat16（float），输出 dtype=torch.bfloat16；误差要求=三项 AND：(1)max_error_cap |diff|<=atol+rtol*|golden| [atol=1.000e-01, rtol=7.812e-03]，(2)matched_ratio>=0.9 [小值域 sv_thr=3.906e-03/sv_err=1.526e-05，正常域 rel_thr=7.812e-03]，(3)MERE<7.812e-03（finite=268353414/268353414）
+2026-10-07 05:17:34,280   测试第 51/51 组输入...
+2026-10-07 05:17:34,280   [输入类型判定] 来源=tensor，候选 dtypes=['torch.float16', 'torch.float16']，最高精度=torch.float16，input_type=float

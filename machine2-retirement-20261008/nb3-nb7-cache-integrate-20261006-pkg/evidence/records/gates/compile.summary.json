@@ -1,0 +1,17 @@
+{
+  "gate": "compile",
+  "passed": true,
+  "reference_evidence_retained": false,
+  "evaluation_id": "ev_6e7906fe460847b8ac600ec4c5d8df52",
+  "evaluator_build": "sha256:089a0261c0c3286a51246f5cc427a9768a4680a947ca54138dec30666b396d79",
+  "observed_at": "2026-10-06T21:38:46.114163+00:00",
+  "resource_state": "completed",
+  "attempt_id": null,
+  "attempt_count": 1,
+  "recorded_binding": null,
+  "physical_card": null,
+  "binding_matches_current_attempt": false,
+  "verdict_cache_enabled": "false",
+  "execution_attempt_id": null,
+  "binding_basis": "unknown"
+}

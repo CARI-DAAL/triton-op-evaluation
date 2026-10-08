@@ -1,0 +1,1598 @@
+{
+  "created_at": "2026-10-06T21:39:40.266000Z",
+  "deadline_at": "2026-10-06T22:09:40.266000Z",
+  "evaluation_id": "ev_068471d58d3447a1a0413459bea0ace8",
+  "finished_at": "2026-10-06T21:48:19.279000Z",
+  "reference_digest": "adb9e8a450670341c2be7785386fac1e8cec85cdd62a2a634ecbf68bc3aa949d",
+  "request_digest": "ae8022b11c8b94e6022d134e7c86952120c0c059e1a66ee3a311ce517c4a8725",
+  "result": {
+    "compile": null,
+    "correctness": {
+      "data": {
+        "decoy": false,
+        "domain_failure": null,
+        "failures": [],
+        "outcome": "correct",
+        "passed": true,
+        "passed_cases": 51,
+        "total_cases": 51
+      },
+      "error": null,
+      "reason": null,
+      "status": "succeeded"
+    },
+    "performance": {
+      "data": {
+        "aggregation": "geometric_mean_v1",
+        "coverage": 1,
+        "measured_cases": 51,
+        "measurement_method": "profiler_kernel_sum_v1",
+        "overall_speedup_vs_reference": 1.3998858308170938,
+        "per_case": [
+          {
+            "case_idx": 0,
+            "implementation_latency_ms": 0.0024,
+            "input_shapes": [
+              {
+                "dimensions": [
+                  1,
+                  8,
+                  16
+                ],
+                "dtype": "torch.float32",
+                "input_index": 0
+              },
+              {
+                "dimensions": [
+                  1,
+                  16,
+                  8
+                ],
+                "dtype": "torch.float32",
+                "input_index": 1
+              }
+            ],
+            "measurement_method": "profiler_kernel_sum_v1",
+            "reference_latency_ms": 0.0034,
+            "reference_latency_samples_ms": null,
+            "reference_latency_samples_source": null,
+            "reference_timing_policy_sha256": null,
+            "speedup_vs_reference": 1.4166666666666667
+          },
+          {
+            "case_idx": 1,
+            "implementation_latency_ms": 0.0015,
+            "input_shapes": [
+              {
+                "dimensions": [
+                  2,
+                  16,
+                  32
+                ],
+                "dtype": "torch.float32",
+                "input_index": 0
+              },
+              {
+                "dimensions": [
+                  2,
+                  32,
+                  16
+                ],
+                "dtype": "torch.float32",
+                "input_index": 1
+              }
+            ],
+            "measurement_method": "profiler_kernel_sum_v1",
+            "reference_latency_ms": 0.0023,
+            "reference_latency_samples_ms": null,
+            "reference_latency_samples_source": null,
+            "reference_timing_policy_sha256": null,
+            "speedup_vs_reference": 1.5333333333333332
+          },
+          {
+            "case_idx": 2,
+            "implementation_latency_ms": 0.0018,
+            "input_shapes": [
+              {
+                "dimensions": [
+                  4,
+                  32,
+                  64
+                ],
+                "dtype": "torch.float32",
+                "input_index": 0
+              },
+              {
+                "dimensions": [
+                  4,
+                  64,
+                  32
+                ],
+                "dtype": "torch.float32",
+                "input_index": 1
+              }
+            ],
+            "measurement_method": "profiler_kernel_sum_v1",
+            "reference_latency_ms": 0.003,
+            "reference_latency_samples_ms": null,
+            "reference_latency_samples_source": null,
+            "reference_timing_policy_sha256": null,
+            "speedup_vs_reference": 1.6666666666666667
+          },
+          {
+            "case_idx": 3,
+            "implementation_latency_ms": 0.0028,
+            "input_shapes": [
+              {
+                "dimensions": [
+                  8,
+                  64,
+                  128
+                ],
+                "dtype": "torch.float32",
+                "input_index": 0
+              },
+              {
+                "dimensions": [
+                  8,
+                  128,
+                  64
+                ],
+                "dtype": "torch.float32",
+                "input_index": 1
+              }
+            ],
+            "measurement_method": "profiler_kernel_sum_v1",
+            "reference_latency_ms": 0.0046,
+            "reference_latency_samples_ms": null,
+            "reference_latency_samples_source": null,
+            "reference_timing_policy_sha256": null,
+            "speedup_vs_reference": 1.6428571428571428
+          },
+          {
+            "case_idx": 4,
+            "implementation_latency_ms": 0.0055,
+            "input_shapes": [
+              {
+                "dimensions": [
+                  1,
+                  128,
+                  256
+                ],
+                "dtype": "torch.float32",
+                "input_index": 0
+              },
+              {
+                "dimensions": [
+                  1,
+                  256,
+                  128
+                ],
+                "dtype": "torch.float32",
+                "input_index": 1
+              }
+            ],
+            "measurement_method": "profiler_kernel_sum_v1",
+            "reference_latency_ms": 0.0055,
+            "reference_latency_samples_ms": null,
+            "reference_latency_samples_source": null,
+            "reference_timing_policy_sha256": null,
+            "speedup_vs_reference": 1
+          },
+          {
+            "case_idx": 5,
+            "implementation_latency_ms": 0.0023,
+            "input_shapes": [
+              {
+                "dimensions": [
+                  1,
+                  8,
+                  16
+                ],
+                "dtype": "torch.float16",
+                "input_index": 0
+              },
+              {
+                "dimensions": [
+                  1,
+                  16,
+                  8
+                ],
+                "dtype": "torch.float16",
+                "input_index": 1
+              }
+            ],
+            "measurement_method": "profiler_kernel_sum_v1",
+            "reference_latency_ms": 0.0029,
+            "reference_latency_samples_ms": null,
+            "reference_latency_samples_source": null,
+            "reference_timing_policy_sha256": null,
+            "speedup_vs_reference": 1.2608695652173911
+          },
+          {
+            "case_idx": 6,
+            "implementation_latency_ms": 0.0021,
+            "input_shapes": [
+              {
+                "dimensions": [
+                  2,
+                  16,
+                  32
+                ],
+                "dtype": "torch.float16",
+                "input_index": 0
+              },
+              {
+                "dimensions": [
+                  2,
+                  32,
+                  16
+                ],
+                "dtype": "torch.float16",
+                "input_index": 1
+              }
+            ],
+            "measurement_method": "profiler_kernel_sum_v1",
+            "reference_latency_ms": 0.0022,
+            "reference_latency_samples_ms": null,
+            "reference_latency_samples_source": null,
+            "reference_timing_policy_sha256": null,
+            "speedup_vs_reference": 1.0476190476190477
+          },
+          {
+            "case_idx": 7,
+            "implementation_latency_ms": 0.0017,
+            "input_shapes": [
+              {
+                "dimensions": [
+                  4,
+                  32,
+                  64
+                ],
+                "dtype": "torch.float16",
+                "input_index": 0
+              },
+              {
+                "dimensions": [
+                  4,
+                  64,
+                  32
+                ],
+                "dtype": "torch.float16",
+                "input_index": 1
+              }
+            ],
+            "measurement_method": "profiler_kernel_sum_v1",
+            "reference_latency_ms": 0.0028,
+            "reference_latency_samples_ms": null,
+            "reference_latency_samples_source": null,
+            "reference_timing_policy_sha256": null,
+            "speedup_vs_reference": 1.647058823529412
+          },
+          {
+            "case_idx": 8,
+            "implementation_latency_ms": 0.0024,
+            "input_shapes": [
+              {
+                "dimensions": [
+                  8,
+                  64,
+                  128
+                ],
+                "dtype": "torch.float16",
+                "input_index": 0
+              },
+              {
+                "dimensions": [
+                  8,
+                  128,
+                  64
+                ],
+                "dtype": "torch.float16",
+                "input_index": 1
+              }
+            ],
+            "measurement_method": "profiler_kernel_sum_v1",
+            "reference_latency_ms": 0.0041,
+            "reference_latency_samples_ms": null,
+            "reference_latency_samples_source": null,
+            "reference_timing_policy_sha256": null,
+            "speedup_vs_reference": 1.7083333333333337
+          },
+          {
+            "case_idx": 9,
+            "implementation_latency_ms": 0.0031,
+            "input_shapes": [
+              {
+                "dimensions": [
+                  1,
+                  128,
+                  256
+                ],
+                "dtype": "torch.float16",
+                "input_index": 0
+              },
+              {
+                "dimensions": [
+                  1,
+                  256,
+                  128
+                ],
+                "dtype": "torch.float16",
+                "input_index": 1
+              }
+            ],
+            "measurement_method": "profiler_kernel_sum_v1",
+            "reference_latency_ms": 0.0034,
+            "reference_latency_samples_ms": null,
+            "reference_latency_samples_source": null,
+            "reference_timing_policy_sha256": null,
+            "speedup_vs_reference": 1.096774193548387
+          },
+          {
+            "case_idx": 10,
+            "implementation_latency_ms": 0.0024,
+            "input_shapes": [
+              {
+                "dimensions": [
+                  1,
+                  8,
+                  16
+                ],
+                "dtype": "torch.bfloat16",
+                "input_index": 0
+              },
+              {
+                "dimensions": [
+                  1,
+                  16,
+                  8
+                ],
+                "dtype": "torch.bfloat16",
+                "input_index": 1
+              }
+            ],
+            "measurement_method": "profiler_kernel_sum_v1",
+            "reference_latency_ms": 0.0031,
+            "reference_latency_samples_ms": null,
+            "reference_latency_samples_source": null,
+            "reference_timing_policy_sha256": null,
+            "speedup_vs_reference": 1.2916666666666667
+          },
+          {
+            "case_idx": 11,
+            "implementation_latency_ms": 0.0021,
+            "input_shapes": [
+              {
+                "dimensions": [
+                  2,
+                  16,
+                  32
+                ],
+                "dtype": "torch.bfloat16",
+                "input_index": 0
+              },
+              {
+                "dimensions": [
+                  2,
+                  32,
+                  16
+                ],
+                "dtype": "torch.bfloat16",
+                "input_index": 1
+              }
+            ],
+            "measurement_method": "profiler_kernel_sum_v1",
+            "reference_latency_ms": 0.0022,
+            "reference_latency_samples_ms": null,
+            "reference_latency_samples_source": null,
+            "reference_timing_policy_sha256": null,
+            "speedup_vs_reference": 1.0476190476190477
+          },
+          {
+            "case_idx": 12,
+            "implementation_latency_ms": 0.0017,
+            "input_shapes": [
+              {
+                "dimensions": [
+                  4,
+                  32,
+                  64
+                ],
+                "dtype": "torch.bfloat16",
+                "input_index": 0
+              },
+              {
+                "dimensions": [
+                  4,
+                  64,
+                  32
+                ],
+                "dtype": "torch.bfloat16",
+                "input_index": 1
+              }
+            ],
+            "measurement_method": "profiler_kernel_sum_v1",
+            "reference_latency_ms": 0.0028,
+            "reference_latency_samples_ms": null,
+            "reference_latency_samples_source": null,
+            "reference_timing_policy_sha256": null,
+            "speedup_vs_reference": 1.647058823529412
+          },
+          {
+            "case_idx": 13,
+            "implementation_latency_ms": 0.0023,
+            "input_shapes": [
+              {
+                "dimensions": [
+                  8,
+                  64,
+                  128
+                ],
+                "dtype": "torch.bfloat16",
+                "input_index": 0
+              },
+              {
+                "dimensions": [
+                  8,
+                  128,
+                  64
+                ],
+                "dtype": "torch.bfloat16",
+                "input_index": 1
+              }
+            ],
+            "measurement_method": "profiler_kernel_sum_v1",
+            "reference_latency_ms": 0.0041,
+            "reference_latency_samples_ms": null,
+            "reference_latency_samples_source": null,
+            "reference_timing_policy_sha256": null,
+            "speedup_vs_reference": 1.782608695652174
+          },
+          {
+            "case_idx": 14,
+            "implementation_latency_ms": 0.0031,
+            "input_shapes": [
+              {
+                "dimensions": [
+                  1,
+                  128,
+                  256
+                ],
+                "dtype": "torch.bfloat16",
+                "input_index": 0
+              },
+              {
+                "dimensions": [
+                  1,
+                  256,
+                  128
+                ],
+                "dtype": "torch.bfloat16",
+                "input_index": 1
+              }
+            ],
+            "measurement_method": "profiler_kernel_sum_v1",
+            "reference_latency_ms": 0.0034,
+            "reference_latency_samples_ms": null,
+            "reference_latency_samples_source": null,
+            "reference_timing_policy_sha256": null,
+            "speedup_vs_reference": 1.096774193548387
+          },
+          {
+            "case_idx": 15,
+            "implementation_latency_ms": 0.0017,
+            "input_shapes": [
+              {
+                "dimensions": [
+                  1,
+                  2,
+                  4
+                ],
+                "dtype": "torch.float32",
+                "input_index": 0
+              },
+              {
+                "dimensions": [
+                  1,
+                  4,
+                  2
+                ],
+                "dtype": "torch.float32",
+                "input_index": 1
+              }
+            ],
+            "measurement_method": "profiler_kernel_sum_v1",
+            "reference_latency_ms": 0.003,
+            "reference_latency_samples_ms": null,
+            "reference_latency_samples_source": null,
+            "reference_timing_policy_sha256": null,
+            "speedup_vs_reference": 1.7647058823529413
+          },
+          {
+            "case_idx": 16,
+            "implementation_latency_ms": 0.002,
+            "input_shapes": [
+              {
+                "dimensions": [
+                  2,
+                  4,
+                  8
+                ],
+                "dtype": "torch.float32",
+                "input_index": 0
+              },
+              {
+                "dimensions": [
+                  2,
+                  8,
+                  4
+                ],
+                "dtype": "torch.float32",
+                "input_index": 1
+              }
+            ],
+            "measurement_method": "profiler_kernel_sum_v1",
+            "reference_latency_ms": 0.0025,
+            "reference_latency_samples_ms": null,
+            "reference_latency_samples_source": null,
+            "reference_timing_policy_sha256": null,
+            "speedup_vs_reference": 1.25
+          },
+          {
+            "case_idx": 17,
+            "implementation_latency_ms": 0.0025,
+            "input_shapes": [
+              {
+                "dimensions": [
+                  3,
+                  6,
+                  12
+                ],
+                "dtype": "torch.float32",
+                "input_index": 0
+              },
+              {
+                "dimensions": [
+                  3,
+                  12,
+                  6
+                ],
+                "dtype": "torch.float32",
+                "input_index": 1
+              }
+            ],
+            "measurement_method": "profiler_kernel_sum_v1",
+            "reference_latency_ms": 0.0033,
+            "reference_latency_samples_ms": null,
+            "reference_latency_samples_source": null,
+            "reference_timing_policy_sha256": null,
+            "speedup_vs_reference": 1.32
+          },
+          {
+            "case_idx": 18,
+            "implementation_latency_ms": 0.0022,
+            "input_shapes": [
+              {
+                "dimensions": [
+                  4,
+                  8,
+                  16
+                ],
+                "dtype": "torch.float32",
+                "input_index": 0
+              },
+              {
+                "dimensions": [
+                  4,
+                  16,
+                  8
+                ],
+                "dtype": "torch.float32",
+                "input_index": 1
+              }
+            ],
+            "measurement_method": "profiler_kernel_sum_v1",
+            "reference_latency_ms": 0.0024,
+            "reference_latency_samples_ms": null,
+            "reference_latency_samples_source": null,
+            "reference_timing_policy_sha256": null,
+            "speedup_vs_reference": 1.0909090909090908
+          },
+          {
+            "case_idx": 19,
+            "implementation_latency_ms": 0.0017,
+            "input_shapes": [
+              {
+                "dimensions": [
+                  1,
+                  2,
+                  4
+                ],
+                "dtype": "torch.float16",
+                "input_index": 0
+              },
+              {
+                "dimensions": [
+                  1,
+                  4,
+                  2
+                ],
+                "dtype": "torch.float16",
+                "input_index": 1
+              }
+            ],
+            "measurement_method": "profiler_kernel_sum_v1",
+            "reference_latency_ms": 0.003,
+            "reference_latency_samples_ms": null,
+            "reference_latency_samples_source": null,
+            "reference_timing_policy_sha256": null,
+            "speedup_vs_reference": 1.7647058823529413
+          },
+          {
+            "case_idx": 20,
+            "implementation_latency_ms": 0.0021,
+            "input_shapes": [
+              {
+                "dimensions": [
+                  2,
+                  4,
+                  8
+                ],
+                "dtype": "torch.float16",
+                "input_index": 0
+              },
+              {
+                "dimensions": [
+                  2,
+                  8,
+                  4
+                ],
+                "dtype": "torch.float16",
+                "input_index": 1
+              }
+            ],
+            "measurement_method": "profiler_kernel_sum_v1",
+            "reference_latency_ms": 0.0025,
+            "reference_latency_samples_ms": null,
+            "reference_latency_samples_source": null,
+            "reference_timing_policy_sha256": null,
+            "speedup_vs_reference": 1.1904761904761905
+          },
+          {
+            "case_idx": 21,
+            "implementation_latency_ms": 0.003,
+            "input_shapes": [
+              {
+                "dimensions": [
+                  3,
+                  6,
+                  12
+                ],
+                "dtype": "torch.float16",
+                "input_index": 0
+              },
+              {
+                "dimensions": [
+                  3,
+                  12,
+                  6
+                ],
+                "dtype": "torch.float16",
+                "input_index": 1
+              }
+            ],
+            "measurement_method": "profiler_kernel_sum_v1",
+            "reference_latency_ms": 0.0037,
+            "reference_latency_samples_ms": null,
+            "reference_latency_samples_source": null,
+            "reference_timing_policy_sha256": null,
+            "speedup_vs_reference": 1.2333333333333334
+          },
+          {
+            "case_idx": 22,
+            "implementation_latency_ms": 0.0029,
+            "input_shapes": [
+              {
+                "dimensions": [
+                  4,
+                  8,
+                  16
+                ],
+                "dtype": "torch.float16",
+                "input_index": 0
+              },
+              {
+                "dimensions": [
+                  4,
+                  16,
+                  8
+                ],
+                "dtype": "torch.float16",
+                "input_index": 1
+              }
+            ],
+            "measurement_method": "profiler_kernel_sum_v1",
+            "reference_latency_ms": 0.0033,
+            "reference_latency_samples_ms": null,
+            "reference_latency_samples_source": null,
+            "reference_timing_policy_sha256": null,
+            "speedup_vs_reference": 1.1379310344827587
+          },
+          {
+            "case_idx": 23,
+            "implementation_latency_ms": 0.0017,
+            "input_shapes": [
+              {
+                "dimensions": [
+                  1,
+                  2,
+                  4
+                ],
+                "dtype": "torch.bfloat16",
+                "input_index": 0
+              },
+              {
+                "dimensions": [
+                  1,
+                  4,
+                  2
+                ],
+                "dtype": "torch.bfloat16",
+                "input_index": 1
+              }
+            ],
+            "measurement_method": "profiler_kernel_sum_v1",
+            "reference_latency_ms": 0.0029,
+            "reference_latency_samples_ms": null,
+            "reference_latency_samples_source": null,
+            "reference_timing_policy_sha256": null,
+            "speedup_vs_reference": 1.7058823529411764
+          },
+          {
+            "case_idx": 24,
+            "implementation_latency_ms": 0.0021,
+            "input_shapes": [
+              {
+                "dimensions": [
+                  2,
+                  4,
+                  8
+                ],
+                "dtype": "torch.bfloat16",
+                "input_index": 0
+              },
+              {
+                "dimensions": [
+                  2,
+                  8,
+                  4
+                ],
+                "dtype": "torch.bfloat16",
+                "input_index": 1
+              }
+            ],
+            "measurement_method": "profiler_kernel_sum_v1",
+            "reference_latency_ms": 0.0025,
+            "reference_latency_samples_ms": null,
+            "reference_latency_samples_source": null,
+            "reference_timing_policy_sha256": null,
+            "speedup_vs_reference": 1.1904761904761905
+          },
+          {
+            "case_idx": 25,
+            "implementation_latency_ms": 0.0029,
+            "input_shapes": [
+              {
+                "dimensions": [
+                  3,
+                  6,
+                  12
+                ],
+                "dtype": "torch.bfloat16",
+                "input_index": 0
+              },
+              {
+                "dimensions": [
+                  3,
+                  12,
+                  6
+                ],
+                "dtype": "torch.bfloat16",
+                "input_index": 1
+              }
+            ],
+            "measurement_method": "profiler_kernel_sum_v1",
+            "reference_latency_ms": 0.0035,
+            "reference_latency_samples_ms": null,
+            "reference_latency_samples_source": null,
+            "reference_timing_policy_sha256": null,
+            "speedup_vs_reference": 1.2068965517241381
+          },
+          {
+            "case_idx": 26,
+            "implementation_latency_ms": 0.0029,
+            "input_shapes": [
+              {
+                "dimensions": [
+                  4,
+                  8,
+                  16
+                ],
+                "dtype": "torch.bfloat16",
+                "input_index": 0
+              },
+              {
+                "dimensions": [
+                  4,
+                  16,
+                  8
+                ],
+                "dtype": "torch.bfloat16",
+                "input_index": 1
+              }
+            ],
+            "measurement_method": "profiler_kernel_sum_v1",
+            "reference_latency_ms": 0.0032,
+            "reference_latency_samples_ms": null,
+            "reference_latency_samples_source": null,
+            "reference_timing_policy_sha256": null,
+            "speedup_vs_reference": 1.1034482758620692
+          },
+          {
+            "case_idx": 27,
+            "implementation_latency_ms": 0.0023,
+            "input_shapes": [
+              {
+                "dimensions": [
+                  1,
+                  64,
+                  128
+                ],
+                "dtype": "torch.float32",
+                "input_index": 0
+              },
+              {
+                "dimensions": [
+                  1,
+                  128,
+                  64
+                ],
+                "dtype": "torch.float32",
+                "input_index": 1
+              }
+            ],
+            "measurement_method": "profiler_kernel_sum_v1",
+            "reference_latency_ms": 0.0027,
+            "reference_latency_samples_ms": null,
+            "reference_latency_samples_source": null,
+            "reference_timing_policy_sha256": null,
+            "speedup_vs_reference": 1.173913043478261
+          },
+          {
+            "case_idx": 28,
+            "implementation_latency_ms": 0.0023,
+            "input_shapes": [
+              {
+                "dimensions": [
+                  2,
+                  64,
+                  128
+                ],
+                "dtype": "torch.float32",
+                "input_index": 0
+              },
+              {
+                "dimensions": [
+                  2,
+                  128,
+                  64
+                ],
+                "dtype": "torch.float32",
+                "input_index": 1
+              }
+            ],
+            "measurement_method": "profiler_kernel_sum_v1",
+            "reference_latency_ms": 0.0033,
+            "reference_latency_samples_ms": null,
+            "reference_latency_samples_source": null,
+            "reference_timing_policy_sha256": null,
+            "speedup_vs_reference": 1.434782608695652
+          },
+          {
+            "case_idx": 29,
+            "implementation_latency_ms": 0.0024,
+            "input_shapes": [
+              {
+                "dimensions": [
+                  4,
+                  64,
+                  128
+                ],
+                "dtype": "torch.float32",
+                "input_index": 0
+              },
+              {
+                "dimensions": [
+                  4,
+                  128,
+                  64
+                ],
+                "dtype": "torch.float32",
+                "input_index": 1
+              }
+            ],
+            "measurement_method": "profiler_kernel_sum_v1",
+            "reference_latency_ms": 0.0043,
+            "reference_latency_samples_ms": null,
+            "reference_latency_samples_source": null,
+            "reference_timing_policy_sha256": null,
+            "speedup_vs_reference": 1.7916666666666667
+          },
+          {
+            "case_idx": 30,
+            "implementation_latency_ms": 0.0018,
+            "input_shapes": [
+              {
+                "dimensions": [
+                  1,
+                  64,
+                  128
+                ],
+                "dtype": "torch.float16",
+                "input_index": 0
+              },
+              {
+                "dimensions": [
+                  1,
+                  128,
+                  64
+                ],
+                "dtype": "torch.float16",
+                "input_index": 1
+              }
+            ],
+            "measurement_method": "profiler_kernel_sum_v1",
+            "reference_latency_ms": 0.0024,
+            "reference_latency_samples_ms": null,
+            "reference_latency_samples_source": null,
+            "reference_timing_policy_sha256": null,
+            "speedup_vs_reference": 1.3333333333333333
+          },
+          {
+            "case_idx": 31,
+            "implementation_latency_ms": 0.0018,
+            "input_shapes": [
+              {
+                "dimensions": [
+                  2,
+                  64,
+                  128
+                ],
+                "dtype": "torch.float16",
+                "input_index": 0
+              },
+              {
+                "dimensions": [
+                  2,
+                  128,
+                  64
+                ],
+                "dtype": "torch.float16",
+                "input_index": 1
+              }
+            ],
+            "measurement_method": "profiler_kernel_sum_v1",
+            "reference_latency_ms": 0.0029,
+            "reference_latency_samples_ms": null,
+            "reference_latency_samples_source": null,
+            "reference_timing_policy_sha256": null,
+            "speedup_vs_reference": 1.611111111111111
+          },
+          {
+            "case_idx": 32,
+            "implementation_latency_ms": 0.002,
+            "input_shapes": [
+              {
+                "dimensions": [
+                  4,
+                  64,
+                  128
+                ],
+                "dtype": "torch.float16",
+                "input_index": 0
+              },
+              {
+                "dimensions": [
+                  4,
+                  128,
+                  64
+                ],
+                "dtype": "torch.float16",
+                "input_index": 1
+              }
+            ],
+            "measurement_method": "profiler_kernel_sum_v1",
+            "reference_latency_ms": 0.0041,
+            "reference_latency_samples_ms": null,
+            "reference_latency_samples_source": null,
+            "reference_timing_policy_sha256": null,
+            "speedup_vs_reference": 2.0500000000000003
+          },
+          {
+            "case_idx": 33,
+            "implementation_latency_ms": 0.0018,
+            "input_shapes": [
+              {
+                "dimensions": [
+                  1,
+                  64,
+                  128
+                ],
+                "dtype": "torch.bfloat16",
+                "input_index": 0
+              },
+              {
+                "dimensions": [
+                  1,
+                  128,
+                  64
+                ],
+                "dtype": "torch.bfloat16",
+                "input_index": 1
+              }
+            ],
+            "measurement_method": "profiler_kernel_sum_v1",
+            "reference_latency_ms": 0.0023,
+            "reference_latency_samples_ms": null,
+            "reference_latency_samples_source": null,
+            "reference_timing_policy_sha256": null,
+            "speedup_vs_reference": 1.277777777777778
+          },
+          {
+            "case_idx": 34,
+            "implementation_latency_ms": 0.0017,
+            "input_shapes": [
+              {
+                "dimensions": [
+                  2,
+                  64,
+                  128
+                ],
+                "dtype": "torch.bfloat16",
+                "input_index": 0
+              },
+              {
+                "dimensions": [
+                  2,
+                  128,
+                  64
+                ],
+                "dtype": "torch.bfloat16",
+                "input_index": 1
+              }
+            ],
+            "measurement_method": "profiler_kernel_sum_v1",
+            "reference_latency_ms": 0.0029,
+            "reference_latency_samples_ms": null,
+            "reference_latency_samples_source": null,
+            "reference_timing_policy_sha256": null,
+            "speedup_vs_reference": 1.7058823529411764
+          },
+          {
+            "case_idx": 35,
+            "implementation_latency_ms": 0.0019,
+            "input_shapes": [
+              {
+                "dimensions": [
+                  4,
+                  64,
+                  128
+                ],
+                "dtype": "torch.bfloat16",
+                "input_index": 0
+              },
+              {
+                "dimensions": [
+                  4,
+                  128,
+                  64
+                ],
+                "dtype": "torch.bfloat16",
+                "input_index": 1
+              }
+            ],
+            "measurement_method": "profiler_kernel_sum_v1",
+            "reference_latency_ms": 0.0042,
+            "reference_latency_samples_ms": null,
+            "reference_latency_samples_source": null,
+            "reference_timing_policy_sha256": null,
+            "speedup_vs_reference": 2.2105263157894735
+          },
+          {
+            "case_idx": 36,
+            "implementation_latency_ms": 0.0016,
+            "input_shapes": [
+              {
+                "dimensions": [
+                  1,
+                  32,
+                  64
+                ],
+                "dtype": "torch.float32",
+                "input_index": 0
+              },
+              {
+                "dimensions": [
+                  1,
+                  64,
+                  32
+                ],
+                "dtype": "torch.float32",
+                "input_index": 1
+              }
+            ],
+            "measurement_method": "profiler_kernel_sum_v1",
+            "reference_latency_ms": 0.0023,
+            "reference_latency_samples_ms": null,
+            "reference_latency_samples_source": null,
+            "reference_timing_policy_sha256": null,
+            "speedup_vs_reference": 1.4375
+          },
+          {
+            "case_idx": 37,
+            "implementation_latency_ms": 0.0016,
+            "input_shapes": [
+              {
+                "dimensions": [
+                  2,
+                  32,
+                  64
+                ],
+                "dtype": "torch.float32",
+                "input_index": 0
+              },
+              {
+                "dimensions": [
+                  2,
+                  64,
+                  32
+                ],
+                "dtype": "torch.float32",
+                "input_index": 1
+              }
+            ],
+            "measurement_method": "profiler_kernel_sum_v1",
+            "reference_latency_ms": 0.0024,
+            "reference_latency_samples_ms": null,
+            "reference_latency_samples_source": null,
+            "reference_timing_policy_sha256": null,
+            "speedup_vs_reference": 1.4999999999999998
+          },
+          {
+            "case_idx": 38,
+            "implementation_latency_ms": 0.0018,
+            "input_shapes": [
+              {
+                "dimensions": [
+                  4,
+                  32,
+                  64
+                ],
+                "dtype": "torch.float32",
+                "input_index": 0
+              },
+              {
+                "dimensions": [
+                  4,
+                  64,
+                  32
+                ],
+                "dtype": "torch.float32",
+                "input_index": 1
+              }
+            ],
+            "measurement_method": "profiler_kernel_sum_v1",
+            "reference_latency_ms": 0.0029,
+            "reference_latency_samples_ms": null,
+            "reference_latency_samples_source": null,
+            "reference_timing_policy_sha256": null,
+            "speedup_vs_reference": 1.611111111111111
+          },
+          {
+            "case_idx": 39,
+            "implementation_latency_ms": 0.0015,
+            "input_shapes": [
+              {
+                "dimensions": [
+                  1,
+                  32,
+                  64
+                ],
+                "dtype": "torch.float16",
+                "input_index": 0
+              },
+              {
+                "dimensions": [
+                  1,
+                  64,
+                  32
+                ],
+                "dtype": "torch.float16",
+                "input_index": 1
+              }
+            ],
+            "measurement_method": "profiler_kernel_sum_v1",
+            "reference_latency_ms": 0.0021,
+            "reference_latency_samples_ms": null,
+            "reference_latency_samples_source": null,
+            "reference_timing_policy_sha256": null,
+            "speedup_vs_reference": 1.4
+          },
+          {
+            "case_idx": 40,
+            "implementation_latency_ms": 0.0014,
+            "input_shapes": [
+              {
+                "dimensions": [
+                  2,
+                  32,
+                  64
+                ],
+                "dtype": "torch.float16",
+                "input_index": 0
+              },
+              {
+                "dimensions": [
+                  2,
+                  64,
+                  32
+                ],
+                "dtype": "torch.float16",
+                "input_index": 1
+              }
+            ],
+            "measurement_method": "profiler_kernel_sum_v1",
+            "reference_latency_ms": 0.0022,
+            "reference_latency_samples_ms": null,
+            "reference_latency_samples_source": null,
+            "reference_timing_policy_sha256": null,
+            "speedup_vs_reference": 1.5714285714285716
+          },
+          {
+            "case_idx": 41,
+            "implementation_latency_ms": 0.0017,
+            "input_shapes": [
+              {
+                "dimensions": [
+                  4,
+                  32,
+                  64
+                ],
+                "dtype": "torch.float16",
+                "input_index": 0
+              },
+              {
+                "dimensions": [
+                  4,
+                  64,
+                  32
+                ],
+                "dtype": "torch.float16",
+                "input_index": 1
+              }
+            ],
+            "measurement_method": "profiler_kernel_sum_v1",
+            "reference_latency_ms": 0.0029,
+            "reference_latency_samples_ms": null,
+            "reference_latency_samples_source": null,
+            "reference_timing_policy_sha256": null,
+            "speedup_vs_reference": 1.7058823529411764
+          },
+          {
+            "case_idx": 42,
+            "implementation_latency_ms": 0.0015,
+            "input_shapes": [
+              {
+                "dimensions": [
+                  1,
+                  32,
+                  64
+                ],
+                "dtype": "torch.bfloat16",
+                "input_index": 0
+              },
+              {
+                "dimensions": [
+                  1,
+                  64,
+                  32
+                ],
+                "dtype": "torch.bfloat16",
+                "input_index": 1
+              }
+            ],
+            "measurement_method": "profiler_kernel_sum_v1",
+            "reference_latency_ms": 0.0021,
+            "reference_latency_samples_ms": null,
+            "reference_latency_samples_source": null,
+            "reference_timing_policy_sha256": null,
+            "speedup_vs_reference": 1.4
+          },
+          {
+            "case_idx": 43,
+            "implementation_latency_ms": 0.0014,
+            "input_shapes": [
+              {
+                "dimensions": [
+                  2,
+                  32,
+                  64
+                ],
+                "dtype": "torch.bfloat16",
+                "input_index": 0
+              },
+              {
+                "dimensions": [
+                  2,
+                  64,
+                  32
+                ],
+                "dtype": "torch.bfloat16",
+                "input_index": 1
+              }
+            ],
+            "measurement_method": "profiler_kernel_sum_v1",
+            "reference_latency_ms": 0.0022,
+            "reference_latency_samples_ms": null,
+            "reference_latency_samples_source": null,
+            "reference_timing_policy_sha256": null,
+            "speedup_vs_reference": 1.5714285714285716
+          },
+          {
+            "case_idx": 44,
+            "implementation_latency_ms": 0.0017,
+            "input_shapes": [
+              {
+                "dimensions": [
+                  4,
+                  32,
+                  64
+                ],
+                "dtype": "torch.bfloat16",
+                "input_index": 0
+              },
+              {
+                "dimensions": [
+                  4,
+                  64,
+                  32
+                ],
+                "dtype": "torch.bfloat16",
+                "input_index": 1
+              }
+            ],
+            "measurement_method": "profiler_kernel_sum_v1",
+            "reference_latency_ms": 0.0028,
+            "reference_latency_samples_ms": null,
+            "reference_latency_samples_source": null,
+            "reference_timing_policy_sha256": null,
+            "speedup_vs_reference": 1.647058823529412
+          },
+          {
+            "case_idx": 45,
+            "implementation_latency_ms": 0.0015,
+            "input_shapes": [
+              {
+                "dimensions": [
+                  1,
+                  16,
+                  32
+                ],
+                "dtype": "torch.float32",
+                "input_index": 0
+              },
+              {
+                "dimensions": [
+                  1,
+                  32,
+                  16
+                ],
+                "dtype": "torch.float32",
+                "input_index": 1
+              }
+            ],
+            "measurement_method": "profiler_kernel_sum_v1",
+            "reference_latency_ms": 0.0022,
+            "reference_latency_samples_ms": null,
+            "reference_latency_samples_source": null,
+            "reference_timing_policy_sha256": null,
+            "speedup_vs_reference": 1.4666666666666668
+          },
+          {
+            "case_idx": 46,
+            "implementation_latency_ms": 0.0014,
+            "input_shapes": [
+              {
+                "dimensions": [
+                  2,
+                  16,
+                  32
+                ],
+                "dtype": "torch.float32",
+                "input_index": 0
+              },
+              {
+                "dimensions": [
+                  2,
+                  32,
+                  16
+                ],
+                "dtype": "torch.float32",
+                "input_index": 1
+              }
+            ],
+            "measurement_method": "profiler_kernel_sum_v1",
+            "reference_latency_ms": 0.0021,
+            "reference_latency_samples_ms": null,
+            "reference_latency_samples_source": null,
+            "reference_timing_policy_sha256": null,
+            "speedup_vs_reference": 1.5
+          },
+          {
+            "case_idx": 47,
+            "implementation_latency_ms": 0.0016,
+            "input_shapes": [
+              {
+                "dimensions": [
+                  4,
+                  16,
+                  32
+                ],
+                "dtype": "torch.float32",
+                "input_index": 0
+              },
+              {
+                "dimensions": [
+                  4,
+                  32,
+                  16
+                ],
+                "dtype": "torch.float32",
+                "input_index": 1
+              }
+            ],
+            "measurement_method": "profiler_kernel_sum_v1",
+            "reference_latency_ms": 0.0023,
+            "reference_latency_samples_ms": null,
+            "reference_latency_samples_source": null,
+            "reference_timing_policy_sha256": null,
+            "speedup_vs_reference": 1.4375
+          },
+          {
+            "case_idx": 48,
+            "implementation_latency_ms": 0.0021,
+            "input_shapes": [
+              {
+                "dimensions": [
+                  1,
+                  16,
+                  32
+                ],
+                "dtype": "torch.float16",
+                "input_index": 0
+              },
+              {
+                "dimensions": [
+                  1,
+                  32,
+                  16
+                ],
+                "dtype": "torch.float16",
+                "input_index": 1
+              }
+            ],
+            "measurement_method": "profiler_kernel_sum_v1",
+            "reference_latency_ms": 0.0022,
+            "reference_latency_samples_ms": null,
+            "reference_latency_samples_source": null,
+            "reference_timing_policy_sha256": null,
+            "speedup_vs_reference": 1.0476190476190477
+          },
+          {
+            "case_idx": 49,
+            "implementation_latency_ms": 0.0019,
+            "input_shapes": [
+              {
+                "dimensions": [
+                  2,
+                  16,
+                  32
+                ],
+                "dtype": "torch.float16",
+                "input_index": 0
+              },
+              {
+                "dimensions": [
+                  2,
+                  32,
+                  16
+                ],
+                "dtype": "torch.float16",
+                "input_index": 1
+              }
+            ],
+            "measurement_method": "profiler_kernel_sum_v1",
+            "reference_latency_ms": 0.002,
+            "reference_latency_samples_ms": null,
+            "reference_latency_samples_source": null,
+            "reference_timing_policy_sha256": null,
+            "speedup_vs_reference": 1.0526315789473684
+          },
+          {
+            "case_idx": 50,
+            "implementation_latency_ms": 0.0022,
+            "input_shapes": [
+              {
+                "dimensions": [
+                  4,
+                  16,
+                  32
+                ],
+                "dtype": "torch.float16",
+                "input_index": 0
+              },
+              {
+                "dimensions": [
+                  4,
+                  32,
+                  16
+                ],
+                "dtype": "torch.float16",
+                "input_index": 1
+              }
+            ],
+            "measurement_method": "profiler_kernel_sum_v1",
+            "reference_latency_ms": 0.0022,
+            "reference_latency_samples_ms": null,
+            "reference_latency_samples_source": null,
+            "reference_timing_policy_sha256": null,
+            "speedup_vs_reference": 1
+          }
+        ],
+        "selected_cases": 51,
+        "unmeasured_cases": []
+      },
+      "error": null,
+      "reason": null,
+      "status": "succeeded"
+    },
+    "profile": null,
+    "provenance": {
+      "benchmark_algorithm": "geometric-mean-v1",
+      "correctness_algorithm": "correctness-v1:npu-strict-v1",
+      "decoy_algorithm": "decoy-v1",
+      "evaluator_build": "sha256:089a0261c0c3286a51246f5cc427a9768a4680a947ca54138dec30666b396d79",
+      "execution_environment": {
+        "driver_version": "26.0.rc1",
+        "hardware_count": 1,
+        "hardware_model": "Ascend910",
+        "runtime_version": "CANN-9.1.1",
+        "toolchain_version": "CANN 9.1.1 / python 3.10 / torch 2.9.0 / torch_npu 2.9.0.post8 / triton_ascend 3.2.0",
+        "torch_npu_version": "2.9.0.post8",
+        "torch_version": "2.9.0",
+        "triton_version": "3.2.0"
+      },
+      "grade_eligible": true,
+      "manifest_id": "npukernelbench-machine2-v1",
+      "problem_id": "kernelbench_l3_1_BatchMatmul",
+      "profiler_algorithm": "profiler-v1",
+      "schema_version": "2.1"
+    }
+  },
+  "revision": 3,
+  "schema_version": "2.1",
+  "started_at": "2026-10-06T21:39:40.275000Z",
+  "state": "completed",
+  "updated_at": "2026-10-06T21:48:19.279000Z"
+}

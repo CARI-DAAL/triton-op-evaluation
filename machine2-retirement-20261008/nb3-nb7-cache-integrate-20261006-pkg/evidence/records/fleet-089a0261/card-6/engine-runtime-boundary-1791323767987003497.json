@@ -1,0 +1,494 @@
+{
+  "service_package_path": "/home/e84381970/open-evo-work/runtime-artifacts/nb3-nb7-cache-integrate-20261006/checkout/triton_evaluation",
+  "service_source_sha256": {
+    "__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "admission.py": "e850dbd03a5494b7ba1fc1d2c4b27405c695b9e6d7f68bcc5561a04c412aa14e",
+    "api/__init__.py": "f93e94ec7ab16be5fe6346956950486e6e49c48bb193928d8ded01a60e3a2d8e",
+    "api/app.py": "e3df28844cfa66cc83d6af6b24823ca2657ba00583fc30fe997e6a0dbd90eb4a",
+    "api/auth.py": "0716cd178a05bb827246805460e69e37e283048f2fae1e1b22d60382349503e3",
+    "api/contract.py": "a1b74deb5c399362ef35e4d941b91ad23a9cd22fc5380e84e8e708fdd765f670",
+    "api/contract_artifacts.py": "e476e4f2add7c50e1a1cceb96e467cdac3878cf2cbd4e90bcf1962689c484ed6",
+    "api/dependencies.py": "6e32411fb9815555a6d23bb906029b16989784292e0b52457525ead5fd83f128",
+    "api/errors.py": "074fd00b3e8d8d0a0679d9d05638a51f4d8f530be4998fdce7fec7a4bff5c6da",
+    "api/kernel_eval.py": "883102d27340560ebf87df440f8ca93320a75358b4ea12716102ccd98a1547bb",
+    "api/listeners.py": "dd6148cd6f28b24b0dfefdf6754b246f153837dd2140d1be3c330ac83e4bcdc8",
+    "api/middleware.py": "9c4e9e90671dabf371e1bf67113e65bc3fe6a01445b538e25fe9b6fb61bea187",
+    "api/routes.py": "c53207f039a268d723c343a1e147c0d3a8e8b270421579057d51c7e3580a4b23",
+    "broker.py": "4b0612942da8c3f6ff2cd31d0f0e875bec81e2f8387669c85b571e8a976493c7",
+    "catalog.py": "9f4ae08d0d918c7e62e7b6565ded881f605957427528f564174f813bcd118fc6",
+    "config.py": "6e36b49f7f5be04acf148d30d8bc5c443e76315312154a2a98bb4c2cfcc62ddc",
+    "engine/__init__.py": "29555ca74effd51c831655296ef1b2f15435b6cc584c91f536f419d0a966501d",
+    "engine/_common_utils.py": "c705f9aa53f588cda01ce8d5c4b85434fa460fb0fefd319ef13cf27e50222642",
+    "engine/_divergence.py": "d4d878a2c74792cd2dec2a89c7939660dd0ce70857d50c135a040482ba871e5c",
+    "engine/_log_utils.py": "43d7d41b412870d3b497c478fb3688532cb70e9007574d2db36f953bcdb36cb5",
+    "engine/benchmark.py": "d65b54d46647f41b392e0d308e49d2b7325a11aa0ca9e5725c2108feb3cbb040",
+    "engine/msprof_deep.py": "b4f23363ea6b69af6765d1eb475eb4b2f46a0f14510a966d3889864cf990c1a1",
+    "engine/msprof_op.py": "774260fc296930b4e0ce5b9b9389a38544934e2c247b463d2593cf3c1f273b9f",
+    "engine/precheck_module.py": "8e03849918b5ea2b6cd317ccb6c4fc05450b2bb6e17ea5e0180a7774e8341387",
+    "engine/profile_runner.py": "1cc87fe4ef697c8251f23cc6ad9c7d11e3fddfff756b4c5909b828f83a858f7a",
+    "engine/validate_triton_impl.py": "bec42ba238c501dc5c89ace9bb0aae7925d5f7c643ea9238c6638dbe3176dd4e",
+    "engine/verify.py": "f1f5372b6c79ca052e56557862ceca555b7547115e0d4c083902c70d153945a9",
+    "evaluators/__init__.py": "732a75f35480c922811602df5ea7d62f89b601e678869a8ec242bbca4d382666",
+    "evaluators/base.py": "c55278021d4c82bf27f0224e7043af8fca6f482b04cafb77e39b844029a0f92d",
+    "evaluators/benchmark.py": "fe38eb86e61729be334f941b9c5ee11d55b613cb206fdba851daca7f27665763",
+    "evaluators/evaluation.py": "dda05d9ea53fd79324b001318a822adb94098bca0c07ffd1dcb87db6ee792e00",
+    "evaluators/profile.py": "546a1ce9db1bbe6fdc2cf5cfa5927bbccbd7fc9ae21fabca4a1b862721d1e4be",
+    "evaluators/sandbox.py": "6d473280340956d6b8cd04768fde2530996ae7b47c87f3b7bbda4484ad2bf0af",
+    "evaluators/shaping.py": "86d081ef2d8c45dae9942a9f52b6142c65c68f836acd702aaf50037972552e1b",
+    "evaluators/verify.py": "552d2a05badb87b55693c32c322df2a32ce2e7d6abe5cda0f42a868a5cf5fece",
+    "execution_environment.py": "de3db47026e724234dbdcd0737096ff1716df5379b218a630e26240511d11508",
+    "health.py": "a58dc0ba46866b9c778c5cd604397015650fc2c5c9f81bca93b5364e3b46ffd0",
+    "instance.py": "c3b7f554374c31a07a6fa645586edf51026791551b4ae29ed6814fadcdef80dc",
+    "kernel_eval_budget.py": "ede11e2750cc4e7b0039573b194d5080cf8dfa125749dd8f41a268c97404d698",
+    "kernel_eval_renderer.py": "76abfb941eeeb38c354b6d6cb0699310716b3def728ca308fa65dafee165ee99",
+    "metrics.py": "b455c5df44defef6c2a063c7848ef83b9047f31bf0c549c061fcd8c4056987a9",
+    "models.py": "e3c961631046eef497329e02552bf8b616ca768b681153be3f898f6612a24ee7",
+    "official_task.py": "faede513090f01069bed17f4c20628e1cce04e8807b90e82a8321e106677e6f5",
+    "precheck.py": "37a71441f21c5f550d60007d18f779922182304f6d4e187b0e096bbd392102f3",
+    "profiler_runtime.py": "69d1a16064e80f708b4cf9c2cc7a8fe37aff809f45a51a9841d34e28f3460a77",
+    "reference_cache.py": "efccb4180a9ad3a9abba285998269a32c8f0a1836af868280b2dee8ceb10392c",
+    "reference_diagnostics.py": "8fe1181d872e5b0dbffe12fa5f0dff7dcd822e1ff1e867184761348c01458123",
+    "reference_timing_reuse.py": "c5930ec2604cca75c6dfe0d5d9484d1d20ed3d748e7b37faf7d406deb3968b25",
+    "security.py": "0699586a83d8ed33a9e973f5c44682ebb42faa0fe0923460da3d3e02cb592a37",
+    "terminal_results.py": "a51d7a66a7e0fcb771acec3da54f0afae82e6cbbdaaebffbd1d01ad0c859100c",
+    "verdict_cache.py": "31d03b154e8d1598c0d71165d2e8b8f56ffe868fa22e953c30319896e40ce8d6",
+    "worker.py": "60b679e6ad26dbd289e7dcc1ad9efd39c590cb5ef050600f81c264ac93142f4d"
+  },
+  "effective_sandbox_sha256": "0d5a88c132a4e6d92cf354efd6bcd222d8762a6ad5ae042342a6dbdf53c6fe01",
+  "effective_environment_sha256": "ab3262180a89c553d611c6eac8cc20206069d43db470e67efc2dc2bc12c63008",
+  "effective_environment_keys": [
+    "ASCEND_AICPU_PATH",
+    "ASCEND_HOME_PATH",
+    "ASCEND_OPP_PATH",
+    "ASCEND_TOOLKIT_HOME",
+    "LANG",
+    "LC_ALL",
+    "LD_LIBRARY_PATH",
+    "PATH",
+    "PYTHONPATH",
+    "TOOLCHAIN_HOME",
+    "TRITON_EVAL_PROFILER_RUNTIME_MANIFEST",
+    "TRITON_EVAL_PROFILER_RUNTIME_SHA256",
+    "TRITON_EVAL_REFERENCE_CACHE_BINDING",
+    "TRITON_EVAL_REFERENCE_CACHE_DIR",
+    "TRITON_EVAL_REFERENCE_CACHE_SHA256",
+    "TRITON_EVAL_REFERENCE_CACHE_STATE_DIR",
+    "TRITON_EVAL_REFERENCE_DEVICE_POLICY",
+    "TRITON_EVAL_REFERENCE_TIMING_REUSE_POLICY",
+    "TRITON_EVAL_REFERENCE_TIMING_REUSE_SHA256"
+  ],
+  "readonly_mounts": [
+    [
+      "/usr",
+      "/usr"
+    ],
+    [
+      "/root/.local/share/uv/python/cpython-3.10.21-linux-aarch64-gnu",
+      "/root/.local/share/uv/python/cpython-3.10.21-linux-aarch64-gnu"
+    ],
+    [
+      "/home/e84381970/open-evo-work/svc-validation-p0/repo/.venv-p0",
+      "/home/e84381970/open-evo-work/svc-validation-p0/repo/.venv-p0"
+    ],
+    [
+      "/home/e84381970/open-evo-work/runtime-artifacts/worktree-detach-20261006/a-v3-cache-cutover-prep/staged-triton/backends/ascend/driver.py",
+      "/home/e84381970/open-evo-work/svc-validation-p0/repo/.venv-p0/lib/python3.10/site-packages/triton/backends/ascend/driver.py"
+    ],
+    [
+      "/home/e84381970/open-evo-work/runtime-artifacts/worktree-detach-20261006/a-v3-cache-cutover-prep/staged-triton/backends/ascend/npu_utils.cpp",
+      "/home/e84381970/open-evo-work/svc-validation-p0/repo/.venv-p0/lib/python3.10/site-packages/triton/backends/ascend/npu_utils.cpp"
+    ],
+    [
+      "/home/e84381970/open-evo-work/runtime-artifacts/nb3-nb7-cache-integrate-20261006/checkout/triton_evaluation/engine",
+      "/home/e84381970/open-evo-work/runtime-artifacts/nb3-nb7-cache-integrate-20261006/checkout/triton_evaluation/engine"
+    ],
+    [
+      "/sys",
+      "/sys"
+    ],
+    [
+      "/etc/passwd",
+      "/etc/passwd"
+    ],
+    [
+      "/etc/group",
+      "/etc/group"
+    ],
+    [
+      "/etc/ld.so.cache",
+      "/etc/ld.so.cache"
+    ],
+    [
+      "/etc/ascend_install.info",
+      "/etc/ascend_install.info"
+    ],
+    [
+      "/root/.local/share/uv/python/cpython-3.10.21-linux-aarch64-gnu",
+      "/root/.local/share/uv/python/cpython-3.10-linux-aarch64-gnu"
+    ],
+    [
+      "/usr/bin/ld.bfd",
+      "/etc/alternatives/ld"
+    ],
+    [
+      "/home/e84381970/open-evo-work/baseline-v3/diagnostics/PROFILER-RUNTIME-212b832-attempt3/profiler-runtime",
+      "/home/e84381970/open-evo-work/baseline-v3/diagnostics/PROFILER-RUNTIME-212b832-attempt3/profiler-runtime"
+    ],
+    [
+      "/dev/shm/v3-ocp-payload-run-20261004-a2/cache/cases",
+      "/dev/shm/v3-ocp-payload-run-20261004-a2/cache/cases"
+    ],
+    [
+      "/dev/shm/v3-ocp-payload-run-20261004-a2/cache/blobs",
+      "/dev/shm/v3-ocp-payload-run-20261004-a2/cache/blobs"
+    ],
+    [
+      "/dev/shm/v3-ocp-payload-run-20261004-a2/state/sealed-cache-index.json",
+      "/dev/shm/v3-ocp-payload-run-20261004-a2/state/sealed-cache-index.json"
+    ],
+    [
+      "/home/e84381970/open-evo-work/runtime-artifacts/nb3-nb7-cache-integrate-20261006/pkg/validated-timing-reuse-policy-v7.json",
+      "/home/e84381970/open-evo-work/runtime-artifacts/nb3-nb7-cache-integrate-20261006/pkg/validated-timing-reuse-policy-v7.json"
+    ],
+    [
+      "/home/e84381970/open-evo-work/service-result-collection-fb90951.sandbox.json",
+      "/home/e84381970/open-evo-work/service-result-collection-fb90951.sandbox.json"
+    ],
+    [
+      "/home/e84381970/open-evo-work/service-runtime-212b832/triton_evaluation/__init__.py",
+      "/home/e84381970/open-evo-work/service-runtime-212b832/triton_evaluation/__init__.py"
+    ],
+    [
+      "/home/e84381970/open-evo-work/service-runtime-212b832/triton_evaluation/admission.py",
+      "/home/e84381970/open-evo-work/service-runtime-212b832/triton_evaluation/admission.py"
+    ],
+    [
+      "/home/e84381970/open-evo-work/service-runtime-212b832/triton_evaluation/api/__init__.py",
+      "/home/e84381970/open-evo-work/service-runtime-212b832/triton_evaluation/api/__init__.py"
+    ],
+    [
+      "/home/e84381970/open-evo-work/service-runtime-212b832/triton_evaluation/api/app.py",
+      "/home/e84381970/open-evo-work/service-runtime-212b832/triton_evaluation/api/app.py"
+    ],
+    [
+      "/home/e84381970/open-evo-work/service-runtime-212b832/triton_evaluation/api/auth.py",
+      "/home/e84381970/open-evo-work/service-runtime-212b832/triton_evaluation/api/auth.py"
+    ],
+    [
+      "/home/e84381970/open-evo-work/service-runtime-212b832/triton_evaluation/api/contract.py",
+      "/home/e84381970/open-evo-work/service-runtime-212b832/triton_evaluation/api/contract.py"
+    ],
+    [
+      "/home/e84381970/open-evo-work/service-runtime-212b832/triton_evaluation/api/contract_artifacts.py",
+      "/home/e84381970/open-evo-work/service-runtime-212b832/triton_evaluation/api/contract_artifacts.py"
+    ],
+    [
+      "/home/e84381970/open-evo-work/service-runtime-212b832/triton_evaluation/api/dependencies.py",
+      "/home/e84381970/open-evo-work/service-runtime-212b832/triton_evaluation/api/dependencies.py"
+    ],
+    [
+      "/home/e84381970/open-evo-work/service-runtime-212b832/triton_evaluation/api/errors.py",
+      "/home/e84381970/open-evo-work/service-runtime-212b832/triton_evaluation/api/errors.py"
+    ],
+    [
+      "/home/e84381970/open-evo-work/service-runtime-212b832/triton_evaluation/api/kernel_eval.py",
+      "/home/e84381970/open-evo-work/service-runtime-212b832/triton_evaluation/api/kernel_eval.py"
+    ],
+    [
+      "/home/e84381970/open-evo-work/service-runtime-212b832/triton_evaluation/api/listeners.py",
+      "/home/e84381970/open-evo-work/service-runtime-212b832/triton_evaluation/api/listeners.py"
+    ],
+    [
+      "/home/e84381970/open-evo-work/service-runtime-212b832/triton_evaluation/api/middleware.py",
+      "/home/e84381970/open-evo-work/service-runtime-212b832/triton_evaluation/api/middleware.py"
+    ],
+    [
+      "/home/e84381970/open-evo-work/service-runtime-212b832/triton_evaluation/api/routes.py",
+      "/home/e84381970/open-evo-work/service-runtime-212b832/triton_evaluation/api/routes.py"
+    ],
+    [
+      "/home/e84381970/open-evo-work/service-runtime-212b832/triton_evaluation/broker.py",
+      "/home/e84381970/open-evo-work/service-runtime-212b832/triton_evaluation/broker.py"
+    ],
+    [
+      "/home/e84381970/open-evo-work/service-runtime-212b832/triton_evaluation/catalog.py",
+      "/home/e84381970/open-evo-work/service-runtime-212b832/triton_evaluation/catalog.py"
+    ],
+    [
+      "/home/e84381970/open-evo-work/service-runtime-212b832/triton_evaluation/config.py",
+      "/home/e84381970/open-evo-work/service-runtime-212b832/triton_evaluation/config.py"
+    ],
+    [
+      "/home/e84381970/open-evo-work/service-runtime-212b832/triton_evaluation/engine/__init__.py",
+      "/home/e84381970/open-evo-work/service-runtime-212b832/triton_evaluation/engine/__init__.py"
+    ],
+    [
+      "/home/e84381970/open-evo-work/service-runtime-212b832/triton_evaluation/engine/_common_utils.py",
+      "/home/e84381970/open-evo-work/service-runtime-212b832/triton_evaluation/engine/_common_utils.py"
+    ],
+    [
+      "/home/e84381970/open-evo-work/service-runtime-212b832/triton_evaluation/engine/_divergence.py",
+      "/home/e84381970/open-evo-work/service-runtime-212b832/triton_evaluation/engine/_divergence.py"
+    ],
+    [
+      "/home/e84381970/open-evo-work/service-runtime-212b832/triton_evaluation/engine/_log_utils.py",
+      "/home/e84381970/open-evo-work/service-runtime-212b832/triton_evaluation/engine/_log_utils.py"
+    ],
+    [
+      "/home/e84381970/open-evo-work/service-runtime-212b832/triton_evaluation/engine/benchmark.py",
+      "/home/e84381970/open-evo-work/service-runtime-212b832/triton_evaluation/engine/benchmark.py"
+    ],
+    [
+      "/home/e84381970/open-evo-work/service-runtime-212b832/triton_evaluation/engine/msprof_deep.py",
+      "/home/e84381970/open-evo-work/service-runtime-212b832/triton_evaluation/engine/msprof_deep.py"
+    ],
+    [
+      "/home/e84381970/open-evo-work/service-runtime-212b832/triton_evaluation/engine/msprof_op.py",
+      "/home/e84381970/open-evo-work/service-runtime-212b832/triton_evaluation/engine/msprof_op.py"
+    ],
+    [
+      "/home/e84381970/open-evo-work/service-runtime-212b832/triton_evaluation/engine/precheck_module.py",
+      "/home/e84381970/open-evo-work/service-runtime-212b832/triton_evaluation/engine/precheck_module.py"
+    ],
+    [
+      "/home/e84381970/open-evo-work/service-runtime-212b832/triton_evaluation/engine/profile_runner.py",
+      "/home/e84381970/open-evo-work/service-runtime-212b832/triton_evaluation/engine/profile_runner.py"
+    ],
+    [
+      "/home/e84381970/open-evo-work/service-runtime-212b832/triton_evaluation/engine/validate_triton_impl.py",
+      "/home/e84381970/open-evo-work/service-runtime-212b832/triton_evaluation/engine/validate_triton_impl.py"
+    ],
+    [
+      "/home/e84381970/open-evo-work/service-runtime-212b832/triton_evaluation/engine/verify.py",
+      "/home/e84381970/open-evo-work/service-runtime-212b832/triton_evaluation/engine/verify.py"
+    ],
+    [
+      "/home/e84381970/open-evo-work/service-runtime-212b832/triton_evaluation/evaluators/__init__.py",
+      "/home/e84381970/open-evo-work/service-runtime-212b832/triton_evaluation/evaluators/__init__.py"
+    ],
+    [
+      "/home/e84381970/open-evo-work/service-runtime-212b832/triton_evaluation/evaluators/base.py",
+      "/home/e84381970/open-evo-work/service-runtime-212b832/triton_evaluation/evaluators/base.py"
+    ],
+    [
+      "/home/e84381970/open-evo-work/service-runtime-212b832/triton_evaluation/evaluators/benchmark.py",
+      "/home/e84381970/open-evo-work/service-runtime-212b832/triton_evaluation/evaluators/benchmark.py"
+    ],
+    [
+      "/home/e84381970/open-evo-work/service-runtime-212b832/triton_evaluation/evaluators/evaluation.py",
+      "/home/e84381970/open-evo-work/service-runtime-212b832/triton_evaluation/evaluators/evaluation.py"
+    ],
+    [
+      "/home/e84381970/open-evo-work/service-runtime-212b832/triton_evaluation/evaluators/profile.py",
+      "/home/e84381970/open-evo-work/service-runtime-212b832/triton_evaluation/evaluators/profile.py"
+    ],
+    [
+      "/home/e84381970/open-evo-work/service-runtime-212b832/triton_evaluation/evaluators/sandbox.py",
+      "/home/e84381970/open-evo-work/service-runtime-212b832/triton_evaluation/evaluators/sandbox.py"
+    ],
+    [
+      "/home/e84381970/open-evo-work/service-runtime-212b832/triton_evaluation/evaluators/shaping.py",
+      "/home/e84381970/open-evo-work/service-runtime-212b832/triton_evaluation/evaluators/shaping.py"
+    ],
+    [
+      "/home/e84381970/open-evo-work/service-runtime-212b832/triton_evaluation/evaluators/verify.py",
+      "/home/e84381970/open-evo-work/service-runtime-212b832/triton_evaluation/evaluators/verify.py"
+    ],
+    [
+      "/home/e84381970/open-evo-work/service-runtime-212b832/triton_evaluation/execution_environment.py",
+      "/home/e84381970/open-evo-work/service-runtime-212b832/triton_evaluation/execution_environment.py"
+    ],
+    [
+      "/home/e84381970/open-evo-work/service-runtime-212b832/triton_evaluation/health.py",
+      "/home/e84381970/open-evo-work/service-runtime-212b832/triton_evaluation/health.py"
+    ],
+    [
+      "/home/e84381970/open-evo-work/service-runtime-212b832/triton_evaluation/instance.py",
+      "/home/e84381970/open-evo-work/service-runtime-212b832/triton_evaluation/instance.py"
+    ],
+    [
+      "/home/e84381970/open-evo-work/service-runtime-212b832/triton_evaluation/kernel_eval_budget.py",
+      "/home/e84381970/open-evo-work/service-runtime-212b832/triton_evaluation/kernel_eval_budget.py"
+    ],
+    [
+      "/home/e84381970/open-evo-work/service-runtime-212b832/triton_evaluation/kernel_eval_renderer.py",
+      "/home/e84381970/open-evo-work/service-runtime-212b832/triton_evaluation/kernel_eval_renderer.py"
+    ],
+    [
+      "/home/e84381970/open-evo-work/service-runtime-212b832/triton_evaluation/metrics.py",
+      "/home/e84381970/open-evo-work/service-runtime-212b832/triton_evaluation/metrics.py"
+    ],
+    [
+      "/home/e84381970/open-evo-work/service-runtime-212b832/triton_evaluation/models.py",
+      "/home/e84381970/open-evo-work/service-runtime-212b832/triton_evaluation/models.py"
+    ],
+    [
+      "/home/e84381970/open-evo-work/service-runtime-212b832/triton_evaluation/official_task.py",
+      "/home/e84381970/open-evo-work/service-runtime-212b832/triton_evaluation/official_task.py"
+    ],
+    [
+      "/home/e84381970/open-evo-work/service-runtime-212b832/triton_evaluation/precheck.py",
+      "/home/e84381970/open-evo-work/service-runtime-212b832/triton_evaluation/precheck.py"
+    ],
+    [
+      "/home/e84381970/open-evo-work/service-runtime-212b832/triton_evaluation/profiler_runtime.py",
+      "/home/e84381970/open-evo-work/service-runtime-212b832/triton_evaluation/profiler_runtime.py"
+    ],
+    [
+      "/home/e84381970/open-evo-work/service-runtime-212b832/triton_evaluation/reference_cache.py",
+      "/home/e84381970/open-evo-work/service-runtime-212b832/triton_evaluation/reference_cache.py"
+    ],
+    [
+      "/home/e84381970/open-evo-work/service-runtime-212b832/triton_evaluation/reference_diagnostics.py",
+      "/home/e84381970/open-evo-work/service-runtime-212b832/triton_evaluation/reference_diagnostics.py"
+    ],
+    [
+      "/home/e84381970/open-evo-work/service-runtime-212b832/triton_evaluation/security.py",
+      "/home/e84381970/open-evo-work/service-runtime-212b832/triton_evaluation/security.py"
+    ],
+    [
+      "/home/e84381970/open-evo-work/service-runtime-212b832/triton_evaluation/terminal_results.py",
+      "/home/e84381970/open-evo-work/service-runtime-212b832/triton_evaluation/terminal_results.py"
+    ],
+    [
+      "/home/e84381970/open-evo-work/service-runtime-212b832/triton_evaluation/verdict_cache.py",
+      "/home/e84381970/open-evo-work/service-runtime-212b832/triton_evaluation/verdict_cache.py"
+    ],
+    [
+      "/home/e84381970/open-evo-work/service-runtime-212b832/triton_evaluation/worker.py",
+      "/home/e84381970/open-evo-work/service-runtime-212b832/triton_evaluation/worker.py"
+    ],
+    [
+      "/home/e84381970/open-evo-work/runtime-artifacts/nb3-nb7-cache-integrate-20261006/pkg/model-bound-cache-index-v2prime.json",
+      "/home/e84381970/open-evo-work/runtime-artifacts/nb3-nb7-cache-integrate-20261006/pkg/model-bound-cache-index-v2prime.json"
+    ],
+    [
+      "/home/e84381970/open-evo-work/runtime-artifacts/nb3-nb7-cache-integrate-20261006/checkout/triton_evaluation",
+      "/home/e84381970/open-evo-work/runtime-artifacts/nb3-nb7-cache-integrate-20261006/checkout/triton_evaluation"
+    ],
+    [
+      "/home/e84381970/open-evo-work/runtime-artifacts/nb3-nb7-cache-integrate-20261006/checkout/scripts/probe_profiler_latency.py",
+      "/home/e84381970/open-evo-work/runtime-artifacts/nb3-nb7-cache-integrate-20261006/checkout/scripts/probe_profiler_latency.py"
+    ]
+  ],
+  "reference_cache_state_dir": "/dev/shm/nb3nb7-state-20261006",
+  "timing_reuse_state_dir": "/home/e84381970/open-evo-work/runtime-artifacts/worktree-detach-20261006/c-v3-service-reference8/timing-reuse-delivery/state",
+  "timing_reuse_policy_sha256": "42fe8d0fc6ead4ae4879fc204f417530f6ac80835e9339ddd6d1219bce2a97bf",
+  "cann_runtime": {
+    "cann_root": "/usr/local/Ascend/cann-9.1.1",
+    "cann_set_env_path": "/usr/local/Ascend/cann-9.1.1/set_env.sh",
+    "cann_set_env_sha256": "be40277c4f1e836a0b3138defd6518269bcae97a857e4740fac4a7cfb8410a82",
+    "cann_environment_path": "/home/e84381970/open-evo-work/baseline-v3/diagnostics/PROFILER-RUNTIME-212b832-attempt3/profiler-runtime/cann-environment.json",
+    "cann_environment_sha256": "b3f45fcf7c50fb3ef22093a5fb1449b0571f185658405472bdd70132392aaeb9",
+    "directories": {
+      "/usr/local/Ascend/cann-9.1.1/lib64": {
+        "required": true,
+        "exists": true,
+        "resolved_path": "/usr/local/Ascend/cann-9.1.1/aarch64-linux/lib64"
+      },
+      "/usr/local/Ascend/cann-9.1.1/opp": {
+        "required": true,
+        "exists": true,
+        "resolved_path": "/usr/local/Ascend/cann-9.1.1/opp"
+      },
+      "/usr/local/Ascend/cann-9.1.1/tools/ccec_compiler/bin": {
+        "required": true,
+        "exists": true,
+        "resolved_path": "/usr/local/Ascend/cann-9.1.1/tools/bisheng_compiler/bin"
+      },
+      "/usr/local/Ascend/cann-9.1.1/tools/profiler/bin": {
+        "required": true,
+        "exists": true,
+        "resolved_path": "/usr/local/Ascend/cann-9.1.1/tools/profiler/bin"
+      },
+      "/usr/local/Ascend/cann-9.1.1/python/site-packages": {
+        "required": true,
+        "exists": true,
+        "resolved_path": "/usr/local/Ascend/cann-9.1.1/python/site-packages"
+      },
+      "/usr/local/Ascend/cann-9.1.1/opp/built-in/op_impl/ai_core/tbe": {
+        "required": true,
+        "exists": true,
+        "resolved_path": "/usr/local/Ascend/cann-9.1.1/opp/built-in/op_impl/ai_core/tbe"
+      },
+      "/usr/local/Ascend/cann-9.1.1/toolkit": {
+        "required": true,
+        "exists": true,
+        "resolved_path": "/usr/local/Ascend/cann-9.1.1/toolkit"
+      },
+      "/usr/local/Ascend/cann-9.1.1/lib64/plugin/opskernel": {
+        "required": false,
+        "exists": true,
+        "resolved_path": "/usr/local/Ascend/cann-9.1.1/aarch64-linux/lib64/plugin/opskernel"
+      },
+      "/usr/local/Ascend/cann-9.1.1/lib64/plugin/nnengine": {
+        "required": false,
+        "exists": true,
+        "resolved_path": "/usr/local/Ascend/cann-9.1.1/aarch64-linux/lib64/plugin/nnengine"
+      },
+      "/usr/local/Ascend/cann-9.1.1/devlib": {
+        "required": false,
+        "exists": true,
+        "resolved_path": "/usr/local/Ascend/cann-9.1.1/aarch64-linux/devlib"
+      },
+      "/usr/local/Ascend/cann-9.1.1/opp/built-in/op_impl/ai_core/tbe/op_tiling/lib/linux/aarch64": {
+        "required": false,
+        "exists": true,
+        "resolved_path": "/usr/local/Ascend/cann-9.1.1/opp/built-in/op_impl/ai_core/tbe/op_tiling/lib/linux/aarch64"
+      },
+      "/usr/local/Ascend/cann-9.1.1/tools/ascend_system_advisor/asys": {
+        "required": false,
+        "exists": true,
+        "resolved_path": "/usr/local/Ascend/cann-9.1.1/tools/ascend_system_advisor/asys"
+      },
+      "/usr/local/Ascend/cann-9.1.1/tools/show_kernel_debug_data": {
+        "required": false,
+        "exists": true,
+        "resolved_path": "/usr/local/Ascend/cann-9.1.1/tools/show_kernel_debug_data"
+      },
+      "/usr/local/Ascend/cann-9.1.1/tools/msobjdump": {
+        "required": false,
+        "exists": true,
+        "resolved_path": "/usr/local/Ascend/cann-9.1.1/tools/msobjdump"
+      },
+      "/usr/local/Ascend/driver/lib64": {
+        "required": true,
+        "exists": true,
+        "resolved_path": "/usr/local/Ascend/driver/lib64"
+      },
+      "/usr/local/Ascend/driver/lib64/common": {
+        "required": true,
+        "exists": true,
+        "resolved_path": "/usr/local/Ascend/driver/lib64/common"
+      },
+      "/usr/local/Ascend/driver/lib64/driver": {
+        "required": true,
+        "exists": true,
+        "resolved_path": "/usr/local/Ascend/driver/lib64/driver"
+      }
+    },
+    "effective_environment": {
+      "ASCEND_AICPU_PATH": "/usr/local/Ascend/cann-9.1.1",
+      "ASCEND_HOME_PATH": "/usr/local/Ascend/cann-9.1.1",
+      "ASCEND_OPP_PATH": "/usr/local/Ascend/cann-9.1.1/opp",
+      "ASCEND_TOOLKIT_HOME": "/usr/local/Ascend/cann-9.1.1",
+      "LD_LIBRARY_PATH": "/usr/local/Ascend/cann-9.1.1/lib64:/usr/local/Ascend/cann-9.1.1/lib64/plugin/opskernel:/usr/local/Ascend/cann-9.1.1/lib64/plugin/nnengine:/usr/local/Ascend/cann-9.1.1/opp/built-in/op_impl/ai_core/tbe/op_tiling/lib/linux/aarch64:/usr/local/Ascend/driver/lib64:/usr/local/Ascend/driver/lib64/common:/usr/local/Ascend/driver/lib64/driver",
+      "PATH": "/usr/local/Ascend/cann-9.1.1/bin:/usr/local/Ascend/cann-9.1.1/tools/ccec_compiler/bin:/usr/local/Ascend/cann-9.1.1/tools/profiler/bin:/usr/local/Ascend/cann-9.1.1/tools/ascend_system_advisor/asys:/usr/local/Ascend/cann-9.1.1/tools/show_kernel_debug_data:/usr/local/Ascend/cann-9.1.1/tools/msobjdump:/usr/bin:/bin:/sbin",
+      "PYTHONPATH": "/home/e84381970/open-evo-work/runtime-artifacts/nb3-nb7-cache-integrate-20261006/checkout:/usr/local/Ascend/cann-9.1.1/python/site-packages:/usr/local/Ascend/cann-9.1.1/opp/built-in/op_impl/ai_core/tbe",
+      "TOOLCHAIN_HOME": "/usr/local/Ascend/cann-9.1.1/toolkit"
+    },
+    "effective_environment_sha256": "82c788df994903bae4af24f51d8dc1b45aa70cba02b2d84a484ea79c886c667b"
+  },
+  "engine_script_path": "/home/e84381970/open-evo-work/.scratch/nb3-nb7-cache-integrate-20261006/deploy/records/fleet-089a0261/card-6/probe.py",
+  "engine_script_sha256": "691323bd8722280482a1453c9b6bb7ee52dba17bd05ad3e513d12423b2633268",
+  "schema_version": "engine-runtime-boundary-v1",
+  "state": "prepared",
+  "executed": false,
+  "base_manifest_path": "/home/e84381970/open-evo-work/runtime-artifacts/nb3-nb7-cache-integrate-20261006/pkg/deploy-sandbox-manifest.json",
+  "base_manifest_sha256": "2e2daf239126b63a74885a95aaeee24dd229235d7030e4b25c6cd6c2428c41c4",
+  "overlay_path": "/home/e84381970/open-evo-work/runtime-artifacts/nb3-nb7-cache-integrate-20261006/pkg/deploy-runtime-overlay.json",
+  "overlay_sha256": "2f5808d12e01d996bda22867a68ec2f963f7ded8a349ed318306f247587fcef4",
+  "sandbox_helper_path": "/home/e84381970/open-evo-work/runtime-artifacts/nb3-nb7-cache-integrate-20261006/checkout/triton_evaluation/evaluators/sandbox.py",
+  "sandbox_helper_sha256": "6d473280340956d6b8cd04768fde2530996ae7b47c87f3b7bbda4484ad2bf0af",
+  "command_sha256": "023348b2b010b34a559db27d9aca60477d8208f0912c6f8f0b1f8dd680c4006b"
+}

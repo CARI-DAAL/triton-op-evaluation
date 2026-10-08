@@ -1,0 +1,190 @@
+[INFO] RUNTIME(2,python):2026-10-06-21:56:44.910.962 [task_fail_callback_data_manager.cc:93] 2 TaskFailCallBackManager: Constructor.
+[INFO] RUNTIME(2,python):2026-10-06-21:56:44.911.037 [xpu_task_fail_callback_data_manager.cc:59] 2 XpuTaskFailCallBackManager: XpuTaskFailCallBackManager Constructor.
+[INFO] TDT(2,python):2026-10-06-21:56:44.920.079 [package_worker_factory.cpp:38][RegisterPackageWorkerCreator][tid:2] Register[2] package worker was created successfully
+[INFO] TDT(2,python):2026-10-06-21:56:44.920.087 [package_worker_factory.cpp:38][RegisterPackageWorkerCreator][tid:2] Register[3] package worker was created successfully
+[INFO] HCCL(2,python):2026-10-06-21:56:44.989.537 [adapter_rts.cc:2582] [2][adapter_rts.cc][CallBackInitRts] g_deviceType [8] g_deviceLogicId [-1] g_devicePhyId [-1]
+[INFO] GE(2,python):2026-10-06-21:56:47.833.517 [op_tiling_manager.cc:111]2 ~FuncPerfScope:[GEPERFTRACE] The time cost of OpTilingManager::LoadSo is [41348] micro seconds.
+[INFO] RUNTIME(2,python):2026-10-06-21:56:47.857.437 [runtime_keeper.cc:211] 2 CreateRuntimeImpl: Open libruntime_v100.so successfully
+[INFO] RUNTIME(2,python):2026-10-06-21:56:47.858.122 [runtime.cc:4539] 2 GetVisibleDevices: real deviceCnt:1 userDeviceCnt:1 isSetVisibleDev:1 ASCEND_RT_VISIBLE_DEVICES:[0] available visible devices:[0]
+[INFO] IDEDD(2,python):2026-10-06-21:56:47.858.869 [adx_dump_record.cpp:699][tid:69] start dump thread, remote dump record temp path : /home/e84381970/open-evo-work/.scratch/nb3-nb7-cache-integrate-20261006/deploy/records/fleet-089a0261/card-10/.
+[INFO] DRV(2,python):2026-10-06-21:56:47.859.254 [drv_share_log.c:240][ascend][curpid:2,71][drv][hdc][share_log_read_in_single_module]Server create success. (dev_id=10; fid=0; pid=2642183; service_type="service_dump")
+[INFO] IDEDD(2,python):2026-10-06-21:56:47.860.050 [dump_manager.cpp:240][tid:2] Set aic_err_brief_dump[3] dump setting, status: on, dump switch: 3
+[INFO] ASCENDCL(2,python):2026-10-06-21:56:47.860.867 [acl_op_resource_manager.cpp:62]2 GetRuntimeV2Env: runtime v2 flag : model flag = 1, singleOp flag = 1
+[INFO] PROFILING(2,python):2026-10-06-21:56:47.863.384 [platform.cpp:52] (tid:2) Profiling platform version: 1.0.
+[INFO] PROFILING(2,python):2026-10-06-21:56:47.863.397 [platform.cpp:264] (tid:2) Succeeded to DrvGetApiVersion version: 0x72418
+[INFO] ASCENDCL(2,python):2026-10-06-21:56:47.863.559 [acl.cpp:350]2 GetAllPackageVersion: Version of runtime package is 9.1.1
+[INFO] ASCENDCL(2,python):2026-10-06-21:56:47.863.574 [acl.cpp:350]2 GetAllPackageVersion: Version of runtime package is 9.1.1
+[INFO] ASCENDCL(2,python):2026-10-06-21:56:47.863.590 [acl.cpp:350]2 GetAllPackageVersion: Version of bisheng-compiler package is 9.1.1
+[INFO] ASCENDCL(2,python):2026-10-06-21:56:47.863.605 [acl.cpp:350]2 GetAllPackageVersion: Version of hccl package is 9.1.1
+[INFO] ASCENDCL(2,python):2026-10-06-21:56:47.863.625 [acl.cpp:350]2 GetAllPackageVersion: Version of oam-tools package is 9.1.1
+[INFO] ASCENDCL(2,python):2026-10-06-21:56:47.863.644 [acl.cpp:350]2 GetAllPackageVersion: Version of ops-legacy package is 9.1.1
+[INFO] ASCENDCL(2,python):2026-10-06-21:56:47.863.658 [acl.cpp:350]2 GetAllPackageVersion: Version of ops-legacy package is 9.1.1
+[INFO] ASCENDCL(2,python):2026-10-06-21:56:47.863.696 [acl.cpp:350]2 GetAllPackageVersion: Version of driver package is 26.0.rc1
+[INFO] ATRACE(2,python):2026-10-06-21:56:47.869.499 [atrace_client_core.c:160](tid:2) start to receive device[0] trace log.
+[INFO] ASCENDCL(2,python):2026-10-06-21:56:47.869.518 [acl_resource_manager.cpp:139]2 GetRuntimeV2Env: runtime v2 flag : model flag = 1, singleOp flag = 1
+[INFO] TDT(2,python):2026-10-06-21:56:47.869.552 [client_manager.cpp:141][GetInstance][tid:2] [ClientManager] Current mode:1
+[INFO] TDT(2,python):2026-10-06-21:56:47.869.564 [process_mode_base.cpp:145][GetLogLevel][tid:2] [TsdClient] get ASCEND_GLOBAL_LOG_LEVEL [] ASCEND_GLOBAL_EVENT_ENABLE [] ASCEND_MODULE_LOG_LEVEL []
+[INFO] TDT(2,python):2026-10-06-21:56:47.869.614 [process_mode_manager.cpp:132][OpenProcess][tid:2] [ProcessModeManager] enter into open process deviceId[0] rankSize[0]
+[INFO] TDT(2,python):2026-10-06-21:56:47.869.652 [process_mode_manager.cpp:269][IsSupportCommonSink][tid:2] mutexFile[/usr/local/Ascend/driver/lib64/driver/sink_file_mutex_0.cfg] found means supporting common sink
+[INFO] TDT(2,python):2026-10-06-21:56:47.869.695 [process_mode_manager.cpp:561][InitTsdClient][tid:2] [TsdClient] deviceId[0] begin to init hdc client
+[INFO] TDT(2,python):2026-10-06-21:56:47.869.809 [version_verify.cpp:39][SetVersionInfo][tid:2] VersionVerify: send client version to server
+[INFO] TDT(2,python):2026-10-06-21:56:47.870.651 [version_verify.cpp:71][PeerVersionCheck][tid:2] VersionVerify: Check client version info, server[1230], client[1230]
+[INFO] TDT(2,python):2026-10-06-21:56:47.870.656 [version_verify.cpp:92][ParseVersionInfo][tid:2] VersionVerify: pass client version info success
+[INFO] TDT(2,python):2026-10-06-21:56:47.870.658 [hdc_client.cpp:243][CheckHdcConnection][tid:2] Service create hdc successfully.
+[INFO] TDT(2,python):2026-10-06-21:56:47.871.396 [process_mode_manager.cpp:2520][GetShortSocVersion][tid:2] get short_soc_version:Ascend910_93
+[INFO] TDT(2,python):2026-10-06-21:56:47.871.455 [package_process_config.cpp:264][SetConfigDataOnHost][tid:2] insert package:Ascend-aicpu_legacy.tar.gz config
+[INFO] TDT(2,python):2026-10-06-21:56:47.871.465 [package_process_config.cpp:264][SetConfigDataOnHost][tid:2] insert package:Ascend910-aicpu_legacy.tar.gz config
+[INFO] TDT(2,python):2026-10-06-21:56:47.871.473 [package_process_config.cpp:264][SetConfigDataOnHost][tid:2] insert package:Ascend310P-aicpu_legacy.tar.gz config
+[INFO] TDT(2,python):2026-10-06-21:56:47.871.483 [package_process_config.cpp:264][SetConfigDataOnHost][tid:2] insert package:aicpu_hccl.tar.gz config
+[INFO] TDT(2,python):2026-10-06-21:56:47.871.490 [package_process_config.cpp:264][SetConfigDataOnHost][tid:2] insert package:mc2_server.tar.gz config
+[INFO] TDT(2,python):2026-10-06-21:56:47.871.497 [package_process_config.cpp:264][SetConfigDataOnHost][tid:2] insert package:aicpu_hcomm.tar.gz config
+[INFO] TDT(2,python):2026-10-06-21:56:47.871.504 [package_process_config.cpp:264][SetConfigDataOnHost][tid:2] insert package:cann-hixl-compat.tar.gz config
+[INFO] TDT(2,python):2026-10-06-21:56:47.871.513 [package_process_config.cpp:264][SetConfigDataOnHost][tid:2] insert package:cann-hcomm-compat.tar.gz config
+[INFO] TDT(2,python):2026-10-06-21:56:47.871.520 [package_process_config.cpp:264][SetConfigDataOnHost][tid:2] insert package:cann-hccd-compat.tar.gz config
+[INFO] TDT(2,python):2026-10-06-21:56:47.871.527 [package_process_config.cpp:264][SetConfigDataOnHost][tid:2] insert package:cann-udf-compat.tar.gz config
+[INFO] TDT(2,python):2026-10-06-21:56:47.871.534 [package_process_config.cpp:264][SetConfigDataOnHost][tid:2] insert package:cann-tsch-compat.tar.gz config
+[INFO] TDT(2,python):2026-10-06-21:56:47.871.549 [package_process_config.cpp:328][RefreshHostPluginVersions][tid:2] host plugin pkg:cann-hcomm-compat.tar.gz ini parsed, version:9.1.1 timestamp:20260828_122534554
+[INFO] TDT(2,python):2026-10-06-21:56:47.871.560 [package_process_config.cpp:328][RefreshHostPluginVersions][tid:2] host plugin pkg:cann-tsch-compat.tar.gz ini parsed, version:9.1.1 timestamp:20260828_122534554
+[INFO] TDT(2,python):2026-10-06-21:56:47.871.584 [version_verify.cpp:117][SpecialFeatureCheck][tid:2] VersionVerify: previous type[69], supported
+[INFO] TDT(2,python):2026-10-06-21:56:47.871.857 [process_mode_msg_parse.cpp:202][HandleDevicePluginVersionRsp][tid:2] device plugin info rsp, pkgCount:0
+[INFO] TDT(2,python):2026-10-06-21:56:47.871.861 [process_mode_manager.cpp:2216][LoadPackageConfigInfoToDevice][tid:2] Receive load package config response result:0
+[INFO] TDT(2,python):2026-10-06-21:56:47.871.873 [process_mode_manager.cpp:269][IsSupportCommonSink][tid:2] mutexFile[/usr/local/Ascend/driver/lib64/driver/sink_file_mutex_0.cfg] found means supporting common sink
+[INFO] TDT(2,python):2026-10-06-21:56:47.871.876 [process_mode_manager.cpp:287][LoadSysOpKernel][tid:2] [TsdClient][logicDeviceId_=0] use legacy package
+[INFO] TDT(2,python):2026-10-06-21:56:47.871.962 [client_manager.cpp:282][CheckPackageExistsOnce][tid:2] [TsdClient][deviceId=0] pkg size[0] in path[/usr/local/Ascend/cann-9.1.1/opp/built-in/] must be only one, skip send package, packageType[6]
+[INFO] TDT(2,python):2026-10-06-21:56:47.871.966 [process_mode_manager.cpp:292][LoadSysOpKernel][tid:2] [TsdClient][logicDeviceId_=0] can not find aicpu packages
+[INFO] TDT(2,python):2026-10-06-21:56:47.871.973 [process_mode_manager.cpp:269][IsSupportCommonSink][tid:2] mutexFile[/usr/local/Ascend/driver/lib64/driver/sink_file_mutex_0.cfg] found means supporting common sink
+[INFO] TDT(2,python):2026-10-06-21:56:47.871.981 [process_mode_manager.cpp:2307][LoadSinglePackageToDevice][tid:2] begin to load package:Ascend-aicpu_legacy.tar.gz to device:0
+[INFO] TDT(2,python):2026-10-06-21:56:47.871.987 [package_process_config.cpp:393][GetPkgHostAndDeviceDstPath][tid:2] get orgFile:/usr/local/Ascend/cann-9.1.1/opp/Ascend/aicpu/Ascend-aicpu_legacy.tar.gz, dstFile:/home/HwHiAiUser/hdcd/device0/aicpu/2642183_Ascend-aicpu_legacy.tar.gz
+[INFO] TDT(2,python):2026-10-06-21:56:47.961.108 [process_mode_manager.cpp:2333][LoadSinglePackageToDevice][tid:2] current package:Ascend-aicpu_legacy.tar.gz is same as device, skip load
+[INFO] TDT(2,python):2026-10-06-21:56:47.961.122 [process_mode_manager.cpp:2307][LoadSinglePackageToDevice][tid:2] begin to load package:Ascend310P-aicpu_legacy.tar.gz to device:0
+[INFO] TDT(2,python):2026-10-06-21:56:47.961.128 [process_mode_manager.cpp:2322][LoadSinglePackageToDevice][tid:2] cannot find package:Ascend310P-aicpu_legacy.tar.gz, optional is true skip
+[INFO] TDT(2,python):2026-10-06-21:56:47.961.130 [process_mode_manager.cpp:2307][LoadSinglePackageToDevice][tid:2] begin to load package:Ascend910-aicpu_legacy.tar.gz to device:0
+[INFO] TDT(2,python):2026-10-06-21:56:47.961.133 [process_mode_manager.cpp:2322][LoadSinglePackageToDevice][tid:2] cannot find package:Ascend910-aicpu_legacy.tar.gz, optional is true skip
+[INFO] TDT(2,python):2026-10-06-21:56:47.961.134 [process_mode_manager.cpp:2307][LoadSinglePackageToDevice][tid:2] begin to load package:aicpu_hccl.tar.gz to device:0
+[INFO] TDT(2,python):2026-10-06-21:56:47.961.141 [package_process_config.cpp:393][GetPkgHostAndDeviceDstPath][tid:2] get orgFile:/usr/local/Ascend/cann-9.1.1/opp/built-in/op_impl/aicpu/kernel/aicpu_hccl.tar.gz, dstFile:/home/HwHiAiUser/hdcd/device0/aicpu/2642183_aicpu_hccl.tar.gz
+[INFO] TDT(2,python):2026-10-06-21:56:47.962.844 [process_mode_manager.cpp:2333][LoadSinglePackageToDevice][tid:2] current package:aicpu_hccl.tar.gz is same as device, skip load
+[INFO] TDT(2,python):2026-10-06-21:56:47.962.851 [process_mode_manager.cpp:2307][LoadSinglePackageToDevice][tid:2] begin to load package:aicpu_hcomm.tar.gz to device:0
+[INFO] TDT(2,python):2026-10-06-21:56:47.962.856 [package_process_config.cpp:393][GetPkgHostAndDeviceDstPath][tid:2] get orgFile:/usr/local/Ascend/cann-9.1.1/opp/built-in/op_impl/aicpu/kernel/aicpu_hcomm.tar.gz, dstFile:/home/HwHiAiUser/hdcd/device0/aicpu/2642183_aicpu_hcomm.tar.gz
+[INFO] TDT(2,python):2026-10-06-21:56:47.972.211 [process_mode_manager.cpp:2333][LoadSinglePackageToDevice][tid:2] current package:aicpu_hcomm.tar.gz is same as device, skip load
+[INFO] TDT(2,python):2026-10-06-21:56:47.972.220 [process_mode_manager.cpp:2307][LoadSinglePackageToDevice][tid:2] begin to load package:cann-hccd-compat.tar.gz to device:0
+[INFO] TDT(2,python):2026-10-06-21:56:47.972.222 [process_mode_manager.cpp:2309][LoadSinglePackageToDevice][tid:2] current package:cann-hccd-compat.tar.gz does not need to load to device:0
+[INFO] TDT(2,python):2026-10-06-21:56:47.972.224 [process_mode_manager.cpp:2307][LoadSinglePackageToDevice][tid:2] begin to load package:cann-hcomm-compat.tar.gz to device:0
+[INFO] TDT(2,python):2026-10-06-21:56:47.972.238 [version_verify.cpp:117][SpecialFeatureCheck][tid:2] VersionVerify: previous type[40], supported
+[INFO] TDT(2,python):2026-10-06-21:56:47.973.408 [process_mode_manager.cpp:1755][IsSupportCommonInterface][tid:2] IsSupportCommonInterface check was not successful, level[9], tsd support level[511]
+[INFO] TDT(2,python):2026-10-06-21:56:47.973.411 [process_mode_manager.cpp:2315][LoadSinglePackageToDevice][tid:2] device does not support cann-hcomm-compat package, skip load to device:0
+[INFO] TDT(2,python):2026-10-06-21:56:47.973.413 [process_mode_manager.cpp:2307][LoadSinglePackageToDevice][tid:2] begin to load package:cann-hixl-compat.tar.gz to device:0
+[INFO] TDT(2,python):2026-10-06-21:56:47.973.419 [package_process_config.cpp:393][GetPkgHostAndDeviceDstPath][tid:2] get orgFile:/usr/local/Ascend/cann-9.1.1/opp/built-in/op_impl/aicpu/kernel/cann-hixl-compat.tar.gz, dstFile:/home/HwHiAiUser/hdcd/device0/aicpu/2642183_cann-hixl-compat.tar.gz
+[INFO] TDT(2,python):2026-10-06-21:56:47.973.514 [process_mode_manager.cpp:2333][LoadSinglePackageToDevice][tid:2] current package:cann-hixl-compat.tar.gz is same as device, skip load
+[INFO] TDT(2,python):2026-10-06-21:56:47.973.516 [process_mode_manager.cpp:2307][LoadSinglePackageToDevice][tid:2] begin to load package:cann-tsch-compat.tar.gz to device:0
+[INFO] TDT(2,python):2026-10-06-21:56:47.973.518 [process_mode_manager.cpp:2282][SupportLoadPkg][tid:2] current device chip:5 does not support package:cann-tsch-compat.tar.gz
+[INFO] TDT(2,python):2026-10-06-21:56:47.973.520 [process_mode_manager.cpp:2309][LoadSinglePackageToDevice][tid:2] current package:cann-tsch-compat.tar.gz does not need to load to device:0
+[INFO] TDT(2,python):2026-10-06-21:56:47.973.522 [process_mode_manager.cpp:2307][LoadSinglePackageToDevice][tid:2] begin to load package:cann-udf-compat.tar.gz to device:0
+[INFO] TDT(2,python):2026-10-06-21:56:47.973.524 [process_mode_manager.cpp:2309][LoadSinglePackageToDevice][tid:2] current package:cann-udf-compat.tar.gz does not need to load to device:0
+[INFO] TDT(2,python):2026-10-06-21:56:47.973.525 [process_mode_manager.cpp:2307][LoadSinglePackageToDevice][tid:2] begin to load package:mc2_server.tar.gz to device:0
+[INFO] TDT(2,python):2026-10-06-21:56:47.973.529 [process_mode_manager.cpp:2282][SupportLoadPkg][tid:2] current device chip:5 does not support package:mc2_server.tar.gz
+[INFO] TDT(2,python):2026-10-06-21:56:47.973.531 [process_mode_manager.cpp:2309][LoadSinglePackageToDevice][tid:2] current package:mc2_server.tar.gz does not need to load to device:0
+[INFO] TDT(2,python):2026-10-06-21:56:47.973.539 [process_mode_manager.cpp:620][ConstructOpenMsg][tid:2] [TsdClient] tsd get process sign successfully, procpid[2642183] signSize[48]
+[INFO] TDT(2,python):2026-10-06-21:56:47.973.545 [version_verify.cpp:117][SpecialFeatureCheck][tid:2] VersionVerify: previous type[6], supported
+[INFO] TDT(2,python):2026-10-06-21:56:47.973.595 [process_mode_manager.cpp:159][OpenProcess][tid:2] [ProcessModeManager] deviceId[0] sessionId[1] rankSize[0], wait subprocess start response
+[INFO] TDT(2,python):2026-10-06-21:56:48.177.661 [stub_process_mode_nowin.cpp:22][ProcessQueueForAdc][tid:2] [TsdClient] it is unnecessary for current mode[0] to grant queue auth to aicpusd
+[INFO] TDT(2,python):2026-10-06-21:56:48.177.665 [process_mode_manager.cpp:197][OpenProcess][tid:2] [TsdClient][deviceId=0] [sessionId=1] start hccp and computer process success,whole process spent time as follows:phase1:[2]ms load sink package config to device,phase2:[0]ms load opkernel to device,phase3:[101]ms load sink package to device,phase4:[0]ms send open message to device,phase5:[204]ms receive open message to device,phase6:[0]ms process for adc on host,whole duration:[308]ms
+[INFO] DRV(2,python):2026-10-06-21:56:48.177.701 [event_sched.c:1560][ascend][curpid:2,2][drv][event-sche][eschedDeviceOpen]The devId has opened. (devId=0)
+[INFO] DRV(2,python):2026-10-06-21:56:48.179.374 [devmm_svm.c:227][ascend][curpid:2,2][drv][devmm][devmm_setup_device]DrvMemDeviceOpen. (devid=0)
+[INFO] DRV(2,python):2026-10-06-21:56:48.180.433 [devmm_virt_interface.c:816][ascend][curpid:2,2][drv][devmm][devmm_ioctl_init_process]Init_process details. (hostpid=2; ret=0; cnt=0)
+[INFO] DRV(2,python):2026-10-06-21:56:48.180.811 [drv_share_log.c:240][ascend][curpid:2,2][drv][devmm][share_log_read_in_single_module]Setup device succeeded. (logical_devid=0; devid=10; vfid=0; hostpid=2642183; devpid=9391)
+[INFO] DRV(2,python):2026-10-06-21:56:48.180.815 [devmm_svm.c:186][ascend][curpid:2,2][drv][devmm][devmm_set_device_info]Device info. (devid=0; dvpp_size=17179869184; support_bar_mem=1; support_dev_read_only=1; support_dev_mem_map_host=1; support_bar_huge_mem=1; allocated_by_malloc=0; host_rw_dev_ro=1)
+[INFO] DRV(2,python):2026-10-06-21:56:48.180.818 [devmm_svm.c:192][ascend][curpid:2,2][drv][devmm][devmm_set_device_info]Device info. (double_pgtable_offset=8796093022208; support_host_pin_pre_register=1; support_host_mem_pool=1; is_support_agent_giant_page=1; is_support_host_giant_page=1; support_remote_mmap=1; support_shmem_map_exbus=1; support_mem_host_uva=1)
+[INFO] DRV(2,python):2026-10-06-21:56:48.181.602 [devmm_host_mem_pool.c:170][ascend][curpid:2,2][drv][devmm][devmm_host_mem_pool_init]devmm host mem pool init success. (devid=0)
+[INFO] DRV(2,python):2026-10-06-21:56:48.181.606 [queue_interface.c:655][ascend][curpid:2,2][drv][queuemng][queueDeviceOpen]queue open finish. (devId=0)
+[INFO] RUNTIME(2,python):2026-10-06-21:56:48.181.682 [raw_device.cc:560] 2 Init: isAddrFlat:0x1
+[INFO] TDT(2,python):2026-10-06-21:56:48.182.463 [tsd_client.cpp:188][TsdCapabilityGet][tid:2] TsdCapabilityGet Begin.
+[INFO] TDT(2,python):2026-10-06-21:56:48.182.467 [process_mode_manager.cpp:1075][CapabilityGet][tid:2] [ProcessModeManager] enter into CapabilityGet process deviceId[0] type[0].
+[INFO] TDT(2,python):2026-10-06-21:56:48.182.474 [version_verify.cpp:117][SpecialFeatureCheck][tid:2] VersionVerify: previous type[38], supported
+[INFO] TDT(2,python):2026-10-06-21:56:48.182.526 [process_mode_manager.cpp:1098][CapabilityGet][tid:2] [TsdClient][deviceId=0] [sessionId=1] [type=0]send capability successfully.
+[INFO] TDT(2,python):2026-10-06-21:56:48.183.019 [process_mode_msg_parse.cpp:262][PidQosMsgProc][tid:2] [TsdClient] PidQosMsgProc recvMsg realDeviceId[0] msgType[39] localDevId[0] rspCode[0],pidqos[1]
+[INFO] TDT(2,python):2026-10-06-21:56:48.183.023 [process_mode_manager.cpp:1103][CapabilityGet][tid:2] [TsdClient][logicDeviceId_=0][type=0][pidQos=1][ret=0]recv capability response finished.
+[INFO] RUNTIME(2,python):2026-10-06-21:56:48.183.036 [engine.cc:82] 2 Engine: Constructor.
+[INFO] RUNTIME(2,python):2026-10-06-21:56:48.183.039 [stars_engine.cc:53] 2 StarsEngine: Constructor.
+[INFO] RUNTIME(2,python):2026-10-06-21:56:48.193.153 [npu_driver_res.cc:269] 74 GetDeviceStatus: GetDeviceStatus status=1.
+[INFO] RUNTIME(2,python):2026-10-06-21:56:48.193.154 [runtime.cc:4926] 2 CreateReportRasThread: Start report ras thread success!
+[INFO] ATRACE(2,python):2026-10-06-21:56:48.197.624 [tracer_mgr_operate.c:66](tid:2) create object RUNTIME_ATRACE_DEV0_TS0 successfully, exitSave(false), noLock(false).
+[INFO] TDT(2,python):2026-10-06-21:56:48.197.648 [client_manager.cpp:210][SetProfilingCallback][tid:2] [TsdClient] set profiling callback successfully
+[INFO] ASCENDCL(2,python):2026-10-06-21:56:48.572.480 [resource_statistics.cpp:113]2 TraverseStatistics: The ResourceType:ACL_STATISTICS_MALLOC_FREE, applyTotal = 1, applySucc = 1, releaseTotal = 0, releaseSucc = 0
+[INFO] ASCENDCL(2,python):2026-10-06-21:56:48.572.494 [resource_statistics.cpp:113]2 TraverseStatistics: The ResourceType:ACL_STATISTICS_MALLOC_FREE_HOST, applyTotal = 0, applySucc = 0, releaseTotal = 0, releaseSucc = 0
+[INFO] ASCENDCL(2,python):2026-10-06-21:56:48.572.503 [resource_statistics.cpp:113]2 TraverseStatistics: The ResourceType:ACL_STATISTICS_CREATE_DESTROY_CONTEXT, applyTotal = 0, applySucc = 0, releaseTotal = 0, releaseSucc = 0
+[INFO] ASCENDCL(2,python):2026-10-06-21:56:48.572.505 [resource_statistics.cpp:113]2 TraverseStatistics: The ResourceType:ACL_STATISTICS_SET_RESET_DEVICE, applyTotal = 2, applySucc = 2, releaseTotal = 1, releaseSucc = 1
+[INFO] ASCENDCL(2,python):2026-10-06-21:56:48.572.508 [resource_statistics.cpp:113]2 TraverseStatistics: The ResourceType:ACL_STATISTICS_CREATE_DESTROY_EVENT, applyTotal = 0, applySucc = 0, releaseTotal = 0, releaseSucc = 0
+[INFO] ASCENDCL(2,python):2026-10-06-21:56:48.572.510 [resource_statistics.cpp:113]2 TraverseStatistics: The ResourceType:ACL_STATISTICS_CREATE_DESTROY_STREAM, applyTotal = 2, applySucc = 2, releaseTotal = 1, releaseSucc = 1
+[INFO] ASCENDCL(2,python):2026-10-06-21:56:48.572.511 [resource_statistics.cpp:113]2 TraverseStatistics: The ResourceType:ACL_STATISTICS_DVPP_MALLOC_FREE, applyTotal = 0, applySucc = 0, releaseTotal = 0, releaseSucc = 0
+[INFO] ASCENDCL(2,python):2026-10-06-21:56:48.572.520 [resource_statistics.cpp:113]2 TraverseStatistics: The ResourceType:ACL_STATISTICS_RECORD_RESET_EVENT, applyTotal = 0, applySucc = 0, releaseTotal = 0, releaseSucc = 0
+[INFO] ASCENDCL(2,python):2026-10-06-21:56:48.572.522 [resource_statistics.cpp:113]2 TraverseStatistics: The ResourceType:ACL_STATISTICS_CREATE_DESTROY_DATA_BUFFER, applyTotal = 0, applySucc = 0, releaseTotal = 0, releaseSucc = 0
+[INFO] ASCENDCL(2,python):2026-10-06-21:56:48.572.523 [resource_statistics.cpp:113]2 TraverseStatistics: The ResourceType:ACL_STATISTICS_CREATE_DESTROY_TENSOR_DESC, applyTotal = 0, applySucc = 0, releaseTotal = 0, releaseSucc = 0
+[INFO] ASCENDCL(2,python):2026-10-06-21:56:48.572.525 [resource_statistics.cpp:113]2 TraverseStatistics: The ResourceType:ACL_STATISTICS_CREATE_DESTROY_DESC, applyTotal = 0, applySucc = 0, releaseTotal = 0, releaseSucc = 0
+[INFO] ASCENDCL(2,python):2026-10-06-21:56:48.572.527 [resource_statistics.cpp:113]2 TraverseStatistics: The ResourceType:ACL_STATISTICS_CREATE_DESTROY_DATASET, applyTotal = 0, applySucc = 0, releaseTotal = 0, releaseSucc = 0
+[INFO] ASCENDCL(2,python):2026-10-06-21:56:48.572.529 [resource_statistics.cpp:113]2 TraverseStatistics: The ResourceType:ACL_STATISTICS_CREATE_LOAD_UNLOAD_MODEL, applyTotal = 0, applySucc = 0, releaseTotal = 0, releaseSucc = 0
+[INFO] ASCENDCL(2,python):2026-10-06-21:56:48.572.530 [resource_statistics.cpp:113]2 TraverseStatistics: The ResourceType:ACL_STATISTICS_CREATE_DESTROY_AIPP, applyTotal = 0, applySucc = 0, releaseTotal = 0, releaseSucc = 0
+[INFO] ASCENDCL(2,python):2026-10-06-21:56:48.572.532 [resource_statistics.cpp:113]2 TraverseStatistics: The ResourceType:ACL_STATISTICS_CREATE_DESTROY_ATTR, applyTotal = 0, applySucc = 0, releaseTotal = 0, releaseSucc = 0
+[INFO] ASCENDCL(2,python):2026-10-06-21:56:48.572.534 [resource_statistics.cpp:113]2 TraverseStatistics: The ResourceType:ACL_STATISTICS_CREATE_DESTROY_HANDLE, applyTotal = 0, applySucc = 0, releaseTotal = 0, releaseSucc = 0
+[INFO] ASCENDCL(2,python):2026-10-06-21:56:48.572.535 [resource_statistics.cpp:113]2 TraverseStatistics: The ResourceType:ACL_STATISTICS_CREATE_DESTROY_DVPP_CHANNEL_DESC, applyTotal = 0, applySucc = 0, releaseTotal = 0, releaseSucc = 0
+[INFO] ASCENDCL(2,python):2026-10-06-21:56:48.572.537 [resource_statistics.cpp:113]2 TraverseStatistics: The ResourceType:ACL_STATISTICS_CREATE_DESTROY_DVPP_PIC_DESC, applyTotal = 0, applySucc = 0, releaseTotal = 0, releaseSucc = 0
+[INFO] ASCENDCL(2,python):2026-10-06-21:56:48.572.539 [resource_statistics.cpp:113]2 TraverseStatistics: The ResourceType:ACL_STATISTICS_CREATE_DESTROY_DVPP_ROI_CONFIG, applyTotal = 0, applySucc = 0, releaseTotal = 0, releaseSucc = 0
+[INFO] ASCENDCL(2,python):2026-10-06-21:56:48.572.540 [resource_statistics.cpp:113]2 TraverseStatistics: The ResourceType:ACL_STATISTICS_CREATE_DESTROY_DVPP_RESIZE_CONFIG, applyTotal = 0, applySucc = 0, releaseTotal = 0, releaseSucc = 0
+[INFO] ASCENDCL(2,python):2026-10-06-21:56:48.572.542 [resource_statistics.cpp:113]2 TraverseStatistics: The ResourceType:ACL_STATISTICS_CREATE_DESTROY_DVPP_JPEGE_CONFIG, applyTotal = 0, applySucc = 0, releaseTotal = 0, releaseSucc = 0
+[INFO] ASCENDCL(2,python):2026-10-06-21:56:48.572.544 [resource_statistics.cpp:113]2 TraverseStatistics: The ResourceType:ACL_STATISTICS_CREATE_DESTROY_VDEC_CHANNEL_DESC, applyTotal = 0, applySucc = 0, releaseTotal = 0, releaseSucc = 0
+[INFO] ASCENDCL(2,python):2026-10-06-21:56:48.572.546 [resource_statistics.cpp:113]2 TraverseStatistics: The ResourceType:ACL_STATISTICS_CREATE_DESTROY_VENC_CHANNEL_DESC, applyTotal = 0, applySucc = 0, releaseTotal = 0, releaseSucc = 0
+[INFO] ASCENDCL(2,python):2026-10-06-21:56:48.572.548 [resource_statistics.cpp:113]2 TraverseStatistics: The ResourceType:ACL_STATISTICS_CREATE_DESTROY_DVPP_STREAM_DESC, applyTotal = 0, applySucc = 0, releaseTotal = 0, releaseSucc = 0
+[INFO] ASCENDCL(2,python):2026-10-06-21:56:48.572.549 [resource_statistics.cpp:113]2 TraverseStatistics: The ResourceType:ACL_STATISTICS_CREATE_DESTROY_VDEC_FRAME_CONFIG, applyTotal = 0, applySucc = 0, releaseTotal = 0, releaseSucc = 0
+[INFO] ASCENDCL(2,python):2026-10-06-21:56:48.572.551 [resource_statistics.cpp:113]2 TraverseStatistics: The ResourceType:ACL_STATISTICS_CREATE_DESTROY_VENC_FRAME_CONFIG, applyTotal = 0, applySucc = 0, releaseTotal = 0, releaseSucc = 0
+[INFO] ASCENDCL(2,python):2026-10-06-21:56:48.572.553 [resource_statistics.cpp:113]2 TraverseStatistics: The ResourceType:ACL_STATISTICS_CREATE_DESTROY_DVPP_CHANNEL, applyTotal = 0, applySucc = 0, releaseTotal = 0, releaseSucc = 0
+[INFO] ASCENDCL(2,python):2026-10-06-21:56:48.572.554 [resource_statistics.cpp:113]2 TraverseStatistics: The ResourceType:ACL_STATISTICS_CREATE_DESTROY_VDEC_CHANNEL, applyTotal = 0, applySucc = 0, releaseTotal = 0, releaseSucc = 0
+[INFO] ASCENDCL(2,python):2026-10-06-21:56:48.572.556 [resource_statistics.cpp:113]2 TraverseStatistics: The ResourceType:ACL_STATISTICS_CREATE_DESTROY_VENC_CHANNEL, applyTotal = 0, applySucc = 0, releaseTotal = 0, releaseSucc = 0
+[INFO] ASCENDCL(2,python):2026-10-06-21:56:48.572.558 [resource_statistics.cpp:113]2 TraverseStatistics: The ResourceType:ACL_STATISTICS_CREATE_DESTROY_DVPP_BATCH_PIC_DESC, applyTotal = 0, applySucc = 0, releaseTotal = 0, releaseSucc = 0
+[INFO] ASCENDCL(2,python):2026-10-06-21:56:48.572.559 [resource_statistics.cpp:113]2 TraverseStatistics: The ResourceType:ACL_STATISTICS_CREATE_DESTROY_GROUP_INFO, applyTotal = 0, applySucc = 0, releaseTotal = 0, releaseSucc = 0
+[INFO] ASCENDCL(2,python):2026-10-06-21:56:48.572.561 [resource_statistics.cpp:113]2 TraverseStatistics: The ResourceType:ACL_STATISTICS_CREATE_DESTROY_PROF_CONFIG, applyTotal = 0, applySucc = 0, releaseTotal = 0, releaseSucc = 0
+[INFO] ASCENDCL(2,python):2026-10-06-21:56:48.572.563 [resource_statistics.cpp:113]2 TraverseStatistics: The ResourceType:ACL_STATISTICS_CREATE_DESTROY_PROF_SUB_CONFIG, applyTotal = 0, applySucc = 0, releaseTotal = 0, releaseSucc = 0
+[INFO] ASCENDCL(2,python):2026-10-06-21:56:48.572.565 [resource_statistics.cpp:113]2 TraverseStatistics: The ResourceType:ACL_STATISTICS_CREATE_DESTROY_MODEL_CONFIG, applyTotal = 0, applySucc = 0, releaseTotal = 0, releaseSucc = 0
+[INFO] ASCENDCL(2,python):2026-10-06-21:56:48.572.566 [resource_statistics.cpp:113]2 TraverseStatistics: The ResourceType:ACL_STATISTICS_CREATE_DESTROY_QUEUE_ID, applyTotal = 0, applySucc = 0, releaseTotal = 0, releaseSucc = 0
+[INFO] ASCENDCL(2,python):2026-10-06-21:56:48.572.568 [resource_statistics.cpp:113]2 TraverseStatistics: The ResourceType:ACL_STATISTICS_CREATE_DESTROY_QUEUE_ATTR, applyTotal = 0, applySucc = 0, releaseTotal = 0, releaseSucc = 0
+[INFO] ASCENDCL(2,python):2026-10-06-21:56:48.572.570 [resource_statistics.cpp:113]2 TraverseStatistics: The ResourceType:ACL_STATISTICS_CREATE_DESTROY_QUEUE_ROUTE, applyTotal = 0, applySucc = 0, releaseTotal = 0, releaseSucc = 0
+[INFO] ASCENDCL(2,python):2026-10-06-21:56:48.572.571 [resource_statistics.cpp:113]2 TraverseStatistics: The ResourceType:ACL_STATISTICS_CREATE_DESTROY_QUEUE_ROUTE_LIST, applyTotal = 0, applySucc = 0, releaseTotal = 0, releaseSucc = 0
+[INFO] ASCENDCL(2,python):2026-10-06-21:56:48.572.573 [resource_statistics.cpp:113]2 TraverseStatistics: The ResourceType:ACL_STATISTICS_CREATE_DESTROY_QUEUE_ROUTE_QUERY, applyTotal = 0, applySucc = 0, releaseTotal = 0, releaseSucc = 0
+[INFO] ASCENDCL(2,python):2026-10-06-21:56:48.572.575 [resource_statistics.cpp:113]2 TraverseStatistics: The ResourceType:ACL_STATISTICS_CREATE_DESTROY_MBUF, applyTotal = 0, applySucc = 0, releaseTotal = 0, releaseSucc = 0
+[INFO] ASCENDCL(2,python):2026-10-06-21:56:48.572.577 [resource_statistics.cpp:113]2 TraverseStatistics: The ResourceType:ACL_STATISTICS_CREATE_DESTROY_GRAPH_DUMP_OPTION, applyTotal = 0, applySucc = 0, releaseTotal = 0, releaseSucc = 0
+[INFO] ASCENDCL(2,python):2026-10-06-21:56:48.572.578 [resource_statistics.cpp:113]2 TraverseStatistics: The ResourceType:ACL_STATISTICS_CREATE_DESTROY_ALLOCATOR_DESC, applyTotal = 0, applySucc = 0, releaseTotal = 0, releaseSucc = 0
+[INFO] ASCENDCL(2,python):2026-10-06-21:56:48.572.580 [resource_statistics.cpp:113]2 TraverseStatistics: The ResourceType:ACL_STATISTICS_CREATE_DESTROY_ALLOCATOR_BINARY_DESC, applyTotal = 0, applySucc = 0, releaseTotal = 0, releaseSucc = 0
+[INFO] ASCENDCL(2,python):2026-10-06-21:56:48.572.582 [resource_statistics.cpp:113]2 TraverseStatistics: The ResourceType:ACL_STATISTICS_RESERVE_RELEASE_MEMORY_ADDRESS, applyTotal = 0, applySucc = 0, releaseTotal = 0, releaseSucc = 0
+[INFO] ASCENDCL(2,python):2026-10-06-21:56:48.572.583 [resource_statistics.cpp:113]2 TraverseStatistics: The ResourceType:ACL_STATISTICS_MALLOC_FREE_PHYSICAL_MEMORY, applyTotal = 0, applySucc = 0, releaseTotal = 0, releaseSucc = 0
+[INFO] ASCENDCL(2,python):2026-10-06-21:56:48.572.585 [resource_statistics.cpp:113]2 TraverseStatistics: The ResourceType:ACL_STATISTICS_MAP_UNMAP_MEMORY, applyTotal = 0, applySucc = 0, releaseTotal = 0, releaseSucc = 0
+[INFO] ASCENDCL(2,python):2026-10-06-21:56:48.572.587 [resource_statistics.cpp:113]2 TraverseStatistics: The ResourceType:ACL_STATISTICS_LOAD_UNLOAD_BINARY, applyTotal = 0, applySucc = 0, releaseTotal = 0, releaseSucc = 0
+[INFO] DRV(2,python):2026-10-06-21:56:49.072.806 [drv_share_log.c:240][ascend][curpid:2,2][drv][hdc][share_log_read_in_single_module]Server destroy success. (dev_id=10; fid=0; service="service_dump"; pid=2642183)
+[INFO] RUNTIME(2,python):2026-10-06-21:56:50.233.244 [runtime.cc:4967] 75 ReportRasRun: Report ras thread exits normally!
+[INFO] RUNTIME(2,python):2026-10-06-21:56:50.426.645 [runtime_adapt.cc:58] 2 ~Runtime: runtime destructor.
+[INFO] RUNTIME(2,python):2026-10-06-21:56:50.426.725 [runtime.cc:4936] 2 DestroyReportRasThread: Join report ras thread OK.
+[INFO] RUNTIME(2,python):2026-10-06-21:56:50.426.730 [runtime.cc:1340] 2 WaitMonitorExit: wait monitor success, used count=0.
+[INFO] ATRACE(2,python):2026-10-06-21:56:50.430.033 [tracer_mgr_operate.c:248](tid:2) destroy object RUNTIME_ATRACE_DEV0_TS0, exitSave(false).
+[INFO] RUNTIME(2,python):2026-10-06-21:56:50.434.896 [stars_engine.cc:60] 2 ~StarsEngine: Destructor.
+[INFO] RUNTIME(2,python):2026-10-06-21:56:50.434.903 [engine.cc:88] 2 ~Engine: Destructor.
+[INFO] DRV(2,python):2026-10-06-21:56:50.434.922 [queue_interface.c:662][ascend][curpid:2,2][drv][queuemng][queueDeviceClose]queue close finish. (devId=0)
+[INFO] DRV(2,python):2026-10-06-21:56:50.434.927 [devmm_svm.c:2858][ascend][curpid:2,2][drv][devmm][_drvMemDeviceCloseInner]DrvMemDeviceClose. (devid=0)
+[INFO] DRV(2,python):2026-10-06-21:56:50.434.932 [svm_mem_statistics.c:164][ascend][curpid:2,2][drv][devmm][_svm_mem_stats_show]HOST_MEM Mem stats (Bytes). (module_name=RUNTIME; module_id=7; current_alloced_size=0; allocated_peak_size=11341824; alloc_cnt=3; free_cnt=3)
+[INFO] DRV(2,python):2026-10-06-21:56:50.434.936 [svm_mem_statistics.c:164][ascend][curpid:2,2][drv][devmm][_svm_mem_stats_show]HOST_MEM Mem stats (Bytes). (module_name=APP; module_id=33; current_alloced_size=10485760; allocated_peak_size=10485760; alloc_cnt=3; free_cnt=0)
+[INFO] DRV(2,python):2026-10-06-21:56:50.434.939 [svm_mem_statistics.c:170][ascend][curpid:2,2][drv][devmm][_svm_mem_stats_show]HOST_MEM Cached_size:12582912Bytes
+[INFO] DRV(2,python):2026-10-06-21:56:50.434.941 [svm_mem_statistics.c:164][ascend][curpid:2,2][drv][devmm][_svm_mem_stats_show]MEM_DEV_SMALL_HBM dev0 Mem stats (Bytes). (module_name=RUNTIME; module_id=7; current_alloced_size=0; allocated_peak_size=90112; alloc_cnt=7; free_cnt=7)
+[INFO] DRV(2,python):2026-10-06-21:56:50.434.943 [svm_mem_statistics.c:170][ascend][curpid:2,2][drv][devmm][_svm_mem_stats_show]MEM_DEV_SMALL_HBM dev0 Cached_size:2097152Bytes
+[INFO] DRV(2,python):2026-10-06-21:56:50.434.945 [svm_mem_statistics.c:164][ascend][curpid:2,2][drv][devmm][_svm_mem_stats_show]MEM_DEV_SMALL_DDR dev0 Mem stats (Bytes). (module_name=RUNTIME; module_id=7; current_alloced_size=0; allocated_peak_size=16384; alloc_cnt=1; free_cnt=1)
+[INFO] DRV(2,python):2026-10-06-21:56:50.434.948 [svm_mem_statistics.c:170][ascend][curpid:2,2][drv][devmm][_svm_mem_stats_show]MEM_DEV_SMALL_DDR dev0 Cached_size:2097152Bytes
+[INFO] DRV(2,python):2026-10-06-21:56:50.434.951 [svm_mem_statistics.c:164][ascend][curpid:2,2][drv][devmm][_svm_mem_stats_show]MEM_DEV_HUGE_HBM dev0 Mem stats (Bytes). (module_name=RUNTIME; module_id=7; current_alloced_size=2818048; allocated_peak_size=23789568; alloc_cnt=7; free_cnt=6)
+[INFO] DRV(2,python):2026-10-06-21:56:50.434.955 [svm_mem_statistics.c:164][ascend][curpid:2,2][drv][devmm][_svm_mem_stats_show]MEM_DEV_HUGE_HBM dev0 Mem stats (Bytes). (module_name=APP; module_id=33; current_alloced_size=2097152; allocated_peak_size=2097152; alloc_cnt=1; free_cnt=0)
+[INFO] DRV(2,python):2026-10-06-21:56:50.434.957 [svm_mem_statistics.c:170][ascend][curpid:2,2][drv][devmm][_svm_mem_stats_show]MEM_DEV_HUGE_HBM dev0 Cached_size:22347776Bytes
+[INFO] DRV(2,python):2026-10-06-21:56:50.434.959 [svm_mem_statistics.c:164][ascend][curpid:2,2][drv][devmm][_svm_mem_stats_show]MEM_DEV_HUGE_DDR dev0 Mem stats (Bytes). (module_name=RUNTIME; module_id=7; current_alloced_size=0; allocated_peak_size=2097152; alloc_cnt=1; free_cnt=1)
+[INFO] DRV(2,python):2026-10-06-21:56:50.434.962 [svm_mem_statistics.c:170][ascend][curpid:2,2][drv][devmm][_svm_mem_stats_show]MEM_DEV_HUGE_DDR dev0 Cached_size:2097152Bytes
+[INFO] DRV(2,python):2026-10-06-21:56:50.434.964 [svm_mem_statistics.c:164][ascend][curpid:2,2][drv][devmm][_svm_mem_stats_show]MEM_DEV_HUGE_P2P_HBM dev0 Mem stats (Bytes). (module_name=RUNTIME; module_id=7; current_alloced_size=0; allocated_peak_size=10485760; alloc_cnt=4; free_cnt=4)
+[INFO] DRV(2,python):2026-10-06-21:56:50.434.966 [svm_mem_statistics.c:170][ascend][curpid:2,2][drv][devmm][_svm_mem_stats_show]MEM_DEV_HUGE_P2P_HBM dev0 Cached_size:10485760Bytes
+[INFO] DRV(2,python):2026-10-06-21:56:50.435.496 [devmm_host_mem_pool.c:92][ascend][curpid:2,2][drv][devmm][devmm_host_mem_pool_uninit]devmm host mem pool uninit success. (devid=0)
+[INFO] DRV(2,python):2026-10-06-21:56:50.463.118 [drv_share_log.c:240][ascend][curpid:2,2][drv][devmm][share_log_read_in_single_module]Close logical_device. (logical_devid=0; phyid=10; vfid=0; hostpid=2642183; devpid=9391)
+[INFO] DRV(2,python):2026-10-06-21:56:50.474.885 [event_sched.c:1544][ascend][curpid:2,2][drv][event-sche][eschedDeviceClose]The devId close success. (devId=0)
+[INFO] RUNTIME(2,python):2026-10-06-21:56:50.581.366 [tprt.cc:23][TPRT]TID[2] ~TprtManage: ~TprtManage
+[INFO] RUNTIME(2,python):2026-10-06-21:56:50.582.017 [xpu_task_fail_callback_data_manager.cc:64] 2 ~XpuTaskFailCallBackManager: XpuTaskFailCallBackManager Destructor.
+[INFO] RUNTIME(2,python):2026-10-06-21:56:50.582.020 [task_fail_callback_data_manager.cc:98] 2 ~TaskFailCallBackManager: Destructor.
+[INFO] ATRACE(2,python):2026-10-06-21:56:50.681.624 [stacktrace_signal.c:199](tid:2) unregister all signal handlers, can not capture signal.
+[INFO] ATRACE(2,python):2026-10-06-21:56:50.753.356 [atrace_client_core.c:127](tid:73) atrace receive thread exited, devId=0.

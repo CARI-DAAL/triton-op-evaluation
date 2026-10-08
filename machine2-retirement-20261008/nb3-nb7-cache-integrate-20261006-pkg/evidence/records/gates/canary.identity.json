@@ -1,0 +1,10 @@
+{
+  "url": "http://127.0.0.1:12907",
+  "request_file_sha256": "2d71decb34de5f98ed820e9ff2f53e002b31c596faa401dd7cad810b6cb742f6",
+  "request_path": "/home/e84381970/open-evo-work/baseline-v1/diagnostics/service-npu-reference-v1/requests/canary.request.json",
+  "session_id": "hq-service-gate-47a930a7b2744d60bb3951b769c4c664",
+  "idempotency_key": "hq-service-gate-b8096ee872f644f5a6309383046b5283",
+  "diagnostic": true,
+  "baseline_sample": false,
+  "evaluation_id": "ev_0ee1d9f2eb4248abb6b94c44a247e7bd"
+}
