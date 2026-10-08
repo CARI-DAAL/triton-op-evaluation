@@ -281,20 +281,22 @@ def _covered(path: Path, mounts: list[tuple[Path, Path]]) -> bool:
 
 
 def apply_runtime_overlay(
-    sandbox: EngineSandbox, overlay: EngineRuntimeOverlay
+    sandbox: EngineSandbox, overlay: EngineRuntimeOverlay,
+    *, worker_environment: dict[str, str] | None = None,
 ) -> tuple[EngineSandbox, dict[str, Any]]:
     """Derive narrow bindings without mutating the anchored base manifest."""
+    declared = os.environ if worker_environment is None else worker_environment
     environment = dict(sandbox.environment)
     for key, value in overlay.environment.items():
         if key in environment and environment[key] != value:
             raise ValueError("runtime overlay cannot override an existing anchored value")
-        if key in os.environ and os.environ[key] != value:
+        if key in declared and declared[key] != value:
             raise ValueError("runtime overlay differs from the worker's declared runtime")
         environment[key] = value
     # The immutable worker anchor retains its original value. Benchmark's
     # cache binding reads it from the child environment (verify has a CLI
     # argument), so --clearenv must not silently select a different default.
-    policy = os.environ.get(
+    policy = declared.get(
         REFERENCE_POLICY_ENV, environment.get(REFERENCE_POLICY_ENV, "cpu-first")
     )
     if policy not in {"cpu-first", "npu-strict"}:
@@ -497,10 +499,10 @@ def apply_runtime_overlay(
 def isolate_command(
     command: list[str], cwd: Path, device_id: int | None, env: dict[str, str]
 ) -> tuple[list[str], dict[str, str]]:
-    config = os.environ.get(CONFIG_ENV)
-    expected_digest = os.environ.get(DIGEST_ENV)
+    config = env.get(CONFIG_ENV)
+    expected_digest = env.get(DIGEST_ENV)
     if config is None:
-        if expected_digest is not None or any(key in os.environ for key in OVERLAY_ENV_KEYS):
+        if expected_digest is not None or any(key in env for key in OVERLAY_ENV_KEYS):
             raise ValueError("sandbox manifest path is required with its digest")
         # Existing deployments remain explicitly host-executed until configured.
         return command, env
@@ -511,29 +513,33 @@ def isolate_command(
         raise ValueError("sandbox manifest digest differs from the pinned deployment")
     sandbox = EngineSandbox.model_validate_json(manifest)
     overlay_path, overlay_digest = (
-        os.environ.get(OVERLAY_CONFIG_ENV),
-        os.environ.get(OVERLAY_DIGEST_ENV),
+        env.get(OVERLAY_CONFIG_ENV),
+        env.get(OVERLAY_DIGEST_ENV),
     )
     if overlay_path is None and overlay_digest is None:
         if any(
-            key in os.environ and sandbox.environment.get(key) != os.environ[key]
+            key in env and sandbox.environment.get(key) != env[key]
             for key in CACHE_ENV_KEYS | PROFILER_RUNTIME_ENV_KEYS | TIMING_REUSE_ENV_KEYS
         ):
             raise ValueError("declared runtime needs a pinned engine overlay before --clearenv")
+        if env.get(REFERENCE_POLICY_ENV, "cpu-first") != sandbox.environment.get(
+            REFERENCE_POLICY_ENV, "cpu-first"
+        ):
+            raise ValueError("sandbox differs from the worker's reference policy anchor")
         return sandbox.wrap(command, Path(cwd), device_id)
     if overlay_path is None or overlay_digest is None:
         raise ValueError("runtime overlay requires config and SHA together")
     overlay = read_runtime_overlay(overlay_path, overlay_digest)
     if any(
-        key in os.environ
+        key in env
         and key not in overlay.environment
-        and sandbox.environment.get(key) != os.environ[key]
+        and sandbox.environment.get(key) != env[key]
         for key in CACHE_ENV_KEYS | PROFILER_RUNTIME_ENV_KEYS | TIMING_REUSE_ENV_KEYS
     ):
         raise ValueError("runtime overlay must include every declared worker runtime group")
-    sandbox, evidence = apply_runtime_overlay(sandbox, overlay)
+    sandbox, evidence = apply_runtime_overlay(sandbox, overlay, worker_environment=env)
     package = Path(evidence["service_package_path"])
-    configured_engine = os.environ.get("TRITON_EVAL_ENGINE_DIR")
+    configured_engine = env.get("TRITON_EVAL_ENGINE_DIR")
     if configured_engine is not None and Path(configured_engine).resolve() != package / "engine":
         raise ValueError("runtime overlay refuses an engine directory from another service source")
     if len(command) > 1 and str(command[1]).endswith(".py"):

@@ -33,8 +33,10 @@ from triton_evaluation.evaluators.evaluation import EvaluationEvaluator
 from triton_evaluation.runtime import health
 from triton_evaluation.runtime.execution_environment import build_execution_environment
 from triton_evaluation.runtime.precheck import run_precheck
+from triton_evaluation.runtime.verdict_cache import VerdictCache
 from triton_evaluation.serialization import canonical_json_bytes, sha256_hex
 from triton_evaluation.service.broker import EvaluationStore
+from triton_evaluation.service.metrics import increment
 from triton_evaluation.service.models import (
     AlgorithmVersions,
     AttemptLease,
@@ -76,11 +78,13 @@ class LeaseKeeper:
         identity: WorkerIdentity | None = None,
         interval: float | None = None,
         sleep=None,
+        metrics=None,
     ):
         self._store = store
         self._lease = lease
         self._settings = settings
         self._identity = identity
+        self._metrics = metrics
         self._interval = interval if interval is not None else (
             settings.heartbeat_interval_seconds
         )
@@ -111,9 +115,7 @@ class LeaseKeeper:
         self.stop()
 
     def _bump(self, name: str, **labels) -> None:
-        bump = getattr(self._store, "_bump", None)
-        if bump is not None:
-            bump(name, **labels)
+        increment(self._metrics, name, **labels)
 
     def _loop(self) -> None:
         while not self._stop.wait(self._interval):
@@ -196,11 +198,17 @@ class Worker:
         sleep=None,
         canary=None,
         recovery_step=None,
+        metrics=None,
+        verdict_cache: VerdictCache | None = None,
+        script_runner=None,
     ):
         self.store = store
         self.evaluator = evaluator
         self.device_id = device_id
         self.settings = settings
+        self.metrics = metrics
+        self.verdict_cache = verdict_cache
+        self.script_runner = script_runner
         self.identity = identity or WorkerIdentity(
             new_worker_id(), settings.evaluator_build, _algorithms(settings),
             execution_class="cpu" if device_id is None else "npu",
@@ -212,7 +220,7 @@ class Worker:
         self._sleep = sleep or time.sleep
         self._health = health.CardHealth(
             store, settings, device_id=device_id, clock=clock,
-            canary=canary, recovery_step=recovery_step, metrics=store._metrics,
+            canary=canary, recovery_step=recovery_step, metrics=metrics,
         ) if device_id is not None else None
 
     def run_once(self, *, sleep=None) -> bool:
@@ -227,11 +235,7 @@ class Worker:
         if lease is None:
             self._maintenance()
             return False
-        if self.store._metrics is not None:
-            try:
-                self.store._metrics.increment("worker_attempts_total", {})
-            except ValueError:
-                pass
+        increment(self.metrics, "worker_attempts_total")
         self._run_attempt(lease, do_sleep)
         # Suspicious endings require a canary immediately after the attempt.
         # Healthy attempts pass through without probing.
@@ -301,7 +305,7 @@ class Worker:
             progress = FencedProgress(self.store, lease)
             with LeaseKeeper(
                 self.store, lease, self.settings,
-                identity=self.identity, sleep=do_sleep,
+                identity=self.identity, sleep=do_sleep, metrics=self.metrics,
             ) as keeper:
                 try:
                     environment = (
@@ -319,10 +323,10 @@ class Worker:
                         pinned,
                         progress,
                         precheck=lambda: run_precheck(
-                            self.store, self.settings, request.kernel_code,
+                            self.verdict_cache, self.settings, request.kernel_code,
                             request.triton_impl_name,
                             deadline_at=deadline_at, lease_valid=keeper.is_valid,
-                            device_id=self.device_id,
+                            device_id=self.device_id, runner=self.script_runner,
                         ),
                     )
                     validated = EvaluationResult.model_validate(

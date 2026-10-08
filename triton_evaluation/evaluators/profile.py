@@ -28,7 +28,8 @@ _MAX_ENGINE_TIMEOUT_SECONDS = 86400
 
 
 class ProfileEvaluator:
-    def __init__(self, engine_dir: str):
+    def __init__(self, engine_dir: str, *, runner=None):
+        self.runner = runner
         self.engine_dir = engine_dir
 
     def run(
@@ -105,7 +106,7 @@ class ProfileEvaluator:
         ]
         if case_idx is not None:
             cmd.extend(["--case-idx", str(case_idx)])
-        outcome = run_script(
+        outcome = (self.runner or run_script)(
             cmd, str(work_dir), device_id, deadline_at, lease_valid,
             budget_seconds=budget + 60,
         )

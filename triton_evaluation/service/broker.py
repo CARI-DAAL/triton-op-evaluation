@@ -26,12 +26,10 @@ Fixed keyspace under ``settings.redis_prefix`` (default ``triton-eval:v2.1``)::
     inflight:caller:{traffic_class}:{sha256(caller_id)}        integer
     inflight:session:{sha256(caller_id NUL session_id)}        integer
     rate:{traffic_class}:{sha256(caller_id)}:{minute}          integer, 120s expiry
-    verdict:{sha256}                             hash {verdict}, TTL =
-                                                 verdict_cache_ttl_seconds
 
-Only the rate-window and verdict-cache keys expire; nonterminal records never
-carry a TTL, and terminal resource/idempotency records share the retention
-TTL. Persisted
+Rate-window keys expire; nonterminal records never carry a TTL, and terminal
+resource/idempotency records share the retention TTL. Advisory cache keys are
+owned by their runtime modules. Persisted
 timestamps come from the store clock — Redis ``TIME`` in production, an
 injected deterministic clock in tests. The state machine accepts only
 ``queued -> running``, ``queued -> failed|timed_out``, and
@@ -63,6 +61,7 @@ from triton_evaluation.serialization import (
     load_canonical,
     sha256_hex,
 )
+from triton_evaluation.service.metrics import increment, observe
 from triton_evaluation.service.models import (
     AlgorithmVersions,
     AttemptLease,
@@ -150,12 +149,7 @@ class EvaluationStore:
 
     def _bump(self, name: str, **labels) -> None:
         """Best-effort bounded counter; never changes a transition result."""
-        if self._metrics is None:
-            return
-        try:
-            self._metrics.increment(name, labels)
-        except Exception as error:  # noqa: BLE001 — never change a transition
-            logger.warning("metrics write failed (%s)", type(error).__name__)
+        increment(self._metrics, name, **labels)
 
     def _key(self, suffix: str) -> str:
         return f"{self._s.redis_prefix}:{suffix}"
@@ -804,13 +798,14 @@ class EvaluationStore:
                 started_ms = stored.get(b"created_at_ms")
                 if started_ms is not None and self._metrics is not None:
                     try:
-                        self._metrics.observe(
-                            "resource_terminal_duration_seconds",
-                            {"state": state},
-                            max(0.0, (now_ms - int(started_ms)) / 1000),
-                        )
+                        duration = max(0.0, (now_ms - int(started_ms)) / 1000)
                     except ValueError:
-                        pass
+                        pass  # Invalid metric input cannot undo a committed transition.
+                    else:
+                        observe(
+                            self._metrics, "resource_terminal_duration_seconds", duration,
+                            state=state,
+                        )
                 return True
             except redis.WatchError:
                 continue

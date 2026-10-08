@@ -2,6 +2,7 @@
 import json
 import time
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from unittest import mock
 
 import pytest
@@ -19,8 +20,12 @@ from test_worker import build_worker
 
 from triton_evaluation.api.operator import OperatorRequest
 from triton_evaluation.evaluators.base import engine_failure
+from triton_evaluation.evaluators.benchmark import BenchmarkEvaluator
 from triton_evaluation.evaluators.evaluation import EvaluationEvaluator
 from triton_evaluation.evaluators.operator import to_evaluation_request
+from triton_evaluation.evaluators.profile import ProfileEvaluator
+from triton_evaluation.evaluators.verify import VerifyEvaluator
+from triton_evaluation.runtime.verdict_cache import VerdictCache
 from triton_evaluation.runtime.worker import FencedProgress
 from triton_evaluation.service.models import AlgorithmVersions, WorkerIdentity, new_worker_id
 
@@ -31,7 +36,9 @@ def payload(checks, source="def run(): pass"):
 
 def app_with_precheck(tmp_path, release_catalog_files, **overrides):
     settings = make_test_settings(tmp_path).model_copy(update={
-        "verdict_cache_enabled": False, **overrides,
+        "verdict_cache_enabled": False,
+        "engine_dir": str(Path(__file__).resolve().parents[1] / "triton_evaluation" / "engine"),
+        **overrides,
     })
     return build_app(
         tmp_path, release_catalog_files, settings=settings,
@@ -42,8 +49,13 @@ def app_with_precheck(tmp_path, release_catalog_files, **overrides):
 def cpu_worker(app):
     seed_worker(app, execution_class="cpu")
     return build_worker(
-        app.store, app.settings, EvaluationEvaluator(app.settings.engine_dir, app.settings),
+        app.store, app.settings, EvaluationEvaluator(
+            verify=VerifyEvaluator(app.settings.engine_dir),
+            benchmark=BenchmarkEvaluator(app.settings.engine_dir),
+            profile=ProfileEvaluator(app.settings.engine_dir),
+        ),
         app.clock, device_id=None,
+        verdict_cache=VerdictCache(app.store._r, prefix=app.settings.redis_prefix),
     )
 
 
@@ -264,7 +276,9 @@ async def test_cached_compile_pass_is_used_only_after_cpu_claim(
     digest = verdict_cache.digest_for(
         internal.kernel_code, "triton_ascend_impl", app.settings.cann_fingerprint,
     )
-    verdict_cache.put(app.store, digest, "precheck_passed", 60)
+    VerdictCache(app.store._r, prefix=app.settings.redis_prefix).put(
+        digest, "precheck_passed", 60,
+    )
     with mock.patch("triton_evaluation.runtime.precheck.run_script", side_effect=AssertionError):
         async with app.http as client:
             response = await post(client, payload(["compile"], source))

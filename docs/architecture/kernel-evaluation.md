@@ -34,6 +34,21 @@ Evaluators own check orchestration; shared configuration and canonical
 serialization remain at the package root. Moving these implementations requires
 [new deployment source pins](../operations/recovery.md#runtime-module-migration).
 
+Process entrypoints assemble dependencies explicitly. The API gives its instance
+and durable store the same metrics adapter. The worker gives its store, lease
+keeper and card-health module the same metrics adapter, and passes independent
+`BaselineCache` and `VerdictCache` adapters to their consumers. Advisory caches
+and metrics use a separate Redis client with bounded timeouts and no retries;
+the durable store retains its own client and transition semantics.
+
+`EvaluationEvaluator` receives already assembled correctness, benchmark and
+profile adapters. It owns check ordering and evidence shaping, not runtime
+configuration. All checks, including precheck, use the same subprocess runner
+and a startup environment snapshot built from validated `Settings`. Each
+invocation copies that snapshot and selects its own device. Precheck uses the
+configured engine directory just like the device checks. Tests replace check
+adapters through the constructor rather than overriding private factories.
+
 Workers execute supplied code after admission. CPU workers own compile-only
 checks; one NPU worker owns all requested device checks in an attempt. Evidence
 publication is fenced so an older attempt cannot replace a newer result.

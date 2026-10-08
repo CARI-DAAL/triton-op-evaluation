@@ -15,6 +15,7 @@ import stat
 import subprocess
 import tempfile
 import time
+from collections.abc import Mapping
 from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -184,6 +185,7 @@ def run_script(
     lease_valid=None,
     *,
     budget_seconds: float | None = None,
+    environment: Mapping[str, str] | None = None,
 ) -> ScriptOutcome:
     """Run one engine invocation with bounded polling.
 
@@ -197,7 +199,7 @@ def run_script(
         return ScriptOutcome(-1, "", "", True, "fenced")
     if deadline_at is not None and remaining_seconds(deadline_at) <= 0:
         return ScriptOutcome(-1, "", "", True, "resource_deadline")
-    env = dict(os.environ)
+    env = dict(os.environ if environment is None else environment)
     # A CPU precheck must not inherit the parent's NPU assignment.
     env["ASCEND_RT_VISIBLE_DEVICES"] = "" if device_id is None else str(device_id)
     cmd, env = isolate_command(cmd, cwd, device_id, env)

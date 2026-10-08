@@ -195,7 +195,7 @@ async def readyz(instance: Annotated[EvaluationInstance, Depends(get_instance)])
         200: {"content": {"application/openmetrics-text": {"schema": {"type": "string"}}}},
     },
 )
-async def internal_metrics(context: Annotated[AppContext, Depends(get_context)]):
+def internal_metrics(context: Annotated[AppContext, Depends(get_context)]):
     metrics = context.instance.metrics
     if metrics is None:
         raise errors.not_found()

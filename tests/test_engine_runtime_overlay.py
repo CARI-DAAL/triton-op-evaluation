@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -50,7 +51,9 @@ def anchored_overlay(tmp_path, monkeypatch, deployed_runtime):  # noqa: F811
 
 def test_unchanged_anchor_uses_overlay_in_actual_clearenv_command(anchored_overlay):
     base, original, _overlay, work, model = anchored_overlay
-    wrapped, _env = sandbox.isolate_command([sys.executable, "-c", "pass"], work, None, {})
+    wrapped, _env = sandbox.isolate_command(
+        [sys.executable, "-c", "pass"], work, None, dict(os.environ)
+    )
     assert "--clearenv" in wrapped
     position = wrapped.index(sandbox.REFERENCE_POLICY_ENV)
     assert wrapped[position + 1] == "npu-strict"
@@ -70,7 +73,7 @@ def test_parent_runtime_is_never_silently_dropped_without_overlay(anchored_overl
     for key in sandbox.OVERLAY_ENV_KEYS:
         monkeypatch.delenv(key)
     with pytest.raises(ValueError, match="overlay before --clearenv"):
-        sandbox.isolate_command([sys.executable, "-c", "pass"], work, None, {})
+        sandbox.isolate_command([sys.executable, "-c", "pass"], work, None, dict(os.environ))
     assert base.read_bytes() == original
 
 
@@ -93,10 +96,10 @@ def test_changed_overlay_or_missing_pin_never_prepares_child(anchored_overlay, m
     _base, _original, overlay, work, _model = anchored_overlay
     monkeypatch.delenv(sandbox.OVERLAY_DIGEST_ENV)
     with pytest.raises(ValueError, match="together"):
-        sandbox.isolate_command([sys.executable, "-c", "pass"], work, None, {})
+        sandbox.isolate_command([sys.executable, "-c", "pass"], work, None, dict(os.environ))
     monkeypatch.setenv(sandbox.OVERLAY_DIGEST_ENV, "0" * 64)
     with pytest.raises(ValueError, match="SHA pin"):
-        sandbox.isolate_command([sys.executable, "-c", "pass"], work, None, {})
+        sandbox.isolate_command([sys.executable, "-c", "pass"], work, None, dict(os.environ))
     assert overlay.exists() and not list(work.glob("engine-runtime-boundary-*.json"))
 
 
@@ -104,15 +107,15 @@ def test_old_engine_override_and_host_scripts_are_refused(anchored_overlay, monk
     _base, _original, _overlay, work, _model = anchored_overlay
     monkeypatch.setenv("TRITON_EVAL_ENGINE_DIR", str(tmp_path / "old-live/engine"))
     with pytest.raises(ValueError, match="another service source"):
-        sandbox.isolate_command([sys.executable, "-c", "pass"], work, None, {})
+        sandbox.isolate_command([sys.executable, "-c", "pass"], work, None, dict(os.environ))
     monkeypatch.delenv("TRITON_EVAL_ENGINE_DIR")
     host_script = tmp_path / "outside.py"
     host_script.write_text("raise RuntimeError('must not execute')")
     with pytest.raises(ValueError, match="another service source"):
-        sandbox.isolate_command([sys.executable, str(host_script)], work, None, {})
+        sandbox.isolate_command([sys.executable, str(host_script)], work, None, dict(os.environ))
     attempt_script = work / "probe.py"
     attempt_script.write_text("print('trusted prepared probe')")
-    sandbox.isolate_command([sys.executable, str(attempt_script)], work, None, {})
+    sandbox.isolate_command([sys.executable, str(attempt_script)], work, None, dict(os.environ))
     boundary = json.loads(next(work.glob("engine-runtime-boundary-*.json")).read_bytes())
     assert boundary["engine_script_sha256"] == profiler_runtime.sha(attempt_script)
 
@@ -217,7 +220,7 @@ def test_overlay_cannot_supply_or_change_existing_policy_anchor(anchored_overlay
         )
     monkeypatch.setenv(sandbox.REFERENCE_POLICY_ENV, "unknown-policy")
     with pytest.raises(ValueError, match="valid reference policy anchor"):
-        sandbox.isolate_command([sys.executable, "-c", "pass"], work, None, {})
+        sandbox.isolate_command([sys.executable, "-c", "pass"], work, None, dict(os.environ))
     monkeypatch.setenv(sandbox.REFERENCE_POLICY_ENV, "cpu-first")
     base = sandbox.EngineSandbox.model_validate_json(original)
     conflict = base.model_copy(
@@ -389,3 +392,37 @@ def test_real_bwrap_child_reads_dev_subtree_ro_bind(tmp_path, monkeypatch):
         assert result.stdout.strip() == f"SENTINEL_OK {len(payload)} {digest}"
     finally:
         shutil.rmtree(sentinel_root, ignore_errors=True)
+
+
+def test_supplied_environment_controls_overlay_despite_ambient_changes(
+    anchored_overlay, monkeypatch
+):
+    _base, _original, _overlay, work, _model = anchored_overlay
+    environment = dict(os.environ)
+    monkeypatch.setenv(sandbox.CONFIG_ENV, "/missing/ambient-sandbox.json")
+    monkeypatch.setenv(sandbox.OVERLAY_DIGEST_ENV, "0" * 64)
+    monkeypatch.setenv(sandbox.REFERENCE_POLICY_ENV, "unknown-policy")
+    wrapped, _outer = sandbox.isolate_command(
+        [sys.executable, "-c", "pass"], work, None, environment
+    )
+    index = wrapped.index(sandbox.REFERENCE_POLICY_ENV)
+    assert wrapped[index + 1] == environment[sandbox.REFERENCE_POLICY_ENV]
+
+
+def test_script_uses_snapshot_without_mutating_environment(tmp_path, monkeypatch):
+    from triton_evaluation.config import Settings, command_environment
+
+    settings = Settings(reference_device_policy="npu-strict")
+    environment = command_environment(settings, {"PATH": os.environ["PATH"]})
+    before = environment.copy()
+    monkeypatch.setenv("TRITON_EVAL_REFERENCE_DEVICE_POLICY", "cpu-first")
+    outcome = run_script(
+        [sys.executable, "-c",
+         "import os; print(os.environ['TRITON_EVAL_REFERENCE_DEVICE_POLICY']); "
+         "print(os.environ['ASCEND_RT_VISIBLE_DEVICES'])"],
+        tmp_path, 3, environment=environment, budget_seconds=10,
+    )
+    assert outcome.exit_code == 0
+    assert outcome.stdout.splitlines() == ["npu-strict", "3"]
+    assert environment == before
+    assert os.environ["TRITON_EVAL_REFERENCE_DEVICE_POLICY"] == "cpu-first"

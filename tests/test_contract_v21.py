@@ -262,7 +262,10 @@ async def test_leased_compile_http_body_validates_against_published_schema(
         trial_headers,
     )
 
+    from triton_evaluation.evaluators.benchmark import BenchmarkEvaluator
     from triton_evaluation.evaluators.evaluation import EvaluationEvaluator
+    from triton_evaluation.evaluators.profile import ProfileEvaluator
+    from triton_evaluation.evaluators.verify import VerifyEvaluator
     from triton_evaluation.runtime import verdict_cache
     from triton_evaluation.runtime.worker import Worker
 
@@ -275,10 +278,15 @@ async def test_leased_compile_http_body_validates_against_published_schema(
         internal_request(checks=["compile"], triton_code="def broken(:\n").kernel_code,
         "triton_ascend_impl", settings.cann_fingerprint,
     )
-    verdict_cache.put(app.store, digest, "compile_error", settings.verdict_cache_ttl_seconds)
+    cache = verdict_cache.VerdictCache(app.store._r, prefix=settings.redis_prefix)
+    cache.put(digest, "compile_error", settings.verdict_cache_ttl_seconds)
     worker = Worker(
-        app.store, EvaluationEvaluator(settings.engine_dir, settings=settings),
-        device_id=None, settings=settings, clock=app.clock,
+        app.store, EvaluationEvaluator(
+            verify=VerifyEvaluator(settings.engine_dir),
+            benchmark=BenchmarkEvaluator(settings.engine_dir),
+            profile=ProfileEvaluator(settings.engine_dir),
+        ),
+        device_id=None, settings=settings, clock=app.clock, verdict_cache=cache,
     )
     validator = published_v21_resource_validator()
     async with app.http as client:

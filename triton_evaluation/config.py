@@ -1,4 +1,5 @@
 import os
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Literal
 
@@ -49,6 +50,8 @@ class Settings(BaseSettings):
     # Service-owned immutable loader compatibility.
     profiler_runtime_manifest: Path | None = None
     profiler_runtime_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    engine_sandbox_config: Path | None = None
+    engine_sandbox_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
     engine_runtime_overlay_config: Path | None = None
     engine_runtime_overlay_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
     # Compile-only attempts use CPU capacity; mixed checks stay on one NPU worker.
@@ -159,6 +162,16 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def _durable_core_windows(self):
+        sandbox_values = (self.engine_sandbox_config, self.engine_sandbox_sha256)
+        if any(value is not None for value in sandbox_values) and not all(
+            value is not None for value in sandbox_values
+        ):
+            raise ValueError("engine sandbox config and SHA must be configured together")
+        if self.engine_sandbox_config is not None and (
+            not self.engine_sandbox_config.is_absolute()
+            or ".." in self.engine_sandbox_config.parts
+        ):
+            raise ValueError("engine sandbox config must be absolute without traversal")
         overlay_values = (self.engine_runtime_overlay_config, self.engine_runtime_overlay_sha256)
         if any(value is not None for value in overlay_values) and not all(
             value is not None for value in overlay_values
@@ -218,3 +231,41 @@ class Settings(BaseSettings):
     def from_env(cls) -> "Settings":
         """Explicit constructor used by entrypoints; BaseSettings reads the env itself."""
         return cls()
+
+
+_COMMAND_ENVIRONMENT_FIELDS = (
+    "engine_dir",
+    "reference_device_policy",
+    "reference_diagnostics_dir",
+    "reference_cache_dir",
+    "reference_cache_binding",
+    "reference_cache_sha256",
+    "reference_cache_state_dir",
+    "reference_timing_reuse_policy",
+    "reference_timing_reuse_sha256",
+    "profiler_runtime_manifest",
+    "profiler_runtime_sha256",
+    "engine_sandbox_config",
+    "engine_sandbox_sha256",
+    "engine_runtime_overlay_config",
+    "engine_runtime_overlay_sha256",
+)
+
+
+def command_environment(
+    settings: Settings, inherited: Mapping[str, str] | None = None
+) -> dict[str, str]:
+    """Snapshot process/toolchain variables with validated runtime settings.
+
+    Optional settings remove stale inherited values. Every invocation copies
+    this startup snapshot before assigning its own visible device.
+    """
+    environment = dict(os.environ if inherited is None else inherited)
+    for field in _COMMAND_ENVIRONMENT_FIELDS:
+        key = "TRITON_EVAL_" + field.upper()
+        value = getattr(settings, field)
+        if value is None:
+            environment.pop(key, None)
+        else:
+            environment[key] = str(value)
+    return environment
