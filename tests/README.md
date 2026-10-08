@@ -1,16 +1,18 @@
 # Tests
 
-Run tests from the repository root after installing `.[test,dev]`.
+Run tests from the repository root. Compile and tensor tests need CPU Torch;
+`.[test,dev]` provides NumPy for the tensor/cache bridge. Every Python version
+in CI installs both:
 
 ```bash
+python -m pip install -e '.[test,dev]'
+python -m pip install torch==2.9.0 --index-url https://download.pytorch.org/whl/cpu
 python -m pytest -m 'not npu' -q
 ```
 
-To exercise tensor generation and both `run(...)` implementations on CPU, install
-the CPU Torch build first (the Python 3.12 CI job does this):
+To focus on tensor generation and both `run(...)` implementations:
 
 ```bash
-python -m pip install torch==2.9.0 --index-url https://download.pytorch.org/whl/cpu
 python -m pytest tests/test_operator_inputs.py -q
 ```
 

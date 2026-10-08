@@ -58,6 +58,7 @@ Python 3.10+; run from the repository root. CPU tests require no Ascend device.
 python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install -e '.[test,dev]'
+python -m pip install torch==2.9.0 --index-url https://download.pytorch.org/whl/cpu
 python -m pytest -m 'not npu' -q
 python -m ruff check .
 ```

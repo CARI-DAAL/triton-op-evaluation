@@ -21,9 +21,10 @@ jobs:
           python-version: ${{ matrix.python-version }}
       - run: python -m venv .venv
       - run: .venv/bin/python -m pip install -e '.[test,dev]'
-      - if: matrix.python-version == '3.12'
-        run: .venv/bin/python -m pip install torch==2.9.0 --index-url https://download.pytorch.org/whl/cpu
-      - run: .venv/bin/python -c 'from importlib.metadata import version; expected={"fastapi":"0.139.2","uvicorn":"0.51.0","redis":"8.0.1","pydantic":"2.13.4","pydantic-settings":"2.14.2","rfc8785":"0.1.4","pytest":"9.1.1","fakeredis":"2.37.0","httpx":"0.28.1","jsonschema":"4.26.0","ruff":"0.16.0"}; actual={name:version(name) for name in expected}; assert actual == expected, (actual, expected)'
+      # Compile checks import the generated Torch wrapper on every Python version.
+      - run: .venv/bin/python -m pip install torch==2.9.0 --index-url https://download.pytorch.org/whl/cpu
+      - run: .venv/bin/python -c 'from importlib.metadata import version; expected={"fastapi":"0.139.2","uvicorn":"0.51.0","redis":"8.0.1","pydantic":"2.13.4","pydantic-settings":"2.14.2","rfc8785":"0.1.4","pytest":"9.1.1","fakeredis":"2.37.0","httpx":"0.28.1","jsonschema":"4.26.0","ruff":"0.16.0","numpy":"2.2.6","torch":"2.9.0+cpu"}; actual={name:version(name) for name in expected}; assert actual == expected, (actual, expected)'
+      - run: .venv/bin/python -c 'import torch; assert torch.arange(3).numpy().tolist() == [0, 1, 2]'
       - run: .venv/bin/python -m ruff check .
       - run: .venv/bin/python -m pytest -m 'not npu' -q
       - run: .venv/bin/python -m compileall -q triton_evaluation scripts
