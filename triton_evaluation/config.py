@@ -96,6 +96,10 @@ class Settings(BaseSettings):
     poison_death_threshold: int = Field(default=2, ge=2)
     card_affinity_avoidance: bool = Field(default=True)
 
+    # Opt in to bounded retries when an engine failure produced no check data.
+    # Missing output cannot establish whether a candidate ran or crashed.
+    engine_failure_requeue: bool = Field(default=False)
+
     # Canary + recovery ladder (spec §10).
     canary_budget_seconds: int = Field(default=120, gt=0)
     canary_interval_seconds: float = Field(default=60.0, gt=0)
