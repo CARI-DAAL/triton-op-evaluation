@@ -100,7 +100,6 @@ def _rebuild(app):
     instance = EvaluationInstance(
         settings=app.settings, store=store,
         catalog=app.app.state.context.instance.catalog, metrics=metrics,
-        artifacts_verified=True,
     )
     context = AppContext(
         instance=instance,

@@ -20,7 +20,7 @@ def _published_resource_validator(version):
     import jsonschema
     from referencing import Registry, Resource
 
-    root = Path(__file__).resolve().parent.parent / "contracts" / "evaluation-api" / version
+    root = Path(__file__).resolve().parent / "fixtures" / "evaluation_api" / version
     schema = json.loads((root / "schema.json").read_text(encoding="utf-8"))
     # Register the full URN document so nested fragment refs retain their root.
     registry = Registry().with_resource(schema["$id"], Resource.from_contents(schema))
@@ -37,7 +37,7 @@ def test_published_resource_validators_resolve_nested_outcomes(
 ):
     import jsonschema
 
-    root = Path(__file__).resolve().parent.parent / "contracts" / "evaluation-api" / version
+    root = Path(__file__).resolve().parent / "fixtures" / "evaluation_api" / version
     resource = json.loads((root / "fixtures" / fixture).read_text(encoding="utf-8"))
     validator = validator_factory()
     # Reuse the validator as HTTP tests do for POST, GET, and replay bodies.
@@ -222,7 +222,7 @@ def test_rollout_purpose_resolves_rollout_traffic_class(
     settings, store, release_catalog, make_worker,
 ):
     instance = EvaluationInstance(
-        settings=settings, store=store, catalog=release_catalog, artifacts_verified=True,
+        settings=settings, store=store, catalog=release_catalog,
     )
     store.heartbeat(make_worker())
     outcome = instance.submit(

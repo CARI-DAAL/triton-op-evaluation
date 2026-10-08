@@ -20,7 +20,7 @@ from typing import Literal
 from pydantic import Field, ValidationError
 
 from triton_evaluation.api.contract import GradeContext, StrictModel
-from triton_evaluation.api.contract_artifacts import sha256_hex
+from triton_evaluation.serialization import sha256_hex
 
 
 class ManifestBindingError(Exception):

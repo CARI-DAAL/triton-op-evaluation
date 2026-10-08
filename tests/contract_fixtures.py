@@ -1,69 +1,19 @@
-"""Deterministic evaluation-api contract artifact builder.
+"""Deterministic schema and golden examples for wire compatibility tests.
 
-The v2.1-only release publishes one Draft 2020-12 schema and a complete
-set of golden requests, resources, and errors. All publication bytes use
-RFC 8785 canonical JSON; the index pins every fixture and contract.json
-pins the schema and index. Rebuild consumers against these release digests.
+The service imports only its models and serialization. These builders and
+recorded bytes belong exclusively to the test suite.
 """
-import hashlib
-import json
 import math
-import os
-import tempfile
 from datetime import datetime, timedelta, timezone
 from pathlib import Path, PurePosixPath
 
-import rfc8785
 from pydantic.json_schema import models_json_schema
 
-from . import contract as m
+from triton_evaluation.api import contract as m
+from triton_evaluation.serialization import canonical_json_bytes, sha256_hex
 
-CONTRACT_ROOT = Path("contracts/evaluation-api/2.1")
+CONTRACT_ROOT = Path(__file__).parent / "fixtures/evaluation_api/2.1"
 SCHEMA_ID = "urn:triton-evaluation:evaluation-api:2.1:schema"
-
-def canonical_json_bytes(value: object) -> bytes:
-    return rfc8785.dumps(value)
-
-
-_SAFE_INT_MAX = 2**53 - 1
-
-
-def _parse_canonical_number(literal: str) -> int | float:
-    """Parse a canonical-JSON number literal with the serializer's own rule.
-
-    ``rfc8785.dumps`` writes every double below 1e21 in plain digit form --
-    including values far outside the 2^53 integer safe domain
-    (1.8517161196398838e+18 serializes as 1851716119639883800). A plain
-    ``json.loads`` reads that literal back as an **int**, and re-serializing
-    the reloaded structure then raises IntegerDomainError -- our canonical
-    output failed to round-trip through our own store.
-
-    Literals inside the safe domain stay exact ints; larger ones become the
-    nearest double (the only thing canonical serialization could have
-    produced); anything past the double domain is rejected. Mirrors the
-    platform-side rule in harbor.verifier.triton.json_contract.
-    """
-    value = int(literal)
-    if -_SAFE_INT_MAX <= value <= _SAFE_INT_MAX:
-        return value
-    as_double = float(literal)
-    if not math.isfinite(as_double):
-        raise ValueError(f"number outside the double domain: {literal}")
-    return as_double
-
-
-def load_canonical(data: bytes | str) -> object:
-    """Reload canonical JSON produced by :func:`canonical_json_bytes`.
-
-    Persisted canonical bytes must be parsed with the serializer's number
-    domain, otherwise the reload is lossy (digit-form doubles become ints)
-    and the next canonical write of the same structure fails.
-    """
-    return json.loads(data, parse_int=_parse_canonical_number)
-
-
-def sha256_hex(data: bytes) -> str:
-    return hashlib.sha256(data).hexdigest()
 
 
 # ---------------------------------------------------------------------------
@@ -742,12 +692,12 @@ def _compile_rollout_fixtures() -> dict[str, "m.StrictModel"]:
 
 
 # ---------------------------------------------------------------------------
-# Build, write, verify
+# Build expected golden bytes
 # ---------------------------------------------------------------------------
 
 
 def build_artifacts() -> dict[PurePosixPath, bytes]:
-    """Return every publication path and its final bytes without writing."""
+    """Return generated schema and examples for comparison with golden bytes."""
     fixture_models = _fixtures()
     schema_version = "2.1"
     schema_id = SCHEMA_ID
@@ -784,37 +734,3 @@ def build_artifacts() -> dict[PurePosixPath, bytes]:
         }
     )
     return artifacts
-
-
-def write_artifacts(root: Path, artifacts: dict[PurePosixPath, bytes]) -> None:
-    """Atomically replace only files present in ``artifacts``."""
-    for path, data in sorted(artifacts.items()):
-        target = root / Path(path)
-        target.parent.mkdir(parents=True, exist_ok=True)
-        fd, temporary = tempfile.mkstemp(
-            dir=target.parent, prefix=target.name + ".", suffix=".tmp"
-        )
-        try:
-            with os.fdopen(fd, "wb") as handle:
-                handle.write(data)
-        except BaseException:
-            os.unlink(temporary)
-            raise
-        os.replace(temporary, target)
-
-
-def verify_artifacts(root: Path, artifacts: dict[PurePosixPath, bytes]) -> list[str]:
-    """Return sorted missing, unexpected, or byte-different relative paths."""
-    problems = []
-    for path, data in artifacts.items():
-        target = root / Path(path)
-        if not target.is_file() or target.read_bytes() != data:
-            problems.append(path.as_posix())
-    expected = {path.as_posix() for path in artifacts}
-    if root.is_dir():
-        for existing in root.rglob("*"):
-            if existing.is_file():
-                relative = existing.relative_to(root).as_posix()
-                if relative not in expected:
-                    problems.append(relative)
-    return sorted(problems)

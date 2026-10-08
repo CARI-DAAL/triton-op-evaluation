@@ -112,7 +112,8 @@ async def test_http_https_share_lifespan_and_cleanup_on_cancellation(native_app,
                 f"https://127.0.0.1:{settings.api_tls_port}/verify", json={}
             )
             assert rejected.status_code == 401
-            assert rejected.json() == {"error": "unauthorized"}
+            assert rejected.json()["error"]["code"] == "UNAUTHENTICATED"
+            assert rejected.json()["request_id"] == rejected.headers["X-Request-ID"]
             assert app.state.context.instance is native_app.app.state.context.instance
             assert calls == ["startup"]
     finally:

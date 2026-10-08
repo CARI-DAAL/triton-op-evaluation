@@ -7,7 +7,7 @@ from triton_evaluation.instance import EvaluationInstance
 def test_declared_rollout_caller_uses_bulk_queue(settings, store, release_catalog, make_worker):
     instance = EvaluationInstance(
         settings=settings.model_copy(update={"rollout_caller_ids": ["rl-1"]}),
-        store=store, catalog=release_catalog, artifacts_verified=True,
+        store=store, catalog=release_catalog,
     )
     worker = make_worker()
     store.heartbeat(worker)
@@ -27,7 +27,7 @@ def test_grade_caller_is_never_reclassified_as_rollout(
 ):
     instance = EvaluationInstance(
         settings=settings.model_copy(update={"rollout_caller_ids": ["grader-1"]}),
-        store=store, catalog=release_catalog, artifacts_verified=True,
+        store=store, catalog=release_catalog,
     )
     worker = make_worker()
     store.heartbeat(worker)

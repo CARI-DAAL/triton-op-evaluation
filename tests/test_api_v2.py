@@ -29,7 +29,7 @@ GRADE_BODY = {
 def grade_payload():
     from conftest import CATALOG_REFERENCE_CODE
 
-    from triton_evaluation.api.contract_artifacts import sha256_hex
+    from triton_evaluation.serialization import sha256_hex
 
     return GRADE_BODY | {
         "reference_code": CATALOG_REFERENCE_CODE,
@@ -60,6 +60,15 @@ async def test_missing_authorization_is_401(app):
     assert response.headers["WWW-Authenticate"] == "Bearer"
     envelope = ErrorEnvelope.model_validate_json(response.content)
     assert envelope.error.code == "UNAUTHENTICATED"
+
+
+async def test_bearer_scheme_uses_native_case_insensitive_parsing(app):
+    seed_worker(app)
+    async with app.http as client:
+        response = await post(
+            client, headers=trial_headers() | {"Authorization": "bearer trial-token-1"},
+        )
+    assert response.status_code == 202
 
 
 async def test_wrong_token_is_indistinguishable_401(app):
@@ -95,7 +104,7 @@ async def test_missing_session_id_is_rejected(app):
         headers = trial_headers()
         del headers["X-Session-ID"]
         response = await post(client, headers=headers)
-    assert response.status_code == 400
+    assert response.status_code == 422
     assert ErrorEnvelope.model_validate_json(response.content).error.code == (
         "INVALID_REQUEST"
     )
@@ -104,7 +113,7 @@ async def test_missing_session_id_is_rejected(app):
 async def test_invalid_session_id_is_rejected(app):
     async with app.http as client:
         response = await post(client, headers=trial_headers(session="bad session id"))
-    assert response.status_code == 400
+    assert response.status_code == 422
 
 
 async def test_missing_idempotency_key_is_rejected(app):
@@ -112,20 +121,20 @@ async def test_missing_idempotency_key_is_rejected(app):
         headers = trial_headers()
         del headers["Idempotency-Key"]
         response = await post(client, headers=headers)
-    assert response.status_code == 400
+    assert response.status_code == 422
 
 
 async def test_idempotency_key_rejects_non_visible_ascii(app):
     async with app.http as client:
         response = await post(client, headers=trial_headers(key="bad\tkey"))
         response2 = await post(client, headers=trial_headers(key="x" * 129))
-    assert response.status_code == response2.status_code == 400
+    assert response.status_code == response2.status_code == 422
 
 
 async def test_session_header_is_not_stripped(app):
     async with app.http as client:
         response = await post(client, headers=trial_headers(session="session-1 "))
-    assert response.status_code == 400  # trailing space is not trimmed
+    assert response.status_code == 422  # trailing space is not trimmed
 
 
 # ---------------------------------------------------------------------------
@@ -138,15 +147,15 @@ async def test_missing_content_type_is_rejected(app):
         headers = trial_headers()
         del headers["Content-Type"]
         response = await post(client, headers=headers)
-    assert response.status_code == 400
+    assert response.status_code == 422
 
 
-async def test_malformed_json_is_400(app):
+async def test_malformed_json_is_422(app):
     async with app.http as client:
         response = await client.post(
             "/evaluations", content=b"{not json", headers=trial_headers()
         )
-    assert response.status_code == 400
+    assert response.status_code == 422
     assert ErrorEnvelope.model_validate_json(response.content).error.code == (
         "INVALID_REQUEST"
     )
@@ -159,7 +168,7 @@ async def test_nonstandard_json_constants_are_rejected(app):
         ).encode()
         response = await client.post("/evaluations", content=body,
                                      headers=trial_headers())
-    assert response.status_code == 400
+    assert response.status_code == 422
 
 
 async def test_field_errors_are_422(app):
@@ -170,7 +179,7 @@ async def test_field_errors_are_422(app):
     assert envelope.error.code == "INVALID_REQUEST"
 
 
-async def test_cross_field_combination_errors_are_400(app):
+async def test_cross_field_combination_errors_are_422(app):
     async with app.http as client:
         response = await post(
             client,
@@ -178,29 +187,29 @@ async def test_cross_field_combination_errors_are_400(app):
                 purpose="grade", grade_context=None
             ),
         )
-    assert response.status_code == 400
+    assert response.status_code == 422
 
 
-async def test_source_over_two_mib_is_413(app):
+async def test_source_over_two_mib_is_422(app):
     async with app.http as client:
         payload = request_payload(kernel_code="k" * (2 * 1024 * 1024 + 1))
         response = await post(client, payload=payload)
-    assert response.status_code == 413
+    assert response.status_code == 422
     assert ErrorEnvelope.model_validate_json(response.content).error.code == (
-        "LIMIT_EXCEEDED"
+        "INVALID_REQUEST"
     )
 
 
 async def test_body_over_four_mib_is_413_with_streamed_count(app):
     async with app.http as client:
-        payload = request_payload(kernel_code="k" * (3 * 1024 * 1024))
+        payload = request_payload(kernel_code="k" * (5 * 1024 * 1024))
         response = await post(client, payload=payload)
     assert response.status_code == 413
 
 
 async def test_body_over_four_mib_without_content_length_is_413(app):
     async with app.http as client:
-        payload = request_payload(kernel_code="k" * (3 * 1024 * 1024))
+        payload = request_payload(kernel_code="k" * (5 * 1024 * 1024))
         response = await client.post(
             "/evaluations",
             content=_chunked(raw_chunk(payload)),
@@ -218,11 +227,11 @@ async def _chunked(data, size=1024 * 1024):
         yield data[index : index + size]
 
 
-async def test_invalid_wait_range_is_400(app):
+async def test_invalid_wait_range_is_422(app):
     async with app.http as client:
         response = await post(client, params={"wait_seconds": "61"})
         response2 = await post(client, params={"wait_seconds": "-1"})
-    assert response.status_code == response2.status_code == 400
+    assert response.status_code == response2.status_code == 422
 
 
 # ---------------------------------------------------------------------------

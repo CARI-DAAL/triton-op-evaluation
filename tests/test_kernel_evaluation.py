@@ -60,7 +60,7 @@ def build_tool(tmp_path, **overrides):
     store = EvaluationStore(client, settings, clock=clock)
     instance = EvaluationInstance(
         settings=settings, store=store,
-        catalog=ReleaseCatalog.load(files.root, files.manifest_path), artifacts_verified=True,
+        catalog=ReleaseCatalog.load(files.root, files.manifest_path),
     )
     budget = EvalBudgetRegistry(
         client, prefix=settings.redis_prefix, maximum=settings.kernel_eval_max_turns,

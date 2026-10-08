@@ -687,7 +687,7 @@ def test_corrupted_compile_request_keeps_cpu_check_identity(
 def test_canonical_source_replacement_cannot_change_admitted_request_identity(
     store, settings, clock, make_command,
 ):
-    from triton_evaluation.api.contract_artifacts import canonical_json_bytes
+    from triton_evaluation.serialization import canonical_json_bytes
 
     resource = store.create_or_replay(make_command()).resource
     key = f"{settings.redis_prefix}:resource:{resource.evaluation_id}"

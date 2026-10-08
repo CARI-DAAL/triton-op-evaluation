@@ -18,7 +18,7 @@ from triton_evaluation.terminal_results import (
     persisted_check_outcomes,
 )
 
-FIXTURES = Path(__file__).parents[1] / "contracts/evaluation-api/2.1/fixtures"
+FIXTURES = Path(__file__).parents[1] / "tests/fixtures/evaluation_api/2.1/fixtures"
 
 
 def result_fixture(name="correct"):

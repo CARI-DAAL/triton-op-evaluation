@@ -20,8 +20,8 @@ from conftest import (
     make_request,
 )
 
-from triton_evaluation.api.contract_artifacts import sha256_hex
 from triton_evaluation.broker import MAX_ATTEMPTS
+from triton_evaluation.serialization import sha256_hex
 
 
 def _key(settings, suffix):

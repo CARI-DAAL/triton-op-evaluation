@@ -23,7 +23,7 @@ from typing import Literal, Protocol
 from uuid import uuid4
 
 from ..api.contract import Check, CheckOutcome, ErrorInfo, EvaluationRequest
-from ..api.contract_artifacts import canonical_json_bytes, sha256_hex
+from ..serialization import canonical_json_bytes, sha256_hex
 from .sandbox import isolate_command
 
 logger = logging.getLogger(__name__)

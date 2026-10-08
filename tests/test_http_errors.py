@@ -30,6 +30,10 @@ async def exercise(app, case):
             return await client.post(
                 "/evaluations", content=b"{oops", headers=trial_headers()
             )
+        if case == "invalid-body-encoding":
+            return await client.post(
+                "/evaluations", content=b"\xff", headers=trial_headers()
+            )
         if case == "field-error":
             return await post(client, payload=request_payload(op_name=[]))
         if case == "combination-error":
@@ -48,11 +52,12 @@ async def exercise(app, case):
 CASES = {
     "unauthenticated": (401, "UNAUTHENTICATED", "auth", False, True, False),
     "forbidden-no-submit-scope": (403, "FORBIDDEN", "auth", False, False, False),
-    "invalid-session": (400, "INVALID_REQUEST", "request", False, False, False),
-    "invalid-wait": (400, "INVALID_REQUEST", "request", False, False, False),
-    "malformed-json": (400, "INVALID_REQUEST", "request", False, False, False),
+    "invalid-session": (422, "INVALID_REQUEST", "request", False, False, False),
+    "invalid-wait": (422, "INVALID_REQUEST", "request", False, False, False),
+    "malformed-json": (422, "INVALID_REQUEST", "request", False, False, False),
+    "invalid-body-encoding": (400, "INVALID_REQUEST", "request", False, False, False),
     "field-error": (422, "INVALID_REQUEST", "request", False, False, False),
-    "combination-error": (400, "INVALID_REQUEST", "request", False, False, False),
+    "combination-error": (422, "INVALID_REQUEST", "request", False, False, False),
     "unknown-route": (404, "NOT_FOUND", "request", False, False, False),
     # The router answers an unregistered method with a 404 envelope.
     "disallowed-method": (404, "NOT_FOUND", "request", False, False, False),

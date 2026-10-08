@@ -6,70 +6,27 @@ exists, execution errors are persisted outcomes — never HTTP 5xx. Transport
 wait, headers, and session correlation never enter admission.
 """
 import asyncio
-import json
-import re
 import time
+from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query, Request
-from pydantic import ValidationError
+from fastapi import APIRouter, Depends, Header, Query, Request
+from fastapi.responses import Response
 
 from ..admission import ForbiddenError
 from ..broker import StorageError
 from ..catalog import ManifestBindingError
-from ..instance import InstanceNotReadyError, QueueUnavailableError
+from ..instance import EvaluationInstance, InstanceNotReadyError, QueueUnavailableError
+from ..security import Caller
 from . import errors
-from .auth import require_read_caller, require_submit_caller
-from .contract import EvaluationRequest, EvaluationResource, dump_contract
-from .dependencies import get_context, get_instance
+from .auth import require_observer, require_read_caller, require_submit_caller
+from .contract import EvaluationRequest, EvaluationResource
+from .dependencies import AppContext, get_context, get_instance
+from .errors import error_responses
+from .schemas import IdempotencyKey, Liveness, Readiness, SessionId
 
 router = APIRouter()
 
-SESSION_ID_RE = re.compile(r"^[A-Za-z0-9._:-]{1,128}$")
-IDEMPOTENCY_KEY_MAX = 128
-_SOURCE_LIMIT_RE = re.compile(r"must be at most \d+ UTF-8 bytes")
 TERMINAL_STATES = ("completed", "failed", "timed_out")
-
-
-def _reject_nonstandard_number(token: str):
-    raise ValueError(f"nonstandard JSON constant: {token}")
-
-
-def _validate_session_id(value: str | None) -> str:
-    if value is None or SESSION_ID_RE.fullmatch(value) is None:
-        raise errors.invalid_request("invalid or missing X-Session-ID")
-    return value
-
-
-def _validate_idempotency_key(value: str | None) -> str:
-    if value is None or not 1 <= len(value) <= IDEMPOTENCY_KEY_MAX:
-        raise errors.invalid_request("invalid or missing Idempotency-Key")
-    if any(not 0x21 <= ord(char) <= 0x7E for char in value):
-        raise errors.invalid_request("invalid or missing Idempotency-Key")
-    return value
-
-
-async def _decode_and_validate(request: Request) -> EvaluationRequest:
-    content_type = request.headers.get("Content-Type", "")
-    if content_type.split(";")[0].strip().lower() != "application/json":
-        raise errors.invalid_request("content type must be application/json")
-    raw = await request.body()
-    try:
-        payload = json.loads(raw, parse_constant=_reject_nonstandard_number)
-    except (ValueError, UnicodeDecodeError):
-        raise errors.invalid_request("request body is not valid JSON") from None
-    if not isinstance(payload, dict):
-        raise errors.invalid_request("request body must be a JSON object")
-    try:
-        return EvaluationRequest.model_validate(payload)
-    except ValidationError as exc:
-        text = str(exc)
-        if _SOURCE_LIMIT_RE.search(text):
-            raise errors.limit_exceeded("source exceeds the size limit") from None
-        if all(error["type"] == "value_error" for error in exc.errors()):
-            raise errors.invalid_request("request violates a contract combination") \
-                from None
-        raise errors.invalid_request_schema("request failed schema validation") \
-            from None
 
 
 async def wait_until_terminal(
@@ -100,20 +57,33 @@ async def _maybe_await(value):
     return result
 
 
-@router.post("/evaluations")
+@router.post(
+    "/evaluations",
+    response_model=EvaluationResource,
+    responses={
+        **error_responses(400, 401, 403, 409, 413, 422, 429, 500, 503),
+        202: {
+            "model": EvaluationResource,
+            "description": "Accepted or replayed evaluation still running.",
+            "headers": {"Location": {
+                "description": "Resource recovery URL.", "schema": {"type": "string"},
+            }},
+        },
+    },
+)
 async def submit_evaluation(
     request: Request,
-    wait_seconds: int = Query(default=0),
-    caller=Depends(require_submit_caller),
-    instance=Depends(get_instance),
-):
-    if not 0 <= wait_seconds <= 60:
-        raise errors.invalid_request("wait_seconds must be between 0 and 60")
-    session_id = _validate_session_id(request.headers.get("X-Session-ID"))
-    idempotency_key = _validate_idempotency_key(request.headers.get("Idempotency-Key"))
-
-    evaluation_request = await _decode_and_validate(request)
-
+    response: Response,
+    evaluation_request: EvaluationRequest,
+    caller: Annotated[Caller, Depends(require_submit_caller)],
+    instance: Annotated[EvaluationInstance, Depends(get_instance)],
+    session_id: Annotated[SessionId, Header(alias="X-Session-ID")],
+    idempotency_key: Annotated[IdempotencyKey, Header(alias="Idempotency-Key")],
+    wait_seconds: Annotated[int, Query(
+        ge=0, le=60,
+        description="Wait for a terminal result; expiry returns 202 without cancelling work.",
+    )] = 0,
+) -> EvaluationResource:
     try:
         outcome = await asyncio.to_thread(
             instance.submit, evaluation_request, caller,
@@ -141,7 +111,7 @@ async def submit_evaluation(
 
     if resource.state in TERMINAL_STATES:
         # A replayed terminal resource answers 200 immediately.
-        return _resource_response(resource)
+        return resource
 
     if wait_seconds > 0:
         final = await wait_until_terminal(
@@ -153,56 +123,48 @@ async def submit_evaluation(
             is_disconnected=request.is_disconnected,
         )
         if final is not None and final.state in TERMINAL_STATES:
-            return _resource_response(final)
+            return final
 
-    return _resource_response(resource, accepted=True)
-
-
-def _resource_response(resource: EvaluationResource, accepted: bool = False):
-    from fastapi.responses import JSONResponse
-
-    headers = {}
-    if accepted:
-        headers["Location"] = f"/evaluations/{resource.evaluation_id}"
-    return JSONResponse(
-        content=json.loads(dump_contract(resource)),
-        status_code=202 if accepted else 200,
-        headers=headers,
-    )
+    response.status_code = 202
+    response.headers["Location"] = f"/evaluations/{resource.evaluation_id}"
+    return resource
 
 
-@router.get("/evaluations/{evaluation_id}")
+@router.get(
+    "/evaluations/{evaluation_id}", response_model=EvaluationResource,
+    responses={
+        **error_responses(401, 403, 404, 413, 422, 500),
+        200: {"headers": {"Retry-After": {
+            "description": "Polling delay for a pending resource, in seconds.",
+            "schema": {"type": "string", "const": "1"},
+        }}},
+    },
+)
 async def get_evaluation(
     evaluation_id: str,
-    caller=Depends(require_read_caller),
-    instance=Depends(get_instance),
-):
+    response: Response,
+    caller: Annotated[Caller, Depends(require_read_caller)],
+    instance: Annotated[EvaluationInstance, Depends(get_instance)],
+) -> EvaluationResource:
     resource = await asyncio.to_thread(
         instance.get, evaluation_id, caller
     )
     if resource is None:
         # Unknown, invisible, and invalidly shaped IDs are indistinguishable.
         raise errors.not_found()
-    headers = (
-        dict(errors.RETRY_AFTER_ONE) if resource.state not in TERMINAL_STATES else None
-    )
-    from fastapi.responses import JSONResponse
-
-    return JSONResponse(
-        content=json.loads(dump_contract(resource)),
-        status_code=200,
-        headers=headers,
-    )
+    if resource.state not in TERMINAL_STATES:
+        response.headers.update(errors.RETRY_AFTER_ONE)
+    return resource
 
 
-@router.get("/livez")
+@router.get("/livez", response_model=Liveness, responses=error_responses(413, 500))
 async def livez():
     """Constant process liveness; touches no store, catalog, or worker state."""
     return {"status": "ok"}
 
 
-@router.get("/readyz")
-async def readyz(instance=Depends(get_instance)):
+@router.get("/readyz", response_model=Readiness, responses=error_responses(413, 500, 503))
+async def readyz(instance: Annotated[EvaluationInstance, Depends(get_instance)]):
     ready = await asyncio.to_thread(instance.is_ready)
     if not ready:
         # No component detail: readiness failures are uniform.
@@ -210,26 +172,18 @@ async def readyz(instance=Depends(get_instance)):
     return {"ready": True}
 
 
-@router.get("/internal/metrics")
-async def internal_metrics(request: Request, context=Depends(get_context)):
-    caller = _require_observer(request, context)
-    if caller is None:
-        raise errors.forbidden("metrics require observer scope")
+@router.get(
+    "/internal/metrics", response_class=Response, dependencies=[Depends(require_observer)],
+    responses={
+        **error_responses(401, 403, 404, 413, 500),
+        200: {"content": {"application/openmetrics-text": {"schema": {"type": "string"}}}},
+    },
+)
+async def internal_metrics(context: Annotated[AppContext, Depends(get_context)]):
     metrics = context.instance.metrics
     if metrics is None:
         raise errors.not_found()
-    from fastapi.responses import Response
-
     return Response(
         content=metrics.render_openmetrics(),
         media_type="application/openmetrics-text; version=1.0.0; charset=utf-8",
     )
-
-
-def _require_observer(request: Request, context):
-    from .auth import authenticate
-
-    caller = authenticate(request, context.registry)
-    if "observer:read" not in caller.scopes:
-        return None
-    return caller

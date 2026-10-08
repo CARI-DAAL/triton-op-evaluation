@@ -22,7 +22,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 def _contract_identity() -> dict:
     contract = json.loads(
-        (PROJECT_ROOT / "contracts/evaluation-api/2.1/contract.json").read_bytes()
+        (PROJECT_ROOT / "tests/fixtures/evaluation_api/2.1/contract.json").read_bytes()
     )
     return {
         "evaluation_api_schema_version": contract["evaluation_api_schema_version"],

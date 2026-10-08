@@ -10,7 +10,7 @@ import pytest
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 PROBE = PROJECT_ROOT / "tests" / "contract_consumers" / "portable_schema_probe.py"
-CONTRACT_ROOT = PROJECT_ROOT / "contracts" / "evaluation-api" / "2.1"
+CONTRACT_ROOT = PROJECT_ROOT / "tests" / "fixtures" / "evaluation_api" / "2.1"
 
 REQUEST_BODY = json.dumps({
     "schema_version": "2.1",

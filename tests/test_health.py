@@ -56,14 +56,13 @@ async def test_readyz_failure_body_reveals_no_internals(app):
         assert leak not in text
 
 
-async def test_readyz_fails_closed_when_artifacts_unverified(
-    app, release_catalog_files, tmp_path
-):
+async def test_startup_and_readiness_work_outside_repository(app, tmp_path, monkeypatch):
+    """Runtime startup needs storage and capacity, not checked-in schema documents."""
+    monkeypatch.chdir(tmp_path)
     seed_worker(app)
-    app.app.state.context.instance.artifacts_verified = False
-    async with app.http as client:
-        response = await client.get("/readyz")
-    assert response.status_code == 503
-    assert ErrorEnvelope.model_validate_json(response.content).error.code == (
-        "NOT_READY"
-    )
+    seed_worker(app, execution_class="cpu")
+    async with app.app.router.lifespan_context(app.app):
+        async with app.http as client:
+            response = await client.get("/readyz")
+    assert response.status_code == 200
+    assert response.json() == {"ready": True}
