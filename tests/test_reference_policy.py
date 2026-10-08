@@ -77,7 +77,6 @@ def test_unknown_reference_policy_is_rejected():
 def test_policy_binds_admission_and_worker_compatibility(
     settings,
     store,
-    release_catalog,
     clock,
 ):
     from conftest import make_caller
@@ -92,7 +91,6 @@ def test_policy_binds_admission_and_worker_compatibility(
     instance = EvaluationInstance(
         settings=strict,
         store=store,
-        catalog=release_catalog,
     )
     created = instance.submit(
         make_request(),

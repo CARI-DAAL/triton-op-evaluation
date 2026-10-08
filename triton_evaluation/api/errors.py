@@ -57,10 +57,6 @@ def forbidden(message="caller lacks the required scope") -> ApiError:
     return ApiError(403, _error("FORBIDDEN", "auth", False, message))
 
 
-def manifest_binding_failed(message="reference does not match the bound manifest entry"):
-    return ApiError(403, _error("MANIFEST_BINDING_FAILED", "admission", False, message))
-
-
 def invalid_request(message: str) -> ApiError:
     return ApiError(400, _error("INVALID_REQUEST", "request", False, message))
 

@@ -9,20 +9,7 @@ def test_defaults():
     assert s.api_poll_interval_seconds == 0.25
     # engine is vendored inside the package; default points at the bundled dir
     assert s.engine_dir.endswith(os.path.join("triton_evaluation", "engine"))
-    assert s.kernel_eval_enabled is False
-    assert s.kernel_eval_token.get_secret_value() == ""
-
-
-def test_kernel_eval_single_token_alias_and_priority(monkeypatch):
-    monkeypatch.setenv("TRITON_EVAL_KERNEL_EVAL_ENABLED", "true")
-    monkeypatch.setenv("TRITON_EVAL_KERNEL_EVAL_TOKEN", "prefixed-secret")
-    alias = Settings.from_env()
-    assert alias.kernel_eval_enabled is True
-    assert alias.kernel_eval_token.get_secret_value() == "prefixed-secret"
-    monkeypatch.setenv("KERNEL_EVAL_TOKEN", "sandbox-secret")
-    preferred = Settings.from_env()
-    assert preferred.kernel_eval_token.get_secret_value() == "sandbox-secret"
-    assert "sandbox-secret" not in repr(preferred)
+    assert s.capability_secret_path is None
 
 
 def test_from_env_override(monkeypatch):

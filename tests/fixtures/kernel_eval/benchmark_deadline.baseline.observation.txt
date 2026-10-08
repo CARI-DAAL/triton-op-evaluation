@@ -1,7 +1,0 @@
-[kernel_eval]
-action=benchmark
-artifact_sha256=17351ab52964c8f921eb606e0bf1cd0db0a5ae179828d98b630d4b78b4189284
-eval_budget=1/18
-request_status=completed
-[kernel_eval][benchmark][runtime_error] cases=0/0
-error=resource deadline expired

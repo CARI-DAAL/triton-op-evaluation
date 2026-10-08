@@ -78,9 +78,8 @@ ALLOWED_METRICS = {
     "terminal_commit_cas_total": ("outcome",),
     "reaped_leases_total": ("outcome",),
     "worker_compatibility_total": ("outcome",),
-    # Shaping/catalog
+    # Shaping
     "shaping_failures_total": ("check",),
-    "catalog_binding_outcomes_total": ("outcome",),
     # Card health (spec §10)
     "card_canary_total": ("outcome",),
     "card_recovery_total": ("step",),

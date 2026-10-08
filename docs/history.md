@@ -14,8 +14,12 @@ retired compile experiments and host-specific deployment snapshots remain in Git
 | Round-two local validation reports | [docs/validation/round2-v3](https://github.com/CARI-DAAL/triton-op-evaluation/tree/9bec91c7652a1654756990f1098513cc7ba5666e/docs/validation/round2-v3) |
 
 Current decisions live in [adr/](adr/) and [architecture/](architecture/).
-Legacy bridge bytes used by regression checks live under
-[tests/fixtures/kernel_eval/legacy_bridge](../tests/fixtures/kernel_eval/legacy_bridge/)
-with their hash manifest and upstream license. They are test inputs, not deployable
-code. Two input-default evidence files remain beside their
+Retired tool envelopes, observation fixtures and the legacy bridge archive,
+including their provenance and upstream license, remain in
+[the fixed Git snapshot](https://github.com/CARI-DAAL/triton-op-evaluation/tree/5d8baf7/tests/fixtures/kernel_eval).
+They are no longer shipped in the working tree.
+
+The [fixed legacy reference](../tests/fixtures/legacy_candidate_defaults.py.txt)
+remains because active engine regression tests exercise its input-default
+behavior. Two input-default evidence files remain beside their
 [active explanation](architecture/candidate-input-defaults.md).

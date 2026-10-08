@@ -12,10 +12,9 @@ from triton_evaluation.api.contract import (
     Provenance,
 )
 from triton_evaluation.config import Settings
-from triton_evaluation.serialization import sha256_hex
-from triton_evaluation.service.admission import admit
+from triton_evaluation.serialization import canonical_json_bytes, sha256_hex
+from triton_evaluation.service.admission import CanonicalAdmission, admit
 from triton_evaluation.service.broker import EvaluationStore
-from triton_evaluation.service.catalog import ReleaseCatalog
 from triton_evaluation.service.models import (
     AlgorithmVersions,
     CreateResourceCommand,
@@ -115,8 +114,8 @@ def make_grade_request(**overrides):
 
 
 @pytest.fixture
-def make_command(settings, release_catalog):
-    """Build a fully admitted CreateResourceCommand with a fresh evaluation ID."""
+def make_command(settings):
+    """Build trial admission or seed a previously admitted legacy grade record."""
 
     def _make(
         *,
@@ -129,8 +128,19 @@ def make_command(settings, release_catalog):
     ):
         caller = caller or make_caller()
         request = request or make_request()
-        catalog = release_catalog if request.purpose == "grade" else ReleaseCatalog({})
-        admission = admit(request, caller, catalog)
+        if request.purpose == "grade":
+            # Recovery/fencing tests seed historical work directly. This is
+            # intentionally not a route through the retired grade admission.
+            canonical = canonical_json_bytes(request.model_dump(mode="json", exclude_none=False))
+            admission = CanonicalAdmission(
+                canonical_request=canonical,
+                request_digest=sha256_hex(canonical),
+                reference_digest=sha256_hex(request.reference_code.encode("utf-8")),
+                requested_checks=tuple(request.checks),
+                catalog_binding=request.grade_context,
+            )
+        else:
+            admission = admit(request, caller)
         return CreateResourceCommand(
             evaluation_id=evaluation_id or new_evaluation_id(),
             caller_id=caller.caller_id,
@@ -154,7 +164,7 @@ def make_command(settings, release_catalog):
 
 @pytest.fixture
 def release_catalog_files(tmp_path):
-    """One valid release catalog root: the manifest plus the addmm-1 reference artifact."""
+    """Legacy fixture data retained for historical records and HTTP test helpers."""
     root = tmp_path / "catalog"
     references = root / "references"
     references.mkdir(parents=True)
@@ -182,13 +192,6 @@ def release_catalog_files(tmp_path):
         manifest_path=manifest_path,
         reference_code=CATALOG_REFERENCE_CODE,
         reference_digest=reference_digest,
-    )
-
-
-@pytest.fixture
-def release_catalog(release_catalog_files):
-    return ReleaseCatalog.load(
-        release_catalog_files.root, release_catalog_files.manifest_path
     )
 
 

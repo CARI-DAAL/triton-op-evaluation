@@ -2,7 +2,7 @@ import os
 from pathlib import Path
 from typing import Literal
 
-from pydantic import AliasChoices, Field, SecretStr, model_validator
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # The evaluation engine (verify / internal benchmark / profile / validate) is
@@ -144,26 +144,8 @@ class Settings(BaseSettings):
         default="profiler-v1", pattern=_ALGORITHM_VERSION_PATTERN
     )
 
-    # Native kernel_eval facade. KERNEL_EVAL_TOKEN is the sandbox-facing
-    # single token; the prefixed alias supports existing Settings tooling.
-    kernel_eval_enabled: bool = False
-    kernel_eval_token: SecretStr = Field(
-        default=SecretStr(""),
-        validation_alias=AliasChoices(
-            "KERNEL_EVAL_TOKEN", "TRITON_EVAL_KERNEL_EVAL_TOKEN", "kernel_eval_token"
-        ),
-    )
-    kernel_eval_manifest_id: str | None = Field(default=None, min_length=1, max_length=128)
-    kernel_eval_max_turns: int = Field(default=18, ge=-1)
-    kernel_eval_max_wait_seconds: float = Field(default=840, ge=10, le=3600)
-    kernel_eval_auto_diagnostics: bool = True
-    kernel_eval_performance_warmup: int = Field(default=5, ge=0, le=100)
-    kernel_eval_performance_repeats: int = Field(default=20, ge=1, le=1000)
-
-    # --- mounted capability secret and trusted release catalog ---
+    # Mounted caller capability registry.
     capability_secret_path: Path | None = None
-    catalog_root: Path | None = None
-    catalog_manifest_path: Path | None = None
 
     @property
     def effective_correctness_algorithm_version(self) -> str:

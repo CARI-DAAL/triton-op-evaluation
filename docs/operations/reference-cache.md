@@ -5,6 +5,11 @@ reference measurements. Candidate execution, the existing accuracy algorithms an
 the decoy pre-check remain required. Validate native NPU cache-off/cache-on behavior and intended device coverage
 before enabling reuse. CPU tests establish neither device equality nor a throughput benefit.
 
+This guide describes retained compatibility for existing pinned reference-cache
+deployments. The operator input API does not register datasets or generalize
+these cache identities. Arbitrary `torch_code` and cases do not gain cache
+coverage through submission; validate a matching deployment before reuse.
+
 ## Produce and seal evidence
 
 The official assembler source is the reference identity. Audit workers must use

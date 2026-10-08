@@ -16,7 +16,7 @@ terminal publication path. Moving functions without changing these ownership
 rules would preserve those defects.
 
 The EvaluationInstance module owns submit/recover operations, admission policy,
-catalog resolution and dependency readiness. HTTP is an adapter for decoding,
+dependency readiness. HTTP is an adapter for decoding,
 authentication and transport responses. The durable store owns the state machine;
 workers own attempts; one evidence module completes results for normal execution,
 protocol failures, deadlines and recovery. Pinned identity belongs to the domain,

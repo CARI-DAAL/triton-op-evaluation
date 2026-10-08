@@ -43,7 +43,7 @@ fi
 
 cd /opt/triton-eval
 
-# --- Fail closed before API/workers: secret/catalog, build equality, bind ---
+# --- Fail closed before API/workers: secret, build equality, bind ---
 # The host preflight owns image/digest verification (no docker socket is mounted in the
 # container by design); this boundary re-verifies everything reachable in-process.
 verify_readiness() {
@@ -51,7 +51,6 @@ verify_readiness() {
 import os
 import sys
 
-from triton_evaluation.service.catalog import ReleaseCatalog
 from triton_evaluation.config import Settings
 from triton_evaluation.service.security import CapabilityRegistry
 
@@ -60,10 +59,6 @@ try:
     CapabilityRegistry.from_secret_file(settings.capability_secret_path)
 except Exception:
     sys.exit("capability secret failed validation")
-try:
-    ReleaseCatalog.load(settings.catalog_root, settings.catalog_manifest_path)
-except Exception:
-    sys.exit("release catalog failed validation")
 
 build = os.environ.get("TRITON_EVAL_EVALUATOR_BUILD", "")
 image = os.environ.get("TRITON_EVAL_IMAGE", "")

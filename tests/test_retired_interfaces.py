@@ -5,8 +5,7 @@ pytestmark = pytest.mark.anyio
 
 
 @pytest.mark.parametrize("method,path", [
-    ("POST", "/verify"), ("POST", "/profile"),
-    ("POST", "/benchmark"), ("GET", "/tasks/ev_removed"),
+    ("GET", "/tasks/ev_removed"),
 ])
 async def test_retired_routes_are_absent(
     tmp_path, release_catalog_files, monkeypatch, method, path,

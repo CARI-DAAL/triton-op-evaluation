@@ -2,12 +2,12 @@
 
 import json
 import types
+from pathlib import Path
 
 import pytest
 
 from triton_evaluation.engine import benchmark, verify
 from triton_evaluation.engine._common_utils import invoke_model, prepare_candidate_inputs
-from triton_evaluation.official_task import compose_reference_source
 from triton_evaluation.reference_cache import value_sha256
 from triton_evaluation.reference_diagnostics import _read_trace
 
@@ -16,21 +16,7 @@ torch = pytest.importorskip("torch")
 
 @pytest.fixture
 def reference():
-    definition = {
-        "name": "Defaults",
-        "inputs": {name: {} for name in ("x", "offsets", "flag", "scale", "mode")},
-        "reference": (
-            "import torch\n"
-            "def run(x, offsets=None, flag=True, scale=7, *, mode='official'):\n"
-            "    return x * scale + (1 if flag else 0) + (0 if offsets is None else offsets)\n"
-        ),
-    }
-    workload = {"inputs": {"x": {"type": "random", "shape": [2], "dtype": "float32"}}}
-    source = compose_reference_source(
-        json.dumps(definition).encode(),
-        json.dumps(workload).encode(),
-        problem_id="official_l3_Defaults",
-    )
+    source = (Path(__file__).parent / "fixtures/legacy_candidate_defaults.py.txt").read_text()
     module = types.ModuleType("official_candidate_defaults")
     exec(compile(source, "official_candidate_defaults.py", "exec"), module.__dict__)
     return module
@@ -117,7 +103,9 @@ def test_verify_real_candidate_execution_receives_defaults_without_reference_ins
 @pytest.mark.parametrize("cache_hit", [False, True])
 def test_benchmark_actual_candidate_function_receives_defaults(reference, monkeypatch, cache_hit):
     raw = reference.get_input_groups()[0]
-    config = types.SimpleNamespace(skip_framework=cache_hit)
+    config = types.SimpleNamespace(
+        skip_framework=cache_hit, reference_latencies_ms=None, reference_measure_eight=False,
+    )
     captured = []
 
     def framework(model, inputs, *_args):

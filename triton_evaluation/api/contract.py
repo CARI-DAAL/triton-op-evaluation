@@ -1,14 +1,14 @@
-"""Strict v2.1 wire contract for the evaluation service.
+"""Strict durable evaluation models and typed public resource responses.
 
-This module is the public API surface: the request shapes a consumer sends and
-the typed resource they get back. It depends only on pydantic — no app
-internals — so it can be imported by clients and tests in isolation. Every
-model is strict: unknown fields, scalar coercion, and non-finite ordinary
-floats are rejected; NaN/Inf exist only as explicit string sentinels inside
-correctness samples.
+``EvaluationRequest`` is the internal engine/storage format retained for
+persisted request recovery. Public submissions use ``api.operator.OperatorRequest``
+and are translated into that format at the HTTP boundary. Resource and error
+models here define the responses returned to callers.
 
-FastAPI derives its OpenAPI schemas from these models. Recorded wire examples
-live in the test suite and are not needed to import or run the service.
+This module depends only on pydantic, so clients and tests can import response
+models in isolation. Models reject unknown fields, scalar coercion and
+non-finite ordinary floats; correctness samples represent NaN/Inf as explicit
+string sentinels. Recorded resource examples live in the test suite.
 """
 import math
 import statistics
@@ -133,6 +133,8 @@ class GradeContext(StrictModel):
     reference_digest: Digest
 
 
+# Internal storage/engine model. Public input is api.operator.OperatorRequest.
+# Retain its schema description for byte-compatible historical record fixtures.
 class EvaluationRequest(StrictModel):
     """A durable request for evaluation evidence.
 
@@ -719,7 +721,7 @@ class EvaluationResult(StrictModel):
 
 
 def dump_contract(model: StrictModel) -> bytes:
-    """Serialize the sole public contract as canonical JSON, preserving null slots."""
+    """Serialize a durable contract model as canonical JSON, preserving null slots."""
     from ..serialization import canonical_json_bytes
 
     return canonical_json_bytes(model.model_dump(mode="json", exclude_none=False))

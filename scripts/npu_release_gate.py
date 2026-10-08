@@ -1,35 +1,38 @@
 #!/usr/bin/env python
-"""Target-NPU production release gate for evaluation API 2.1.
+"""Run readiness and elementwise-add correctness smoke checks on an Ascend host.
 
-Orchestrates the ``npu``/``release_gate`` marked calibration tests plus an
-HTTP crash soak against the deployed service. Exits nonzero on any missing
-case, skipped calibration, digest mismatch, unstable benchmark, invalid
-profile, or fenced-write failure. The report is written atomically only
-after all checks complete; on failure the only output is a report with
-``production_ready=false``. The report never records credentials, sources,
-inputs, hostname, device serials, or full session IDs.
+This limited gate checks two add workloads and execution provenance. It does
+not cover the full correctness taxonomy, timing stability, profile accuracy,
+worker crash recovery or a crash soak. Passing is not full production calibration.
+The report records the target's live OpenAPI digest and bounded check scope;
+it never records capability tokens, source code or input values.
 """
 import argparse
+import hashlib
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
+import urllib.error
+import urllib.request
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 
-def _contract_identity() -> dict:
-    contract = json.loads(
-        (PROJECT_ROOT / "tests/fixtures/evaluation_api/2.1/contract.json").read_bytes()
-    )
+def _contract_identity(service_url: str) -> dict:
+    """Identify the target's current HTTP schema without a local schema artifact."""
+    with urllib.request.urlopen(f"{service_url.rstrip('/')}/openapi.json", timeout=10) as response:
+        schema = json.load(response)
+    if not isinstance(schema, dict) or not schema.get("openapi") or not schema.get("paths"):
+        raise ValueError("target did not return an OpenAPI schema")
+    canonical = json.dumps(schema, sort_keys=True, separators=(",", ":"), allow_nan=False)
     return {
-        "evaluation_api_schema_version": contract["evaluation_api_schema_version"],
-        "evaluation_api_schema_digest": contract["evaluation_api_schema_digest"],
-        "evaluation_api_golden_fixture_digest": contract[
-            "evaluation_api_golden_fixture_digest"
-        ],
+        "source": "target-openapi",
+        "openapi_version": schema["openapi"],
+        "openapi_sha256": hashlib.sha256(canonical.encode("utf-8")).hexdigest(),
         "evaluator_build": os.environ.get("TRITON_EVAL_EVALUATOR_BUILD", ""),
     }
 
@@ -51,33 +54,31 @@ def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--service-url", default="http://172.18.0.1:11907")
     parser.add_argument("--capability-file", required=True)
-    parser.add_argument("--catalog-manifest", required=True)
-    parser.add_argument("--cases", required=True)
     parser.add_argument("--output", required=True)
     args = parser.parse_args(argv)
 
-    environment = dict(os.environ)
-    environment.update({
-        "TRITON_EVAL_SERVICE_URL": args.service_url,
-        "TRITON_EVAL_CATALOG_MANIFEST": args.catalog_manifest,
-        "TRITON_EVAL_CALIBRATION_CASES": Path(args.cases).read_text(
-            encoding="utf-8"
-        ),
-    })
-    # The capability file is only ever a mounted secret path; its content
-    # never reaches the report.
-    environment["TRITON_EVAL_GRADE_TOKEN"] = _read_token(args.capability_file)
-
-    calibration_pass, log = _run_calibration_with(environment)
-
     report = {
-        "production_ready": calibration_pass,
+        "passed": False,
+        "scope": "readiness-and-add-correctness-smoke",
         "service_url": args.service_url,
-        "calibration": {"passed": calibration_pass},
-        "contract": _contract_identity(),
+        "calibration": {"passed": False},
+        "contract": None,
     }
+    try:
+        environment = dict(os.environ)
+        environment.update({
+            "TRITON_EVAL_SERVICE_URL": args.service_url,
+            "TRITON_EVAL_CAPABILITY_TOKEN": _read_token(args.capability_file),
+        })
+        report["contract"] = _contract_identity(args.service_url)
+        passed, log = _run_calibration_with(environment)
+        report["passed"] = passed
+        report["calibration"]["passed"] = passed
+    except (OSError, ValueError, urllib.error.URLError):
+        # HTTP errors may contain response bodies; do not copy them into the report.
+        log = ["gate setup failed: check capability file and target OpenAPI availability"]
     _write_atomic(Path(args.output), report)
-    if not calibration_pass:
+    if not report["passed"]:
         for line in log[-20:]:
             print(line, file=sys.stderr)
         return 1
@@ -85,22 +86,27 @@ def main(argv=None) -> int:
 
 
 def _read_token(path: str) -> str:
-    return Path(path).read_text(encoding="utf-8").strip()
+    token = Path(path).read_text(encoding="utf-8").strip()
+    if not token:
+        raise ValueError("capability file is empty")
+    return token
 
 
 def _run_calibration_with(environment) -> tuple[bool, list[str]]:
-    result = subprocess.run(
-        [sys.executable, "-m", "pytest",
-         "tests/test_npu_release_calibration.py", "-m", "release_gate",
-         "-q", "--no-header"],
-        cwd=PROJECT_ROOT, capture_output=True, text=True, env=environment,
-    )
-    lines = result.stdout.splitlines()
-    summary = next(
-        (line for line in lines if "passed" in line or "skipped" in line), ""
-    )
-    skipped_only = "skipped" in summary and "passed" not in summary
-    return result.returncode == 0 and not skipped_only, lines
+    try:
+        result = subprocess.run(
+            [sys.executable, "-m", "pytest",
+             "tests/test_npu_release_calibration.py", "-m", "release_gate",
+             "-q", "--no-header", "--tb=short"],
+            cwd=PROJECT_ROOT, capture_output=True, text=True, env=environment,
+            timeout=720,
+        )
+    except subprocess.TimeoutExpired:
+        return False, ["NPU smoke checks exceeded the gate timeout"]
+    summary = re.search(r"\b(\d+) passed\b", result.stdout)
+    skipped = re.search(r"\b\d+ skipped\b", result.stdout)
+    passed = result.returncode == 0 and summary is not None and int(summary[1]) >= 2
+    return passed and skipped is None, result.stdout.splitlines()
 
 
 if __name__ == "__main__":

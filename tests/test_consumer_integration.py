@@ -1,6 +1,7 @@
 """Cross-repository HTTP gate, enabled with EVALUATION_CONSUMER_ROOT.
 
 Load the actual consumer module without its agent runtime registration. Its
+The consumer must implement the current three-input submission interface. Its
 HTTP transport reaches the real API, durable store, and Worker with a CPU
 evaluator. No schema or wire response is mocked at the consumer seam.
 """
@@ -85,7 +86,9 @@ def test_consumer_recovers_ambiguous_submit_and_polls_real_api(
     )
     client._transport = httpx.MockTransport(dispatch)
     outcome = client.evaluate(
-        op_name="addmm", reference_code="REF", kernel_code="IMPL",
+        torch_code="def run(x): return x + 1",
+        triton_code="def run(x): return x + 1",
+        cases=[{"inputs": [{"shape": [2], "dtype": "float32"}]}],
         non_compute=False, checks=checks,
         **({"profile": {"mode": "op"}} if checks == ["profile"] else {}),
     )

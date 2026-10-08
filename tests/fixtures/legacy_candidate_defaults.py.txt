@@ -1,0 +1,85 @@
+"""Composed by triton_evaluation.official_task official-task-v1
+problem_id: official_l3_Defaults
+official_digest: d1636a217aed2c378cfc13c03f001b4f6911a5233d80efe36c41e6e7f6cf8808
+The official reference implementation below is embedded VERBATIM from
+definition.json; the appended loader is fixed, versioned adapter code.
+"""
+import torch
+import torch
+def run(x, offsets=None, flag=True, scale=7, *, mode='official'):
+    return x * scale + (1 if flag else 0) + (0 if offsets is None else offsets)
+
+_PARAM_ORDER = ['x', 'offsets', 'flag', 'scale', 'mode']
+
+
+import json as _json
+
+_ADAPTER_VERSION = 'official-task-v1'
+
+class Model(torch.nn.Module):
+    """Adapter model: forwards present-case inputs to the official run()."""
+
+    def __init__(self):
+        super().__init__()
+
+    def forward(self, *args):
+        if len(args) != len(_PARAM_ORDER):
+            raise ValueError("official adapter input count does not match parameter order")
+        kwargs = {}
+        for name, val in zip(_PARAM_ORDER, args):
+            if val is not _ABSENT:
+                kwargs[name] = val
+        return run(**kwargs)
+
+_ABSENT = object()
+_INT_DTYPES = ('int8', 'int16', 'int32', 'int64', 'uint8')
+
+def _materialize(spec):
+    if spec["type"] != "tensor":
+        return spec["value"]
+    td = getattr(torch, spec["dtype"])
+    shape = spec["shape"]
+    rng = spec.get("range")
+    if spec["dtype"] == "bool":
+        return torch.rand(shape) > 0.5
+    if spec["dtype"] in _INT_DTYPES:
+        if rng is not None:
+            return torch.randint(rng[0], rng[1] + 1, shape, dtype=td)
+        lo = 0 if spec["dtype"] == "uint8" else -5
+        return torch.randint(lo, 5, shape, dtype=td)
+    if rng is not None:
+        return (torch.rand(shape) * (rng[1] - rng[0]) + rng[0]).to(td)
+    return torch.randn(shape, dtype=td)
+
+def _get_case_specs():
+    cases = _json.loads(
+        "[{\"inputs\": [{\"name\": \"x\", \"type\": \"tensor\", \"dtype\": \"float32\", \"shape\": [2]}]}]"
+    )
+    return cases
+
+def get_case_count():
+    return len(_get_case_specs())
+
+def _iter_input_groups():
+    for case in _get_case_specs():
+        by_name = {i["name"]: i for i in case["inputs"]}
+        vals = []
+        for name in _PARAM_ORDER:
+            spec = by_name.get(name)
+            vals.append(_materialize(spec) if spec is not None else _ABSENT)
+        yield vals
+
+def get_input_groups():
+    return list(_iter_input_groups())
+
+def get_input_group(case_index):
+    """Zero-based case; preserve preceding-case RNG consumption, bounded memory."""
+    if not isinstance(case_index, int) or isinstance(case_index, bool) or case_index < 0:
+        raise IndexError("official adapter case index must be a nonnegative integer")
+    for index, inputs in enumerate(_iter_input_groups()):
+        if index == case_index:
+            return inputs
+    raise IndexError("official adapter case index is out of range")
+
+def get_init_inputs():
+    return []

@@ -1,9 +1,0 @@
-[kernel_eval]
-action=verify
-artifact_sha256=5b4a136a3d446afd3705c42236a0bcedf5032f1c8e713f7693fdd9f5b33934d0
-eval_budget=1/18
-request_status=completed
-[kernel_eval][verify][correct] cases=50/50
-kernel_metrics: dominant=_k time_ms=0.003220064
-  aic_cube_ratio=0.129
-bottleneck_hint: cube_stall

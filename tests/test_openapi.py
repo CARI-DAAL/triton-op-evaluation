@@ -1,9 +1,5 @@
 """The live HTTP API is the discoverable, model-derived wire contract."""
 
-import asyncio
-import json
-from pathlib import Path
-
 import pytest
 from jsonschema import Draft202012Validator
 from test_api import build_app, post, request_payload, seed_worker, trial_headers
@@ -66,8 +62,8 @@ async def test_live_spec_documents_requests_responses_and_auth(app):
     schemes = document["components"]["securitySchemes"]
     assert schemes[next(iter(submit["security"][0]))]["scheme"] == "bearer"
     parameters = {parameter["name"]: parameter for parameter in submit["parameters"]}
-    assert parameters["X-Session-ID"]["required"]
-    assert parameters["Idempotency-Key"]["required"]
+    assert not parameters["X-Session-ID"]["required"]
+    assert not parameters["Idempotency-Key"]["required"]
     assert parameters["wait_seconds"]["schema"]["maximum"] == 60
     for status in (400, 401, 403, 409, 413, 422, 429, 500, 503):
         assert response_schema(submit, status)
@@ -97,53 +93,19 @@ async def test_real_async_replay_and_error_responses_match_live_spec(app):
     validate(document, response_schema(recover, 200), fetched.json())
 
 
-async def test_tool_models_and_golden_wire_envelopes_match_live_spec(app):
-    async with app.http as client:
-        document = (await client.get("/openapi.json")).json()
-    for action in ("verify", "benchmark", "profile"):
-        operation = document["paths"][f"/{action}"]["post"]
-        assert operation["security"]
-        validate(document, body_schema(operation), {"task_id": "official/1", "kernel_code": "K"})
-        assert response_schema(operation, 200)
-        for status in (400, 401, 403, 409, 404, 413, 500):
-            assert response_schema(operation, status)
-    fixtures = list((Path(__file__).parent / "fixtures" / "kernel_eval").glob(
-        "*.baseline.envelope.json"
-    ))
-    assert fixtures
-    for fixture in fixtures:
-        envelope = json.loads(fixture.read_text())
-        action = envelope["action"]
-        if action not in {"verify", "benchmark", "profile"}:
-            continue
-        operation = document["paths"][f"/{action}"]["post"]
-        validate(document, response_schema(operation, 200), envelope)
-
-
-@pytest.mark.parametrize("action,fixture", [
-    ("verify", "verify_correct"),
-    ("benchmark", "benchmark_measured"),
-    ("profile", "profile_complete"),
-])
-async def test_real_tool_http_responses_match_documented_models(tmp_path, action, fixture):
-    from test_kernel_eval_api import build_native_app, complete_one, headers, payload
-
-    app = build_native_app(tmp_path)
+@pytest.mark.parametrize("action", ["verify", "benchmark", "profile"])
+async def test_tool_endpoints_share_operator_and_resource_models(app, action):
     seed_worker(app)
     async with app.http as client:
         document = (await client.get("/openapi.json")).json()
         operation = document["paths"][f"/{action}"]["post"]
-        validate(document, body_schema(operation), payload())
-        pending = asyncio.create_task(
-            client.post(f"/{action}", json=payload(), headers=headers("documented-turn"))
-        )
-        await complete_one(app, pending, fixture)
-        completed = await pending
-        assert completed.status_code == 200
-        refused = await client.post(f"/{action}", json=payload())
+        assert body_schema(operation) == body_schema(document["paths"]["/evaluations"]["post"])
+        validate(document, body_schema(operation), request_payload())
+        accepted = await client.post(f"/{action}", json=request_payload(), headers=trial_headers())
+        assert accepted.status_code == 202
+        refused = await client.post(f"/{action}", json=request_payload())
         assert refused.status_code == 401
-        assert refused.json()["error"]["code"] == "UNAUTHENTICATED"
-    for response in (completed, refused):
+    for response in (accepted, refused):
         validate(document, response_schema(operation, response.status_code), response.json())
 
 
@@ -163,7 +125,7 @@ async def test_health_metrics_and_error_content_are_typed(app):
     for name in ("/livez", "/readyz", "/health"):
         assert response_schema(document["paths"][name]["get"], 200)
     verify = document["paths"]["/verify"]["post"]
-    assert verify["security"] == [{"KernelToolBearer": []}]
+    assert verify["security"] == [{"CapabilityBearer": []}]
     assert all(
         not item["required"] for item in verify["parameters"] if item["in"] == "header"
     )

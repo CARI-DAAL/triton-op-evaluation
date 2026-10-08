@@ -6,22 +6,27 @@ from unittest import mock
 
 import pytest
 from conftest import FakeClock
-from test_api import build_app, make_test_settings, post, seed_worker, trial_headers
+from test_api import (
+    build_app,
+    make_test_settings,
+    post,
+    request_payload,
+    seed_worker,
+    trial_headers,
+)
 from test_evaluation_evaluator import ENVIRONMENT, Harness, RecordingSink, succeeded, trial_pinned
 from test_worker import build_worker
 
-from triton_evaluation.api.contract import EvaluationRequest
+from triton_evaluation.api.operator import OperatorRequest
 from triton_evaluation.evaluators.base import engine_failure
 from triton_evaluation.evaluators.evaluation import EvaluationEvaluator
+from triton_evaluation.evaluators.operator import to_evaluation_request
 from triton_evaluation.runtime.worker import FencedProgress
 from triton_evaluation.service.models import AlgorithmVersions, WorkerIdentity, new_worker_id
 
 
-def payload(checks, source="class ModelNew: pass"):
-    return {
-        "schema_version": "2.1", "op_name": "addmm",
-        "reference_code": "REF", "kernel_code": source, "checks": checks,
-    }
+def payload(checks, source="def run(): pass"):
+    return request_payload(triton_code=source, checks=checks)
 
 
 def app_with_precheck(tmp_path, release_catalog_files, **overrides):
@@ -44,7 +49,7 @@ def cpu_worker(app):
 
 @pytest.mark.anyio
 @pytest.mark.parametrize("source,status,outcome", [
-    ("class ModelNew: pass", "succeeded", "compiled"),
+    ("def run(): pass", "succeeded", "compiled"),
     ("def broken(: pass", "succeeded", "compile_error"),
     ("raise OSError('temporarily unavailable')", "failed", None),
 ])
@@ -105,7 +110,7 @@ async def test_candidate_import_is_not_executed_before_worker_claims(
 
 @pytest.mark.anyio
 @pytest.mark.parametrize("source,compile_status,compile_verdict", [
-    ("class ModelNew: pass", "succeeded", "compiled"),
+    ("def run(): pass", "succeeded", "compiled"),
     ("def broken(: pass", "succeeded", "compile_error"),
     ("raise OSError('temporarily unavailable')", "failed", None),
 ])
@@ -197,7 +202,9 @@ def test_missing_evidence_is_failed_and_fenced_before_other_checks(tmp_path):
     evaluator = Harness(verify=succeeded("verify-correct.json"))
     sink = RecordingSink()
     result = evaluator.run(
-        request=EvaluationRequest.model_validate(payload(["compile", "correctness"])),
+        request=to_evaluation_request(
+            OperatorRequest.model_validate(payload(["compile", "correctness"]))
+        ),
         work_dir=tmp_path, device_id=0,
         deadline_at=datetime.now(timezone.utc) + timedelta(minutes=10),
         lease_valid=lambda: True, execution_environment=ENVIRONMENT,
@@ -252,8 +259,11 @@ async def test_cached_compile_pass_is_used_only_after_cpu_claim(
 
     app = app_with_precheck(tmp_path, release_catalog_files, verdict_cache_enabled=True)
     worker = cpu_worker(app)
-    source = "class ModelNew: pass"
-    digest = verdict_cache.digest_for(source, "triton_ascend_impl", app.settings.cann_fingerprint)
+    source = "def run(): pass"
+    internal = to_evaluation_request(OperatorRequest.model_validate(payload(["compile"], source)))
+    digest = verdict_cache.digest_for(
+        internal.kernel_code, "triton_ascend_impl", app.settings.cann_fingerprint,
+    )
     verdict_cache.put(app.store, digest, "precheck_passed", 60)
     with mock.patch("triton_evaluation.runtime.precheck.run_script", side_effect=AssertionError):
         async with app.http as client:

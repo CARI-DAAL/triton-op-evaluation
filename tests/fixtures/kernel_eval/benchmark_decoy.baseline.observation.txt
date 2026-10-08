@@ -1,7 +1,0 @@
-[kernel_eval]
-action=benchmark
-artifact_sha256=241c7ee253a04c0b83762957775889b074c3e7dfbbf3ffa05587ade5e59bb419
-eval_budget=1/18
-request_status=completed
-[kernel_eval][benchmark][decoy]
-error=decoy: torch passthrough detected

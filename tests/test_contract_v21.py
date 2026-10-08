@@ -203,26 +203,26 @@ def test_queued_resource_echoes_canonical_schema_version(store, make_command):
 # ---------------------------------------------------------------------------
 
 
-def test_rollout_admission_treated_as_trial(release_catalog):
+def test_rollout_admission_treated_as_trial():
     caller = make_caller(scopes=("trial:submit", "trial:read"))
     request = make_request(schema_version="2.1", purpose="rollout")
-    admission = admit(request, caller, release_catalog)
+    admission = admit(request, caller)
     assert admission.catalog_binding is None
     assert admission.requested_checks == ("correctness",)
 
 
-def test_rollout_admission_forbidden_without_trial_submit(release_catalog):
+def test_rollout_admission_forbidden_without_trial_submit():
     caller = make_caller("grader-1", "trusted", ("grade:submit", "grade:read"))
     request = make_request(schema_version="2.1", purpose="rollout")
     with pytest.raises(ForbiddenError):
-        admit(request, caller, release_catalog)
+        admit(request, caller)
 
 
 def test_rollout_purpose_resolves_rollout_traffic_class(
-    settings, store, release_catalog, make_worker,
+    settings, store, make_worker,
 ):
     instance = EvaluationInstance(
-        settings=settings, store=store, catalog=release_catalog,
+        settings=settings, store=store,
     )
     store.heartbeat(make_worker())
     outcome = instance.submit(
@@ -252,7 +252,15 @@ async def test_leased_compile_http_body_validates_against_published_schema(
 
     import jsonschema
     from conftest import FakeClock
-    from test_api import build_app, make_test_settings, post, seed_worker, trial_headers
+    from test_api import (
+        build_app,
+        internal_request,
+        make_test_settings,
+        post,
+        request_payload,
+        seed_worker,
+        trial_headers,
+    )
 
     from triton_evaluation.evaluators.evaluation import EvaluationEvaluator
     from triton_evaluation.runtime import verdict_cache
@@ -262,9 +270,10 @@ async def test_leased_compile_http_body_validates_against_published_schema(
     app = build_app(tmp_path, release_catalog_files, settings=settings,
                     clock=FakeClock(int(time.time() * 1000)))
     seed_worker(app, execution_class="cpu")
-    payload = _request(checks=["compile"], kernel_code="def broken(:\n")
+    payload = request_payload(checks=["compile"], triton_code="def broken(:\n")
     digest = verdict_cache.digest_for(
-        payload["kernel_code"], "triton_ascend_impl", settings.cann_fingerprint,
+        internal_request(checks=["compile"], triton_code="def broken(:\n").kernel_code,
+        "triton_ascend_impl", settings.cann_fingerprint,
     )
     verdict_cache.put(app.store, digest, "compile_error", settings.verdict_cache_ttl_seconds)
     worker = Worker(
@@ -297,7 +306,7 @@ def test_only_current_schema_is_accepted(version):
 
 @pytest.mark.anyio
 async def test_removed_version_is_rejected_before_admission(tmp_path, release_catalog_files):
-    from test_api import build_app, seed_worker, trial_headers
+    from test_api import build_app, request_payload, seed_worker, trial_headers
 
     app = build_app(tmp_path, release_catalog_files)
     seed_worker(app)
@@ -305,7 +314,9 @@ async def test_removed_version_is_rejected_before_admission(tmp_path, release_ca
         rejected = await client.post(
             "/evaluations", json=_request(schema_version="2.0"), headers=trial_headers()
         )
-        accepted = await client.post("/evaluations", json=_request(), headers=trial_headers())
+        accepted = await client.post(
+            "/evaluations", json=request_payload(), headers=trial_headers()
+        )
     assert rejected.status_code == 422
     assert rejected.json()["schema_version"] == "2.1"
     assert rejected.json()["error"]["code"] == "INVALID_REQUEST"

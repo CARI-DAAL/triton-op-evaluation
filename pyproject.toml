@@ -12,7 +12,9 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-test = ["pytest==9.1.1", "fakeredis==2.37.0", "httpx==0.28.1", "jsonschema==4.26.0"]
+# Tensor/cache tests use the Torch-to-NumPy bridge; Torch does not install NumPy.
+# Keep the test stack compatible across the Python 3.10–3.12 CI matrix.
+test = ["pytest==9.1.1", "fakeredis==2.37.0", "httpx==0.28.1", "jsonschema==4.26.0", "numpy==2.2.6"]
     # Full Ascend NPU stack — the single version declaration shared by BOTH
     # deployment paths: `pip install -e ".[npu]"` (host / scripts/start.sh)
     # and the Docker build. torch_npu / triton-ascend are not on PyPI; install
@@ -44,12 +46,7 @@ markers = [
 line-length = 100
 target-version = "py310"
 # engine/ is vendored (Huawei, CANN license) — do not lint or reformat it.
-# tests/fixtures/kernel_eval/legacy_bridge/reference holds verbatim retired-bridge
-# fixture bytes kept as evidence — same rule.
-extend-exclude = [
-    "triton_evaluation/engine",
-    "tests/fixtures/kernel_eval/legacy_bridge/reference",
-]
+extend-exclude = ["triton_evaluation/engine"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]

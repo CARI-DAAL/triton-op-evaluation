@@ -1,7 +1,7 @@
 """Durable HTTP endpoint tests (POST/GET semantics).
 
 Shared helpers build a complete test application over fakeredis with a fake
-clock, a real capability secret file, and a real release catalog. The other
+clock and a real capability secret file. The other
 HTTP suites import these helpers.
 """
 import json
@@ -17,7 +17,6 @@ from triton_evaluation.api.contract import ErrorEnvelope, EvaluationResource
 from triton_evaluation.api.dependencies import AppContext
 from triton_evaluation.config import Settings
 from triton_evaluation.service.broker import EvaluationStore
-from triton_evaluation.service.catalog import ReleaseCatalog
 from triton_evaluation.service.instance import EvaluationInstance
 from triton_evaluation.service.models import AlgorithmVersions, WorkerIdentity, new_worker_id
 from triton_evaluation.service.security import CapabilityRegistry
@@ -39,8 +38,6 @@ def make_test_settings(tmp_path):
         api_poll_interval_seconds=0.05,
         maintenance_interval_seconds=5.0,
         capability_secret_path=str(tmp_path / "capabilities.json"),
-        catalog_root=str(tmp_path / "catalog"),
-        catalog_manifest_path=str(tmp_path / "catalog" / "catalog.json"),
         # Startup canary off: e2e protocol tests predate card health.
         card_canary_on_startup=False,
     )
@@ -118,23 +115,15 @@ def build_app(tmp_path, catalog_files, clock=None, settings=None):
     metrics = RedisMetrics(client, settings.redis_prefix)
     store = EvaluationStore(client, settings, clock=clock, metrics=metrics)
     registry = CapabilityRegistry.from_secret_file(Path(settings.capability_secret_path))
-    catalog = ReleaseCatalog.load(catalog_files.root, catalog_files.manifest_path)
 
-    from triton_evaluation.kernel_eval_budget import EvalBudgetRegistry
-    from triton_evaluation.kernel_evaluation import KernelEvaluation
 
     instance = EvaluationInstance(
-        settings=settings, store=store, catalog=catalog,
+        settings=settings, store=store,
         metrics=metrics,
-    )
-    budget = EvalBudgetRegistry(
-        client, prefix=settings.redis_prefix, maximum=settings.kernel_eval_max_turns,
-        retention_seconds=settings.retention_seconds,
     )
     context = AppContext(
         instance=instance,
         registry=registry,
-        kernel_eval=KernelEvaluation(instance, budget),
     )
     app = create_app(context)
     transport = httpx.ASGITransport(app=app)
@@ -165,14 +154,20 @@ def grade_headers(session="session-g", key="key-g"):
 
 def request_payload(**overrides):
     payload = {
-        "schema_version": "2.1",
-        "op_name": "addmm",
-        "reference_code": "REF",
-        "kernel_code": "IMPL",
+        "torch_code": "REF",
+        "triton_code": "IMPL",
+        "cases": [{"inputs": []}],
         "checks": ["correctness"],
     }
     payload.update(overrides)
     return payload
+
+
+def internal_request(**overrides):
+    from triton_evaluation.api.operator import OperatorRequest
+    from triton_evaluation.evaluators.operator import to_evaluation_request
+
+    return to_evaluation_request(OperatorRequest.model_validate(request_payload(**overrides)))
 
 
 def raw_json(payload):
@@ -228,6 +223,7 @@ async def test_terminal_replay_returns_200(app, make_command):
 
     seed_worker(app)
     command = make_command(
+        request=internal_request(),
         caller=make_caller("trial-caller", "trial", ("trial:submit", "trial:read"))
     )
     created = app.store.create_or_replay(command)
@@ -266,6 +262,7 @@ async def test_get_terminal_resource_has_no_retry_after(app, make_command):
     from conftest import make_caller
 
     command = make_command(
+        request=internal_request(),
         caller=make_caller("trial-caller", "trial", ("trial:submit", "trial:read"))
     )
     created = app.store.create_or_replay(command)

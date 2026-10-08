@@ -99,15 +99,13 @@ async def test_read_only_caller_cannot_submit(app):
 # ---------------------------------------------------------------------------
 
 
-async def test_missing_session_id_is_rejected(app):
+async def test_missing_session_id_uses_stable_replay_scope(app):
+    seed_worker(app)
     async with app.http as client:
         headers = trial_headers()
         del headers["X-Session-ID"]
         response = await post(client, headers=headers)
-    assert response.status_code == 422
-    assert ErrorEnvelope.model_validate_json(response.content).error.code == (
-        "INVALID_REQUEST"
-    )
+    assert response.status_code == 202
 
 
 async def test_invalid_session_id_is_rejected(app):
@@ -116,12 +114,13 @@ async def test_invalid_session_id_is_rejected(app):
     assert response.status_code == 422
 
 
-async def test_missing_idempotency_key_is_rejected(app):
+async def test_missing_idempotency_key_is_generated(app):
+    seed_worker(app)
     async with app.http as client:
         headers = trial_headers()
         del headers["Idempotency-Key"]
         response = await post(client, headers=headers)
-    assert response.status_code == 422
+    assert response.status_code == 202
 
 
 async def test_idempotency_key_rejects_non_visible_ascii(app):
@@ -192,7 +191,7 @@ async def test_cross_field_combination_errors_are_422(app):
 
 async def test_source_over_two_mib_is_422(app):
     async with app.http as client:
-        payload = request_payload(kernel_code="k" * (2 * 1024 * 1024 + 1))
+        payload = request_payload(triton_code="k" * (2 * 1024 * 1024 + 1))
         response = await post(client, payload=payload)
     assert response.status_code == 422
     assert ErrorEnvelope.model_validate_json(response.content).error.code == (
@@ -202,14 +201,14 @@ async def test_source_over_two_mib_is_422(app):
 
 async def test_body_over_four_mib_is_413_with_streamed_count(app):
     async with app.http as client:
-        payload = request_payload(kernel_code="k" * (5 * 1024 * 1024))
+        payload = request_payload(triton_code="k" * (5 * 1024 * 1024))
         response = await post(client, payload=payload)
     assert response.status_code == 413
 
 
 async def test_body_over_four_mib_without_content_length_is_413(app):
     async with app.http as client:
-        payload = request_payload(kernel_code="k" * (5 * 1024 * 1024))
+        payload = request_payload(triton_code="k" * (5 * 1024 * 1024))
         response = await client.post(
             "/evaluations",
             content=_chunked(raw_chunk(payload)),
@@ -239,17 +238,17 @@ async def test_invalid_wait_range_is_422(app):
 # ---------------------------------------------------------------------------
 
 
-async def test_trial_caller_cannot_submit_grade(app):
+async def test_retired_grade_body_is_rejected(app):
     async with app.http as client:
         response = await post(
             client, payload=grade_payload(), headers=trial_headers()
         )
-    assert response.status_code == 403
+    assert response.status_code == 422
     envelope = ErrorEnvelope.model_validate_json(response.content)
-    assert envelope.error.code == "FORBIDDEN"
+    assert envelope.error.code == "INVALID_REQUEST"
 
 
-async def test_grade_binding_failure_is_403_manifest_code(app):
+async def test_grade_only_credential_has_no_operator_submit_scope(app):
     async with app.http as client:
         payload = grade_payload() | {
             "grade_context": grade_payload()["grade_context"]
@@ -258,8 +257,8 @@ async def test_grade_binding_failure_is_403_manifest_code(app):
         response = await post(client, payload=payload, headers=grade_headers())
     assert response.status_code == 403
     envelope = ErrorEnvelope.model_validate_json(response.content)
-    assert envelope.error.code == "MANIFEST_BINDING_FAILED"
-    assert envelope.error.phase == "admission"
+    assert envelope.error.code == "FORBIDDEN"
+    assert envelope.error.phase == "auth"
     assert envelope.error.retryable is False
 
 
@@ -267,7 +266,7 @@ async def test_idempotency_conflict_is_409(app):
     seed_worker(app)
     async with app.http as client:
         await post(client)  # same key, canonical request pinned
-        response = await post(client, payload=request_payload(reference_code="OTHER"))
+        response = await post(client, payload=request_payload(torch_code="OTHER"))
     assert response.status_code == 409
     envelope = ErrorEnvelope.model_validate_json(response.content)
     assert envelope.error.code == "IDEMPOTENCY_CONFLICT"
