@@ -15,7 +15,7 @@ The durable evaluation protocol is **v2.1**:
 
 The optional [native kernel_eval facade](kernel-eval.md) serves
 `POST /verify`, `/benchmark` and `/profile` for task-agent tools. It resolves
-official task IDs from the service catalog and uses one `KERNEL_EVAL_TOKEN`.
+task IDs from the service catalog and uses one `KERNEL_EVAL_TOKEN`.
 
 | Caller intent | `checks` |
 | --- | --- |

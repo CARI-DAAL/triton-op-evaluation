@@ -10,7 +10,7 @@ from types import SimpleNamespace
 import fakeredis
 import pytest
 from conftest import FakeClock
-from native_eval_helpers import TASK_ID, official_catalog, outcome, worker_identity
+from native_eval_helpers import TASK_ID, outcome, task_catalog, worker_identity
 
 from triton_evaluation.api.contract import EvaluationRequest
 from triton_evaluation.config import Settings
@@ -49,7 +49,7 @@ class WaitClock:
 
 
 def build_tool(tmp_path, **overrides):
-    files, task = official_catalog(tmp_path)
+    files, task = task_catalog(tmp_path)
     settings = Settings(
         engine_dir=str(tmp_path), cann_fingerprint="test-cann", card_canary_on_startup=False,
         catalog_root=str(files.root), catalog_manifest_path=str(files.manifest_path),
@@ -261,7 +261,7 @@ async def test_invalid_input_never_reserves_a_turn(tmp_path, changes):
 
 async def test_catalog_mutation_rejected_before_reserving_turn(tmp_path):
     h = build_tool(tmp_path)
-    reference = Path(h.settings.catalog_root) / f"references/{TASK_ID}.py"
+    reference = Path(h.settings.catalog_root) / h.task["reference_path"]
     reference.write_text("MUTATED")
     with pytest.raises(ToolInputError) as error:
         await evaluate(h)

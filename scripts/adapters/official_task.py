@@ -219,6 +219,8 @@ def compose_reference_source(
     cases = _parse_workload(workload_bytes, problem_id, param_order)
     cases_literal = json.dumps(json.dumps(cases, ensure_ascii=False), ensure_ascii=False)
 
+    # Published artifacts retain this historical module name as a byte-stable
+    # format marker. Moving the offline adapter must not rebind catalog hashes.
     header = (
         f'"""Composed by triton_evaluation.official_task {OFFICIAL_ADAPTER_VERSION}\n'
         f"problem_id: {problem_id}\n"

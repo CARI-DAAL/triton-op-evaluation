@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import ast
 import fcntl
 import json
 import re
@@ -19,11 +20,70 @@ from pydantic import BaseModel, ConfigDict, Field
 # Support both installed-package usage and `python scripts/register_official_tasks.py`.
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from triton_evaluation.official_task import load_task  # noqa: E402
-from triton_evaluation.service.catalog import ReleaseCatalog  # noqa: E402
+from scripts.adapters.official_task import load_task  # noqa: E402
+from triton_evaluation.service.catalog import (  # noqa: E402
+    CatalogTask,
+    ManifestBindingError,
+    ReleaseCatalog,
+)
 
 DEFAULT_MANIFEST_ID = "npukernelbench-official-v1"
 SOURCE_REPOSITORY = "https://gitcode.com/Ascend/ascendc-kernelgen-data"
+
+
+def validate_provenance(task: CatalogTask, sidecar_path: Path, *, catalog_root: Path) -> dict:
+    """Validate official evidence offline against a generic resolved catalog task.
+
+    Serving needs only the catalog's reference-byte binding. Dataset provenance
+    and the historical generated-source header belong to registration/replay.
+    """
+    try:
+        root = catalog_root.resolve(strict=True)
+        sidecar = sidecar_path.resolve(strict=True)
+        if not sidecar.is_relative_to(root) or not sidecar.is_file():
+            raise ValueError("official provenance is not a regular file under the catalog root")
+        provenance = json.loads(sidecar.read_bytes())
+        header = ast.get_docstring(ast.parse(task.reference_code), clean=False) or ""
+        context = task.grade_context
+        if (
+            not task.problem_id.startswith(("official_l3_", "official_l4_"))
+            or not isinstance(provenance, dict)
+            or provenance.get("schema_version") != "1.0"
+            or provenance.get("manifest_id") != context.manifest_id
+            or provenance.get("problem_id") != task.problem_id
+            or provenance.get("reference_digest") != context.reference_digest
+            or not isinstance(provenance.get("op_name"), str)
+            or not provenance["op_name"]
+            or not isinstance(provenance.get("adapter_version"), str)
+            or not provenance["adapter_version"]
+            or not isinstance(provenance.get("cases"), int)
+            or isinstance(provenance["cases"], bool)
+            or provenance["cases"] < 1
+        ):
+            raise ValueError("official provenance fields do not match the catalog")
+        official_digest = provenance.get("official_digest")
+        if (
+            not isinstance(official_digest, str)
+            or len(official_digest) != 64
+            or any(c not in "0123456789abcdef" for c in official_digest)
+            or header.splitlines()[:3]
+            != [
+                "Composed by triton_evaluation.official_task " + provenance["adapter_version"],
+                "problem_id: " + task.problem_id,
+                "official_digest: " + official_digest,
+            ]
+        ):
+            raise ValueError("official provenance digest does not match the reference header")
+    except (OSError, ValueError, TypeError, SyntaxError, KeyError):
+        raise ManifestBindingError() from None
+    return provenance
+
+
+def _resolve_registered_task(catalog: ReleaseCatalog, root: Path, artifact: dict) -> CatalogTask:
+    entry = artifact["entry"]
+    task = catalog.resolve_task(entry["problem_id"], manifest_id=entry["manifest_id"])
+    validate_provenance(task, root / artifact["provenance_path"], catalog_root=root)
+    return task
 
 
 class TaskSelection(BaseModel):
@@ -185,8 +245,7 @@ def _prepare(stage: Path, artifacts: list[dict]) -> tuple[bytes, list[tuple[str,
     (stage / "catalog.json").write_bytes(new_manifest)
     catalog = ReleaseCatalog.load(stage, stage / "catalog.json")
     for artifact in artifacts:
-        entry = artifact["entry"]
-        catalog.resolve_official_task(entry["problem_id"], manifest_id=entry["manifest_id"])
+        _resolve_registered_task(catalog, stage, artifact)
     return new_manifest, additions
 
 
@@ -292,7 +351,7 @@ def replay_tasks(
     catalog = ReleaseCatalog.load(root, root / "catalog.json")
     for artifact in artifacts:
         entry = artifact["entry"]
-        task = catalog.resolve_official_task(entry["problem_id"], manifest_id=manifest_id)
+        task = _resolve_registered_task(catalog, root, artifact)
         if task.grade_context.reference_digest != entry["reference_digest"]:
             raise ValueError(f"reassembled binding differs for {entry['problem_id']}")
         for relative, expected in (

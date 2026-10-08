@@ -5,7 +5,7 @@ from pathlib import Path
 from unittest.mock import AsyncMock
 
 import pytest
-from native_eval_helpers import TASK_ID, TOKEN, official_catalog, outcome
+from native_eval_helpers import TASK_ID, TOKEN, outcome, task_catalog
 from test_api import algorithms, build_app, make_test_settings, seed_worker, trial_headers
 
 from triton_evaluation.kernel_evaluation import TOOL_CALLER
@@ -20,7 +20,7 @@ def anyio_backend():
 
 
 def build_native_app(tmp_path, **overrides):
-    files, task = official_catalog(tmp_path)
+    files, task = task_catalog(tmp_path)
     settings = make_test_settings(tmp_path)
     settings = type(settings).model_validate({
         **settings.model_dump(), "kernel_eval_token": TOKEN,
@@ -121,7 +121,7 @@ async def test_native_catalog_admission_polling_and_owned_replay(native_app, rou
         direct_token = await client.get(f"/evaluations/{lease.evaluation_id}", headers=headers())
     canonical = json.loads(lease.canonical_request)
     assert canonical["reference_code"] == app.task["reference_source"]
-    assert canonical["op_name"] == "Demo"
+    assert canonical["op_name"] == TASK_ID
     assert canonical["purpose"] == "trial"
     assert canonical["checks"] == checks
     if route == "benchmark":

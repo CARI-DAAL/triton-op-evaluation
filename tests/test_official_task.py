@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-from triton_evaluation import official_task
+from scripts.adapters import official_task
 
 torch = pytest.importorskip("torch")
 
@@ -73,7 +73,7 @@ class TestCompose:
         workload.write_text(WORKLOAD, encoding="utf-8")
         program = (
             "import hashlib, sys; from pathlib import Path; "
-            "from triton_evaluation.official_task import compose_reference_source; "
+            "from scripts.adapters.official_task import compose_reference_source; "
             "s=compose_reference_source(Path(sys.argv[1]).read_bytes(), "
             "Path(sys.argv[2]).read_bytes(), problem_id='demo_task'); "
             "print(hashlib.sha256(s.encode()).hexdigest())"

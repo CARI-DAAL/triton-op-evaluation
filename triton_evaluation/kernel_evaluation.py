@@ -1,6 +1,6 @@
 """Kernel evaluation caller intent, independent of HTTP transport.
 
-Owns official-task translation, durable trial turns, operation identity,
+Owns catalog-task translation, durable trial turns, operation identity,
 submission/recovery and optional diagnostics. Candidate execution remains in
 fenced workers owned by the injected evaluation instance.
 """
@@ -108,7 +108,7 @@ class KernelEvaluation:
         if not isinstance(task_id, str) or not isinstance(kernel_code, str):
             raise ToolInputError("invalid", "task_id and kernel_code are required")
         try:
-            task = instance.catalog.resolve_official_task(
+            task = instance.catalog.resolve_task(
                 task_id, manifest_id=settings.kernel_eval_manifest_id
             )
         except ManifestBindingError:
@@ -127,7 +127,7 @@ class KernelEvaluation:
                 {
                     "schema_version": "2.1",
                     "purpose": "trial",
-                    "op_name": task.op_name,
+                    "op_name": task.problem_id,
                     "reference_code": task.reference_code,
                     "kernel_code": kernel_code,
                     "triton_impl_name": "triton_ascend_impl",

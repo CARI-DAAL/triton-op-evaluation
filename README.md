@@ -19,11 +19,17 @@ On a configured, running instance:
 - **`/livez`** and **`/readyz`** — process health and execution readiness.
 
 The optional task-tool interface exposes `/verify`, `/benchmark` and `/profile`
-against an official task catalog. See [tool usage](docs/usage/kernel-eval.md).
+against any task in the configured reference catalog. See
+[tool usage](docs/usage/kernel-eval.md).
 
 [Submit and recover an evaluation](docs/usage/evaluations.md) explains credentials,
 idempotency, asynchronous results and request examples. Python models and route
-declarations define the HTTP interface; generated schemas are not deployment inputs.
+declarations define the HTTP interface. FastAPI generates `/openapi.json` from
+those definitions by default, and `/docs` uses it to display the interactive API.
+Ordinary evaluation requests go directly to their endpoint without fetching the
+schema first. The service does not need a schema file on disk to start. See
+[FastAPI's OpenAPI explanation](https://fastapi.tiangolo.com/tutorial/first-steps/#openapi)
+and [response models](https://fastapi.tiangolo.com/tutorial/response-model/).
 
 ## Develop
 
@@ -201,8 +207,8 @@ followed by a canary to determine whether recovery succeeded.
 ### Tool callers
 
 **Kernel evaluation**:
-A tool caller's request to verify, benchmark or profile a candidate against an
-official task, with a bounded wait for recoverable evaluation evidence.
+A tool caller's request to verify, benchmark or profile a candidate against a
+catalog task, with a bounded wait for recoverable evaluation evidence.
 
 **Tool operation**:
 One caller action within a trial. An explicitly identified operation can be

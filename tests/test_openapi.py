@@ -103,7 +103,7 @@ async def test_tool_models_and_golden_wire_envelopes_match_live_spec(app):
     for action in ("verify", "benchmark", "profile"):
         operation = document["paths"][f"/{action}"]["post"]
         assert operation["security"]
-        validate(document, body_schema(operation), {"task_id": "official/1", "kernel_code": "K"})
+        validate(document, body_schema(operation), {"task_id": "custom-add/v1", "kernel_code": "K"})
         assert response_schema(operation, 200)
         for status in (400, 401, 403, 409, 404, 413, 500):
             assert response_schema(operation, status)

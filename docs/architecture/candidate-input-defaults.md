@@ -1,6 +1,9 @@
 # Official candidate input defaults
 
-Use this contract when grading official tasks with omitted workload parameters.
+Use this contract when grading references produced by the offline
+[official-task adapter](../../scripts/adapters/official_task.py) with omitted
+workload parameters. The engine retains this compatibility behavior; generic
+catalog lookup does not require it of other reference files.
 The assembler preserves an adapter-owned `_ABSENT` object in raw input groups;
 its reference `Model.forward` removes those positions before calling the
 original official `run(**kwargs)`. Sending that object to a candidate bypassed

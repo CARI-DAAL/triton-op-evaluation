@@ -257,3 +257,134 @@ def test_bind_rejects_a_body_digest_mismatch(tmp_path):
     with pytest.raises(ManifestBindingError) as excinfo:
         catalog.bind(context(digest_of(REFERENCE_CODE)), OTHER_CODE)
     assert OTHER_CODE not in str(excinfo.value)
+
+
+# ---------------------------------------------------------------------------
+# Task resolution for evaluation tools
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("newline", ["\n", "\r\n"])
+def test_resolve_plain_task_without_sidecar_or_generated_header(tmp_path, newline):
+    source = '# 自定义参考实现\n"""User reference."""\n' + REFERENCE_CODE
+    source = source.replace("\n", newline)
+    catalog = load_catalog(
+        tmp_path, [make_entry(code=source)], {"references/addmm-1.py": source}
+    )
+    task = catalog.resolve_task("addmm-1")
+    assert task.problem_id == "addmm-1"
+    assert task.reference_code == source
+    assert task.grade_context == context(digest_of(source))
+    assert catalog.bind(task.grade_context, task.reference_code) == CatalogBinding(
+        manifest_id="release-1", problem_id="addmm-1", reference_digest=digest_of(source)
+    )
+
+
+def test_resolve_task_ignores_unrelated_sidecar(tmp_path):
+    catalog = load_catalog(
+        tmp_path,
+        [make_entry()],
+        {
+            "references/addmm-1.py": REFERENCE_CODE,
+            "references/addmm-1.py.PROVENANCE.json": "not JSON or serving metadata",
+        },
+    )
+    assert catalog.resolve_task("addmm-1").reference_code == REFERENCE_CODE
+
+
+def test_resolve_task_requires_unique_manifest_or_explicit_selection(tmp_path):
+    catalog = load_catalog(
+        tmp_path,
+        [
+            make_entry(),
+            make_entry(manifest_id="release-2", reference_path="references/v2.py", code=OTHER_CODE),
+        ],
+        {"references/addmm-1.py": REFERENCE_CODE, "references/v2.py": OTHER_CODE},
+    )
+    with pytest.raises(ManifestBindingError):
+        catalog.resolve_task("addmm-1")
+    first = catalog.resolve_task("addmm-1", manifest_id="release-1")
+    second = catalog.resolve_task("addmm-1", manifest_id="release-2")
+    assert first.reference_code == REFERENCE_CODE
+    assert second.reference_code == OTHER_CODE
+    assert second.grade_context == context(digest_of(OTHER_CODE), manifest_id="release-2")
+    for task_id, manifest_id in [("unknown-task", None), ("addmm-1", "unknown-release")]:
+        with pytest.raises(ManifestBindingError):
+            catalog.resolve_task(task_id, manifest_id=manifest_id)
+
+
+def test_resolve_task_without_mounted_root_is_rejected():
+    with pytest.raises(ManifestBindingError):
+        ReleaseCatalog({}).resolve_task("addmm-1")
+
+
+def test_resolve_task_rechecks_reference_digest_on_every_call(tmp_path):
+    root, manifest = build_catalog(
+        tmp_path, [make_entry()], {"references/addmm-1.py": REFERENCE_CODE}
+    )
+    catalog = ReleaseCatalog.load(root, manifest)
+    assert catalog.resolve_task("addmm-1").reference_code == REFERENCE_CODE
+    (root / "references/addmm-1.py").write_text(OTHER_CODE, encoding="utf-8")
+    with pytest.raises(ManifestBindingError) as excinfo:
+        catalog.resolve_task("addmm-1")
+    assert str(excinfo.value) == "reference does not match the bound manifest entry"
+
+
+@pytest.mark.parametrize("replacement", ["missing", "directory", "outside_symlink"])
+def test_resolve_task_rejects_changed_reference_path(tmp_path, replacement):
+    root, manifest = build_catalog(
+        tmp_path, [make_entry()], {"references/addmm-1.py": REFERENCE_CODE}
+    )
+    catalog = ReleaseCatalog.load(root, manifest)
+    reference = root / "references/addmm-1.py"
+    reference.unlink()
+    if replacement == "directory":
+        reference.mkdir()
+    elif replacement == "outside_symlink":
+        outside = tmp_path / "outside.py"
+        outside.write_text(REFERENCE_CODE, encoding="utf-8")
+        reference.symlink_to(outside)
+    with pytest.raises(ManifestBindingError):
+        catalog.resolve_task("addmm-1")
+
+
+def test_resolve_task_rejects_unreadable_artifact(tmp_path, monkeypatch):
+    root, manifest = build_catalog(
+        tmp_path, [make_entry()], {"references/addmm-1.py": REFERENCE_CODE}
+    )
+    catalog = ReleaseCatalog.load(root, manifest)
+    reference = root / "references/addmm-1.py"
+    original_read = type(reference).read_bytes
+
+    def unreadable(path):
+        if path == reference:
+            raise PermissionError("private artifact location")
+        return original_read(path)
+
+    monkeypatch.setattr(type(reference), "read_bytes", unreadable)
+    with pytest.raises(ManifestBindingError) as excinfo:
+        catalog.resolve_task("addmm-1")
+    assert "private artifact location" not in str(excinfo.value)
+
+
+def test_resolve_returns_the_same_bytes_it_validates(tmp_path, monkeypatch):
+    root, manifest = build_catalog(
+        tmp_path, [make_entry()], {"references/addmm-1.py": REFERENCE_CODE}
+    )
+    catalog = ReleaseCatalog.load(root, manifest)
+    reference = root / "references/addmm-1.py"
+    original_read = type(reference).read_bytes
+    reads = []
+
+    def replace_after_read(path):
+        blob = original_read(path)
+        if path == reference:
+            reads.append(blob)
+            reference.write_text(OTHER_CODE, encoding="utf-8")
+        return blob
+
+    monkeypatch.setattr(type(reference), "read_bytes", replace_after_read)
+    task = catalog.resolve_task("addmm-1")
+    assert task.reference_code == REFERENCE_CODE
+    assert reads == [REFERENCE_CODE.encode("utf-8")]
+    assert task.grade_context.reference_digest == digest_of(task.reference_code)

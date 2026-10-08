@@ -1,20 +1,21 @@
 # Native kernel_eval tools
 
 The optional facade serves `POST /verify`, `POST /benchmark` and `POST /profile`
-on the evaluation API listener. It obtains official references from
+on the evaluation API listener. It obtains task references from
 `ReleaseCatalog` and renders the established `[kernel_eval]` observation.
 It has no bridge process, configuration, second token, runtime adapter import
 or upstream HTTP dependency. `/evaluations` keeps its v2.1 contract.
 
 ## Enable the facade
 
-Register the official catalog and `.PROVENANCE.json` sidecars, then add these
-settings to the protected service environment:
+Prepare a catalog manifest and reference files, then add these settings to the
+protected service environment. `TRITON_EVAL_KERNEL_EVAL_MANIFEST_ID` optionally
+restricts lookup to one manifest; the example below uses `demo-v1`:
 
 ```dotenv
 TRITON_EVAL_KERNEL_EVAL_ENABLED=true
 KERNEL_EVAL_TOKEN=<sandbox tool secret>
-TRITON_EVAL_KERNEL_EVAL_MANIFEST_ID=npukernelbench-official-v1
+TRITON_EVAL_KERNEL_EVAL_MANIFEST_ID=demo-v1
 ```
 
 Disabled is the default. An empty token also disables the three tools and
@@ -23,6 +24,58 @@ envelope while disabled). The Pydantic `SecretStr`
 masks printable configuration. `KERNEL_EVAL_TOKEN` has precedence over the
 compatibility alias `TRITON_EVAL_KERNEL_EVAL_TOKEN`; other fields retain the
 `TRITON_EVAL_` prefix. No existing deployment-attestation setting changes.
+
+## Add a catalog task
+
+Each entry has four fields: `manifest_id`, `problem_id`, `reference_digest` and
+`reference_path`. The digest is SHA-256 of the exact UTF-8 file bytes. References
+must be regular files inside the catalog root; absolute paths, `..` traversal
+and escaping symlinks are rejected. A `(manifest_id, problem_id)` pair is unique.
+Lookup without a manifest restriction also requires a unique matching task.
+Task IDs need no dataset prefix, reference header or provenance sidecar.
+
+For example, create a small reference and its manifest in a new directory:
+
+```bash
+python - <<'PYTHON'
+import hashlib
+import json
+from pathlib import Path
+
+root = Path("catalog-demo")
+root.mkdir(exist_ok=False)
+reference = root / "add.py"
+reference.write_text("""import torch
+
+class Model(torch.nn.Module):
+    def forward(self, x, y):
+        return x + y
+
+def get_init_inputs():
+    return []
+
+def get_inputs():
+    return [torch.ones(16), torch.ones(16)]
+""", encoding="utf-8")
+manifest = {"schema_version": "1.0", "entries": [{
+    "manifest_id": "demo-v1",
+    "problem_id": "vector_add",
+    "reference_digest": hashlib.sha256(reference.read_bytes()).hexdigest(),
+    "reference_path": "add.py",
+}]}
+(root / "catalog.json").write_text(json.dumps(manifest), encoding="utf-8")
+PYTHON
+export TRITON_EVAL_CATALOG_ROOT="$PWD/catalog-demo"
+export TRITON_EVAL_CATALOG_MANIFEST_PATH="$PWD/catalog-demo/catalog.json"
+```
+
+Use these catalog settings alongside the remaining
+[instance configuration](../operations/deployment.md). Catalog validation checks
+file identity and encoding; successful loading does not establish that reference
+execution will succeed on the target device. Publish new reference bytes under
+a new manifest binding. Dataset conversion, if needed, happens before serving;
+the [official-task adapter](../operations/official-task-registration.md) is one
+optional importer.
 
 ## Native HTTPS for the platform verifier
 
@@ -61,15 +114,17 @@ The token authenticates the fixed `kernel-eval` trial caller only on the facade;
 it grants no `/evaluations` or observer access. Submission and recovery go
 through `EvaluationInstance.submit/get`. Readiness, durable admission,
 caller/session quotas, idempotency and visibility apply to both tools and
-internal diagnostics. A task lookup requires an exact official `problem_id`,
-optionally restricted to the configured manifest. Missing, ambiguous or mutated
-references/sidecars return `403 {"error":"task_id mismatch"}` before budget use.
+internal diagnostics. A task lookup requires an exact catalog `problem_id`,
+optionally restricted to the configured manifest. The reference bytes are
+rechecked on every lookup. Missing, ambiguous or invalid reference bindings
+return `403 {"error":"task_id mismatch"}` before budget use. Sidecars are not
+read during startup or request resolution.
 
 ## Tool calls
 
 ```json
 {
-  "task_id": "official_l3_MatmulBothTrans",
+  "task_id": "vector_add",
   "kernel_code": "<candidate source>",
   "session": "<trial execution identity>"
 }
@@ -125,6 +180,23 @@ path, and consumes no extra tool turn. Diagnostic failure only omits metrics.
 Set `TRITON_EVAL_KERNEL_EVAL_AUTO_DIAGNOSTICS=false` before freezing to disable
 it. `/health` reports actual whole-instance readiness.
 
+## Upgrade from official-only task lookup
+
+The four-field catalog format and `/verify`, `/benchmark`, `/profile` request
+and response shapes are unchanged. Existing official catalog entries and their
+reference bytes and hashes remain valid. Tool translation now sets the internal
+evaluation `op_name` to `problem_id`, rather than a sidecar's operation name.
+That can change canonical request identity for an existing official task.
+
+Before upgrading, stop new admissions and collect in-flight results from the
+original instance. Start new operations with new session and idempotency keys.
+An identical old HTTP payload is not necessarily the same internal request after
+this change; do not use replay across the upgrade as a migration mechanism.
+Keep any outstanding evaluation handles for recovery on their original version.
+The engine's existing official-reference compatibility and pinned reference-cache
+policies remain in place; this change does not generalize those caches to every
+catalog reference. See [reference caching](../operations/reference-cache.md).
+
 ## Verification boundary
 
 ```bash
@@ -137,7 +209,7 @@ benchmark unavailable, correctness skipped, profile rejected and evaluation
 failed. Historical pretty-printed files contain a final newline; their MANIFEST
 hashes canonical unindented envelopes and observations without that newline.
 
-Route tests use the actual assembler/catalog, Redis transactions, durable
+Route tests use an ordinary reference catalog, Redis transactions, durable
 admission, lease claims, fenced terminal writes and owned polling. A test worker
 commits captured outcomes in place of NPU computation. These establish CPU
 protocol behavior. Live admission, container/token delivery, device execution,

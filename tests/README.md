@@ -19,6 +19,8 @@ their dependencies are available.
 | Admission, identity, durable state | `test_admission*`, `test_broker.py`, `test_idempotency.py`, `test_fencing.py` |
 | Workers and recovery | `test_worker*`, `test_recovery.py`, `test_card_health*`, `test_engine_failure_requeue.py` |
 | Evidence and scoring | `test_evaluation_evaluator.py`, `test_shaping.py`, `test_profile_evidence.py` |
+| Catalog binding and task lookup | `test_catalog.py` |
+| Offline official-task conversion | `test_official_task.py`, `test_register_official_tasks.py` |
 | Tool operations and transport | `test_kernel_evaluation.py`, `test_kernel_eval_api.py`, `test_kernel_eval_budget.py` |
 | Engine, runtime and cache | `test_verify*`, `test_benchmark*`, `test_profile*`, `test_reference*`, `test_engine*` |
 

@@ -7,13 +7,13 @@ alone cannot convey.
 ## Use the service
 
 - [Submit, poll and recover evaluations](usage/evaluations.md)
-- [Official-task tools: verify, benchmark and profile](usage/kernel-eval.md)
+- [Catalog-task tools: verify, benchmark and profile](usage/kernel-eval.md)
 
 ## Operate an instance
 
 - [Deploy on one or multiple hosts](operations/deployment.md)
 - [Recovery, retries and upgrades](operations/recovery.md)
-- [Register and replay official tasks](operations/official-task-registration.md)
+- [Offline adapter: register and replay official tasks](operations/official-task-registration.md)
 - [Prepare the profiler runtime](operations/profiler-runtime.md)
 - [Prepare and use reference caches](operations/reference-cache.md)
 

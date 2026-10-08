@@ -87,8 +87,11 @@ def test_register_replay_and_legacy_bindings(publication):
         ),
         legacy_bytes.decode(),
     )
-    task = catalog.resolve_official_task(selected[0].problem_id)
-    assert task.op_name == selected[0].name
+    task = catalog.resolve_task(selected[0].problem_id)
+    provenance = registrar.validate_provenance(
+        task, root / "references" / (task.problem_id + ".py.PROVENANCE.json"), catalog_root=root
+    )
+    assert provenance["op_name"] == selected[0].name
     assert task.grade_context.manifest_id == registrar.DEFAULT_MANIFEST_ID
     before = _snapshot(root)
     assert registrar.replay_tasks(official, root, selected)["status"] == "replay_identical"
@@ -161,34 +164,51 @@ def test_replay_rejects_changed_provenance(publication):
         registrar.replay_tasks(official, root, selected)
 
 
-def test_resolver_rechecks_reference_file_on_each_call(publication):
+@pytest.mark.parametrize("damage", ["missing", "directory", "escaped_symlink", "invalid_json"])
+def test_offline_provenance_failure_keeps_published_files_unchanged(publication, tmp_path, damage):
     official, root, selected, _ = publication
     registrar.register_tasks(official, root, selected)
+    path = root / "references" / (selected[0].problem_id + ".py.PROVENANCE.json")
+    original = path.read_bytes()
+    path.unlink()
+    if damage == "directory":
+        path.mkdir()
+    elif damage == "escaped_symlink":
+        outside = tmp_path / "outside.PROVENANCE.json"
+        outside.write_bytes(original)
+        path.symlink_to(outside)
+    elif damage == "invalid_json":
+        path.write_bytes(b"not JSON")
+    before = _snapshot(root)
+    # Generic serving remains bound to the published reference bytes alone.
     catalog = ReleaseCatalog.load(root, root / "catalog.json")
-    path = root / "references" / (selected[0].problem_id + ".py")
-    path.write_bytes(path.read_bytes() + b"\n")
+    assert catalog.resolve_task(selected[0].problem_id).problem_id == selected[0].problem_id
     with pytest.raises(ManifestBindingError):
-        catalog.resolve_official_task(selected[0].problem_id)
+        registrar.replay_tasks(official, root, selected)
+    with pytest.raises(ValueError):
+        registrar.register_tasks(official, root, selected)
+    assert _snapshot(root) == before
 
 
-def test_resolver_rejects_missing_and_ambiguous_manifest(publication):
+def test_header_binding_is_checked_only_by_offline_provenance_validator(publication):
     official, root, selected, _ = publication
     registrar.register_tasks(official, root, selected)
-    payload = json.loads((root / "catalog.json").read_bytes())
-    payload["entries"].append(dict(payload["entries"][1], manifest_id="another-official-release"))
-    (root / "catalog.json").write_text(json.dumps(payload), encoding="utf-8")
-    catalog = ReleaseCatalog.load(root, root / "catalog.json")
+    manifest_path = root / "catalog.json"
+    manifest = json.loads(manifest_path.read_bytes())
+    entry = manifest["entries"][1]
+    reference_path = root / entry["reference_path"]
+    source = reference_path.read_bytes().replace(b"official_digest:", b"unrelated_digest:")
+    reference_path.write_bytes(source)
+    entry["reference_digest"] = hashlib.sha256(source).hexdigest()
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    sidecar = reference_path.with_suffix(".py.PROVENANCE.json")
+    provenance = json.loads(sidecar.read_bytes())
+    provenance["reference_digest"] = entry["reference_digest"]
+    sidecar.write_text(json.dumps(provenance), encoding="utf-8")
+    task = ReleaseCatalog.load(root, manifest_path).resolve_task(selected[0].problem_id)
     with pytest.raises(ManifestBindingError):
-        catalog.resolve_official_task(selected[0].problem_id)
-    with pytest.raises(ManifestBindingError):
-        catalog.resolve_official_task("official_l3_Missing")
-    assert (
-        catalog.resolve_official_task(
-            selected[0].problem_id,
-            manifest_id=registrar.DEFAULT_MANIFEST_ID,
-        ).problem_id
-        == selected[0].problem_id
-    )
+        registrar.validate_provenance(task, sidecar, catalog_root=root)
+
 
 
 def test_selection_rejects_wrong_size_and_duplicates(publication):
@@ -252,9 +272,17 @@ def test_failed_final_validation_restores_original_manifest(publication, monkeyp
         ("adapter_version", "wrong-adapter"),
         ("manifest_id", "wrong-release"),
         ("problem_id", "official_l3_Wrong"),
+        ("schema_version", "2.0"),
+        ("op_name", ""),
+        ("op_name", None),
+        ("adapter_version", ""),
+        ("cases", 0),
+        ("cases", True),
+        ("cases", "1"),
+        ("official_digest", "bad-digest"),
     ],
 )
-def test_resolver_rejects_inconsistent_provenance(publication, field, value):
+def test_offline_validator_rejects_inconsistent_provenance(publication, field, value):
     official, root, selected, _ = publication
     registrar.register_tasks(official, root, selected)
     path = root / "references" / (selected[0].problem_id + ".py.PROVENANCE.json")
@@ -263,4 +291,6 @@ def test_resolver_rejects_inconsistent_provenance(publication, field, value):
     path.write_text(json.dumps(payload), encoding="utf-8")
     catalog = ReleaseCatalog.load(root, root / "catalog.json")
     with pytest.raises(ManifestBindingError):
-        catalog.resolve_official_task(selected[0].problem_id)
+        registrar.validate_provenance(
+            catalog.resolve_task(selected[0].problem_id), path, catalog_root=root
+        )

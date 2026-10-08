@@ -5,6 +5,10 @@ reference measurements. Candidate execution, the existing accuracy algorithms an
 the decoy pre-check remain required. Validate native NPU cache-off/cache-on behavior and intended device coverage
 before enabling reuse. CPU tests establish neither device equality nor a throughput benefit.
 
+Generic catalog task resolution does not extend this cache's compatibility.
+The deployed engine and reference-cache identity checks retain their existing
+scope; ordinary catalog references do not gain cache coverage from registration.
+
 ## Produce and seal evidence
 
 The official assembler source is the reference identity. Audit workers must use

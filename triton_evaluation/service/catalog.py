@@ -11,7 +11,6 @@ valid UTF-8; and hashed over their exact bytes. Error messages never include
 reference paths, artifact contents, or caller-supplied identifiers.
 """
 
-import ast
 import json
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
@@ -42,14 +41,10 @@ class CatalogBinding:
 
 
 @dataclass(frozen=True)
-class OfficialCatalogTask:
+class CatalogTask:
     problem_id: str
-    op_name: str
     reference_code: str
     grade_context: GradeContext
-    official_digest: str
-    adapter_version: str
-    cases: int
 
 
 class _CatalogEntry(StrictModel):
@@ -108,20 +103,20 @@ class ReleaseCatalog:
             key = (entry.manifest_id, entry.problem_id)
             if key in entries:
                 raise ValueError("duplicate catalog entry for one manifest/problem pair")
-            cls._validate_reference(root, entry)
+            cls._read_reference(root, entry)
             entries[key] = entry
         return cls(entries, root=root)
 
-    def resolve_official_task(
+    def resolve_task(
         self, task_id: str, *, manifest_id: str | None = None
-    ) -> OfficialCatalogTask:
-        """Resolve an exact official ID, validating its artifact and sidecar.
+    ) -> CatalogTask:
+        """Resolve a unique catalog task and revalidate its exact reference bytes.
 
-        No official source checkout or NPU dependency is needed at serving
-        time. Source replay belongs to the registration/replay CLI. Ambiguous,
-        missing or inconsistent entries share the public binding rejection.
+        Only the manifest and reference artifact are needed at serving time.
+        Ambiguous, missing or inconsistent entries share the public binding
+        rejection. An explicit manifest selects among releases of one task.
         """
-        if self._root is None or not task_id.startswith(("official_l3_", "official_l4_")):
+        if self._root is None:
             raise ManifestBindingError()
         entries = [
             entry
@@ -133,70 +128,23 @@ class ReleaseCatalog:
             raise ManifestBindingError()
         entry = entries[0]
         try:
-            self._validate_reference(self._root, entry)
-            reference_path = _resolve_under(
-                self._root, self._root / entry.reference_path, "catalog reference artifact"
-            )
-            sidecar_path = _resolve_under(
-                self._root,
-                self._root / f"{entry.reference_path}.PROVENANCE.json",
-                "official provenance",
-            )
-            if not sidecar_path.is_file():
-                raise ValueError("official provenance is not a regular file")
-            provenance = json.loads(sidecar_path.read_bytes())
-            source = reference_path.read_text(encoding="utf-8")
-            tree = ast.parse(source)
-            header = ast.get_docstring(tree, clean=False) or ""
-            if (
-                not isinstance(provenance, dict)
-                or provenance.get("schema_version") != "1.0"
-                or provenance.get("manifest_id") != entry.manifest_id
-                or provenance.get("problem_id") != entry.problem_id
-                or provenance.get("reference_digest") != entry.reference_digest
-                or not isinstance(provenance.get("op_name"), str)
-                or not provenance["op_name"]
-                or not isinstance(provenance.get("adapter_version"), str)
-                or not provenance["adapter_version"]
-                or not isinstance(provenance.get("cases"), int)
-                or isinstance(provenance["cases"], bool)
-                or provenance["cases"] < 1
-            ):
-                raise ValueError("official provenance fields do not match the catalog")
-            official_digest = provenance.get("official_digest")
-            if (
-                not isinstance(official_digest, str)
-                or len(official_digest) != 64
-                or any(c not in "0123456789abcdef" for c in official_digest)
-                or header.splitlines()[:3]
-                != [
-                    "Composed by triton_evaluation.official_task " + provenance["adapter_version"],
-                    "problem_id: " + entry.problem_id,
-                    "official_digest: " + official_digest,
-                ]
-            ):
-                raise ValueError("official provenance digest does not match the reference header")
+            source = self._read_reference(self._root, entry)
             context = GradeContext(
                 manifest_id=entry.manifest_id,
                 problem_id=entry.problem_id,
                 reference_digest=entry.reference_digest,
             )
-            # Re-read/re-hash above, then retain the existing binding semantics.
             self.bind(context, source)
-        except (OSError, ValueError, TypeError, SyntaxError, KeyError):
+        except (OSError, ValueError):
             raise ManifestBindingError() from None
-        return OfficialCatalogTask(
+        return CatalogTask(
             problem_id=entry.problem_id,
-            op_name=provenance["op_name"],
             reference_code=source,
             grade_context=context,
-            official_digest=official_digest,
-            adapter_version=provenance["adapter_version"],
-            cases=provenance["cases"],
         )
 
     @staticmethod
-    def _validate_reference(root: Path, entry: _CatalogEntry) -> None:
+    def _read_reference(root: Path, entry: _CatalogEntry) -> str:
         relative = PurePosixPath(entry.reference_path)
         if relative.is_absolute():
             raise ValueError("catalog reference path must be relative")
@@ -209,7 +157,7 @@ class ReleaseCatalog:
         if sha256_hex(blob) != entry.reference_digest:
             raise ValueError("catalog reference artifact digest mismatch")
         try:
-            blob.decode("utf-8")
+            return blob.decode("utf-8")
         except UnicodeDecodeError:
             raise ValueError("catalog reference artifact is not valid UTF-8") from None
 

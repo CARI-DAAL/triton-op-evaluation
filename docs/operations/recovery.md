@@ -27,6 +27,11 @@ for the opt-in policy, shared attempt budget and same-card recovery behavior.
 
 ## Upgrading
 
+For the change from official-only task lookup to generic catalog lookup, follow
+[the task-tool upgrade procedure](../usage/kernel-eval.md#upgrade-from-official-only-task-lookup).
+Catalog bytes remain valid, but translating `op_name` from `problem_id` can change
+internal request identity; collect old results before starting new operations.
+
 The service uses the `triton-eval:v2.1` namespace. Legacy routes, task polling,
 old dispatch queues, and the retired `kernel_eval` bridge are no longer shipped.
 Stop old admissions, collect all in-flight results from

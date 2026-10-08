@@ -21,7 +21,7 @@ from .schemas import SessionId
 
 
 class ToolRequest(StrictModel):
-    task_id: str = Field(description="Official task identifier in the configured catalog.")
+    task_id: str = Field(description="Task identifier in the configured catalog.")
     kernel_code: SourceCode = Field(
         description="Candidate source, at most 2 MiB of UTF-8; reference code is server-owned.",
     )
