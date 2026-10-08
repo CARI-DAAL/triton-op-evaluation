@@ -154,19 +154,30 @@ repository.
 
 ## Repository layout
 
-| Path | Responsibility |
-| --- | --- |
-| [`triton_evaluation/api/`](triton_evaluation/api/) | HTTP models, routes, authentication and OpenAPI |
-| [`triton_evaluation/service/`](triton_evaluation/service/) | Admission, durable scheduling and terminal evidence |
-| [`triton_evaluation/runtime/`](triton_evaluation/runtime/) | Workers, device health, isolation, profiling and caches |
-| [`triton_evaluation/evaluators/`](triton_evaluation/evaluators/) | Check orchestration and result shaping |
-| [`triton_evaluation/engine/`](triton_evaluation/engine/) | Bundled evaluation engine |
-| [`config.py`](triton_evaluation/config.py), [`serialization.py`](triton_evaluation/serialization.py) | Shared configuration and canonical serialization |
-| [`plugins/triton-eval/`](plugins/triton-eval/) | Portable skill and standalone HTTP client |
-| [`scripts/`](scripts/README.md) | Process entrypoints, deployment and diagnostics |
-| [`docker/`](docker/), [`Dockerfile`](Dockerfile), [`docker-compose.yml`](docker-compose.yml) | Container image and host deployment |
-| [`tests/`](tests/README.md) | Protocol, execution, recovery and hardware checks |
-| [`docs/`](docs/README.md) | Usage, operations, architecture and decisions |
+Key directories and configuration files:
+
+```text
+.
+├── triton_evaluation/
+│   ├── api/                    # HTTP interface and OpenAPI
+│   ├── service/                # Admission, scheduling and results
+│   ├── runtime/                # Workers, isolation, profiling and caches
+│   ├── evaluators/             # Check orchestration and result shaping
+│   ├── engine/                 # Bundled evaluation engine
+│   ├── config.py               # Shared configuration
+│   └── serialization.py        # Canonical serialization
+├── plugins/
+│   └── triton-eval/            # Portable client plugin
+│       ├── plugin.json         # Standard plugin manifest
+│       └── skills/             # Skill instructions and standalone CLI
+├── scripts/                    # Entrypoints, deployment and diagnostics
+├── tests/                      # Protocol, execution and recovery checks
+├── docs/                       # Usage, operations and architecture
+├── docker/                     # Container entrypoint
+├── Dockerfile                  # Service image build
+├── docker-compose.yml          # Host deployment
+└── pyproject.toml              # Dependencies and tooling
+```
 
 ## Documentation
 
