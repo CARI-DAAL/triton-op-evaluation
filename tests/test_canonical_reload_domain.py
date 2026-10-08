@@ -14,7 +14,7 @@ import json
 import pytest
 import rfc8785
 
-from triton_evaluation.api.contract_artifacts import (
+from triton_evaluation.serialization import (
     canonical_json_bytes,
     load_canonical,
 )

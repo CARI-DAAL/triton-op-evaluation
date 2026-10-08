@@ -1,6 +1,8 @@
 """HTTP adapter tests: authentication, decoding, session mapping and wire responses."""
 import asyncio
 import json
+from pathlib import Path
+from unittest.mock import AsyncMock
 
 import pytest
 from native_eval_helpers import TASK_ID, TOKEN, official_catalog, outcome
@@ -62,21 +64,22 @@ async def complete_one(app, request_task, name="verify_correct"):
 async def test_single_token_and_legacy_refusals(native_app, route):
     app = native_app
     async with app.http as client:
-        unauthorized = await client.post(f"/{route}", content="not json")
-        assert (unauthorized.status_code, unauthorized.json()) == (401, {"error": "unauthorized"})
+        unauthorized = await client.post(f"/{route}", json=payload())
+        assert unauthorized.status_code == 401
+        assert unauthorized.json()["error"]["code"] == "UNAUTHENTICATED"
         v21_token = await client.post(f"/{route}", json=payload(), headers=trial_headers())
         assert v21_token.status_code == 401
         malformed = await client.post(f"/{route}", content="not json", headers=headers())
-        assert (malformed.status_code, malformed.json()) == (400, {"error": "invalid json"})
+        assert malformed.status_code == 422
+        assert malformed.json()["error"]["code"] == "INVALID_REQUEST"
         reference = await client.post(
             f"/{route}", json=payload(reference_code="ATTACK"), headers=headers()
         )
-        assert (reference.status_code, reference.json()) == (
-            400,
-            {"error": "reference fields are forbidden"},
-        )
+        assert reference.status_code == 422
+        assert reference.json()["error"]["code"] == "INVALID_REQUEST"
         missing = await client.post(f"/{route}", json={"task_id": TASK_ID}, headers=headers())
-        assert missing.json() == {"error": "task_id and kernel_code are required"}
+        assert missing.status_code == 422
+        assert missing.json()["error"]["code"] == "INVALID_REQUEST"
         mismatch = await client.post(f"/{route}", json=payload(task_id="other"), headers=headers())
         assert (mismatch.status_code, mismatch.json()) == (403, {"error": "task_id mismatch"})
     assert not app.store._r.keys(f"{app.settings.redis_prefix}:kernel-eval:budget:*")
@@ -93,6 +96,7 @@ async def test_disabled_or_empty_token_fails_closed(native_app, changes):
         health = await client.get("/health")
     assert response.status_code == health.status_code == 404
     assert response.json()["error"]["code"] == "NOT_FOUND"
+    assert health.json()["error"]["code"] == "NOT_FOUND"
 
 
 @pytest.mark.parametrize(
@@ -185,3 +189,78 @@ async def test_operation_conflict_maps_to_http_409(native_app):
             "/verify", json=payload(kernel_code="CHANGED"), headers=headers("same-operation")
         )
     assert (response.status_code, response.json()) == (409, {"error": "idempotency conflict"})
+
+
+@pytest.mark.parametrize("route", ["verify", "benchmark", "profile"])
+async def test_oversized_source_is_rejected_by_the_request_model(native_app, route):
+    async with native_app.http as client:
+        response = await client.post(
+            f"/{route}", json=payload(kernel_code="k" * (2 * 1024 * 1024 + 1)),
+            headers=headers(),
+        )
+        first_turn = await client.post(f"/{route}", json=payload(), headers=headers())
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "INVALID_REQUEST"
+    assert first_turn.json()["eval_budget"] == "1/18"
+
+
+@pytest.mark.parametrize("options", [
+    {"profile_mode": "invalid"},
+    {"case_idx": -1},
+    {"case_idx": True},
+    {"profile_launch_count": 0},
+    {"profile_launch_count": 101},
+    {"profile_mode": "deep", "profile_launch_count": 1},
+])
+async def test_profile_options_are_validated_before_admission(native_app, options):
+    async with native_app.http as client:
+        response = await client.post("/profile", json=payload(**options), headers=headers())
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "INVALID_REQUEST"
+    assert not native_app.store._r.keys(f"{native_app.settings.redis_prefix}:kernel-eval:budget:*")
+
+
+@pytest.mark.parametrize("field,value", [
+    ("X-Session-ID", "invalid session"),
+    ("Idempotency-Key", "invalid key"),
+])
+async def test_tool_headers_are_validated_before_admission(native_app, field, value):
+    async with native_app.http as client:
+        response = await client.post(
+            "/verify", json=payload(), headers={**headers(), field: value},
+        )
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "INVALID_REQUEST"
+    assert not native_app.store._r.keys(f"{native_app.settings.redis_prefix}:kernel-eval:budget:*")
+
+
+_ENVELOPE_FIXTURES = sorted(
+    (Path(__file__).parent / "fixtures" / "kernel_eval").glob("*.baseline.envelope.json")
+)
+
+
+@pytest.mark.parametrize("fixture", _ENVELOPE_FIXTURES, ids=lambda path: path.stem)
+async def test_response_models_validate_and_preserve_envelopes(native_app, monkeypatch, fixture):
+    expected = json.loads(fixture.read_text())
+    action = expected["action"]
+    evaluate = AsyncMock(return_value=expected)
+    monkeypatch.setattr(native_app.app.state.context.kernel_eval, "evaluate", evaluate)
+    async with native_app.http as client:
+        response = await client.post(f"/{action}", json=payload(), headers=headers())
+    assert response.status_code == 200
+    assert response.json() == expected
+    assert evaluate.await_count == 1
+
+
+async def test_invalid_tool_response_is_rejected_by_response_model(native_app, monkeypatch):
+    import httpx
+
+    evaluate = AsyncMock(return_value={"action": "verify", "request_status": "completed"})
+    monkeypatch.setattr(native_app.app.state.context.kernel_eval, "evaluate", evaluate)
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=native_app.app, raise_app_exceptions=False),
+        base_url="http://test",
+    ) as client:
+        response = await client.post("/verify", json=payload(), headers=headers())
+    assert response.status_code == 500
+    assert response.json()["error"]["code"] == "INTERNAL"

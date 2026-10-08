@@ -1,7 +1,7 @@
-"""Contract artifact generation and pinning tests (schema 2.1).
+"""Golden wire compatibility tests (schema 2.1).
 
-These tests pin the Phase 0 publication: RFC 8785 canonical bytes, the exact
-publication path groups, recomputable digests, the sorted fixture
+These tests pin existing wire behavior: RFC 8785 canonical bytes, the exact
+fixture groups, recomputable digests, the sorted fixture
 inventory, strict-model round trips, and jsonschema consumer entrypoints.
 """
 import json
@@ -9,15 +9,10 @@ import math
 from pathlib import PurePosixPath
 
 import pytest
+from contract_fixtures import CONTRACT_ROOT, build_artifacts
 
 from triton_evaluation.api import contract as live_contract
-from triton_evaluation.api.contract_artifacts import (
-    build_artifacts,
-    canonical_json_bytes,
-    sha256_hex,
-    verify_artifacts,
-    write_artifacts,
-)
+from triton_evaluation.serialization import canonical_json_bytes, sha256_hex
 
 EXPECTED_FIXTURES = [
     "error-deadline-exceeded.json",
@@ -117,7 +112,7 @@ def test_json_dumps_sort_keys_is_not_the_canonicalizer():
 # ---------------------------------------------------------------------------
 
 
-def test_artifact_paths_are_exactly_the_publication_set():
+def test_golden_examples_cover_expected_cases():
     paths = {path.as_posix() for path in build_artifacts()}
     expected = {"schema.json", "contract.json", "fixtures/index.json"}
     expected |= {f"fixtures/{name}" for name in EXPECTED_FIXTURES}
@@ -209,32 +204,13 @@ def test_consumer_entrypoints_resolve_and_validate_independently():
 
 
 # ---------------------------------------------------------------------------
-# Write and verify behavior
+# Recorded wire compatibility
 # ---------------------------------------------------------------------------
 
 
-def test_write_then_verify_is_clean(tmp_path):
-    write_artifacts(tmp_path, build_artifacts())
-    assert verify_artifacts(tmp_path, build_artifacts()) == []
-
-
-def test_write_then_verify_is_clean_v21(tmp_path):
-    write_artifacts(tmp_path, build_artifacts())
-    assert verify_artifacts(tmp_path, build_artifacts()) == []
-
-
-def test_verify_artifacts_detects_drift(tmp_path):
-    write_artifacts(tmp_path, build_artifacts())
-    target = tmp_path / "fixtures" / "error-internal.json"
-    data = target.read_bytes()
-    target.write_bytes(data[:-1] + (b"0" if data[-1:] != b"0" else b"1"))
-    (tmp_path / "fixtures" / "unexpected.json").write_bytes(b"{}")
-    (tmp_path / "schema.json").unlink()
-    assert verify_artifacts(tmp_path, build_artifacts()) == [
-        "fixtures/error-internal.json",
-        "fixtures/unexpected.json",
-        "schema.json",
-    ]
+def test_generated_schema_and_examples_match_recorded_wire_bytes():
+    for relative, expected in build_artifacts().items():
+        assert (CONTRACT_ROOT / relative).read_bytes() == expected, relative
 
 
 def test_schema_carries_compile_and_measurement_method():

@@ -28,7 +28,6 @@ from .api.contract import (
     EvaluationRequest,
     EvaluationResult,
 )
-from .api.contract_artifacts import canonical_json_bytes, sha256_hex
 from .broker import EvaluationStore
 from .config import Settings
 from .evaluators.base import LeaseLostError
@@ -42,6 +41,7 @@ from .models import (
     new_worker_id,
 )
 from .precheck import run_precheck
+from .serialization import canonical_json_bytes, sha256_hex
 from .terminal_results import complete_evaluation
 
 logger = logging.getLogger(__name__)

@@ -16,14 +16,14 @@ no replacement tasks and infers no approval from a successful compilation.
 
 ```bash
 python scripts/register_official_tasks.py \
-  --official-root ~/open-evo-data/ascendc-kernelgen-data/npu-kernelbench/data/kernel_generator \
-  --catalog-root ~/open-evo-work/svc-validation-p0/catalog \
-  --selection ~/open-evo/examples/evo/npu-baseline/b1-tasks.json
+  --official-root /data/kernel_generator \
+  --catalog-root /srv/triton-eval/catalog \
+  --selection /etc/triton-eval/selection.json
 
 python scripts/register_official_tasks.py \
-  --official-root ~/open-evo-data/ascendc-kernelgen-data/npu-kernelbench/data/kernel_generator \
-  --catalog-root ~/open-evo-work/svc-validation-p0/catalog \
-  --selection ~/open-evo/examples/evo/npu-baseline/b1-tasks.json \
+  --official-root /data/kernel_generator \
+  --catalog-root /srv/triton-eval/catalog \
+  --selection /etc/triton-eval/selection.json \
   --replay
 ```
 

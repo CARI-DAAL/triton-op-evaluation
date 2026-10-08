@@ -6,12 +6,9 @@ contract.json, schema.json, and the fixture index/files — never service code.
 import json
 
 import pytest
+from contract_fixtures import CONTRACT_ROOT
 
-from triton_evaluation.api.contract_artifacts import (
-    CONTRACT_ROOT,
-    canonical_json_bytes,
-    sha256_hex,
-)
+from triton_evaluation.serialization import canonical_json_bytes, sha256_hex
 
 pytestmark = pytest.mark.anyio
 

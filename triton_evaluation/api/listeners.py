@@ -59,7 +59,7 @@ async def serve_app(app, settings, *, install_signal_handlers: bool = True) -> N
             config.load()
         for config in configs:
             sockets.append(config.bind_socket())
-        # Startup/storage/contract checks and maintenance run exactly once.
+        # Storage checks and maintenance run exactly once.
         async with app.router.lifespan_context(app):
             tasks = [
                 asyncio.create_task(server.serve(sockets=[sock]))

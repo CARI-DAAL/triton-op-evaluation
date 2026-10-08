@@ -125,7 +125,7 @@ def build_app(tmp_path, catalog_files, clock=None, settings=None):
 
     instance = EvaluationInstance(
         settings=settings, store=store, catalog=catalog,
-        metrics=metrics, artifacts_verified=True,
+        metrics=metrics,
     )
     budget = EvalBudgetRegistry(
         client, prefix=settings.redis_prefix, maximum=settings.kernel_eval_max_turns,

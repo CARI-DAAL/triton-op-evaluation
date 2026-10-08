@@ -159,7 +159,7 @@ def _write_catalog(tmp_path):
     (root / "references").mkdir(parents=True, exist_ok=True)
     reference = root / "references" / "addmm-1.py"
     reference.write_text(REFERENCE_SOURCE, encoding="utf-8")
-    from triton_evaluation.api.contract_artifacts import sha256_hex
+    from triton_evaluation.serialization import sha256_hex
 
     (root / "catalog.json").write_text(json.dumps({
         "schema_version": "1.0",

@@ -12,3 +12,12 @@ docs
 docker.env
 *.md
 !README.md
+.ruff_cache
+.worktrees
+.claude
+.codex
+.agents
+build
+dist
+.coverage
+htmlcov

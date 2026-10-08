@@ -57,11 +57,6 @@ from triton_evaluation.api.contract import (
     EvaluationResult,
     dump_contract,
 )
-from triton_evaluation.api.contract_artifacts import (
-    canonical_json_bytes,
-    load_canonical,
-    sha256_hex,
-)
 from triton_evaluation.config import Settings
 from triton_evaluation.models import (
     AlgorithmVersions,
@@ -77,6 +72,11 @@ from triton_evaluation.models import (
     new_attempt_id,
 )
 from triton_evaluation.security import Caller
+from triton_evaluation.serialization import (
+    canonical_json_bytes,
+    load_canonical,
+    sha256_hex,
+)
 from triton_evaluation.terminal_results import (
     complete_evaluation,
     persisted_check_outcomes,

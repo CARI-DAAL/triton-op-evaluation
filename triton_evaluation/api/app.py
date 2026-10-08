@@ -53,19 +53,8 @@ def _count_error_response(request: Request, error: errors.ApiError) -> None:
 def create_app(context: AppContext) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI):
-        # Fail closed before serving: verify published artifact bytes and
-        # load security/catalog data. A development credential is never
-        # constructed here — only the configured secret file is loaded.
-        from ..api.contract_artifacts import (
-            CONTRACT_ROOT,
-            build_artifacts,
-            verify_artifacts,
-        )
-
-        problems = verify_artifacts(CONTRACT_ROOT, build_artifacts())
-        if problems:
-            raise RuntimeError("published contract artifacts failed verification")
-        context.instance.artifacts_verified = True
+        # Runtime readiness depends on durable storage and compatible workers;
+        # schemas and golden examples are verified by tests, never at startup.
         context.instance.store.probe_storage()  # fail fast when the store rejects writes
 
         stop = asyncio.Event()
@@ -122,7 +111,9 @@ def _install_exception_handlers(app: FastAPI) -> None:
 
     @app.exception_handler(StarletteHTTPException)
     async def handle_http_error(request: Request, exc: StarletteHTTPException):
-        if exc.status_code == 404:
+        if exc.status_code == 400:
+            error = errors.invalid_request("request body could not be parsed")
+        elif exc.status_code == 404:
             error = errors.not_found()
         elif exc.status_code == 405:
             error = errors.not_found()

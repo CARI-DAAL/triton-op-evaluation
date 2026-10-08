@@ -33,7 +33,7 @@ class Settings(BaseSettings):
     engine_dir: str = _DEFAULT_ENGINE_DIR
     reference_device_policy: Literal["cpu-first", "npu-strict"] = "cpu-first"
     reference_diagnostics_dir: Path | None = None
-    # F-63 settings are separate from the six existing deployment anchors.
+    # Optional reference-cache settings are pinned as one deployment group.
     reference_cache_dir: Path | None = None
     reference_cache_binding: Path | None = None
     reference_cache_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
@@ -44,7 +44,7 @@ class Settings(BaseSettings):
     reference_timing_reuse_sha256: str | None = Field(
         default=None, pattern=r"^[0-9a-f]{64}$"
     )
-    # Service-owned immutable loader compatibility, separate from six anchors.
+    # Service-owned immutable loader compatibility.
     profiler_runtime_manifest: Path | None = None
     profiler_runtime_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
     engine_runtime_overlay_config: Path | None = None

@@ -1,6 +1,8 @@
 # 0001: Evaluation instance ownership and measured results
 
-Status: accepted for the v2.1 cutover.
+Status: accepted for instance ownership. The original reference-cache scope below
+is historical; the current opt-in policy is documented in
+[reference caches](../operations/reference-cache.md).
 
 One evaluation instance owns admission, durable IDs, leases, card health and
 result recovery. Each machine runs independent Redis state. The consumer
@@ -33,5 +35,7 @@ intentionally distinct from result caching.
 
 Old incompatible records stay in their original namespace. Cutover requires
 draining the previous deployment, collecting its results, and moving consumer
-and evaluator to the same published contract digest. The new release never
-guesses how to reinterpret prior records.
+and evaluator to compatible HTTP models and behavior. Compatibility is checked
+by HTTP and consumer tests; the running application publishes its OpenAPI directly.
+The former generated-contract startup gate has been retired. The new release
+never guesses how to reinterpret prior records.

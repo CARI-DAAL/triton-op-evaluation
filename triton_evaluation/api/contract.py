@@ -7,9 +7,8 @@ model is strict: unknown fields, scalar coercion, and non-finite ordinary
 floats are rejected; NaN/Inf exist only as explicit string sentinels inside
 correctness samples.
 
-The supported interface is documented in
-``docs/architecture/evaluations-v21-contract.md`` and published under
-``contracts/evaluation-api/2.1``.
+FastAPI derives its OpenAPI schemas from these models. Recorded wire examples
+live in the test suite and are not needed to import or run the service.
 """
 import math
 import statistics
@@ -68,6 +67,9 @@ def utf8_len(max_bytes: int) -> Callable[[str], str]:
         return value
 
     return _check
+
+
+SourceCode = Annotated[str, AfterValidator(utf8_len(MAX_SOURCE_BYTES))]
 
 
 def redacted_text(max_bytes: int) -> Callable[[str], str]:
@@ -132,11 +134,21 @@ class GradeContext(StrictModel):
 
 
 class EvaluationRequest(StrictModel):
+    """A durable request for evaluation evidence.
+
+    Checks must be unique. Performance requires correctness; performance and
+    profile parameters may only accompany their corresponding checks. Grade
+    requests require grade_context; trial and rollout requests cannot carry it.
+    Omitted check parameters use their declared defaults. Each source string
+    is limited to 2 MiB of UTF-8. Accepted work survives HTTP wait expiration
+    and is recovered by ID or by replaying the same idempotent submission.
+    """
+
     schema_version: SchemaVersion
     purpose: Purpose = "trial"
     op_name: str = Field(min_length=1, max_length=128)
-    reference_code: Annotated[str, AfterValidator(utf8_len(MAX_SOURCE_BYTES))]
-    kernel_code: Annotated[str, AfterValidator(utf8_len(MAX_SOURCE_BYTES))]
+    reference_code: SourceCode
+    kernel_code: SourceCode
     triton_impl_name: str = Field(
         default="triton_ascend_impl", min_length=1, max_length=128
     )
@@ -708,7 +720,7 @@ class EvaluationResult(StrictModel):
 
 def dump_contract(model: StrictModel) -> bytes:
     """Serialize the sole public contract as canonical JSON, preserving null slots."""
-    from .contract_artifacts import canonical_json_bytes
+    from ..serialization import canonical_json_bytes
 
     return canonical_json_bytes(model.model_dump(mode="json", exclude_none=False))
 

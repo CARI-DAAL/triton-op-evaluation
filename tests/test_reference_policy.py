@@ -93,7 +93,6 @@ def test_policy_binds_admission_and_worker_compatibility(
         settings=strict,
         store=store,
         catalog=release_catalog,
-        artifacts_verified=True,
     )
     created = instance.submit(
         make_request(),

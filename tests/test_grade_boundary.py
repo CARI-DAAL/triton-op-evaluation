@@ -18,8 +18,9 @@ from triton_evaluation.api.contract import EvaluationResource, Provenance
 
 FIXTURES = (
     Path(__file__).parent.parent
-    / "contracts"
-    / "evaluation-api"
+    / "tests"
+    / "fixtures"
+    / "evaluation_api"
     / "2.1"
     / "fixtures"
 )
