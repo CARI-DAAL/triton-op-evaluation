@@ -17,7 +17,7 @@ test = ["pytest==9.1.1", "fakeredis==2.37.0", "httpx==0.28.1", "jsonschema==4.26
     # deployment paths: `pip install -e ".[npu]"` (host / scripts/start.sh)
     # and the Docker build. torch_npu / triton-ascend are not on PyPI; install
     # with --extra-index-url pointing at the Ascend wheel index. setproctitle
-    # renames workers to `TritonEval` in npu-smi; pyyaml is an undeclared
+    # renames workers to `EvalWorker` in npu-smi; pyyaml is an undeclared
     # torch_npu import (npu/_memory_viz.py); pandas is needed by the engine.
     npu = [
         "torch==2.9.0",

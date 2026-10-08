@@ -1448,7 +1448,7 @@ def _terminate_expired_subprocess(proc, waited_seconds: int) -> None:
 
 
 if __name__ == "__main__":
-    _set_process_title("TritonEvalWork")
+    _set_process_title("EvalEngine")
     _setup_logger()
     parser = argparse.ArgumentParser(description="算子验证脚本")
     parser.add_argument("--op_name", required=True, help="算子名称")

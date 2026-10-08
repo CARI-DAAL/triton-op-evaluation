@@ -1194,5 +1194,5 @@ def main():
 
 
 if __name__ == "__main__":
-    _set_process_title("TritonEvalWork")
+    _set_process_title("EvalEngine")
     main()
