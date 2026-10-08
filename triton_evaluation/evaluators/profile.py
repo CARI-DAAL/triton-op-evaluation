@@ -97,6 +97,8 @@ class ProfileEvaluator:
             str(work_dir),
             "--triton_impl_name",
             request.triton_impl_name,
+            "--implementation",
+            request.implementation,
             "--profile-mode",
             params.mode,
             "--timeout",

@@ -126,7 +126,7 @@ def _materialize_modules(
     modules = {
         f"{stem}_torch.py": request.reference_code,
     }
-    if not reference_only:
+    if not reference_only and request.implementation != "torch":
         modules[f"{stem}_{request.triton_impl_name}.py"] = request.kernel_code
     with _directory_descriptor(Path(work_dir), create=True) as directory_fd:
         for name, source in modules.items():

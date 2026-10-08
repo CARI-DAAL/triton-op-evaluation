@@ -323,7 +323,9 @@ class Worker:
                         pinned,
                         progress,
                         precheck=lambda: run_precheck(
-                            self.verdict_cache, self.settings, request.kernel_code,
+                            self.verdict_cache, self.settings,
+                            request.reference_code if request.implementation == "torch"
+                            else request.kernel_code,
                             request.triton_impl_name,
                             deadline_at=deadline_at, lease_valid=keeper.is_valid,
                             device_id=self.device_id, runner=self.script_runner,

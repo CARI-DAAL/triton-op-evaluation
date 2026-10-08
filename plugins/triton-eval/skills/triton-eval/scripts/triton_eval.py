@@ -70,8 +70,8 @@ def arguments(argv):
         if action == "get":
             command.add_argument("evaluation_id")
         else:
-            command.add_argument("--torch", type=Path, required=True)
-            command.add_argument("--triton", type=Path, required=True)
+            command.add_argument("--torch", type=Path)
+            command.add_argument("--triton", type=Path)
             command.add_argument("--cases", type=Path, required=True)
             command.add_argument("--idempotency-key")
             command.add_argument("--session-id")
@@ -79,14 +79,21 @@ def arguments(argv):
             cache = command.add_mutually_exclusive_group()
             cache.add_argument(
                 "--use-baseline-cache", dest="use_baseline_cache", action="store_true",
-                help="reuse cached Torch baseline timing (default)",
+                help="reuse Torch baseline timing for a two-source comparison (default)",
             )
             cache.add_argument(
                 "--no-baseline-cache", dest="use_baseline_cache", action="store_false",
-                help="measure Torch timing fresh without reading or writing the cache",
+                help=("bypass comparison baseline caching; "
+                      "single-source measurements are always fresh"),
             )
             command.set_defaults(use_baseline_cache=True)
-    return parser.parse_args(argv)
+    args = parser.parse_args(argv)
+    if args.command != "get":
+        if args.torch is None and args.triton is None:
+            raise ClientError("INVALID_ARGUMENT", "provide at least one of --torch or --triton")
+        if args.command == "verify" and (args.torch is None or args.triton is None):
+            raise ClientError("INVALID_ARGUMENT", "verify requires both --torch and --triton")
+    return args
 
 
 def base_url(value):
@@ -319,11 +326,11 @@ class Client:
             cases = json_value(read_text(self.args.cases, "cases file"))
             if not isinstance(cases, list) or not cases:
                 raise ClientError("INVALID_INPUT", "cases file must contain a nonempty JSON array")
-            payload = {
-                "torch_code": read_text(self.args.torch, "torch source"),
-                "triton_code": read_text(self.args.triton, "triton source"),
-                "cases": cases,
-            }
+            payload = {"cases": cases}
+            for implementation in ("torch", "triton"):
+                path = getattr(self.args, implementation)
+                if path is not None:
+                    payload[f"{implementation}_code"] = read_text(path, f"{implementation} source")
             if self.args.command == "benchmark" and not self.args.use_baseline_cache:
                 payload["performance"] = {"use_baseline_cache": False}
             if self.key is None:
@@ -345,7 +352,20 @@ class Client:
             self.save_handle()
             self.progress("Evaluation " + self.evaluation_id + ": " + resource["state"])
             if resource["state"] in TERMINAL or self.args.no_wait:
-                return resource, exit_status(resource)
+                status = exit_status(resource)
+                single_input = self.args.command != "get" and (
+                    self.args.torch is None or self.args.triton is None
+                )
+                result = resource.get("result") or {}
+                unverified = any(
+                    isinstance(result.get(name), dict)
+                    and isinstance(result[name].get("data"), dict)
+                    and result[name]["data"].get("correctness_verified") is False
+                    for name in ("performance", "profile")
+                )
+                if single_input or unverified:
+                    self.progress("Single-implementation measurement: correctness not verified.")
+                return resource, status
             self.pause(self.args.poll_interval)
             resource = self.request("GET", "/evaluations/" + self.evaluation_id)
 

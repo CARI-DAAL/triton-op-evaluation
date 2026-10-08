@@ -166,6 +166,7 @@ def build_runner_source() -> str:
             parser.add_argument("--verify-dir", required=True)
             parser.add_argument("--op-name", required=True)
             parser.add_argument("--triton-impl-name", required=True)
+            parser.add_argument("--implementation", choices=("comparison", "torch", "triton"), default="comparison")
             mode = parser.add_mutually_exclusive_group(required=True)
             mode.add_argument("--describe-cases", action="store_true")
             mode.add_argument("--case-idx", type=int)
@@ -201,20 +202,23 @@ def build_runner_source() -> str:
                     f"case_idx {index} out of range for {len(groups)} cases"
                 )
             enforce_conv_fp32()
-            implementation = load_module(
-                f"{args.op_name}_{args.triton_impl_name}",
-                os.path.join(
-                    args.verify_dir,
-                    f"{args.op_name}_{args.triton_impl_name}.py",
-                ),
-            )
+            if args.implementation == "torch":
+                model_type = reference.Model
+            else:
+                implementation = load_module(
+                    f"{args.op_name}_{args.triton_impl_name}",
+                    os.path.join(
+                        args.verify_dir,
+                        f"{args.op_name}_{args.triton_impl_name}.py",
+                    ),
+                )
+                model_type = implementation.ModelNew
             seed(torch)
-            model = implementation.ModelNew(
-                *reference.get_init_inputs()
-            ).to("npu:0")
+            model = model_type(*reference.get_init_inputs()).to("npu:0")
             from _common_utils import invoke_model, prepare_candidate_inputs
             raw_inputs = groups[index]
-            inputs = [to_npu(value, torch) for value in prepare_candidate_inputs(getattr(reference, "Model", None), raw_inputs)]
+            model_inputs = raw_inputs if args.implementation == "torch" else prepare_candidate_inputs(getattr(reference, "Model", None), raw_inputs)
+            inputs = [to_npu(value, torch) for value in model_inputs]
             with torch.no_grad():
                 invoke_model(model, inputs)
             if hasattr(torch, "npu"):
@@ -258,6 +262,7 @@ def discover_cases(
     python_bin: str,
     env: dict[str, str],
     deadline: float,
+    implementation: str = "comparison",
 ) -> list[dict]:
     command = [
         python_bin,
@@ -270,6 +275,8 @@ def discover_cases(
         op_name,
         "--triton-impl-name",
         impl_name,
+        "--implementation",
+        implementation,
         "--describe-cases",
     ]
     outcome = run_command(
@@ -303,9 +310,12 @@ class ProfileConfig:
     output: str
     engine_dir: str
     python_bin: str
+    implementation: str = "comparison"
 
 
 def validate_profile_config(config: ProfileConfig) -> None:
+    if config.implementation not in {"comparison", "torch", "triton"}:
+        raise ValueError("invalid implementation")
     if config.profile_mode not in {"op", "deep"}:
         raise ValueError("profile_mode must be 'op' or 'deep'")
     if config.case_idx is not None and config.case_idx < 0:
@@ -398,19 +408,20 @@ def run_profile(
         python_bin=config.python_bin,
         env=env,
         deadline=deadline,
+        implementation=config.implementation,
     )
     selected = select_case_indices(cases, config.case_idx)
     result = _empty_result(config, len(cases), selected)
     snapshot(config.output, result)
 
-    kernel_path = Path(config.verify_dir) / (
-        f"{config.op_name}_{config.triton_impl_name}.py"
-    )
-    kernel_names = extract_triton_kernel_names(
-        kernel_path.read_text(encoding="utf-8")
-    )
-    if not kernel_names:
-        raise RuntimeError("kernel source contains no @triton.jit/@jit function")
+    kernel_names = None
+    if config.implementation != "torch":
+        kernel_path = Path(config.verify_dir) / (
+            f"{config.op_name}_{config.triton_impl_name}.py"
+        )
+        kernel_names = extract_triton_kernel_names(kernel_path.read_text(encoding="utf-8"))
+        if not kernel_names:
+            raise RuntimeError("kernel source contains no @triton.jit/@jit function")
 
     by_index = {int(case["case_idx"]): case for case in cases}
     for index in selected:
@@ -426,6 +437,8 @@ def run_profile(
             config.op_name,
             "--triton-impl-name",
             config.triton_impl_name,
+            "--implementation",
+            config.implementation,
             "--case-idx",
             str(index),
         ]
@@ -495,6 +508,7 @@ def _config_from_args() -> ProfileConfig:
     parser.add_argument("--op_name", required=True)
     parser.add_argument("--verify_dir", required=True)
     parser.add_argument("--triton_impl_name", required=True)
+    parser.add_argument("--implementation", choices=("comparison", "torch", "triton"), default="comparison")
     parser.add_argument("--profile-mode", choices=("op", "deep"), required=True)
     parser.add_argument("--case-idx", type=int)
     parser.add_argument("--launch-count", type=int)
@@ -506,6 +520,7 @@ def _config_from_args() -> ProfileConfig:
         verify_dir=os.path.abspath(args.verify_dir),
         triton_impl_name=args.triton_impl_name,
         profile_mode=args.profile_mode,
+        implementation=args.implementation,
         case_idx=args.case_idx,
         launch_count=args.launch_count,
         timeout=args.timeout,

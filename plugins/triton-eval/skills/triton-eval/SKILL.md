@@ -1,6 +1,6 @@
 ---
 name: triton-eval
-description: Verify, benchmark or profile Triton operators against a PyTorch reference using a deployed triton-evaluation service, or recover an existing evaluation by ID.
+description: Measure or profile PyTorch or Triton operators, compare Triton against PyTorch for correctness and speedup, or recover an evaluation from a deployed triton-evaluation service.
 ---
 
 # Triton evaluation
@@ -14,8 +14,8 @@ invoke its absolute path from the directory containing the user's inputs.
 
 ## Submit an operator
 
-Use three UTF-8 files: the PyTorch source, the Triton source and a JSON **array**
-of cases. Both implementations define `run(*args)`. Each case has positional
+Use a JSON **array** of cases and at least one UTF-8 source file (PyTorch or
+Triton). Each supplied implementation defines `run(*args)`. Each case has positional
 `inputs` and an optional `seed` (default `0`). An input is a scalar or a tensor
 descriptor with `shape`, optional `dtype` (default `float32`) and optional
 `range: [low, high]` (upper bound exclusive). For example, `cases.json` can be:
@@ -24,8 +24,11 @@ descriptor with `shape`, optional `dtype` (default `float32`) and optional
 [{"inputs": [{"shape": [1024], "dtype": "float32"}], "seed": 0}]
 ```
 
-Choose `verify` for correctness, `benchmark` for correctness plus timing, or
-`profile` for profiling. Put options after the subcommand. With
+Choose `verify` with both sources for correctness. `benchmark` measures one
+implementation, or checks correctness and speedup when both are supplied.
+`profile` accepts either one or both sources. Supply only the implementations
+the user wants measured; duplicating one source into two fields creates a
+misleading comparison. Put options after the subcommand. With
 `TRITON_EVAL_CLI` set to the resolved client path:
 
 ```bash
@@ -34,15 +37,24 @@ python3 "$TRITON_EVAL_CLI" verify \
   --save-handle evaluation-handle.json
 ```
 
+For one implementation, omit the other flag:
+
+```bash
+python3 "$TRITON_EVAL_CLI" benchmark --torch torch_impl.py --cases cases.json
+python3 "$TRITON_EVAL_CLI" profile --triton triton_impl.py --cases cases.json
+```
+
 The client reads the capability from its file and sends it only as the
 Authorization credential. Keep credentials out of source files, cases, output
-artifacts and pasted logs. The two source files and cases are sent to the
+artifacts and pasted logs. The supplied source files and cases are sent to the
 configured evaluation service; importing them locally is unnecessary.
 
-For `benchmark`, Torch baseline timing is cached by default. Use
-`--no-baseline-cache` when the user requests fresh Torch timing; this bypasses
-cache reads and writes. The candidate is measured each time. Preserve per-case
-`baseline_cache_hit` when reporting whether baseline timing was reused.
+For two-source `benchmark`, Torch baseline timing is cached by default. Use
+`--no-baseline-cache` for a fresh comparison baseline without reading or writing
+the cache. Candidate timing is always measured. Preserve per-case
+`baseline_cache_hit` when reporting comparison evidence. Single-source benchmarks
+always measure fresh and never read or write this cache; accepting the flag does
+not establish a cache hit.
 
 Use subcommand `--help` for the available options. The client normally
 polls for up to 960 seconds with a 1-second interval; `--timeout`,
@@ -57,7 +69,8 @@ Once an `evaluation_id` is known, use `get` on its original service URL:
 python3 "$TRITON_EVAL_CLI" get EVALUATION_ID --url ORIGINAL_SERVICE_URL
 ```
 
-Retain the ID, original URL, session and printed idempotency key. If a POST gets
+`--save-handle` records `url`, `evaluation_id`, `idempotency_key` and `session_id`.
+Retain these values for recovery; a missing session is recorded as null. If a POST gets
 no response, retry only with the same source bytes, cases, options, session and
 `--idempotency-key`. A different key creates new work. After bounded retries or
 a service outage, report the recoverable handle or original request identity;
@@ -69,3 +82,14 @@ and `completed` alone does not mean the candidate passed. Report a failed
 correctness verdict as a candidate outcome; report transport or infrastructure
 failure separately, without inventing a correctness score. Preserve available
 measurement method and profile evidence when summarizing results.
+
+Single-implementation results identify `implementation: torch` or `triton` and
+`correctness_verified: false`. Performance reports per-case `latency_ms` without
+reference speedup; profiling reports its own evidence. A zero CLI exit status
+for those operations means measurement success, not verified correctness. Keep
+that limitation in the user-facing result even when timing or profiling succeeds.
+Syntax/import prechecks also do not establish successful device JIT compilation.
+
+Preserve partial-profile warnings. PyTorch profiling can include process
+initialization and has bounded launch coverage; its observations do not establish
+complete profiling of only the supplied `run` function.

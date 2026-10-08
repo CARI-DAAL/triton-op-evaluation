@@ -21,8 +21,20 @@ def test_plugin_archive_discovers_skill_and_runs_isolated_client(tmp_path):
 
     manifest = json.loads((isolated / "plugin.json").read_text())
     assert manifest["$schema"] == "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json"
-    skills = list((isolated / "skills").glob("*/SKILL.md"))
+    skills = set((isolated / "skills").glob("*/SKILL.md"))
     assert skills
+    for directory in (".codex-plugin", ".claude-plugin"):
+        overlay_file = isolated / directory / "plugin.json"
+        assert overlay_file.is_file(), "archive omitted client compatibility metadata"
+        overlay = json.loads(overlay_file.read_text())
+        for name in ("name", "version", "description", "repository"):
+            assert overlay[name] == manifest[name], f"{directory}: metadata drift for {name}"
+        skill_path = overlay["skills"]
+        assert skill_path.startswith("./")
+        skill_root = (isolated / skill_path).resolve()
+        assert skill_root.is_relative_to(isolated)
+        assert set(skill_root.glob("*/SKILL.md")) == skills
+        assert not (isolated / directory / "skills").exists()
     for skill in skills:
         for link in re.findall(r"\]\(([^)]+)\)", skill.read_text()):
             if "://" not in link:

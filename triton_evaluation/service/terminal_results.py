@@ -112,7 +112,10 @@ def complete_evaluation(
                 status="skipped",
                 reason=SkipInfo(
                     code="RESOURCE_DEADLINE" if deadline else "PRIOR_CHECK_FAILED",
-                    depends_on="correctness" if check == "performance" else None,
+                    depends_on=(
+                        "correctness"
+                        if check == "performance" and "correctness" in requested_set else None
+                    ),
                     message=(
                         "resource deadline expired before execution" if deadline
                         else "a prior requested check did not complete"

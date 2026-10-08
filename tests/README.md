@@ -82,7 +82,8 @@ manifest or separate grade token; the subprocess uses the caller capability via
 Passing or skipped CPU checks are not evidence of NPU correctness, isolation
 recovery, latency or cache coverage.
 
-For baseline-cache changes, also exercise a fresh task on the deployed NPU:
+For baseline-cache changes, also exercise a fresh two-source comparison on the
+deployed NPU:
 submit `benchmark` twice with different idempotency keys and check that per-case
 `baseline_cache_hit` changes from false to true, then submit with
 `--no-baseline-cache` and verify false. Submit once more with caching enabled to
@@ -90,3 +91,9 @@ check that bypass did not overwrite the retained Torch times. Correctness and
 candidate timings must be present on every successful run. Repeat with a changed
 case shape or seed to confirm a miss. These hardware checks are separate from
 the readiness/correctness release gate above.
+
+Single-source NPU benchmarks should report fresh per-case latency and
+`correctness_verified: false` for both cache-flag values, without creating or
+changing a comparison baseline entry. They should not report correctness or
+reference speedup. These are separate hardware checks, not evidence established
+by the CPU CLI tests.
