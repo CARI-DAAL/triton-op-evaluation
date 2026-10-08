@@ -7,11 +7,17 @@ triton-evaluation HTTP service. It follows the
 
 The [skill](skills/triton-eval/SKILL.md) bundles a Python 3.10+ standard-library
 [CLI](skills/triton-eval/scripts/triton_eval.py). No service package, Torch or
-Ascend installation is required on the client machine. Configure the service
-URL and a caller capability-file path, then run it directly:
+Ascend installation is required on the client machine.
+
+This example connects to a local service listening on `127.0.0.1:11907`.
+For remote or containerized clients, set the URL to the address reachable from
+the client. Compose uses the service's configured private host address; the
+CLI itself has no default URL.
+
+Configure the service URL and a caller capability-file path, then run directly:
 
 ```bash
-export EVALUATION_URL=http://10.0.0.11:11907
+export EVALUATION_URL=http://127.0.0.1:11907
 export EVALUATION_CAPABILITY_FILE=/path/to/caller-token
 python3 skills/triton-eval/scripts/triton_eval.py verify \
   --torch /path/to/torch_impl.py --triton /path/to/triton_impl.py \
