@@ -1,4 +1,11 @@
-# Reference caches
+# Pinned reference caches
+
+For automatic Torch timing reuse in two-source operator comparisons, see
+[baseline timing reuse](../usage/evaluations.md#reuse-torch-baseline-timings).
+Comparison benchmarks use that cache and bypass the pinned timing paths described
+below. Single-source benchmarks always measure fresh and read or write neither
+baseline nor pinned timing caches. This page covers retained reference-output
+and standalone engine tooling.
 
 The service can reuse seed-zero official reference outputs and the median of eight
 reference measurements. Candidate execution, the existing accuracy algorithms and

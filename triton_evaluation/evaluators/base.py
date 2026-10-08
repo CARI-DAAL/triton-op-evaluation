@@ -108,13 +108,24 @@ def safe_module_stem(request: EvaluationRequest) -> str:
     return f"eval_{digest[:24]}"
 
 
+def materialize_reference(request: EvaluationRequest, work_dir: Path) -> str:
+    """Stage only the frozen reference in an isolated measurement directory."""
+    return _materialize_modules(request, work_dir, reference_only=True)
+
+
 def materialize(request: EvaluationRequest, work_dir: Path) -> str:
+    return _materialize_modules(request, work_dir)
+
+
+def _materialize_modules(
+    request: EvaluationRequest, work_dir: Path, *, reference_only=False
+) -> str:
     """Write the reference and implementation modules; return the safe stem."""
     stem = safe_module_stem(request)
     modules = {
         f"{stem}_torch.py": request.reference_code,
     }
-    if request.implementation != "torch":
+    if not reference_only and request.implementation != "torch":
         modules[f"{stem}_{request.triton_impl_name}.py"] = request.kernel_code
     with _directory_descriptor(Path(work_dir), create=True) as directory_fd:
         for name, source in modules.items():

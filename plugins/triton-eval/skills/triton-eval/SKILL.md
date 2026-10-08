@@ -49,6 +49,13 @@ Authorization credential. Keep credentials out of source files, cases, output
 artifacts and pasted logs. The supplied source files and cases are sent to the
 configured evaluation service; importing them locally is unnecessary.
 
+For two-source `benchmark`, Torch baseline timing is cached by default. Use
+`--no-baseline-cache` for a fresh comparison baseline without reading or writing
+the cache. Candidate timing is always measured. Preserve per-case
+`baseline_cache_hit` when reporting comparison evidence. Single-source benchmarks
+always measure fresh and never read or write this cache; accepting the flag does
+not establish a cache hit.
+
 Use subcommand `--help` for the available options. The client normally
 polls for up to 960 seconds with a 1-second interval; `--timeout`,
 `--poll-interval` and `--no-wait` control that client behavior. An elapsed client

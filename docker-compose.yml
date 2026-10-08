@@ -27,6 +27,7 @@ services:
       HOME: /tmp
       TRITON_EVAL_REDIS_URL: ${TRITON_EVAL_REDIS_URL:-redis://127.0.0.1:6379/7}
       TRITON_EVAL_REDIS_PREFIX: triton-eval:v2.1
+      TRITON_EVAL_BASELINE_CACHE_NAMESPACE: ${TRITON_EVAL_BASELINE_CACHE_NAMESPACE:-torch-baseline-v1}
       TRITON_EVAL_CANN_FINGERPRINT: ${TRITON_EVAL_CANN_FINGERPRINT:-}
       # Explicit private address; each host runs an independent API and Redis.
       TRITON_EVAL_API_HOST: ${TRITON_EVAL_API_HOST:?set the instance private IPv4 address}

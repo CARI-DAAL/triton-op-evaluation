@@ -80,3 +80,10 @@ it does not install a global command or deploy the HTTP service.
 The repository does not register a marketplace or install this plugin. Codex's
 `plugin add` command expects a configured marketplace selector, not a direct
 directory path. Run the bundled script directly as above when using this checkout.
+
+With both sources, `benchmark` reuses cached Torch baseline timing by default
+while measuring the Triton candidate each time. Use `--no-baseline-cache` to
+measure the comparison baseline fresh without reading or writing the cache, or
+`--use-baseline-cache` to select the default explicitly. Comparison timing results
+report `baseline_cache_hit` per case. Single-source benchmarks always measure
+fresh, regardless of this flag, and neither read nor write the baseline cache.

@@ -158,3 +158,53 @@ def test_partial_measurement_coverage_contains_no_fabricated_samples(tmp_path, m
     assert result["unmeasured_cases"] == [
         {"case_idx": 0, "input_shapes": [], "reason_code": "NO_STABLE_MEASUREMENT"}
     ]
+
+
+@pytest.mark.parametrize("implementation", ["torch", "triton"])
+def test_single_implementation_never_uses_advisory_baseline_cache(
+    tmp_path,
+    monkeypatch,
+    implementation,
+):
+    from triton_evaluation.api.contract import PerformanceParams
+
+    accesses = []
+
+    class ForbiddenCache:
+        def __getattr__(self, name):
+            accesses.append(name)
+            raise AssertionError("single implementation cannot access baseline cache")
+
+    request = EvaluationRequest(
+        schema_version="2.1",
+        op_name="example",
+        reference_code="pass",
+        kernel_code="" if implementation == "torch" else "pass",
+        implementation=implementation,
+        checks=["performance"],
+        performance=PerformanceParams(use_baseline_cache=True),
+    )
+    runs = []
+    raw = {"implementation": implementation, "correctness_verified": False}
+
+    def run(cmd, *args, **kwargs):
+        runs.append(cmd)
+        assert Path(cmd[1]).name == "single_benchmark.py"
+        for flag in ("--reference-only", "--disable-reference-cache", "--baseline-timings-json"):
+            assert flag not in cmd
+        Path(cmd[cmd.index("--output") + 1]).write_text(json.dumps(raw))
+        return SimpleNamespace(outcome="completed", timed_out=False, exit_code=0)
+
+    monkeypatch.setattr(evaluator_module, "run_script", run)
+    evaluator = evaluator_module.BenchmarkEvaluator("engine", baseline_cache=ForbiddenCache())
+    monkeypatch.setattr(evaluator, "_stamp_result", lambda *args: pytest.fail("no baseline stamp"))
+    result = evaluator.run(
+        request,
+        tmp_path,
+        0,
+        datetime.now(timezone.utc) + timedelta(minutes=5),
+        lease_valid=lambda: True,
+    )
+    assert accesses == []
+    assert len(runs) == 1
+    assert result.status == "succeeded" and result.raw == raw

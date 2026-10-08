@@ -75,6 +75,18 @@ def arguments(argv):
             command.add_argument("--cases", type=Path, required=True)
             command.add_argument("--idempotency-key")
             command.add_argument("--session-id")
+        if action == "benchmark":
+            cache = command.add_mutually_exclusive_group()
+            cache.add_argument(
+                "--use-baseline-cache", dest="use_baseline_cache", action="store_true",
+                help="reuse Torch baseline timing for a two-source comparison (default)",
+            )
+            cache.add_argument(
+                "--no-baseline-cache", dest="use_baseline_cache", action="store_false",
+                help=("bypass comparison baseline caching; "
+                      "single-source measurements are always fresh"),
+            )
+            command.set_defaults(use_baseline_cache=True)
     args = parser.parse_args(argv)
     if args.command != "get":
         if args.torch is None and args.triton is None:
@@ -319,6 +331,8 @@ class Client:
                 path = getattr(self.args, implementation)
                 if path is not None:
                     payload[f"{implementation}_code"] = read_text(path, f"{implementation} source")
+            if self.args.command == "benchmark" and not self.args.use_baseline_cache:
+                payload["performance"] = {"use_baseline_cache": False}
             if self.key is None:
                 self.key = uuid.uuid4().hex
             if not re.fullmatch(r"[!-~]{1,128}", self.key):

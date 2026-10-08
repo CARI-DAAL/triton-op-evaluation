@@ -274,3 +274,41 @@ def run(x):
     assert result.returncode == 0, result.stdout + result.stderr
     report = json.loads(result.stdout[result.stdout.index("{"):])
     assert report["valid"] is True
+
+
+def test_baseline_cache_defaults_preserve_durable_request_bytes():
+    from triton_evaluation.api.contract import EvaluationRequest, dump_contract
+
+    legacy = to_evaluation_request(request())
+    original = dump_contract(legacy)
+    assert b"use_baseline_cache" not in original
+    recovered = EvaluationRequest.model_validate_json(original)
+    assert recovered.performance.use_baseline_cache is True
+    assert dump_contract(recovered) == original
+    explicit = to_evaluation_request(request(performance={"use_baseline_cache": True}))
+    assert dump_contract(explicit) == original
+    fresh = to_evaluation_request(request(performance={"use_baseline_cache": False}))
+    assert fresh.performance.use_baseline_cache is False
+    assert dump_contract(fresh) != original
+    assert json.loads(dump_contract(fresh))["performance"]["use_baseline_cache"] is False
+
+
+@pytest.mark.parametrize("value", [0, 1, "true", "false", None])
+def test_baseline_cache_requires_boolean(value):
+    with pytest.raises(ValidationError):
+        request(performance={"use_baseline_cache": value})
+
+
+def test_baseline_cache_evidence_preserves_legacy_result_bytes():
+    from triton_evaluation.api.contract import PerformanceCase, dump_contract
+
+    case = PerformanceCase(
+        case_idx=0, input_shapes=[], implementation_latency_ms=1.0,
+        reference_latency_ms=2.0, speedup_vs_reference=2.0,
+    )
+    original = dump_contract(case)
+    assert b"baseline_cache_hit" not in original
+    assert dump_contract(PerformanceCase.model_validate_json(original)) == original
+    for hit in (True, False):
+        evidence = case.model_copy(update={"baseline_cache_hit": hit})
+        assert json.loads(dump_contract(evidence))["baseline_cache_hit"] is hit

@@ -436,6 +436,7 @@ class _ShapeMeasurement(StrictModel):
     # (cached_manifest | historical_validated | fresh_measurements |
     # original_measurements); not part of the public contract.
     reference_path: str | None = None
+    baseline_cache_hit: bool | None = None
 
 
 class _AggregateMeasurement(StrictModel):
@@ -556,6 +557,7 @@ def shape_performance(raw: dict[str, object]) -> PerformanceResult:
                 input_shapes=shapes,
                 implementation_latency_ms=implementation,
                 reference_latency_ms=reference,
+                baseline_cache_hit=case.framework.baseline_cache_hit,
                 speedup_vs_reference=reference / implementation,
                 measurement_method=case.measurement_method,
                 reference_latency_samples_ms=case.framework.latency_samples_ms,

@@ -502,3 +502,33 @@ def test_single_source_retries_exact_payload_and_session(inputs):
         "idempotency_key": "single-key", "session_id": "single-session",
     }
     assert "correctness not verified" in result.stderr
+
+
+@pytest.mark.parametrize("flag,expected", [
+    ("--use-baseline-cache", None), ("--no-baseline-cache", {"use_baseline_cache": False}),
+])
+@pytest.mark.parametrize("sources", [("torch", "triton"), ("torch",), ("triton",)])
+def test_benchmark_baseline_cache_option_reaches_service(inputs, flag, expected, sources):
+    with server(lambda calls: (202, resource(), {})) as (url, calls):
+        result, output = run_cli(
+            inputs, url, flag, "--no-wait", action="benchmark", sources=sources,
+        )
+    assert result.returncode == 0
+    assert output["state"] == "queued"
+    body = json.loads(calls[0][3])
+    assert body.get("performance") == expected
+    assert {name for name in body if name.endswith("_code")} == {
+        f"{implementation}_code" for implementation in sources
+    }
+    if len(sources) == 1:
+        assert "correctness not verified" in result.stderr
+        assert "baseline_cache_hit" not in result.stdout
+
+
+@pytest.mark.parametrize("action", ["verify", "profile", "get"])
+def test_baseline_cache_option_only_applies_to_benchmark(inputs, action):
+    with server(lambda calls: (202, resource(), {})) as (url, calls):
+        result, output = run_cli(inputs, url, "--no-baseline-cache", action=action)
+    assert result.returncode == 2
+    assert output["error"]["code"] == "INVALID_ARGUMENT"
+    assert calls == []

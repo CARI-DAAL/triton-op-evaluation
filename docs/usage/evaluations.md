@@ -103,6 +103,44 @@ Admission persists identity, quotas and deadline before any supplied code runs.
 Compile-only requests use CPU workers. Requests with device checks use one NPU
 worker for the whole attempt, including an explicitly requested compile check.
 
+## Reuse Torch baseline timings
+
+Two-source performance comparisons default to
+`performance.use_baseline_cache=true`. A cache hit reuses the Torch baseline
+timing; a miss measures it and saves it for later evaluations. Correctness and
+candidate timing still execute. Reference outputs,
+input tensors and candidate results are not stored in this cache.
+
+Single-source benchmarks always perform fresh measurements without reading or
+writing the baseline cache. They accept the cache option for request compatibility,
+but it does not enable reuse or add a `baseline_cache_hit` result.
+
+For a fresh comparison baseline used only by this evaluation, submit:
+
+```json
+{"performance": {"use_baseline_cache": false}}
+```
+
+Include this option alongside the usual `torch_code`, `triton_code` and `cases`.
+This bypasses both cache reads and writes, leaving any existing baseline intact.
+Use a new idempotency key (or omit it) when requesting a new evaluation; replaying
+an accepted request recovers its existing resource rather than rerunning it.
+
+The cache identity includes Torch source, the complete normalized cases with
+seeds, and the measurement method, warmup and repeat count. Changing only the
+Triton candidate can reuse the baseline. Changing code, cases or timing settings
+produces a different identity. Whitespace changes in source also cause a miss.
+`performance.case_indices` chooses which cases to measure and can incrementally
+fill the same task's cache; changing the full cases list creates a new task.
+
+Each comparison performance case reports `baseline_cache_hit`: `true` means its Torch timing
+came from an existing cache entry, and `false` means it was measured for this
+evaluation. Older stored results can omit the field. Redis cache errors fall
+back to fresh measurement. If a reference-only measurement cannot produce usable
+timings, performance falls back to the normal per-case measurement flow without
+caching that output. The cache assumes a fixed instance environment; see
+[deployment scope](../operations/deployment.md#torch-baseline-cache).
+
 ## Recover results
 
 `wait_seconds=0..60` bounds the HTTP wait. HTTP 202 returns an admitted resource

@@ -93,6 +93,13 @@ def redacted_text(max_bytes: int) -> Callable[[str], str]:
 
 
 class PerformanceParams(StrictModel):
+    use_baseline_cache: bool = Field(
+        default=True, exclude_if=lambda value: value is True,
+        description=(
+            "Reuse cached Torch baseline timing; false measures fresh "
+            "without reading or writing the cache."
+        ),
+    )
     warmup: int = Field(default=5, ge=0, le=100)
     repeats: int = Field(default=50, ge=1, le=1000)
     method: Literal["event", "profiler"] = "event"
@@ -421,6 +428,7 @@ ReferenceLatencySamplesSource = Literal[
 
 
 class PerformanceCase(StrictModel):
+    baseline_cache_hit: bool | None = Field(default=None, exclude_if=lambda value: value is None)
     case_idx: Annotated[int, Field(ge=0)]
     input_shapes: list[InputShape]
     implementation_latency_ms: Annotated[float, Field(gt=0)]
