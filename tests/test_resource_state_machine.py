@@ -21,7 +21,7 @@ from conftest import (
 )
 
 from triton_evaluation.api.contract_artifacts import sha256_hex
-from triton_evaluation.broker import MAX_ATTEMPTS
+from triton_evaluation.service.broker import MAX_ATTEMPTS
 
 
 def _key(settings, suffix):

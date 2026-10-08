@@ -13,7 +13,7 @@ from typing import Literal
 
 import redis
 
-from triton_evaluation.broker import EvaluationStore, _scoped_digest
+from triton_evaluation.service.broker import EvaluationStore, _scoped_digest
 
 logger = logging.getLogger(__name__)
 

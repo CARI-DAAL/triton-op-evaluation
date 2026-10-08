@@ -7,11 +7,11 @@ import uvicorn
 
 from triton_evaluation.api import create_app
 from triton_evaluation.api.dependencies import AppContext
-from triton_evaluation.broker import EvaluationStore
-from triton_evaluation.catalog import ReleaseCatalog
 from triton_evaluation.config import Settings
-from triton_evaluation.instance import EvaluationInstance
-from triton_evaluation.security import CapabilityRegistry
+from triton_evaluation.service.broker import EvaluationStore
+from triton_evaluation.service.catalog import ReleaseCatalog
+from triton_evaluation.service.instance import EvaluationInstance
+from triton_evaluation.service.security import CapabilityRegistry
 
 
 def build_app() -> "FastAPI":  # noqa: F821 — FastAPI imported via api

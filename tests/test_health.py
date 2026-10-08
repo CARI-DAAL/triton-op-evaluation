@@ -15,7 +15,7 @@ def app(tmp_path, release_catalog_files):
 
 async def test_livez_is_constant_and_touches_nothing(app, monkeypatch):
     """Liveness must not read the store, catalog, or worker state."""
-    from triton_evaluation.broker import EvaluationStore
+    from triton_evaluation.service.broker import EvaluationStore
 
     def _forbidden(*args, **kwargs):
         raise AssertionError("livez must not touch the store")

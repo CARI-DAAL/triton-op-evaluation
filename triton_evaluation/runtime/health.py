@@ -23,9 +23,9 @@ from enum import Enum
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from .broker import EvaluationStore
-    from .config import Settings
-    from .metrics import RedisMetrics
+    from triton_evaluation.config import Settings
+    from triton_evaluation.service.broker import EvaluationStore
+    from triton_evaluation.service.metrics import RedisMetrics
 
 logger = logging.getLogger(__name__)
 

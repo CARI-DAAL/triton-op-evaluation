@@ -2,7 +2,7 @@
 # Initialize the mounted host CANN/driver and run the image's declared Python stack.
 #
 #   entrypoint.sh all       -> API + CPU workers + one NPU worker per configured card
-#   entrypoint.sh api       -> uvicorn run_api:app only
+#   entrypoint.sh api       -> uvicorn scripts.run_api:app only
 #   entrypoint.sh workers   -> workers only
 #   entrypoint.sh <cmd...>  -> exec cmd (escape hatch, e.g. `bash`)
 #
@@ -55,8 +55,8 @@ from triton_evaluation.api.contract_artifacts import (
     build_artifacts,
     verify_artifacts,
 )
-from triton_evaluation.catalog import ReleaseCatalog
-from triton_evaluation.security import CapabilityRegistry
+from triton_evaluation.service.catalog import ReleaseCatalog
+from triton_evaluation.service.security import CapabilityRegistry
 
 problems = verify_artifacts(CONTRACT_ROOT, build_artifacts())
 if problems:
@@ -102,7 +102,7 @@ if [[ "${TRITON_EVAL_SKIP_READINESS:-}" != "1" ]]; then
 fi
 
 run_api() {
-  exec "${PYTHON_BIN}" -m uvicorn run_api:app \
+  exec "${PYTHON_BIN}" -m uvicorn scripts.run_api:app \
     --host "${TRITON_EVAL_API_HOST:-127.0.0.1}" \
     --port "${TRITON_EVAL_API_PORT:-11907}"
 }
@@ -116,7 +116,7 @@ run_workers() {
   fi
   for ((i=0; i<cpu_count; i++)); do
     echo "Starting CPU worker ${i}" >&2
-    "${PYTHON_BIN}" run_worker.py --cpu &
+    "${PYTHON_BIN}" -m scripts.run_worker --cpu &
     pids+=("$!")
   done
   IFS=',' read -ra cards <<< "${TRITON_EVAL_CARDS:-0}"
@@ -124,7 +124,7 @@ run_workers() {
     c="${c//[[:space:]]/}"
     [[ -z "${c}" ]] && continue
     echo "Starting worker on NPU card ${c}" >&2
-    "${PYTHON_BIN}" run_worker.py --card "${c}" &
+    "${PYTHON_BIN}" -m scripts.run_worker --card "${c}" &
     pids+=("$!")
   done
   [[ ${#pids[@]} -eq 0 ]] && { echo "No workers configured" >&2; exit 2; }
@@ -142,7 +142,7 @@ case "${1:-all}" in
     run_workers
     ;;
   all)
-    "${PYTHON_BIN}" -m uvicorn run_api:app \
+    "${PYTHON_BIN}" -m uvicorn scripts.run_api:app \
       --host "${TRITON_EVAL_API_HOST:-127.0.0.1}" \
       --port "${TRITON_EVAL_API_PORT:-11907}" &
     api_pid=$!

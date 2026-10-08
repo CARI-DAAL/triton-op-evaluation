@@ -13,9 +13,14 @@ NPU worker per configured card. The evaluation engine is bundled.
 
 | Path | Responsibility |
 | --- | --- |
-| [`triton_evaluation/`](triton_evaluation/) | API, durable scheduling, workers, evaluators, and bundled engine |
+| [`triton_evaluation/api/`](triton_evaluation/api/) | HTTP routes, transport models, and published contract generation |
+| [`triton_evaluation/service/`](triton_evaluation/service/) | Admission, durable scheduling, catalog, credentials, and terminal evidence |
+| [`triton_evaluation/runtime/`](triton_evaluation/runtime/) | Worker execution, card health, execution environment, and precheck caching |
+| [`triton_evaluation/evaluators/`](triton_evaluation/evaluators/) | Check orchestration and adapters to the engine |
+| [`triton_evaluation/engine/`](triton_evaluation/engine/) | Bundled evaluation engine |
+| [`triton_evaluation/config.py`](triton_evaluation/config.py) | Shared configuration |
 | [`contracts/evaluation-api/2.1/`](contracts/evaluation-api/2.1/) | Published schema, golden fixtures, and digests; required at API startup |
-| [`scripts/`](scripts/) | Deployment, contract generation, smoke checks, and release gates |
+| [`scripts/`](scripts/) | API/worker entrypoints, deployment, contract generation, smoke checks, and release gates |
 | [`tests/`](tests/) | CPU tests, contract checks, consumer integration, and NPU tests |
 | [`docker-compose.yml`](docker-compose.yml), [`docker/`](docker/) | Single-host deployment, reused independently on each host |
 | [`docs/`](docs/) | Architecture, decisions, specifications, and historical plans |
@@ -55,6 +60,15 @@ with a stub evaluator. They are skipped when the consumer checkout is not
 configured. Real NPU calibration, card recovery, and timing run separately via
 [`scripts/npu_release_gate.py`](scripts/npu_release_gate.py).
 
+## Contributing
+
+Keep changes focused and run the local development checks above before opening
+a pull request. Describe the behavior change and validation, and update affected
+documentation and deployment commands. Changes to the API contract must include
+regenerated artifacts and consumer compatibility checks. Run the NPU release
+gate for changes that need hardware validation; CPU tests alone cannot establish
+real-device correctness, recovery, or timing.
+
 ## Deploy on an Ascend host
 
 Run one independent instance per host, each with its own API, local durable
@@ -75,8 +89,8 @@ its placeholders before starting:
 | `TRITON_EVAL_CAPABILITY_SECRET_PATH` | Caller registry JSON, permissions no broader than `0600` |
 | `TRITON_EVAL_CATALOG_ROOT`, `TRITON_EVAL_CATALOG_MANIFEST_PATH` | Release directory and catalog manifest |
 
-The file formats are defined in [capability loading](triton_evaluation/security.py)
-and [catalog loading](triton_evaluation/catalog.py). After editing `docker.env`:
+The file formats are defined in [capability loading](triton_evaluation/service/security.py)
+and [catalog loading](triton_evaluation/service/catalog.py). After editing `docker.env`:
 
 ```bash
 set -a
@@ -102,14 +116,29 @@ For a single-card smoke deployment, use this same Compose file with
 `TRITON_EVAL_CARDS=0`. Card lists are unique nonnegative integers, such as
 `0,1,3`. Redis uses the local server on port 6379, with database 7 by default.
 `TRITON_EVAL_CPU_WORKERS` defaults to 1 and accepts 0–32. Setting it to 0
-disables compile-only capacity unless separate `run_worker.py --cpu` processes
-join the same instance. CPU workers do not claim cards or run card recovery.
+disables compile-only capacity unless separate
+`python -m scripts.run_worker --cpu` processes join the same instance. CPU workers do not claim cards or run card recovery.
 
 For host execution without Docker, install `.[npu]` in an isolated environment
 (with the Ascend wheel index if needed), configure [`.env.example`](.env.example)
 as `.env`, then use `bash scripts/start.sh` / `bash scripts/stop.sh`. Supply Redis
 with `--appendonly yes --appendfsync always`, as Compose does. The engine is
 bundled and needs no external checkout.
+
+The API and workers remain separate processes: the API owns HTTP admission and
+recovery, while each worker executes leased attempts with its own CPU/NPU
+assignment and lifecycle. Their entrypoints live under `scripts/`. For manual
+startup from the repository root, use separate terminals with the same exported
+instance configuration:
+
+```bash
+uvicorn scripts.run_api:app --host "$TRITON_EVAL_API_HOST" --port 11907
+python -m scripts.run_worker --cpu
+python -m scripts.run_worker --card 0
+```
+
+Run one NPU worker per configured physical card. The host launcher and Compose
+already manage these processes together.
 
 ## Submit and recover an evaluation
 
@@ -250,14 +279,74 @@ their original owner, then switch consumers and instances together. Old records
 are neither read nor deleted. Preserve the Redis volume; rollback requires
 the matching consumer and original namespace. Never use `docker compose down -v`.
 
-Historical design/spike documents remain evidence of prior decisions. Current
-contract and architecture notes describe supported behavior. Host-specific
-throwaway Compose files are retired; the single deployment configuration uses
+Historical design/spike documents remain evidence of prior decisions and may
+reference retired paths or commands. Current contract and architecture notes
+describe supported behavior. Host-specific throwaway Compose files are retired; the single deployment configuration uses
 the declared image stack and explicit host inputs.
+
+## Domain vocabulary
+
+**Evaluation instance**:
+The authority that admits an evaluation and owns its execution, durable
+identity, physical cards and recoverable evidence.
+
+**Evaluation handle**:
+The information identifying an evaluation and its owning instance, sufficient
+to recover that same logical evaluation without submitting duplicate work.
+
+**Admission**:
+The durable decision to accept one logical evaluation with pinned identity,
+quotas and deadline. Admission does not execute candidate code.
+
+**Execution class**:
+The capacity needed by an evaluation: CPU for syntax/import checks alone, or
+NPU for evaluations containing device checks. One attempt owns all requested checks.
+
+**Check evidence**:
+A typed observation produced by a requested check in an attempt. Missing
+evidence cannot establish success; a candidate failure can still be valid evidence.
+
+**Precheck verdict**:
+Evidence from parsing and importing a candidate under an identified toolchain.
+It does not prove correctness or successful device compilation for every input.
+
+**EvaluationResource**:
+A recoverable evaluation with a stable identity, a deadline, and a lifecycle
+independent of the caller's connection.
+
+**Attempt**:
+One worker's leased execution of an EvaluationResource. A replacement attempt
+belongs to the same evaluation and must not overwrite a newer result.
+
+**Attempt card provenance**:
+Optional knowledge of the physical card assigned to one attempt. It cannot
+describe a replacement attempt, even when both belong to the same evaluation.
+
+**Card affinity avoidance**:
+A retry policy that avoids the last known failed card. It is independent of
+recording the card on which the current attempt runs.
+
+**Card health**:
+The assessment of whether a worker's assigned NPU card is fit to execute another
+attempt. It is distinct from the correctness of a candidate kernel.
+
+**Canary**:
+A known-good kernel used to assess card health independently of the candidate.
+
+**Drained worker**:
+A worker that has suspended new attempts until its card passes a canary.
+It is not available execution capacity while drained.
+
+**Suspicious ending**:
+An attempt ending without trustworthy execution evidence, such as a lost lease
+or an evaluator crash. A normal candidate failure is not a suspicious ending.
+
+**Recovery ladder**:
+An ordered sequence of increasingly disruptive card recovery actions, each
+followed by a canary to determine whether recovery succeeded.
 
 ## Further reading
 
-- [Domain vocabulary](CONTEXT.md)
 - [Instance ownership and caching](docs/adr/0001-evaluation-instance-ownership.md)
 - [Admission, CPU scheduling, and evidence](docs/adr/0002-admission-before-execution.md)
 - [Card health](docs/architecture/card-health.md) and [attempt provenance](docs/architecture/attempt-card-provenance.md)

@@ -13,7 +13,7 @@ from test_api import (
     trial_headers,
 )
 
-from triton_evaluation.models import WorkerIdentity, new_worker_id
+from triton_evaluation.service.models import WorkerIdentity, new_worker_id
 
 
 def cpu_worker(settings):

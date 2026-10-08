@@ -6,9 +6,9 @@ from unittest import mock
 import pytest
 import redis
 
-import triton_evaluation.health as health
-from triton_evaluation import metrics
+import triton_evaluation.runtime.health as health
 from triton_evaluation.config import Settings
+from triton_evaluation.service import metrics
 
 
 def test_ladder_cleanup_step_runs_without_device():

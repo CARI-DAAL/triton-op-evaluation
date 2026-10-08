@@ -37,7 +37,7 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 # Real source + the service itself (deps already in place).
 COPY triton_evaluation ./triton_evaluation
 COPY contracts ./contracts
-COPY run_api.py run_worker.py ./
+COPY scripts/__init__.py scripts/run_api.py scripts/run_worker.py ./scripts/
 RUN --mount=type=cache,target=/root/.cache/pip \
     pip install --no-deps .
 

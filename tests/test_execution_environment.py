@@ -4,7 +4,7 @@ import importlib.metadata
 
 import pytest
 
-from triton_evaluation.execution_environment import _triton_version
+from triton_evaluation.runtime.execution_environment import _triton_version
 
 
 def _serve(available: dict[str, str]):

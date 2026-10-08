@@ -7,9 +7,9 @@ from conftest import make_caller, make_completed_result, make_request
 
 from triton_evaluation.api.contract import EvaluationResource
 from triton_evaluation.api.contract_artifacts import sha256_hex
-from triton_evaluation.broker import EvaluationStore, StorageError, _digest_text
 from triton_evaluation.config import Settings
-from triton_evaluation.models import new_evaluation_id
+from triton_evaluation.service.broker import EvaluationStore, StorageError, _digest_text
+from triton_evaluation.service.models import new_evaluation_id
 
 
 def _key(settings, suffix):

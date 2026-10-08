@@ -5,7 +5,7 @@ import pytest
 import redis
 from conftest import make_caller, make_completed_result
 
-from triton_evaluation.broker import EvaluationStore
+from triton_evaluation.service.broker import EvaluationStore
 
 
 class _ExecEventRedis:

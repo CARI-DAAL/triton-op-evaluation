@@ -51,8 +51,8 @@ if [[ -f "${PID_FILE}" ]]; then
   rm -f "${PID_FILE}"
 else
   echo "No PID file at ${PID_FILE}; matching process names instead." >&2
-  pkill -TERM -f "uvicorn run_api:app" 2>/dev/null || true
-  pkill -TERM -f "run_worker.py --card" 2>/dev/null || true
+  pkill -TERM -f 'uvicorn scripts[.]run_api:app' 2>/dev/null || true
+  pkill -TERM -f 'scripts[.]run_worker (--cpu|--card)([[:space:]]|$)' 2>/dev/null || true
 fi
 
 echo "Stopped." >&2

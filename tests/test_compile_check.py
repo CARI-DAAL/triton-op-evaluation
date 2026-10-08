@@ -13,8 +13,8 @@ from test_worker import build_worker
 from triton_evaluation.api.contract import EvaluationRequest
 from triton_evaluation.evaluators.base import engine_failure
 from triton_evaluation.evaluators.evaluation import EvaluationEvaluator
-from triton_evaluation.models import AlgorithmVersions, WorkerIdentity, new_worker_id
-from triton_evaluation.worker import FencedProgress
+from triton_evaluation.runtime.worker import FencedProgress
+from triton_evaluation.service.models import AlgorithmVersions, WorkerIdentity, new_worker_id
 
 
 def payload(checks, source="class ModelNew: pass"):
@@ -53,9 +53,12 @@ async def test_compile_only_is_admitted_then_executed_by_cpu_attempt(
 ):
     app = app_with_precheck(tmp_path, release_catalog_files)
     with (
-        mock.patch("triton_evaluation.worker.health.CardHealth", side_effect=AssertionError),
         mock.patch(
-            "triton_evaluation.worker.build_execution_environment", side_effect=AssertionError,
+            "triton_evaluation.runtime.worker.health.CardHealth", side_effect=AssertionError,
+        ),
+        mock.patch(
+            "triton_evaluation.runtime.worker.build_execution_environment",
+            side_effect=AssertionError,
         ),
     ):
         worker = cpu_worker(app)
@@ -196,7 +199,7 @@ def test_missing_evidence_is_failed_and_fenced_before_other_checks(tmp_path):
 async def test_replacement_does_not_retain_previous_attempt_compile_evidence(
     tmp_path, release_catalog_files,
 ):
-    from triton_evaluation.terminal_results import compile_outcome_from_precheck
+    from triton_evaluation.service.terminal_results import compile_outcome_from_precheck
 
     app = app_with_precheck(tmp_path, release_catalog_files)
     seed_worker(app)
@@ -231,14 +234,14 @@ async def test_replacement_does_not_retain_previous_attempt_compile_evidence(
 async def test_cached_compile_pass_is_used_only_after_cpu_claim(
     tmp_path, release_catalog_files,
 ):
-    from triton_evaluation import verdict_cache
+    from triton_evaluation.runtime import verdict_cache
 
     app = app_with_precheck(tmp_path, release_catalog_files, verdict_cache_enabled=True)
     worker = cpu_worker(app)
     source = "class ModelNew: pass"
     digest = verdict_cache.digest_for(source, "triton_ascend_impl", app.settings.cann_fingerprint)
     verdict_cache.put(app.store, digest, "precheck_passed", 60)
-    with mock.patch("triton_evaluation.precheck.run_script", side_effect=AssertionError):
+    with mock.patch("triton_evaluation.runtime.precheck.run_script", side_effect=AssertionError):
         async with app.http as client:
             response = await post(client, payload(["compile"], source))
             assert response.status_code == 202, response.text

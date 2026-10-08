@@ -6,7 +6,7 @@ are indistinguishable by design.
 """
 from fastapi import Depends, Request
 
-from ..security import Caller, CapabilityRegistry
+from ..service.security import Caller, CapabilityRegistry
 from . import errors
 from .dependencies import get_context
 

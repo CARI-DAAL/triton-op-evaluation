@@ -6,7 +6,7 @@ import os
 import pytest
 
 from triton_evaluation.api.contract import GradeContext
-from triton_evaluation.catalog import (
+from triton_evaluation.service.catalog import (
     CatalogBinding,
     ManifestBindingError,
     ReleaseCatalog,

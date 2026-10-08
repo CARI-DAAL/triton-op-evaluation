@@ -12,8 +12,8 @@ from triton_evaluation.api.contract import (
     EvaluationResult,
     SkipInfo,
 )
-from triton_evaluation.models import AlgorithmVersions, PinnedProvenance
-from triton_evaluation.terminal_results import (
+from triton_evaluation.service.models import AlgorithmVersions, PinnedProvenance
+from triton_evaluation.service.terminal_results import (
     complete_evaluation,
     persisted_check_outcomes,
 )

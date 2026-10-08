@@ -14,14 +14,14 @@ from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
 
-from triton_evaluation import verdict_cache
-from triton_evaluation.broker import EvaluationStore
 from triton_evaluation.config import Settings
 from triton_evaluation.evaluators.base import LeaseLostError, remaining_seconds, run_script
+from triton_evaluation.runtime import verdict_cache
+from triton_evaluation.service.broker import EvaluationStore
 
 logger = logging.getLogger(__name__)
 
-_ENGINE_DIR = Path(__file__).parent / "engine"
+_ENGINE_DIR = Path(__file__).resolve().parents[1] / "engine"
 
 
 def run_precheck(

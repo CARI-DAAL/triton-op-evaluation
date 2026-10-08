@@ -15,12 +15,12 @@ from conftest import FakeClock, make_completed_result
 from triton_evaluation.api import create_app
 from triton_evaluation.api.contract import ErrorEnvelope, EvaluationResource
 from triton_evaluation.api.dependencies import AppContext
-from triton_evaluation.broker import EvaluationStore
-from triton_evaluation.catalog import ReleaseCatalog
 from triton_evaluation.config import Settings
-from triton_evaluation.instance import EvaluationInstance
-from triton_evaluation.models import AlgorithmVersions, WorkerIdentity, new_worker_id
-from triton_evaluation.security import CapabilityRegistry
+from triton_evaluation.service.broker import EvaluationStore
+from triton_evaluation.service.catalog import ReleaseCatalog
+from triton_evaluation.service.instance import EvaluationInstance
+from triton_evaluation.service.models import AlgorithmVersions, WorkerIdentity, new_worker_id
+from triton_evaluation.service.security import CapabilityRegistry
 
 pytestmark = pytest.mark.anyio
 
@@ -113,7 +113,7 @@ def build_app(tmp_path, catalog_files, clock=None, settings=None):
     server = fakeredis.FakeServer()
     client = fakeredis.FakeStrictRedis(server=server)
     clock = clock or FakeClock()
-    from triton_evaluation.metrics import RedisMetrics
+    from triton_evaluation.service.metrics import RedisMetrics
 
     metrics = RedisMetrics(client, settings.redis_prefix)
     store = EvaluationStore(client, settings, clock=clock, metrics=metrics)

@@ -3,8 +3,8 @@ from dataclasses import dataclass
 
 from fastapi import Request
 
-from ..instance import EvaluationInstance
-from ..security import CapabilityRegistry
+from ..service.instance import EvaluationInstance
+from ..service.security import CapabilityRegistry
 
 
 @dataclass

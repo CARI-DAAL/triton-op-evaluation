@@ -2,7 +2,7 @@
 
 The supported deployment uses the image's declared Python dependencies and
 mounts the host CANN toolkit and driver. Follow [the current deployment
-instructions](../README.md#one-or-multiple-hosts) and `docker.env.example`.
+instructions](../README.md#deploy-on-an-ascend-host) and `docker.env.example`.
 `docker-compose.yml` handles both single-card and multi-card instances.
 
 Each host owns its local Redis database and card identities. Configure consumer

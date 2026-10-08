@@ -5,7 +5,7 @@ import redis
 from conftest import make_caller, make_completed_result
 from test_api import algorithms, build_app, post, seed_worker, trial_headers
 
-from triton_evaluation import broker
+from triton_evaluation.service import broker
 
 pytestmark = pytest.mark.anyio
 
@@ -79,7 +79,7 @@ async def test_crash_before_terminal_commit_keeps_resource_running(app):
         created = await post(client)
         evaluation_id = created.json()["evaluation_id"]
 
-    from triton_evaluation.models import WorkerIdentity, new_worker_id
+    from triton_evaluation.service.models import WorkerIdentity, new_worker_id
 
     lease = app.store.claim_next(
         WorkerIdentity(new_worker_id(), app.settings.evaluator_build,
@@ -112,7 +112,7 @@ async def test_crash_after_terminal_commit_is_recoverable_not_lost(app):
         created = await post(client)
         evaluation_id = created.json()["evaluation_id"]
 
-    from triton_evaluation.models import WorkerIdentity, new_worker_id
+    from triton_evaluation.service.models import WorkerIdentity, new_worker_id
 
     lease = app.store.claim_next(
         WorkerIdentity(new_worker_id(), app.settings.evaluator_build,
@@ -203,7 +203,7 @@ def test_terminal_cas_race_has_exactly_one_winner(app, make_command):
 
 
 def _identity(app):
-    from triton_evaluation.models import WorkerIdentity, new_worker_id
+    from triton_evaluation.service.models import WorkerIdentity, new_worker_id
 
     return WorkerIdentity(new_worker_id(), app.settings.evaluator_build,
                           algorithms(app.settings))
