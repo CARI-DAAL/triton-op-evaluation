@@ -56,6 +56,7 @@ from ..api.contract import (
     PerformanceCase,
     PerformanceResult,
     ProfileCounts,
+    ProfileParams,
     ProfileResult,
     SampleElement,
     StrictModel,
@@ -843,19 +844,64 @@ def _deep_case(case: _ProfileCase) -> DeepProfileCase:
 
 
 def shape_profile(raw: dict[str, object]) -> ProfileResult:
-    envelope = _parse(_ProfileEnvelope, raw, "profile")
+    return _shape_profile_envelopes([_parse(_ProfileEnvelope, raw, "profile")])
+
+
+class _ProfileRuns(StrictModel):
+    """Service collection of untouched, separately emitted engine envelopes."""
+
+    profile_runs: list[_ProfileEnvelope]
+
+
+def shape_profile_runs(raw: dict[str, object], params: ProfileParams) -> ProfileResult:
+    """Validate each observation and its requested identity before combining it.
+
+    The runner collects envelopes without rewriting completion or selection
+    evidence. Only this boundary understands the private profile protocol.
+    Presentation options are applied after validation, so hiding recommendations
+    cannot repair malformed engine output.
+    """
+    if params.case_indices is None:
+        envelopes = [_parse(_ProfileEnvelope, raw, "profile")]
+        if envelopes[0].requested_case_idx is not None:
+            raise ShapingError("all-case profile reported a selected-case invocation")
+        if envelopes[0].selected_cases != envelopes[0].total_cases:
+            raise ShapingError("all-case profile does not cover the reference cases")
+    else:
+        envelopes = _parse(_ProfileRuns, raw, "profile runs").profile_runs
+        if not params.case_indices or len(envelopes) != len(params.case_indices):
+            raise ShapingError("profile invocation count differs from requested selection")
+        for index, envelope in zip(params.case_indices, envelopes, strict=True):
+            if envelope.requested_case_idx != index or [
+                case.case_idx for case in envelope.per_case_results
+            ] != [index]:
+                raise ShapingError("profile evidence differs from the requested case")
+    if any(envelope.profile_mode != params.mode for envelope in envelopes):
+        raise ShapingError("profile evidence differs from the requested mode")
+    if len({envelope.total_cases for envelope in envelopes}) != 1:
+        raise ShapingError("profile invocations disagree on reference case count")
+    result = _shape_profile_envelopes(envelopes)
+    if not params.include_recommendations and result.mode == "deep":
+        for case in result.cases:
+            case.recommendations = []
+    return result
+
+
+def _shape_profile_envelopes(envelopes: list[_ProfileEnvelope]) -> ProfileResult:
+    """Project validated observations directly, without synthesizing engine JSON."""
     counts = ProfileCounts(
-        selected=envelope.selected_cases,
-        complete=envelope.completed_cases,
-        partial=envelope.partial_cases,
-        failed=envelope.failed_cases,
+        selected=sum(envelope.selected_cases for envelope in envelopes),
+        complete=sum(envelope.completed_cases for envelope in envelopes),
+        partial=sum(envelope.partial_cases for envelope in envelopes),
+        failed=sum(envelope.failed_cases for envelope in envelopes),
     )
-    if envelope.profile_mode == "op":
+    cases = [case for envelope in envelopes for case in envelope.per_case_results]
+    if envelopes[0].profile_mode == "op":
         return _checked(
             lambda: OpProfileResult(
                 mode="op",
                 counts=counts,
-                cases=[_op_case(case) for case in envelope.per_case_results],
+                cases=[_op_case(case) for case in cases],
             ),
             "profile",
         )
@@ -863,7 +909,7 @@ def shape_profile(raw: dict[str, object]) -> ProfileResult:
         lambda: DeepProfileResult(
             mode="deep",
             counts=counts,
-            cases=[_deep_case(case) for case in envelope.per_case_results],
+            cases=[_deep_case(case) for case in cases],
         ),
         "profile",
     )

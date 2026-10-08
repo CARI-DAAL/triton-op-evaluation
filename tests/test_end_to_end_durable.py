@@ -94,16 +94,24 @@ def _rebuild(app):
                             metrics=metrics)
     from triton_evaluation.api.dependencies import AppContext
     from triton_evaluation.instance import EvaluationInstance
+    from triton_evaluation.kernel_eval_budget import EvalBudgetRegistry
+    from triton_evaluation.kernel_evaluation import KernelEvaluation
 
+    instance = EvaluationInstance(
+        settings=app.settings, store=store,
+        catalog=app.app.state.context.instance.catalog, metrics=metrics,
+        artifacts_verified=True,
+    )
     context = AppContext(
-        instance=EvaluationInstance(
-            settings=app.settings, store=store,
-            catalog=app.app.state.context.instance.catalog, metrics=metrics,
-            artifacts_verified=True,
-        ),
+        instance=instance,
         registry=CapabilityRegistry.from_secret_file(
             Path(app.settings.capability_secret_path)
         ),
+        kernel_eval=KernelEvaluation(instance, EvalBudgetRegistry(
+            app.store._r, prefix=app.settings.redis_prefix,
+            maximum=app.settings.kernel_eval_max_turns,
+            retention_seconds=app.settings.retention_seconds,
+        )),
     )
     application = create_app(context)
     http = httpx.AsyncClient(transport=httpx.ASGITransport(app=application),

@@ -40,6 +40,7 @@ from ..api.contract import (
     EvaluationResult,
     ExecutionEnvironment,
     PerformanceResult,
+    ProfileParams,
     ProfileResult,
     SkipInfo,
 )
@@ -58,7 +59,7 @@ from .shaping import (
     UnattributedFailure,
     shape_correctness,
     shape_performance,
-    shape_profile,
+    shape_profile_runs,
 )
 from .verify import VerifyEvaluator
 
@@ -288,7 +289,7 @@ class EvaluationEvaluator:
                             deadline_at,
                             lease_valid,
                         ),
-                        shape_profile,
+                        lambda raw: shape_profile_runs(raw, request.profile or ProfileParams()),
                     ),
                     lease_valid,
                     progress,

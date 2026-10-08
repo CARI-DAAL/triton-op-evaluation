@@ -286,6 +286,7 @@ the declared image stack and explicit host inputs.
 ## Further reading
 
 - [Domain vocabulary](CONTEXT.md)
+- [Tool caller vocabulary](GLOSSARY.md), [kernel evaluation ownership](docs/architecture/kernel-evaluation.md), and [profile evidence](docs/architecture/profile-evidence.md)
 - [Instance ownership and caching](docs/adr/0001-evaluation-instance-ownership.md)
 - [Admission, CPU scheduling, and evidence](docs/adr/0002-admission-before-execution.md)
 - [Card health](docs/architecture/card-health.md) and [attempt provenance](docs/architecture/attempt-card-provenance.md)
