@@ -12,7 +12,7 @@ def test_bridge_entry_and_config_are_removed_but_archived_bytes_remain():
     retired = ROOT / "adapters/kernel-eval-legacy-bridge"
     # Removed entirely upstream (PR #38); only the non-executable archive remains.
     assert not retired.exists()
-    archive = ROOT / "docs/archives/kernel-eval-legacy-bridge"
+    archive = ROOT / "tests/fixtures/kernel_eval/legacy_bridge"
     manifest = json.loads((archive / "ARCHIVE-MANIFEST.json").read_text())
     for name, record in manifest["files"].items():
         assert record["executable"] is False

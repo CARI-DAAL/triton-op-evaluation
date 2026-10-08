@@ -1,10 +1,9 @@
-# F-63 audited reference cache
+# Reference caches
 
 The service can reuse seed-zero official reference outputs and the median of eight
 reference measurements. Candidate execution, the existing accuracy algorithms and
-the decoy pre-check remain required. This implementation needs native NPU A/B and
-fleet admission before the 320-slot experiment starts. Controlled CPU tests do not
-establish NPU equality, full task admission, cache coverage or a throughput benefit.
+the decoy pre-check remain required. Validate native NPU cache-off/cache-on behavior and intended device coverage
+before enabling reuse. CPU tests establish neither device equality nor a throughput benefit.
 
 ## Produce and seal evidence
 
@@ -82,7 +81,7 @@ audit procedure to obtain broad reuse. A partial index remains valid evidence.
 
 ## Enable the frozen cache
 
-Add these four settings without changing the six existing deployment anchors:
+Configure all four settings as one deployment change:
 
 ```text
 TRITON_EVAL_REFERENCE_CACHE_DIR=/absolute/audited-cache
@@ -164,9 +163,8 @@ SHA256, the covered physical cards, the 8×(warmup5/repeats20, profiler) timing
 contract (reconciled explicitly with reference8's identical per-sample
 protocol, never silently aliased), the target patched runtime file hashes, the
 consuming service source hash, and the sampled evidence that justified adoption.
-It honestly states its scope: six sampled BatchMatmul cases within ±3% support an
-owner-adopted runtime-wide policy; that is not a remeasurement or an individual
-validation of all 1046 source cases.
+Record the scope of the supporting measurements explicitly. Sampled evidence
+does not establish individual validation of every case in the source inventory.
 
 At the real timing lookup, reuse requires an exact `CaseBinding` match — same
 reference source, official digest, case, seed-zero inputs, physical device and
@@ -212,29 +210,16 @@ is not measured in that attempt: the raw engine compatibility value is zero and
 zero as a measured peak. Diagnostics contain identities and observations, never
 input/output tensor values, and are not public verdicts.
 
-## Machine2 acceptance and reporting
+## Validate a deployment
 
-Have the machine2 Pi agent pull the reviewed GitHub revision. Rerun service unit
-checks, byte-identical catalog replay and the complete official-case audit; a
-first-four-case probe does not admit a task. Verify actual `get_input_group` input
-hash equality between audit and real engine paths, with peak memory evidence on
-FFN, BatchMatmul and other large workloads. Preserve the final index and coverage.
+Run cache-off/cache-on evaluations with identical official source, candidate,
+seed, assigned card, stack and measurement settings. Include correct and wrong
+candidates, multiple outputs, relevant dtypes and a proven decoy. Compare complete
+verdicts and case counts; record reference executions, cache decisions, source
+hashes, wall time and sentinel overhead.
 
-Run controlled cache-off/cache-on evaluations with identical official source,
-candidate bytes, seed, assigned card, stack and measurement settings. Include correct
-and wrong candidates, multioutput tasks, relevant dtype/accuracy paths and a proven
-decoy. Compare the complete verdict and case counts. Record reference executions,
-cache status, SHA, end-to-end wall time and sentinel overhead. Exercise a missing
-card entry, changed manifest/blob and forced sentinel drift: misses execute the
-reference, corrupt evidence cannot judge, drift causes full-case remeasurement.
-Report partial coverage and unknown observations explicitly.
-
-These A/B probes are diagnostics. After the frozen build, index and settings pass
-new fleet admission, obtain serial and concurrent f3 evidence under the new
-conditions before granting the run license. The 320 formal slots are twenty tasks
-by four frameworks by four independent samples; infrastructure retries remain new
-Attempts of their original Sample. Retain completed executions by identity and
-resolve unfinished ones before retrying. Full-round and overlapping-task cross-round
-reports must disclose the CANN, official task-set, harness/model, concurrency,
-bridge retirement and cache-protocol changes. They measure the combined evolution;
-unknown outcomes are not success, failure or proof of no execution.
+Exercise a missing cache entry, changed manifest/blob and forced sentinel drift.
+A miss executes the reference; corrupt pinned evidence cannot judge a candidate;
+drift forces fresh measurements. Compare coverage with the actual catalog and
+intended cards. Retain the tested build, cache index and measurement conditions
+outside the repository, and report unknown or partial observations explicitly.

@@ -48,14 +48,13 @@ and restricting the private key. The lane-A verifier pins
 on the admitted container gateway.
 
 Both listeners share one AppContext, evaluation instance, catalog, Redis
-connection and ASGI lifespan. Startup contract/storage checks and maintenance
+connection and ASGI lifespan. Startup storage checks and maintenance
 execute once. TLS configuration and both sockets are validated before serving;
 TLS bind/key failure leaves no HTTP-only service. One shutdown signal or owner
 cancellation joins both server tasks before lifespan maintenance cleanup.
 The owner explicitly manages tasks for deployed Python 3.10 compatibility.
 The listener tests perform real local HTTP/TLS requests and verify port closure
-and maintenance shutdown; machine2 still validates its certificate and single
-PID environment admission. No certificate/key bytes belong in the repository.
+and maintenance shutdown; each deployment must validate its certificate and single-process listener setup. No certificate/key bytes belong in the repository.
 
 The token authenticates the fixed `kernel-eval` trial caller only on the facade;
 it grants no `/evaluations` or observer access. Submission and recovery go
@@ -78,8 +77,7 @@ references/sidecars return `403 {"error":"task_id mismatch"}` before budget use.
 Use `Authorization: Bearer <KERNEL_EVAL_TOKEN>`. `session` or `X-Session-ID`
 identifies the trial; both, when supplied, must agree. IDs match
 `[A-Za-z0-9._:-]{1,128}`. Old clients omitting both retain per-client-IP budgets.
-Trials sharing an IP must supply distinct identities; the 320-slot experiment
-uses the Trial execution identity.
+Trials sharing an IP must supply distinct trial identities.
 
 `verify` requests correctness. `benchmark` requests correctness plus profiler
 timing (five warmups, twenty repeats by default). The prefixed
@@ -88,10 +86,14 @@ timing (five warmups, twenty repeats by default). The prefixed
 `case_idx`, and `profile_launch_count` (integer 1–100, `op` only). As previously,
 launch count is validated but not forwarded to the evaluator.
 
-Authentication precedes JSON/schema checks. Credentials return the legacy
-401 `unauthorized` error; invalid JSON/non-object bodies return 400 `invalid
-json`. Missing required strings, forbidden reference/extra fields and invalid
-profile options retain the existing 400 messages. Global API body limits apply.
+FastAPI validates body and header models directly. Invalid JSON, missing required
+fields, forbidden reference/extra fields and invalid profile options return 422
+`INVALID_REQUEST`. Valid requests with missing or invalid credentials return 401
+`UNAUTHENTICATED`. These errors use the shared error envelope and include a
+request ID. Body/header session disagreement remains a 400 tool-input error;
+catalog mismatch is 403 and operation conflict is 409. Global body limits apply.
+Successful tool responses are validated and serialized through their response
+models, while observation text and optional-field presence are preserved.
 
 ## Budget and recovery
 
@@ -138,4 +140,4 @@ Route tests use the actual assembler/catalog, Redis transactions, durable
 admission, lease claims, fenced terminal writes and owned polling. A test worker
 commits captured outcomes in place of NPU computation. These establish CPU
 protocol behavior. Live admission, container/token delivery, device execution,
-native-model gates and fleet cutover require machine2 validation.
+native-model gates and fleet cutover require validation on the target host.

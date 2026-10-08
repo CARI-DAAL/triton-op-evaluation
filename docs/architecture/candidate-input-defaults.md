@@ -29,9 +29,9 @@ binding and experiment source pin. It does not change the official data,
 assembler-generated reference bytes, catalog digests or golden reference output
 semantics. Old cache deployments cannot silently pass the changed engine hash.
 
-The [omission inventory](validation/round2-v3/official-absent-defaults.json)
+The [omission inventory](evidence/official-absent-defaults.json)
 records nine B1 tasks and 87 omitted parameters: all defaults are immutable
-literals. The [pre-fix reproducer](validation/round2-v3/absent-candidate-default-reproducer.json)
+literals. The [pre-fix reproducer](evidence/absent-candidate-default-reproducer.json)
 shows the ordinary `scale=2` candidate failing on the raw sentinel while the
 reference returns 6. Controlled tests exercise a composed official reference,
 real CPU candidate calls, cache hit/miss paths, explicit values, keyword-only and

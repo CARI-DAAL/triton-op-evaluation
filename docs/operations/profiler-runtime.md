@@ -4,7 +4,7 @@ Use this compatibility artifact when the deployed CANN profiler consumer require
 `libsqlite3.so`, but the existing system SQLite library has SONAME
 `libsqlite3.so.0`. The service copies the existing, explicitly pinned ELF bytes
 into a private read-only alias. It does not install packages or replace CANN,
-torch, system libraries, loader configuration, or the six deployment anchors.
+torch, system libraries, loader configuration, or the host installation.
 
 The original `torch_npu` profiler and synchronous trace callback remain in use.
 The callback must expose its existing `async_mode=False` default. The engine
@@ -22,19 +22,19 @@ DT_NEEDED and all required SQLite exports. It neither imports the NPU stack nor
 loads either inspected ELF. The worker subsequently checks hashes only and does
 not require `readelf` or access to deployment preparation tools.
 
-For the observed machine2 files, verify these pins again before preparation:
+Set the paths and SHA256 values from the actual target host before preparation:
 
 ```bash
 python scripts/prepare_profiler_runtime.py \
   --output /absolute/new-service-owned-runtime \
-  --sqlite-library /usr/lib64/libsqlite3.so.0.8.6 \
-  --sqlite-library-sha256 79452f7f5066ef2b0e888fb6a564c1b041ce57d0221bda3756184e14943078b1 \
-  --sqlite-consumer /usr/local/Ascend/cann-9.1.1/tools/profiler/profiler_tool/analysis/lib64/msprof_analysis.so \
-  --sqlite-consumer-sha256 663b11fadb84f95258af643ee9b6d76bc8244205f223cfc3d8b85de0833de7a0 \
-  --msprof /usr/local/Ascend/cann-9.1.1/tools/profiler/bin/msprof \
-  --msprof-sha256 75541a2535f1dc9b39484b833b0454a002d0eabd68d7673006f52cb00e73dc82 \
-  --cann-set-env /usr/local/Ascend/cann-9.1.1/set_env.sh \
-  --cann-set-env-sha256 be40277c4f1e836a0b3138defd6518269bcae97a857e4740fac4a7cfb8410a82
+  --sqlite-library "$SQLITE_LIBRARY" \
+  --sqlite-library-sha256 "$SQLITE_LIBRARY_SHA256" \
+  --sqlite-consumer "$SQLITE_CONSUMER" \
+  --sqlite-consumer-sha256 "$SQLITE_CONSUMER_SHA256" \
+  --msprof "$MSPROF" \
+  --msprof-sha256 "$MSPROF_SHA256" \
+  --cann-set-env "$CANN_SET_ENV" \
+  --cann-set-env-sha256 "$CANN_SET_ENV_SHA256"
 ```
 
 Use the existing deployment Python environment. The output directory must not
@@ -77,7 +77,7 @@ Deploy the printed file path and SHA as the non-anchor pair
 `TRITON_EVAL_ENGINE_RUNTIME_OVERLAY_CONFIG` and
 `TRITON_EVAL_ENGINE_RUNTIME_OVERLAY_SHA256`. The strict
 `engine-runtime-overlay-v1` file contains only `environment`. It accepts the
-complete profiler pair and/or all four F-63 variables; arbitrary environment
+complete profiler pair and/or all four reference-cache variables; arbitrary environment
 keys, mounts and source paths are rejected. For cache-on execution add the CLI
 options `--cache-dir`, `--cache-index`, `--cache-sha256`, `--cache-state-dir`.
 The dedicated invalidation directory must exist and contain only the declared
@@ -87,7 +87,7 @@ separately pinned overlays and consistent parent configuration.
 The service derives read-only visibility from the pinned artifact paths, keeps
 the entire dedicated profiler directory read-only with its real `0555` modes,
 and exposes the source SQLite/consumer/msprof files at their declared paths.
-F-63 exposes only its `cases` and `blobs` directories, the index and pinned
+The reference cache exposes only its `cases` and `blobs` directories, the index and pinned
 runtime files, plus one exact dedicated writable invalidation directory. It
 never adds a host home or state root. The executing service's own package path
 is derived from the trusted sandbox module and mounted read-only; the effective
@@ -109,10 +109,10 @@ loaded helper path/SHA and host-canary denial separately.
 
 ## Reseal before device acceptance
 
-Regenerate the snapshot and cache deployment/index. Preserve all six deployment
-anchor keys and their existing values, including `TRITON_EVAL_EVALUATOR_BUILD`.
-Record the actual service Git/source SHA, helper SHA and effective cache
-algorithm identity as separate frozen evidence. Bind the
+Regenerate the cache deployment/index for the implementation being deployed.
+Record the actual service revision, helper SHA and effective cache algorithm
+identity. Assign a new evaluator build whenever the execution environment or
+measurement implementation changes. Bind the
 actual runtime manifest, alias, ELF observations, source SQLite ELF, consumer,
 resolved msprof and complete CANN/torch_npu parser/native dependency closure in
 `runtime_files`. Bind the changed benchmark and fixed service-owned helper in
@@ -145,12 +145,12 @@ attempt directory with one idle physical card selected before Python starts:
 
 ```bash
 source /usr/local/Ascend/cann/set_env.sh
-ASCEND_RT_VISIBLE_DEVICES=8 python scripts/probe_profiler_latency.py \
-  --sandbox --device 8 --output /absolute/new-profiler-runtime-probe
+ASCEND_RT_VISIBLE_DEVICES="$CARD" python scripts/probe_profiler_latency.py \
+  --sandbox --device "$CARD" --output /absolute/new-profiler-runtime-probe
 ```
 
 Both runtime variables and the new overlay pair must already be exported by the
-deployment environment, alongside the six unchanged anchors. `--sandbox` uses
+deployment environment, alongside the pinned base configuration. `--sandbox` uses
 the worker's actual `run_script` boundary, preserving physical-card assignment
 while Ascend uses logical zero inside the namespace. It retains child stdout,
 stderr, the actual native report and its SHA. A direct host probe omits this
@@ -169,8 +169,8 @@ worker sandbox path satisfy their separate gates.
 A sandbox manifest may still contain paths for a removed historical CANN
 installation. Selecting the pinned `msprof` alone does not fix its runtime,
 compiler, OPP or Python paths. The preparation command above includes the pinned
-`--cann-set-env` and `--cann-set-env-sha256` options for machine2's existing 9.1.1
-installation. Both are required for this final experiment.
+`--cann-set-env` and `--cann-set-env-sha256` options for the target
+installation. Supply both when the child must derive that CANN environment.
 
 The trusted preparation step checks that this source, the pinned profiler and
 its consumer belong to one canonical versioned CANN directory. It runs that
@@ -198,7 +198,7 @@ from the pinned artifact. It removes old CANN entries only within the same
 installation parent and the vendor's `cann`, `cann-` or `cann_` directory
 boundary. It preserves anchored non-CANN entries, driver paths, language values
 and the current service package's Python path. It does not change the original
-manifest's bytes, SHA or any of the six anchors. The fixed canonical CANN and
+manifest's bytes, SHA or unrelated base settings. The fixed canonical CANN and
 driver roots are exposed read-only when the original runtime mounts do not
 already cover them; arbitrary overlay environment and mounts remain forbidden.
 
@@ -212,12 +212,5 @@ The source, environment artifact, metadata and runtime-library pins belong in
 the numerical deployment's `runtime_files`. The index-dependent overlay remains
 an independent final admission/freeze binding and is not added to that
 numerical closure. Historical manifests without the quartet remain readable;
-the final 9.1.1 experiment must require the quartet and its actual child proof.
-
-The original sandbox attempt at service commit `72b538f` stopped before Torch
-import with no samples because its frozen 8.5 paths could not resolve `msprof`.
-It is retained as a failed diagnostic attempt. This complete environment mapping
-addresses the deleted installation paths; it does not claim that the profiler
-measurement has recovered. Verify the unchanged 5/20 method with eight actual
-NPU observations in a fresh attempt, then verify the production worker path
-before resuming the full reference audit.
+a deployment claiming the derived CANN environment must require the quartet
+and verify it in the actual child.
