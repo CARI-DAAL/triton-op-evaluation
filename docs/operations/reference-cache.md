@@ -1,4 +1,9 @@
-# Reference caches
+# Pinned reference caches
+
+For automatic Torch timing reuse on operator requests, see
+[baseline timing reuse](../usage/evaluations.md#reuse-torch-baseline-timings).
+Service benchmarks use that cache and bypass the pinned timing paths described
+below. This page covers retained reference-output and standalone engine tooling.
 
 The service can reuse seed-zero official reference outputs and the median of eight
 reference measurements. Candidate execution, the existing accuracy algorithms and

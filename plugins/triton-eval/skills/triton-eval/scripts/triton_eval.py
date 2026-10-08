@@ -75,6 +75,17 @@ def arguments(argv):
             command.add_argument("--cases", type=Path, required=True)
             command.add_argument("--idempotency-key")
             command.add_argument("--session-id")
+        if action == "benchmark":
+            cache = command.add_mutually_exclusive_group()
+            cache.add_argument(
+                "--use-baseline-cache", dest="use_baseline_cache", action="store_true",
+                help="reuse cached Torch baseline timing (default)",
+            )
+            cache.add_argument(
+                "--no-baseline-cache", dest="use_baseline_cache", action="store_false",
+                help="measure Torch timing fresh without reading or writing the cache",
+            )
+            command.set_defaults(use_baseline_cache=True)
     return parser.parse_args(argv)
 
 
@@ -313,6 +324,8 @@ class Client:
                 "triton_code": read_text(self.args.triton, "triton source"),
                 "cases": cases,
             }
+            if self.args.command == "benchmark" and not self.args.use_baseline_cache:
+                payload["performance"] = {"use_baseline_cache": False}
             if self.key is None:
                 self.key = uuid.uuid4().hex
             if not re.fullmatch(r"[!-~]{1,128}", self.key):

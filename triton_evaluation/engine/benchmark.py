@@ -98,6 +98,8 @@ class BenchmarkConfig:
     # Policy digest proving the historical_validated authorization.
     reference_evidence_proof: Optional[str] = None
     reference_cache_trace: object = None
+    baseline_timings: object = None
+    disable_reference_cache: bool = False
 
 
 @dataclass
@@ -1167,6 +1169,57 @@ def _write_reference_cache_trace(config):
     path.write_text(json.dumps(record, indent=2, allow_nan=False), encoding="utf-8")
 
 
+def _validate_baseline_timings(values, case_indices):
+    """Validate host-supplied denominators before importing the candidate."""
+    if not isinstance(values, dict) or set(values) != {str(index) for index in case_indices}:
+        raise ValueError("baseline timings must exactly cover selected cases")
+    result = {}
+    for index in case_indices:
+        value = values[str(index)]
+        if (isinstance(value, bool) or not isinstance(value, (int, float))
+                or not math.isfinite(value) or value <= 0):
+            raise ValueError("baseline timings must be finite positive numbers")
+        result[index] = float(value)
+    return result
+
+
+def benchmark_reference_only(config):
+    """Measure the reference without importing or executing any candidate."""
+    import torch
+    import torch_npu  # noqa: F401
+
+    device = torch.device("npu")
+    policy = os.environ.get("TRITON_EVAL_REFERENCE_DEVICE_POLICY", "cpu-first")
+    wait = _AMBIENT_WAIT_CAP_SECONDS if policy == "npu-strict" else 0.0
+    if not _ensure_npu_ambient_shared(torch, wait_seconds=wait) and policy == "npu-strict":
+        raise RuntimeError("npu-strict benchmark requires the ambient NPU device")
+    torch.manual_seed(0)
+    torch.npu.manual_seed(0)
+    groups = resolve_inputs(config.op_name, config.verify_dir)
+    indices = _resolve_selected_indices(config.case_indices, len(groups))
+    module = importlib.import_module(f"{config.op_name}_torch")
+    live = replace(config, reference_latencies_ms=None, reference_measure_eight=False,
+                   skip_framework=False, reference_cache_samples=None)
+    values = {}
+    for index in indices:
+        model = None
+        try:
+            init_params = module.get_init_inputs()
+            torch.manual_seed(0)
+            torch.npu.manual_seed(0)
+            model = module.Model(*init_params).to(device)
+            _, latency, _, _ = _measure_framework(model, groups[index - 1], live, device, index)
+            values[str(index)] = latency
+        finally:
+            model = None
+            cleanup_npu_memory()
+    validated = _validate_baseline_timings(values, indices)
+    return {"total_cases": len(groups), "case_indices": indices,
+            "reference_latencies_ms": {str(index): validated[index] for index in indices},
+            "measurement_method": config.measurement_method,
+            "warmup": config.warmup, "repeats": config.repeats}
+
+
 def benchmark_implementations(config: BenchmarkConfig) -> BenchmarkResult:
     """执行完整的性能测试，支持多组输入。每个 shape 独立 try/except。"""
     import torch
@@ -1200,10 +1253,15 @@ def benchmark_implementations(config: BenchmarkConfig) -> BenchmarkResult:
     selected_groups = [input_groups[index - 1] for index in selected_indices]
     selected_cases = len(selected_indices)
 
+    if config.baseline_timings is not None:
+        config.reference_latencies_ms = _validate_baseline_timings(config.baseline_timings, selected_indices)
+        config.reference_evidence_source = "read_through_baseline"
+
     framework_cls, impl_cls, get_init_inputs = _load_benchmark_modules(config)
     model_spec = BenchmarkModelSpec(framework_cls, impl_cls, get_init_inputs)
-    _configure_reference_cache(config, model_spec, selected_groups, device,
-                               case_indices=selected_indices)
+    if config.baseline_timings is None and not config.disable_reference_cache:
+        _configure_reference_cache(config, model_spec, selected_groups, device,
+                                   case_indices=selected_indices)
     _write_reference_cache_trace(config)
 
     per_shape_results: List[SingleShapeResult] = [
@@ -1467,6 +1525,12 @@ def _build_argparser():
     parser.add_argument("--case-indices", default=None,
                        help="逗号分隔的 1-based 用例序号，只测量这些用例（默认全部）；"
                             "输出保留原始 case_idx，不重新编号")
+    parser.add_argument("--reference-only", action="store_true",
+                        help="Internal reference-only timing invocation")
+    parser.add_argument("--baseline-timings-json", default=None,
+                        help="Internal host-supplied per-case baseline timings")
+    parser.add_argument("--disable-reference-cache", action="store_true",
+                        help="Bypass legacy reference timing caches")
     return parser
 
 
@@ -1535,6 +1599,9 @@ def _build_config(args, verify_dir):
         measurement_method=args.measurement_method,
         cv_threshold=args.cv_threshold,
         case_indices=_parse_case_indices(args.case_indices),
+        baseline_timings=(None if args.baseline_timings_json is None
+                          else json.loads(args.baseline_timings_json)),
+        disable_reference_cache=args.disable_reference_cache,
     )
 
 
@@ -1550,13 +1617,18 @@ def main():
         logger.error("错误: 验证目录不存在: %s", verify_dir)
         sys.exit(1)
 
-    try:
-        check_verify_gate(verify_dir, args.triton_impl_name)
-    except VerifyGateError as e:
-        sys.exit(e.exit_code)
+    if not args.reference_only:
+        try:
+            check_verify_gate(verify_dir, args.triton_impl_name)
+        except VerifyGateError as e:
+            sys.exit(e.exit_code)
 
     try:
         config = _build_config(args, verify_dir)
+        if args.reference_only:
+            result_dict = benchmark_reference_only(config)
+            _save_or_print_result(result_dict, args.output)
+            sys.exit(0)
         result = benchmark_implementations(config)
         result_dict = result_to_dict(result)
         _emit_summary(result_dict)

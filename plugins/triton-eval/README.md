@@ -28,3 +28,8 @@ Run this example from the plugin root. The three operation commands are
 `verify`, `benchmark` and `profile`; `get EVALUATION_ID` recovers existing work.
 Each command's `--help` describes its options. This is a repository package;
 it does not install a global command or deploy the HTTP service.
+
+`benchmark` reuses cached Torch baseline timing by default while measuring the
+Triton candidate each time. Use `--no-baseline-cache` to measure Torch timing
+fresh without reading or writing the cache, or `--use-baseline-cache` to select
+the default explicitly. Timing results report `baseline_cache_hit` per case.

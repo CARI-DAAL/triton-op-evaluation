@@ -96,6 +96,32 @@ build and experiment; numerical rounding can differ even though the comparison
 formula and tolerances are unchanged. See [reference policy and observations](../architecture/reference-device-policy.md)
 for provenance, retention and admission checks.
 
+## Torch baseline cache
+
+Workers use the existing instance Redis to retain per-case Torch latency scalars.
+No additional database or precomputation service is needed. Entries use
+`<redis_prefix>:baseline:<sha256>` keys; they contain a case count and measured
+latencies, not source code or tensors. Storage grows with distinct tasks and
+measurement protocols, with up to 128 latency values per task/protocol entry.
+Redis metadata and persistence overhead add to those values.
+
+Entries have no TTL or automatic drift detection. Their lifetime follows Redis
+persistence and explicit operator cleanup. Compose stores Redis AOF data in the
+`triton-eval-redis-v2` volume, including these cache entries. Cache connection
+errors are advisory; durable evaluation state still requires working Redis.
+
+Use the same `TRITON_EVAL_BASELINE_CACHE_NAMESPACE` on all workers of an instance
+(default `torch-baseline-v1`). This scope assumes equivalent fixed hardware and
+runtime across its cards. Change it when hardware, runtime or measurement behavior
+changes, then restart workers. New evaluations populate a fresh scope; old keys
+remain until explicitly removed. Never clear the entire Redis database to clear
+baseline timings: it also owns durable evaluations. A cache namespace change does
+not replace the required evaluator build update for runtime changes.
+
+Benchmark requests bypass the older pinned timing caches, regardless of the new
+cache switch. Legacy reference-output settings remain a separate correctness
+feature; see [pinned reference caches](reference-cache.md).
+
 ## Multiple hosts
 
 Set `EVALUATION_POOL_FILE` on the consumer driver to a JSON file:

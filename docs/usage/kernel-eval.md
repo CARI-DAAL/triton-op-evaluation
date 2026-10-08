@@ -25,6 +25,9 @@ Change the endpoint and key to benchmark or profile. The endpoint selects checks
 after request validation; if `checks` is supplied in the body, it must be valid
 but the shortcut overrides it. Use `/evaluations` to choose checks explicitly.
 Performance and profile options use the same request model shown in `/docs`.
+`/benchmark` supports [Torch timing reuse](evaluations.md#reuse-torch-baseline-timings)
+through `performance.use_baseline_cache`; the client exposes
+`--use-baseline-cache` and `--no-baseline-cache`.
 
 `Idempotency-Key` and `X-Session-ID` are optional. With a key, identical retries
 on the same instance and session recover the same evaluation. Without a key,

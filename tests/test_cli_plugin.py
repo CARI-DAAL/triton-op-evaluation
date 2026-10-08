@@ -402,3 +402,23 @@ def test_exhausted_retries_keep_original_session_in_recovery_handle(inputs):
     assert output["session_id"] == "my-session"
     assert output["idempotency_key"] == "stable-key"
     assert json.loads(handle.read_text())["session_id"] == "my-session"
+
+
+@pytest.mark.parametrize("flag,expected", [
+    ("--use-baseline-cache", None), ("--no-baseline-cache", {"use_baseline_cache": False}),
+])
+def test_benchmark_baseline_cache_option_reaches_service(inputs, flag, expected):
+    with server(lambda calls: (202, resource(), {})) as (url, calls):
+        result, output = run_cli(inputs, url, flag, "--no-wait", action="benchmark")
+    assert result.returncode == 0
+    assert output["state"] == "queued"
+    assert json.loads(calls[0][3]).get("performance") == expected
+
+
+@pytest.mark.parametrize("action", ["verify", "profile", "get"])
+def test_baseline_cache_option_only_applies_to_benchmark(inputs, action):
+    with server(lambda calls: (202, resource(), {})) as (url, calls):
+        result, output = run_cli(inputs, url, "--no-baseline-cache", action=action)
+    assert result.returncode == 2
+    assert output["error"]["code"] == "INVALID_ARGUMENT"
+    assert calls == []
