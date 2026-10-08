@@ -45,8 +45,6 @@ from ..api.contract import (
     SinglePerformanceResult,
     SkipInfo,
 )
-from ..config import BENCHMARK_TIMEOUT_SECONDS, VERIFY_BUDGET_CAP_SECONDS
-from ..runtime.baseline_cache import BaselineCache
 from ..service.models import PinnedProvenance
 from ..service.terminal_results import compile_outcome_from_precheck, complete_evaluation
 from .base import (
@@ -142,34 +140,12 @@ def _skipped(check: Check, code: str, depends_on: Check | None, message: str):
 
 
 class EvaluationEvaluator:
-    def __init__(self, engine_dir: str, settings=None, baseline_cache: BaselineCache | None = None):
-        self.engine_dir = engine_dir
-        self.settings = settings
-        self.baseline_cache = baseline_cache
-
-    def _verify_evaluator(self) -> VerifyEvaluator:
-        cap = (
-            self.settings.verify_budget_cap_seconds
-            if self.settings is not None
-            else VERIFY_BUDGET_CAP_SECONDS
-        )
-        policy = self.settings.reference_device_policy if self.settings is not None else "cpu-first"
-        return VerifyEvaluator(
-            self.engine_dir, budget_cap_seconds=cap, reference_device_policy=policy,
-        )
-
-    def _benchmark_evaluator(self) -> BenchmarkEvaluator:
-        timeout = (
-            self.settings.benchmark_timeout_seconds
-            if self.settings is not None
-            else BENCHMARK_TIMEOUT_SECONDS
-        )
-        return BenchmarkEvaluator(
-            self.engine_dir, timeout_seconds=timeout, baseline_cache=self.baseline_cache,
-        )
-
-    def _profile_evaluator(self) -> ProfileEvaluator:
-        return ProfileEvaluator(self.engine_dir)
+    def __init__(
+        self, *, verify: VerifyEvaluator, benchmark: BenchmarkEvaluator, profile: ProfileEvaluator
+    ):
+        self.verify = verify
+        self.benchmark = benchmark
+        self.profile = profile
 
     @staticmethod
     def _slot(check: Check, produce, lease_valid, progress: ProgressSink):
@@ -257,7 +233,7 @@ class EvaluationEvaluator:
                 "correctness",
                 lambda: _engine_outcome(
                     "correctness",
-                    self._verify_evaluator().run(
+                    self.verify.run(
                         request, work_dir, device_id, deadline_at, lease_valid
                     ),
                     lambda raw: shape_correctness(raw, decoy=_is_decoy(raw)),
@@ -284,7 +260,7 @@ class EvaluationEvaluator:
                     "performance",
                     lambda: _engine_outcome(
                         "performance",
-                        self._benchmark_evaluator().run(
+                        self.benchmark.run(
                             request,
                             work_dir,
                             device_id,
@@ -324,7 +300,7 @@ class EvaluationEvaluator:
                     "profile",
                     lambda: _engine_outcome(
                         "profile",
-                        self._profile_evaluator().run(
+                        self.profile.run(
                             request,
                             work_dir,
                             device_id,

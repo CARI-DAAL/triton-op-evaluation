@@ -35,7 +35,10 @@ logger = logging.getLogger(__name__)
 
 
 class BenchmarkEvaluator:
-    def __init__(self, engine_dir: str, timeout_seconds: int = 600, baseline_cache=None):
+    def __init__(
+        self, engine_dir: str, timeout_seconds: int = 600, baseline_cache=None, *, runner=None
+    ):
+        self.runner = runner
         self.engine_dir = engine_dir
         self.timeout_seconds = timeout_seconds
         self.baseline_cache = baseline_cache
@@ -109,7 +112,7 @@ class BenchmarkEvaluator:
             if timings is not None:
                 cmd += ["--baseline-timings-json", json.dumps(timings, allow_nan=False)]
         cmd += ["--output", str(out_path)]
-        outcome = run_script(
+        outcome = (self.runner or run_script)(
             cmd,
             str(work_dir),
             device_id,
@@ -187,7 +190,7 @@ class BenchmarkEvaluator:
                     producer += ["--case-indices", ",".join(map(str, missing))]
                 producer += ["--reference-only", "--output", str(output)]
                 self._fence(deadline_at, lease_valid)
-                outcome = run_script(
+                outcome = (self.runner or run_script)(
                     producer,
                     str(root),
                     device_id,

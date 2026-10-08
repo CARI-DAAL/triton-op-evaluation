@@ -10,7 +10,10 @@ import pytest
 from triton_evaluation.api.contract import EvaluationRequest
 from triton_evaluation.evaluators import profile as profile_module
 from triton_evaluation.evaluators.base import ScriptOutcome
+from triton_evaluation.evaluators.benchmark import BenchmarkEvaluator
 from triton_evaluation.evaluators.evaluation import EvaluationEvaluator
+from triton_evaluation.evaluators.profile import ProfileEvaluator
+from triton_evaluation.evaluators.verify import VerifyEvaluator
 from triton_evaluation.service.models import AlgorithmVersions, PinnedProvenance
 
 FIXTURES = Path(__file__).parent / "fixtures" / "engine"
@@ -68,7 +71,10 @@ def evaluate(monkeypatch, tmp_path, outputs, *, indices=(0,), mode="op", recomme
         },
     })
     progress = Progress()
-    result = EvaluationEvaluator("unused").run(
+    result = EvaluationEvaluator(
+        verify=VerifyEvaluator("unused"), benchmark=BenchmarkEvaluator("unused"),
+        profile=ProfileEvaluator("unused"),
+    ).run(
         request, tmp_path, 0, datetime.now(timezone.utc) + timedelta(minutes=10),
         lambda: True, None,
         PinnedProvenance(

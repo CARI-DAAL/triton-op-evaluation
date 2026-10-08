@@ -20,7 +20,9 @@ async def test_cached_verdict_still_admits_queued_work(tmp_path, release_catalog
         internal_request(triton_code=payload["triton_code"], checks=checks).kernel_code,
         "triton_ascend_impl", app.settings.cann_fingerprint,
     )
-    verdict_cache.put(app.store, digest, "compile_error", 60)
+    verdict_cache.VerdictCache(app.store._r, prefix=app.settings.redis_prefix).put(
+        digest, "compile_error", 60,
+    )
     async with app.http as client:
         response = await post(client, payload)
     assert response.status_code == 202, response.text

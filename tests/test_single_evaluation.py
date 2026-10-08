@@ -1,12 +1,11 @@
 """Single-source evidence crosses the real admission, worker and recovery seams."""
 
 import json
-import time
 from datetime import datetime, timedelta, timezone
 
 import pytest
-from conftest import FakeClock
 from test_api import build_app, seed_worker, trial_headers
+from test_compile_check import app_with_precheck, cpu_worker
 from test_evaluation_evaluator import (
     ENVIRONMENT,
     Harness,
@@ -20,7 +19,6 @@ from test_worker import build_worker
 from triton_evaluation.api.contract import CheckTimedOut, ErrorInfo
 from triton_evaluation.api.operator import OperatorRequest
 from triton_evaluation.evaluators.base import EngineCheckResult, LeaseLostError, materialize
-from triton_evaluation.evaluators.evaluation import EvaluationEvaluator
 from triton_evaluation.evaluators.operator import to_evaluation_request
 from triton_evaluation.service.terminal_results import complete_evaluation
 
@@ -124,7 +122,7 @@ def test_single_measurement_obeys_fenced_progress(tmp_path):
     harness = harness_for("triton")
     with pytest.raises(LeaseLostError):
         run(request, harness, tmp_path, RecordingSink(begin_ok=False))
-    assert harness.bench.calls == 0
+    assert harness.benchmark.calls == 0
 
 
 def test_missing_single_evidence_does_not_create_a_correctness_dependency():
@@ -190,14 +188,10 @@ async def test_single_verify_rejected_before_any_admission(tmp_path, implementat
 @pytest.mark.anyio
 @pytest.mark.parametrize("implementation", ["torch", "triton"])
 async def test_single_compile_checks_the_supplied_source(tmp_path, implementation):
-    app = build_app(tmp_path, None, clock=FakeClock(int(time.time() * 1000)))
-    seed_worker(app, execution_class="cpu")
+    app = app_with_precheck(tmp_path, None)
     body = payload(implementation, checks=["compile"])
     body[implementation + "_code"] = "def broken(: pass\n"
-    worker = build_worker(
-        app.store, app.settings, EvaluationEvaluator(app.settings.engine_dir, app.settings),
-        app.clock, device_id=None,
-    )
+    worker = cpu_worker(app)
     async with app.http as client:
         response = await client.post("/evaluations", json=body, headers=trial_headers())
         assert response.status_code == 202

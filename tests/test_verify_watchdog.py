@@ -66,7 +66,6 @@ def test_other_exit_codes_still_fail_closed(tmp_path, monkeypatch):
 def test_verify_budget_cap_comes_from_settings(tmp_path, monkeypatch):
     """The whole-run verify budget cap is deployment-tunable, not a constant."""
     from triton_evaluation.config import Settings
-    from triton_evaluation.evaluators.evaluation import EvaluationEvaluator
 
     seen = {}
     monkeypatch.setattr(
@@ -78,8 +77,9 @@ def test_verify_budget_cap_comes_from_settings(tmp_path, monkeypatch):
     )
 
     settings = Settings(engine_dir="unused", verify_budget_cap_seconds=1500)
-    evaluator = EvaluationEvaluator("unused", settings=settings)
-    verify_evaluator = evaluator._verify_evaluator()
+    verify_evaluator = VerifyEvaluator(
+        "unused", budget_cap_seconds=settings.verify_budget_cap_seconds
+    )
     deadline = _deadline(seconds=3600)
     verify_evaluator._run_verify(
         make_request(), tmp_path, 0, deadline, lambda: True
@@ -92,7 +92,6 @@ def test_verify_budget_cap_comes_from_settings(tmp_path, monkeypatch):
 def test_benchmark_timeout_comes_from_settings(tmp_path, monkeypatch):
     import triton_evaluation.evaluators.benchmark as benchmark_mod
     from triton_evaluation.config import Settings
-    from triton_evaluation.evaluators.evaluation import EvaluationEvaluator
 
     seen = {}
     monkeypatch.setattr(
@@ -101,8 +100,9 @@ def test_benchmark_timeout_comes_from_settings(tmp_path, monkeypatch):
     monkeypatch.setattr(benchmark_mod, "read_json", lambda path, **_kwargs: {"cases": []})
 
     settings = Settings(engine_dir="unused", benchmark_timeout_seconds=600)
-    evaluator = EvaluationEvaluator("unused", settings=settings)
-    bench = evaluator._benchmark_evaluator()
+    bench = benchmark_mod.BenchmarkEvaluator(
+        "unused", timeout_seconds=settings.benchmark_timeout_seconds
+    )
     deadline = _deadline(seconds=3600)
     bench.run(make_request(), tmp_path, 0, deadline, lambda: True)
 

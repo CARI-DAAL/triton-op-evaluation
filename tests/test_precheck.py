@@ -1,6 +1,7 @@
 """Attempt precheck behavior through its public execution interface."""
 
 import importlib.util
+from pathlib import Path
 from unittest import mock
 
 import pytest
@@ -11,11 +12,17 @@ from triton_evaluation.runtime import precheck, verdict_cache
 
 
 @pytest.fixture
+def cache(redis_client, settings):
+    return verdict_cache.VerdictCache(redis_client, prefix=settings.redis_prefix)
+
+
+@pytest.fixture
 def precheck_settings(settings):
     return settings.model_copy(
         update={
             "verdict_cache_enabled": True,
             "cann_fingerprint": "cann-test",
+            "engine_dir": str(Path(__file__).resolve().parents[1] / "triton_evaluation" / "engine"),
         }
     )
 
@@ -29,23 +36,23 @@ def precheck_settings(settings):
     ],
 )
 def test_definitive_failure_is_cached_without_repeating_subprocess(
-    store,
+    cache,
     precheck_settings,
     source,
 ):
-    assert precheck.run_precheck(store, precheck_settings, source, "impl") == "compile_error"
+    assert precheck.run_precheck(cache, precheck_settings, source, "impl") == "compile_error"
     with mock.patch.object(precheck, "run_script") as run:
-        assert precheck.run_precheck(store, precheck_settings, source, "impl") == "compile_error"
+        assert precheck.run_precheck(cache, precheck_settings, source, "impl") == "compile_error"
     run.assert_not_called()
 
 
-def test_cached_pass_only_skips_precheck_and_allows_evaluation(store, precheck_settings):
+def test_cached_pass_only_skips_precheck_and_allows_evaluation(cache, precheck_settings):
     source = "class ModelNew:\n    pass\n"
-    assert precheck.run_precheck(store, precheck_settings, source, "impl") == "precheck_passed"
+    assert precheck.run_precheck(cache, precheck_settings, source, "impl") == "precheck_passed"
     digest = verdict_cache.digest_for(source, "impl", precheck_settings.cann_fingerprint)
-    assert verdict_cache.get(store, digest) == "precheck_passed"
+    assert cache.get(digest) == "precheck_passed"
     with mock.patch.object(precheck, "run_script") as run:
-        assert precheck.run_precheck(store, precheck_settings, source, "impl") == "precheck_passed"
+        assert precheck.run_precheck(cache, precheck_settings, source, "impl") == "precheck_passed"
     run.assert_not_called()
 
 
@@ -53,11 +60,11 @@ def test_cached_pass_only_skips_precheck_and_allows_evaluation(store, precheck_s
     importlib.util.find_spec("torch") is not None,
     reason="torch-equipped host: import torch succeeds",
 )
-def test_torch_import_is_inconclusive_on_torchless_host(store, precheck_settings):
+def test_torch_import_is_inconclusive_on_torchless_host(cache, precheck_settings):
     source = "import torch\n"
-    assert precheck.run_precheck(store, precheck_settings, source, "impl") is None
+    assert precheck.run_precheck(cache, precheck_settings, source, "impl") is None
     digest = verdict_cache.digest_for(source, "impl", precheck_settings.cann_fingerprint)
-    assert verdict_cache.get(store, digest) is None
+    assert cache.get(digest) is None
 
 
 @pytest.mark.parametrize(
@@ -70,43 +77,43 @@ def test_torch_import_is_inconclusive_on_torchless_host(store, precheck_settings
     ],
 )
 def test_runtime_import_failure_is_inconclusive_and_not_cached(
-    store,
+    cache,
     precheck_settings,
     source,
 ):
     with mock.patch.object(precheck, "run_script", wraps=precheck.run_script) as run:
         for _ in range(2):
-            assert precheck.run_precheck(store, precheck_settings, source, "impl") is None
+            assert precheck.run_precheck(cache, precheck_settings, source, "impl") is None
     assert run.call_count == 2
     digest = verdict_cache.digest_for(source, "impl", precheck_settings.cann_fingerprint)
-    assert verdict_cache.get(store, digest) is None
+    assert cache.get(digest) is None
 
 
-def test_missing_cann_identity_still_runs_precheck_without_reuse(store, precheck_settings):
+def test_missing_cann_identity_still_runs_precheck_without_reuse(cache, precheck_settings):
     settings = precheck_settings.model_copy(update={"cann_fingerprint": ""})
     with mock.patch.object(precheck, "run_script", wraps=precheck.run_script) as run:
         for _ in range(2):
             assert (
-                precheck.run_precheck(store, settings, "class ModelNew: pass", "impl")
+                precheck.run_precheck(cache, settings, "class ModelNew: pass", "impl")
                 == "precheck_passed"
             )
     assert run.call_count == 2
 
 
 def test_concurrent_failure_during_successful_precheck_remains_authoritative(
-    store,
+    cache,
     precheck_settings,
 ):
     source = "class ModelNew: pass"
     digest = verdict_cache.digest_for(source, "impl", precheck_settings.cann_fingerprint)
 
     def concurrent_compile_failure(*args, **kwargs):
-        verdict_cache.put(store, digest, "compile_error", 60)
+        cache.put(digest, "compile_error", 60)
         return ScriptOutcome(0, 'VERDICT {"stage": null}\n', "", False)
 
     with mock.patch.object(precheck, "run_script", side_effect=concurrent_compile_failure):
-        assert precheck.run_precheck(store, precheck_settings, source, "impl") == "compile_error"
-    assert verdict_cache.get(store, digest) == "compile_error"
+        assert precheck.run_precheck(cache, precheck_settings, source, "impl") == "compile_error"
+    assert cache.get(digest) == "compile_error"
 
 
 @pytest.mark.parametrize(
@@ -121,30 +128,30 @@ def test_concurrent_failure_during_successful_precheck_remains_authoritative(
         '{"stage": null, "inconclusive": true}',
     ],
 )
-def test_invalid_or_inconclusive_output_is_not_cached(store, precheck_settings, payload):
+def test_invalid_or_inconclusive_output_is_not_cached(cache, precheck_settings, payload):
     result = ScriptOutcome(0, f"VERDICT {payload}\n", "", False)
     with mock.patch.object(precheck, "run_script", return_value=result):
-        assert precheck.run_precheck(store, precheck_settings, "code", "impl") is None
+        assert precheck.run_precheck(cache, precheck_settings, "code", "impl") is None
     digest = verdict_cache.digest_for("code", "impl", precheck_settings.cann_fingerprint)
-    assert verdict_cache.get(store, digest) is None
+    assert cache.get(digest) is None
 
 
-def test_candidate_stdout_does_not_replace_runner_verdict(store, precheck_settings):
+def test_candidate_stdout_does_not_replace_runner_verdict(cache, precheck_settings):
     source = 'print(\'VERDICT {"stage": "syntax"}\')\nclass ModelNew: pass\n'
-    assert precheck.run_precheck(store, precheck_settings, source, "impl") == "precheck_passed"
+    assert precheck.run_precheck(cache, precheck_settings, source, "impl") == "precheck_passed"
 
 
 @pytest.mark.parametrize("error", [OSError("unavailable")])
-def test_subprocess_failure_is_advisory(store, precheck_settings, error):
+def test_subprocess_failure_is_advisory(cache, precheck_settings, error):
     with mock.patch.object(precheck, "run_script", side_effect=error):
-        assert precheck.run_precheck(store, precheck_settings, "code", "impl") is None
+        assert precheck.run_precheck(cache, precheck_settings, "code", "impl") is None
     digest = verdict_cache.digest_for("code", "impl", precheck_settings.cann_fingerprint)
-    assert verdict_cache.get(store, digest) is None
+    assert cache.get(digest) is None
 
 
-def test_temporary_file_failure_is_advisory(store, precheck_settings):
+def test_temporary_file_failure_is_advisory(cache, precheck_settings):
     with mock.patch.object(precheck.Path, "write_text", side_effect=OSError("disk full")):
-        assert precheck.run_precheck(store, precheck_settings, "code", "impl") is None
+        assert precheck.run_precheck(cache, precheck_settings, "code", "impl") is None
 
 
 @pytest.mark.parametrize(
@@ -155,27 +162,28 @@ def test_temporary_file_failure_is_advisory(store, precheck_settings):
     ],
 )
 def test_redis_failure_preserves_direct_precheck_verdict(
-    store,
+    cache,
     precheck_settings,
     source,
     expected,
+    redis_client,
 ):
-    with mock.patch.object(store._r, "hgetall", side_effect=redis.ConnectionError("down")):
-        with mock.patch.object(store._r, "pipeline", side_effect=redis.ConnectionError("down")):
-            assert precheck.run_precheck(store, precheck_settings, source, "impl") == expected
+    with mock.patch.object(redis_client, "hgetall", side_effect=redis.ConnectionError("down")):
+        with mock.patch.object(redis_client, "pipeline", side_effect=redis.ConnectionError("down")):
+            assert precheck.run_precheck(cache, precheck_settings, source, "impl") == expected
 
 
-def test_precheck_never_calls_candidate_input_factories(store, precheck_settings, tmp_path):
+def test_precheck_never_calls_candidate_input_factories(cache, precheck_settings, tmp_path):
     marker = tmp_path / "candidate-inputs-ran"
     source = (
         f"def get_input_groups():\n    open({str(marker)!r}, 'w').write('called')\n"
         "    return [[]]\n"
     )
-    assert precheck.run_precheck(store, precheck_settings, source, "impl") == "precheck_passed"
+    assert precheck.run_precheck(cache, precheck_settings, source, "impl") == "precheck_passed"
     assert not marker.exists()
 
 
-def test_precheck_lost_lease_kills_candidate_process_group(store, precheck_settings, tmp_path):
+def test_precheck_lost_lease_kills_candidate_process_group(cache, precheck_settings, tmp_path):
     import time
 
     from triton_evaluation.evaluators.base import LeaseLostError
@@ -190,7 +198,7 @@ def test_precheck_lost_lease_kills_candidate_process_group(store, precheck_setti
     start = time.monotonic()
     with pytest.raises(LeaseLostError):
         precheck.run_precheck(
-            store,
+            cache,
             precheck_settings,
             source,
             "impl",
@@ -201,14 +209,14 @@ def test_precheck_lost_lease_kills_candidate_process_group(store, precheck_setti
     assert not child_marker.exists()
 
 
-def test_expired_resource_never_executes_candidate(store, precheck_settings, tmp_path):
+def test_expired_resource_never_executes_candidate(cache, precheck_settings, tmp_path):
     from datetime import datetime, timedelta, timezone
 
     marker = tmp_path / "candidate-ran"
     source = f"open({str(marker)!r}, 'w').write('called')\n"
     assert (
         precheck.run_precheck(
-            store,
+            cache,
             precheck_settings,
             source,
             "impl",
@@ -220,7 +228,7 @@ def test_expired_resource_never_executes_candidate(store, precheck_settings, tmp
 
 
 def test_successful_import_does_not_leave_candidate_children_running(
-    store,
+    cache,
     precheck_settings,
     tmp_path,
 ):
@@ -232,7 +240,7 @@ def test_successful_import_does_not_leave_candidate_children_running(
         f"subprocess.Popen([sys.executable, '-c', \"import time; time.sleep(0.4); "
         f"open({str(child_marker)!r}, 'w').write('survived')\"])\n"
     )
-    assert precheck.run_precheck(store, precheck_settings, source, "impl") == "precheck_passed"
+    assert precheck.run_precheck(cache, precheck_settings, source, "impl") == "precheck_passed"
     time.sleep(0.5)
     assert not child_marker.exists()
 
@@ -270,7 +278,7 @@ def test_bare_builtin_min_max_are_not_tensor_methods(tmp_path):
         "def _k(o, n, B: tl.constexpr):\n"
         "    p = tl.program_id(0)\n"
         "    off = p * B + tl.arange(0, B)\n"
-        "    tl.store(o + off, tl.zeros((B,), dtype=tl.float32), mask=off < n)\n"
+        "    tl.cache(o + off, tl.zeros((B,), dtype=tl.float32), mask=off < n)\n"
         "\n"
         "class ModelNew(nn.Module):\n"
         "    def forward(self, a, b):\n"
@@ -310,3 +318,24 @@ def test_bare_builtin_min_max_are_not_tensor_methods(tmp_path):
     assert payload is not None
     assert payload["valid"] is False
     assert payload["regression_type"] == 3
+
+
+def test_custom_engine_directory_and_injected_runner(precheck_settings, tmp_path):
+    settings = precheck_settings.model_copy(update={"engine_dir": str(tmp_path)})
+    runner = mock.Mock(return_value=ScriptOutcome(0, 'VERDICT {"stage": null}\n', "", False))
+    assert (
+        precheck.run_precheck(None, settings, "class ModelNew: pass", "impl", runner=runner)
+        == "precheck_passed"
+    )
+    assert runner.call_args.args[0][1] == str(tmp_path / "precheck_module.py")
+    assert runner.call_args.kwargs["budget_seconds"] == settings.precheck_budget_seconds
+
+
+def test_absent_cache_runs_each_precheck(precheck_settings):
+    runner = mock.Mock(return_value=ScriptOutcome(0, 'VERDICT {"stage": null}\n', "", False))
+    for _ in range(2):
+        assert (
+            precheck.run_precheck(None, precheck_settings, "code", "impl", runner=runner)
+            == "precheck_passed"
+        )
+    assert runner.call_count == 2

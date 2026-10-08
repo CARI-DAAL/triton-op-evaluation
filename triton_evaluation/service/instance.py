@@ -4,12 +4,11 @@ Submission resolves authority and request identity before reserving durable
 work. Candidate code belongs exclusively to a leased worker attempt; neither
 new admissions, replays nor rejected requests execute it here.
 """
-import logging
-
 from triton_evaluation.api.contract import EvaluationRequest, EvaluationResource
 from triton_evaluation.config import Settings
 from triton_evaluation.service.admission import admit
 from triton_evaluation.service.broker import EvaluationStore
+from triton_evaluation.service.metrics import increment
 from triton_evaluation.service.models import (
     AlgorithmVersions,
     CreateResourceCommand,
@@ -19,8 +18,6 @@ from triton_evaluation.service.models import (
     new_evaluation_id,
 )
 from triton_evaluation.service.security import Caller
-
-logger = logging.getLogger(__name__)
 
 
 class InstanceNotReadyError(Exception):
@@ -111,9 +108,4 @@ class EvaluationInstance:
             raise InstanceNotReadyError()
 
     def _bump(self, name: str, **labels) -> None:
-        if self.metrics is None:
-            return
-        try:
-            self.metrics.increment(name, labels)
-        except Exception as error:  # noqa: BLE001 — metrics never affect admission
-            logger.warning("metrics write failed (%s)", type(error).__name__)
+        increment(self.metrics, name, **labels)

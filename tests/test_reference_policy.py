@@ -9,7 +9,7 @@ from conftest import make_request
 from triton_evaluation.config import Settings
 from triton_evaluation.engine import verify
 from triton_evaluation.evaluators.base import ScriptOutcome
-from triton_evaluation.evaluators.evaluation import EvaluationEvaluator
+from triton_evaluation.evaluators.verify import VerifyEvaluator
 
 
 @pytest.mark.parametrize(
@@ -58,7 +58,7 @@ def test_settings_reaches_engine_command(tmp_path, monkeypatch):
     monkeypatch.setattr(evaluator_module, "run_script", run)
     monkeypatch.setattr(evaluator_module, "read_json", lambda _, **_kwargs: {})
     settings = Settings(reference_device_policy="npu-strict")
-    evaluator = EvaluationEvaluator("unused", settings)._verify_evaluator()
+    evaluator = VerifyEvaluator("unused", reference_device_policy=settings.reference_device_policy)
     evaluator._run_verify(
         make_request(),
         tmp_path,

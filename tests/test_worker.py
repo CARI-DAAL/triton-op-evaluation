@@ -593,7 +593,7 @@ def test_worker_records_attempt_card_even_when_affinity_avoidance_is_disabled(
 
 
 def test_shape_dependent_compile_error_is_not_reused_for_other_inputs(store, settings, clock,
-                                                    make_command):
+                                                    make_command, redis_client):
     from triton_evaluation.runtime import verdict_cache
 
     settings = settings.model_copy(update={"cann_fingerprint": "cann-test"})
@@ -604,7 +604,10 @@ def test_shape_dependent_compile_error_is_not_reused_for_other_inputs(store, set
         code="SUBJECT_COMPILE_ERROR", phase="compile",
         message="candidate compilation failed",
     )
-    worker = build_worker(store, settings, StubEvaluator(settings, result=result), clock)
+    cache = verdict_cache.VerdictCache(redis_client, prefix=settings.redis_prefix)
+    worker = build_worker(
+        store, settings, StubEvaluator(settings, result=result), clock, verdict_cache=cache,
+    )
     cmd = make_command()
     store.create_or_replay(cmd)
     assert worker.run_once() is True
@@ -614,15 +617,17 @@ def test_shape_dependent_compile_error_is_not_reused_for_other_inputs(store, set
         settings.cann_fingerprint,
     )
     assert digest is not None
-    assert verdict_cache.get(store, digest) is None
+    assert cache.get(digest) is None
 
 
-def test_correct_terminal_does_not_feed_cache(store, settings, clock, make_command):
+def test_correct_terminal_does_not_feed_cache(store, settings, clock, make_command, redis_client):
     from triton_evaluation.runtime import verdict_cache
 
-    worker = build_worker(store, settings,
-                          StubEvaluator(settings, result=make_completed_result(settings)),
-                          clock)
+    cache = verdict_cache.VerdictCache(redis_client, prefix=settings.redis_prefix)
+    worker = build_worker(
+        store, settings, StubEvaluator(settings, result=make_completed_result(settings)),
+        clock, verdict_cache=cache,
+    )
     cmd = make_command()
     store.create_or_replay(cmd)
     assert worker.run_once() is True
@@ -631,7 +636,7 @@ def test_correct_terminal_does_not_feed_cache(store, settings, clock, make_comma
         request["kernel_code"], request.get("triton_impl_name", "triton_ascend_impl"),
         settings.cann_fingerprint,
     )
-    assert verdict_cache.get(store, digest) is None
+    assert cache.get(digest) is None
 
 
 @pytest.mark.parametrize("malformed", [object(), {}, {"correctness": None}])

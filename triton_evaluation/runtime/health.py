@@ -22,6 +22,8 @@ from collections.abc import Callable
 from enum import Enum
 from typing import TYPE_CHECKING
 
+from triton_evaluation.service.metrics import increment, set_gauge
+
 if TYPE_CHECKING:
     from triton_evaluation.config import Settings
     from triton_evaluation.service.broker import EvaluationStore
@@ -109,15 +111,10 @@ class CardHealth:
             # Fail closed locally even if publishing the unhealthy marker fails.
             self._state = _State.DRAINED
             self._store.set_card_unhealthy(self._device_id)
-        if self._metrics is not None:
-            try:
-                self._metrics.set_gauge(
-                    "card_health_state",
-                    {"card": str(self._device_id)},
-                    value=0 if healthy else 1,
-                )
-            except Exception as error:  # noqa: BLE001 — metrics cannot gate recovery
-                logger.warning("metrics write failed (%s)", type(error).__name__)
+        set_gauge(
+            self._metrics, "card_health_state", 0 if healthy else 1,
+            card=str(self._device_id),
+        )
         return healthy
 
     def _recover(self) -> None:
@@ -149,12 +146,7 @@ class CardHealth:
                 return
 
     def _bump(self, name: str, **labels) -> None:
-        if self._metrics is None:
-            return
-        try:
-            self._metrics.increment(name, labels)
-        except Exception as error:  # noqa: BLE001 — metrics cannot gate recovery
-            logger.warning("metrics write failed (%s)", type(error).__name__)
+        increment(self._metrics, name, **labels)
 
 
 CANARY_ADD_KERNEL = """

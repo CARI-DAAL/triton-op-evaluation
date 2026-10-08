@@ -67,21 +67,8 @@ def succeeded(name):
     return StubCheck(EngineCheckResult(status="succeeded", raw=load(name), error=None))
 
 
-class Harness(EvaluationEvaluator):
-    def __init__(self, verify, bench=None, profile=None):
-        super().__init__("unused")
-        self.verify = verify
-        self.bench = bench
-        self.profile = profile
-
-    def _verify_evaluator(self):
-        return self.verify
-
-    def _benchmark_evaluator(self):
-        return self.bench
-
-    def _profile_evaluator(self):
-        return self.profile
+def Harness(verify, bench=None, profile=None):
+    return EvaluationEvaluator(verify=verify, benchmark=bench, profile=profile)
 
 
 ALGORITHMS = AlgorithmVersions(
@@ -203,7 +190,7 @@ def test_wrong_subject_skips_performance_but_still_profiles(tmp_path):
     assert performance.status == "skipped"
     assert performance.reason.code == "DEPENDENCY_NOT_PASSED"
     assert performance.reason.depends_on == "correctness"
-    assert harness.bench.calls == 0
+    assert harness.benchmark.calls == 0
     assert result.profile.status == "succeeded"
     assert harness.profile.calls == 1
     # skipped outcomes are fenced through the sink like real ones
@@ -221,7 +208,7 @@ def test_decoy_is_wrong_with_full_counts_and_still_profiles(tmp_path):
     assert data.passed_cases == data.total_cases
     assert data.failures == []
     assert result.performance.status == "skipped"
-    assert harness.bench.calls == 0
+    assert harness.benchmark.calls == 0
     assert result.profile.status == "succeeded"
 
 
@@ -249,7 +236,7 @@ def test_correctness_infra_failure_skips_dependents(tmp_path):
     assert result.performance.reason.code == "PRIOR_CHECK_FAILED"
     assert result.profile.status == "skipped"
     assert result.profile.reason.code == "PRIOR_CHECK_FAILED"
-    assert harness.bench.calls == 0
+    assert harness.benchmark.calls == 0
     assert harness.profile.calls == 0
 
 
@@ -349,7 +336,7 @@ def test_unattributed_failure_with_traceback_detail_stays_in_message_budget(tmp_
 
 def test_performance_infra_failure_keeps_correctness_and_skips_profile(tmp_path):
     harness = full_harness()
-    harness.bench = succeeded("benchmark-invalid-measurement.json")
+    harness.benchmark = succeeded("benchmark-invalid-measurement.json")
     sink = RecordingSink()
     result = run_evaluation(harness, ["correctness", "performance", "profile"], sink, tmp_path)
 
@@ -392,7 +379,7 @@ def test_lease_loss_between_checks_discards_remaining_work(tmp_path):
         run_evaluation(
             harness, ["correctness", "performance", "profile"], sink, tmp_path, lease=lease
         )
-    assert harness.bench.calls == 0
+    assert harness.benchmark.calls == 0
     assert harness.profile.calls == 0
     assert sink.calls == [
         ("begin", "correctness"),

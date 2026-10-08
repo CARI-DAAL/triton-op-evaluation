@@ -3,16 +3,23 @@ import argparse
 import logging
 import os
 import signal
+from functools import partial
 
 import redis
 from redis.backoff import NoBackoff
 from redis.retry import Retry
 
-from triton_evaluation.config import Settings
+from triton_evaluation.config import Settings, command_environment
+from triton_evaluation.evaluators.base import run_script
+from triton_evaluation.evaluators.benchmark import BenchmarkEvaluator
 from triton_evaluation.evaluators.evaluation import EvaluationEvaluator
+from triton_evaluation.evaluators.profile import ProfileEvaluator
+from triton_evaluation.evaluators.verify import VerifyEvaluator
 from triton_evaluation.runtime.baseline_cache import BaselineCache
+from triton_evaluation.runtime.verdict_cache import VerdictCache
 from triton_evaluation.runtime.worker import Worker
 from triton_evaluation.service.broker import EvaluationStore
+from triton_evaluation.service.metrics import RedisMetrics
 
 logger = logging.getLogger(__name__)
 
@@ -34,15 +41,10 @@ def set_process_title() -> None:
         logger.info("setproctitle not installed; process keeps the default name")
 
 
-def build_store(settings: Settings) -> EvaluationStore:
-    client = redis.Redis.from_url(settings.redis_url, decode_responses=False)
-    return EvaluationStore(client, settings)
-
-
 def build_worker(card: int | None, settings: Settings | None = None) -> Worker:
     settings = settings or Settings.from_env()
     os.environ["ASCEND_RT_VISIBLE_DEVICES"] = "" if card is None else str(card)
-    store = build_store(settings)
+    durable_client = redis.Redis.from_url(settings.redis_url, decode_responses=False)
     cache_client = redis.Redis.from_url(
         settings.redis_url, decode_responses=False,
         socket_connect_timeout=0.25, socket_timeout=0.25,
@@ -51,11 +53,24 @@ def build_worker(card: int | None, settings: Settings | None = None) -> Worker:
     baseline_cache = BaselineCache(
         cache_client, prefix=settings.redis_prefix, namespace=settings.baseline_cache_namespace,
     )
+    metrics = RedisMetrics(cache_client, settings.redis_prefix)
+    store = EvaluationStore(durable_client, settings, metrics=metrics)
+    runner = partial(run_script, environment=command_environment(settings))
     evaluator = EvaluationEvaluator(
-        settings.engine_dir, settings=settings, baseline_cache=baseline_cache,
+        verify=VerifyEvaluator(
+            settings.engine_dir, budget_cap_seconds=settings.verify_budget_cap_seconds,
+            reference_device_policy=settings.reference_device_policy, runner=runner,
+        ),
+        benchmark=BenchmarkEvaluator(
+            settings.engine_dir, timeout_seconds=settings.benchmark_timeout_seconds,
+            baseline_cache=baseline_cache, runner=runner,
+        ),
+        profile=ProfileEvaluator(settings.engine_dir, runner=runner),
     )
     return Worker(
-        store, evaluator, device_id=card, settings=settings
+        store, evaluator, device_id=card, settings=settings, metrics=metrics,
+        verdict_cache=VerdictCache(cache_client, prefix=settings.redis_prefix),
+        script_runner=runner,
     )
 
 

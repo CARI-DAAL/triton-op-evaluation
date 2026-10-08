@@ -13,11 +13,18 @@ Absent sandbox settings preserve the existing host execution
 mode. A configured but missing, invalid or unusable sandbox fails the invocation;
 it never retries candidate code directly on the host.
 
-This setting is a worker **process environment** contract, read at the common
-subprocess boundary. It is not a `Settings` constructor field: passing a value
-to an API or evaluator object does not configure worker subprocess execution.
-Export it in each worker's launch environment, including separately launched
-CPU workers.
+The standard worker entrypoint reads both values into validated `Settings`
+(`engine_sandbox_config` and `engine_sandbox_sha256`) and builds one subprocess
+environment snapshot at startup. All checks share that snapshot, including CPU
+prechecks. Export the values in each worker's launch environment, or supply an
+explicit `Settings` to `build_worker`. Restart workers to apply configuration
+changes; changing ambient environment variables after assembly does not change
+an existing runner. Manifest bytes and pinned source files are still checked on
+every invocation, so the snapshot does not permit changed artifacts.
+
+The low-level `run_script` helper defaults to the current process environment
+when called without an explicit environment; standalone tooling retains that
+behavior. `isolate_command` validates the environment supplied by its caller.
 
 The operator-owned manifest names immutable runtime dependencies, selected
 runtime environment variables and Ascend control devices. It is deployment

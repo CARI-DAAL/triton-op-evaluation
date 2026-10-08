@@ -47,3 +47,48 @@ def test_plan_c_health_env_override(monkeypatch):
     s = Settings.from_env()
     assert s.poison_death_threshold == 3
     assert s.card_affinity_avoidance is False
+
+
+def test_command_environment_uses_settings_and_preserves_toolchain(monkeypatch):
+    from triton_evaluation.config import command_environment
+
+    settings = Settings(
+        engine_dir="/validated/engine", reference_device_policy="npu-strict",
+        reference_diagnostics_dir=None, engine_sandbox_config=None,
+        engine_sandbox_sha256=None,
+    )
+    inherited = {
+        "PATH": "/toolchain/bin", "LD_LIBRARY_PATH": "/toolchain/lib",
+        "TRITON_EVAL_ENGINE_DIR": "/stale/engine",
+        "TRITON_EVAL_REFERENCE_DEVICE_POLICY": "cpu-first",
+        "TRITON_EVAL_REFERENCE_DIAGNOSTICS_DIR": "/stale/diagnostics",
+        "TRITON_EVAL_ENGINE_SANDBOX_CONFIG": "/stale/sandbox",
+        "TRITON_EVAL_ENGINE_SANDBOX_SHA256": "0" * 64,
+    }
+    before = inherited.copy()
+    environment = command_environment(settings, inherited)
+    assert inherited == before
+    assert environment["PATH"] == "/toolchain/bin"
+    assert environment["LD_LIBRARY_PATH"] == "/toolchain/lib"
+    assert environment["TRITON_EVAL_ENGINE_DIR"] == "/validated/engine"
+    assert environment["TRITON_EVAL_REFERENCE_DEVICE_POLICY"] == "npu-strict"
+    assert "TRITON_EVAL_REFERENCE_DIAGNOSTICS_DIR" not in environment
+    assert "TRITON_EVAL_ENGINE_SANDBOX_CONFIG" not in environment
+    assert "TRITON_EVAL_ENGINE_SANDBOX_SHA256" not in environment
+
+
+def test_sandbox_settings_are_loaded_and_validated(monkeypatch):
+    import pytest
+    from pydantic import ValidationError
+
+    from triton_evaluation.config import command_environment
+
+    monkeypatch.setenv("TRITON_EVAL_ENGINE_SANDBOX_CONFIG", "/runtime/sandbox.json")
+    monkeypatch.setenv("TRITON_EVAL_ENGINE_SANDBOX_SHA256", "a" * 64)
+    settings = Settings.from_env()
+    environment = command_environment(settings, {})
+    assert environment["TRITON_EVAL_ENGINE_SANDBOX_CONFIG"] == "/runtime/sandbox.json"
+    assert environment["TRITON_EVAL_ENGINE_SANDBOX_SHA256"] == "a" * 64
+    monkeypatch.delenv("TRITON_EVAL_ENGINE_SANDBOX_SHA256")
+    with pytest.raises(ValidationError, match="configured together"):
+        Settings.from_env()

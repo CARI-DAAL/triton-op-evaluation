@@ -96,6 +96,23 @@ build and experiment; numerical rounding can differ even though the comparison
 formula and tolerances are unchanged. See [reference policy and observations](../architecture/reference-device-policy.md)
 for provenance, retention and admission checks.
 
+## Runtime dependencies and observability
+
+API and worker entrypoints explicitly assemble their metrics adapters. Observers
+can read `/internal/metrics`; authentication and bounded label rules still apply.
+Metrics and advisory caches use connections with 0.25-second connect/read timeouts
+and no retries, separate from the durable store client. Redis metrics reads and
+error counting run off the HTTP event loop. Observability failures do not change
+admission, lease renewal or terminal publication outcomes.
+
+Worker checks share a startup environment built from `Settings` and inherited
+toolchain variables. Settings take precedence for runtime fields; absent optional
+settings remove stale inherited values. Precheck honors `TRITON_EVAL_ENGINE_DIR`.
+Apply environment changes by restarting workers, including CPU workers. Sandbox
+configuration and SHA must be supplied together. Changes to source-pinned runtime
+helpers require renewed deployment pins and an updated evaluator build before
+running the device release checks.
+
 ## Torch baseline cache
 
 For two-source comparisons, workers use the existing instance Redis to retain

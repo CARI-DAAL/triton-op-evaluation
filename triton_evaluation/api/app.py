@@ -9,6 +9,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from ..service.metrics import increment
 from . import errors
 from .contract import ErrorEnvelope
 from .dependencies import AppContext
@@ -39,14 +40,9 @@ def _count_error_response(request: Request, error: errors.ApiError) -> None:
     """Best-effort bounded error counter; never affects the response."""
     metrics = getattr(request.app.state, "context", None)
     metrics = getattr(getattr(metrics, "instance", None), "metrics", None)
-    if metrics is None:
-        return
-    try:
-        metrics.increment("api_error_responses_total", {"code": error.info.code})
-        if error.info.phase == "auth":
-            metrics.increment("auth_failures_total", {"code": error.info.code})
-    except Exception as error:  # noqa: BLE001 — never affect the response
-        logger.warning("metrics write failed (%s)", type(error).__name__)
+    increment(metrics, "api_error_responses_total", code=error.info.code)
+    if error.info.phase == "auth":
+        increment(metrics, "auth_failures_total", code=error.info.code)
 
 
 def create_app(context: AppContext) -> FastAPI:
@@ -99,12 +95,13 @@ def _run_maintenance(context: AppContext) -> None:
 def _install_exception_handlers(app: FastAPI) -> None:
     @app.exception_handler(errors.ApiError)
     async def handle_api_error(request: Request, exc: errors.ApiError):
-        return _envelope_response(request, exc)
+        return await asyncio.to_thread(_envelope_response, request, exc)
 
     @app.exception_handler(RequestValidationError)
     async def handle_validation(request: Request, exc: RequestValidationError):
-        return _envelope_response(
-            request, errors.invalid_request_schema("request failed schema validation")
+        return await asyncio.to_thread(
+            _envelope_response, request,
+            errors.invalid_request_schema("request failed schema validation"),
         )
 
     @app.exception_handler(StarletteHTTPException)
@@ -119,7 +116,7 @@ def _install_exception_handlers(app: FastAPI) -> None:
             error = errors.unauthenticated()
         else:
             error = errors.internal()
-        return _envelope_response(request, error)
+        return await asyncio.to_thread(_envelope_response, request, error)
 
     @app.exception_handler(Exception)
     async def handle_uncaught(request: Request, exc: Exception):
@@ -127,4 +124,4 @@ def _install_exception_handlers(app: FastAPI) -> None:
             "unhandled error (%s); responding with a redacted envelope",
             type(exc).__name__,
         )
-        return _envelope_response(request, errors.internal())
+        return await asyncio.to_thread(_envelope_response, request, errors.internal())

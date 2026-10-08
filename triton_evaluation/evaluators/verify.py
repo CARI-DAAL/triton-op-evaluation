@@ -94,9 +94,11 @@ class VerifyEvaluator:
         engine_dir: str,
         budget_cap_seconds: int = 1500,
         reference_device_policy: str = "cpu-first",
+        *, runner=None,
     ):
         if reference_device_policy not in {"cpu-first", "npu-strict"}:
             raise ValueError("unsupported reference_device_policy")
+        self.runner = runner
         self.engine_dir = engine_dir
         self.budget_cap_seconds = budget_cap_seconds
         self.reference_device_policy = reference_device_policy
@@ -132,7 +134,7 @@ class VerifyEvaluator:
         remaining = remaining_seconds(deadline_at)
         stem = safe_module_stem(request)
         impl_file = Path(work_dir) / f"{stem}_{request.triton_impl_name}.py"
-        outcome = run_script(
+        outcome = (self.runner or run_script)(
             [
                 sys.executable,
                 str(Path(self.engine_dir) / "validate_triton_impl.py"),
@@ -172,7 +174,7 @@ class VerifyEvaluator:
             return engine_timeout("correctness", "resource deadline expired before case counting")
         stem = safe_module_stem(request)
         reference = Path(work_dir) / f"{stem}_torch.py"
-        outcome = run_script(
+        outcome = (self.runner or run_script)(
             [sys.executable, "-c", _COUNT_SNIPPET, str(reference)],
             str(work_dir),
             device_id,
@@ -246,7 +248,7 @@ class VerifyEvaluator:
         ]
         if request.non_compute:
             cmd.append("--non-compute")
-        outcome = run_script(
+        outcome = (self.runner or run_script)(
             cmd,
             str(work_dir),
             device_id,

@@ -245,3 +245,128 @@ def test_shaping_and_execution_dimensions_exist(app):
     assert "reaped_leases_total" in ALLOWED_METRICS
     assert "terminal_commit_cas_total" in ALLOWED_METRICS
     assert "resource_deadline_expiries_total" in ALLOWED_METRICS
+
+
+@pytest.mark.parametrize("operation, arguments", [
+    ("increment", ("worker_attempts_total",)),
+    ("observe", ("performance_coverage", 0.5)),
+    ("set_gauge", ("card_health_state", 1)),
+])
+def test_best_effort_emission_accepts_optional_or_failing_adapters(operation, arguments):
+    from triton_evaluation.service import metrics
+
+    class FailingMetrics:
+        def __getattr__(self, name):
+            def fail(*args, **kwargs):
+                raise RuntimeError("unavailable")
+            return fail
+
+    emit = getattr(metrics, operation)
+    emit(None, *arguments)
+    emit(FailingMetrics(), *arguments)
+
+
+def test_best_effort_emission_preserves_labels_and_values():
+    from triton_evaluation.service.metrics import increment, observe, set_gauge
+
+    calls = []
+
+    class RecordingMetrics:
+        def increment(self, *args):
+            calls.append(("increment", args))
+
+        def observe(self, *args):
+            calls.append(("observe", args))
+
+        def set_gauge(self, *args):
+            calls.append(("set_gauge", args))
+
+    adapter = RecordingMetrics()
+    increment(adapter, "api_error_responses_total", code="INTERNAL")
+    observe(adapter, "performance_coverage", 0.5)
+    set_gauge(adapter, "card_health_state", 1, card="0")
+    assert calls == [
+        ("increment", ("api_error_responses_total", {"code": "INTERNAL"})),
+        ("observe", ("performance_coverage", {}, 0.5)),
+        ("set_gauge", ("card_health_state", {"card": "0"}, 1)),
+    ]
+
+
+async def test_metrics_read_failure_preserves_internal_error_envelope(app):
+    import httpx
+
+    class BrokenRedis:
+        def hgetall(self, key):
+            raise RuntimeError("private backend details")
+
+        def hincrby(self, *args):
+            raise RuntimeError("unavailable")
+
+    app.app.state.context.instance.metrics = RedisMetrics(BrokenRedis(), "test")
+    transport = httpx.ASGITransport(app=app.app, raise_app_exceptions=False)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.get("/internal/metrics", headers=OBSERVER_HEADERS)
+    assert response.status_code == 500
+    assert response.json()["error"]["code"] == "INTERNAL"
+    assert "private backend details" not in response.text
+
+
+@pytest.mark.parametrize("path, headers, operation, expected_status", [
+    ("/internal/metrics", OBSERVER_HEADERS, "read", 200),
+    ("/internal/metrics", {}, "increment", 401),
+    ("/unknown", {}, "increment", 404),
+])
+async def test_liveness_progresses_while_metrics_redis_is_blocked(
+    app, path, headers, operation, expected_status
+):
+    import asyncio
+    import threading
+
+    entered = threading.Event()
+    release = threading.Event()
+    writes = []
+
+    class BlockingRedis:
+        def block(self):
+            entered.set()
+            release.wait()
+
+        def hgetall(self, key):
+            if operation == "read":
+                self.block()
+            return {}
+
+        def hincrby(self, key, field, amount):
+            writes.append((key, field, amount))
+            if operation == "increment":
+                self.block()
+
+    app.app.state.context.instance.metrics = RedisMetrics(BlockingRedis(), "test")
+    # A watchdog only prevents a broken implementation deadlocking the suite.
+    # Correctness is event ordering: /livez must finish before Redis is released.
+    watchdog = threading.Timer(10, release.set)
+    watchdog.start()
+    pending = None
+    try:
+        async with app.http as client:
+            pending = asyncio.create_task(client.get(path, headers=headers))
+            assert await asyncio.to_thread(entered.wait, 10)
+            liveness = await client.get("/livez")
+            assert liveness.status_code == 200
+            assert not release.is_set()
+            assert not pending.done()
+            release.set()
+            response = await pending
+            assert response.status_code == expected_status
+            if expected_status == 401:
+                assert [field for _, field, _ in writes] == [
+                    "code=UNAUTHENTICATED", "code=UNAUTHENTICATED",
+                ]
+                assert [key.rsplit(":", 1)[-1] for key, _, _ in writes] == [
+                    "api_error_responses_total", "auth_failures_total",
+                ]
+    finally:
+        release.set()
+        watchdog.cancel()
+        if pending is not None:
+            await pending

@@ -11,6 +11,7 @@ Fail-closed behavior asserted everywhere.
 import hashlib
 import importlib.metadata
 import json
+import os
 import statistics
 import sys
 from pathlib import Path
@@ -678,7 +679,7 @@ def test_policy_pair_survives_clearenv_through_the_real_overlay(delivery, monkey
     # a parent env value the overlay never declared must not leak to the child
     monkeypatch.setenv("TRITON_EVAL_API_PORT", "12345")
     wrapped, _outer = sandbox.isolate_command(
-        [sys.executable, "-c", "pass"], delivery["work"], None, {}
+        [sys.executable, "-c", "pass"], delivery["work"], None, dict(os.environ)
     )
     assert "--clearenv" in wrapped
     for key in (POLICY_ENV, POLICY_SHA_ENV):
@@ -738,7 +739,9 @@ def test_half_pair_or_tampered_policy_is_refused(delivery, monkeypatch, tmp_path
             sandbox.OVERLAY_DIGEST_ENV, sha256(delivery["overlay_path"].read_bytes())
         )
         with pytest.raises(ValueError, match="SHA pin"):
-            sandbox.isolate_command([sys.executable, "-c", "pass"], delivery["work"], None, {})
+            sandbox.isolate_command(
+                [sys.executable, "-c", "pass"], delivery["work"], None, dict(os.environ)
+            )
     finally:
         delivery["policy_path"].write_bytes(original_bytes)
     # an overlay pointing at a different policy than the worker's declared
@@ -753,13 +756,17 @@ def test_half_pair_or_tampered_policy_is_refused(delivery, monkeypatch, tmp_path
     monkeypatch.setenv(sandbox.OVERLAY_CONFIG_ENV, str(overlay_path))
     monkeypatch.setenv(sandbox.OVERLAY_DIGEST_ENV, sha256(overlay_path.read_bytes()))
     with pytest.raises(ValueError, match="worker's declared runtime"):
-        sandbox.isolate_command([sys.executable, "-c", "pass"], delivery["work"], None, {})
+        sandbox.isolate_command(
+            [sys.executable, "-c", "pass"], delivery["work"], None, dict(os.environ)
+        )
     # a non-dedicated state directory is refused
     (delivery["state_dir"] / "stray.txt").write_text("not a dedicated state namespace")
     monkeypatch.setenv(sandbox.OVERLAY_CONFIG_ENV, str(delivery["overlay_path"]))
     monkeypatch.setenv(sandbox.OVERLAY_DIGEST_ENV, sha256(delivery["overlay_path"].read_bytes()))
     with pytest.raises(ValueError, match="dedicated timing-reuse state"):
-        sandbox.isolate_command([sys.executable, "-c", "pass"], delivery["work"], None, {})
+        sandbox.isolate_command(
+            [sys.executable, "-c", "pass"], delivery["work"], None, dict(os.environ)
+        )
 
 
 def test_parent_policy_without_overlay_never_reaches_a_clearenv_child(
@@ -772,4 +779,6 @@ def test_parent_policy_without_overlay_never_reaches_a_clearenv_child(
     monkeypatch.setenv(POLICY_ENV, str(delivery["policy_path"]))
     monkeypatch.setenv(POLICY_SHA_ENV, delivery["policy_sha"])
     with pytest.raises(ValueError, match="overlay before --clearenv"):
-        sandbox.isolate_command([sys.executable, "-c", "pass"], delivery["work"], None, {})
+        sandbox.isolate_command(
+            [sys.executable, "-c", "pass"], delivery["work"], None, dict(os.environ)
+        )

@@ -112,6 +112,31 @@ def _field(labels: dict) -> str:
     return "|".join(f"{key}={labels[key]}" for key in sorted(labels))
 
 
+def _emit(metrics, method: str, name: str, labels: dict, *values) -> None:
+    """Isolate optional instrumentation from the operation being measured."""
+    if metrics is None:
+        return
+    try:
+        getattr(metrics, method)(name, labels, *values)
+    except Exception as error:  # noqa: BLE001 — never affect the measured operation
+        logger.warning("metrics write failed (%s)", type(error).__name__)
+
+
+def increment(metrics, name: str, **labels: str) -> None:
+    """Emit a best-effort counter increment through an optional metrics adapter."""
+    _emit(metrics, "increment", name, labels)
+
+
+def observe(metrics, name: str, value: float, **labels: str) -> None:
+    """Emit a best-effort histogram observation."""
+    _emit(metrics, "observe", name, labels, value)
+
+
+def set_gauge(metrics, name: str, value: int, **labels: str) -> None:
+    """Emit a best-effort current gauge value."""
+    _emit(metrics, "set_gauge", name, labels, value)
+
+
 class RedisMetrics:
     """Counters and histograms in Redis hashes, rendered as OpenMetrics."""
 

@@ -195,8 +195,12 @@ def test_single_implementation_never_uses_advisory_baseline_cache(
         Path(cmd[cmd.index("--output") + 1]).write_text(json.dumps(raw))
         return SimpleNamespace(outcome="completed", timed_out=False, exit_code=0)
 
-    monkeypatch.setattr(evaluator_module, "run_script", run)
-    evaluator = evaluator_module.BenchmarkEvaluator("engine", baseline_cache=ForbiddenCache())
+    monkeypatch.setattr(
+        evaluator_module, "run_script", lambda *a, **kw: pytest.fail("injected runner required"),
+    )
+    evaluator = evaluator_module.BenchmarkEvaluator(
+        "engine", baseline_cache=ForbiddenCache(), runner=run,
+    )
     monkeypatch.setattr(evaluator, "_stamp_result", lambda *args: pytest.fail("no baseline stamp"))
     result = evaluator.run(
         request,
