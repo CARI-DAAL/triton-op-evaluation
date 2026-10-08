@@ -84,13 +84,19 @@ def inputs(tmp_path):
     return tmp_path, torch, triton, cases, token
 
 
-def run_cli(inputs, url, *extra, action="verify", script=SCRIPT, timeout=10):
+def run_cli(
+    inputs, url, *extra, action="verify", script=SCRIPT, timeout=10,
+    sources=("torch", "triton"),
+):
     cwd, torch, triton, cases, token = inputs
     args = [sys.executable, "-I", "-S", str(script), action]
     if action == "get":
         args += [EID]
     else:
-        args += ["--torch", str(torch), "--triton", str(triton), "--cases", str(cases)]
+        files = {"torch": torch, "triton": triton}
+        for implementation in sources:
+            args += [f"--{implementation}", str(files[implementation])]
+        args += ["--cases", str(cases)]
     args += ["--url", url, "--capability-file", str(token), "--poll-interval", "0.01", *extra]
     result = subprocess.run(
         args,
@@ -404,15 +410,119 @@ def test_exhausted_retries_keep_original_session_in_recovery_handle(inputs):
     assert json.loads(handle.read_text())["session_id"] == "my-session"
 
 
+@pytest.mark.parametrize("implementation", ["torch", "triton"])
+@pytest.mark.parametrize("action", ["benchmark", "profile"])
+def test_single_source_submission_preserves_measurement_and_omits_missing_code(
+    inputs, implementation, action,
+):
+    files = {"torch": inputs[1], "triton": inputs[2]}
+    missing = "triton" if implementation == "torch" else "torch"
+    files[missing].unlink()  # The client must never read the absent implementation.
+    check_name = "performance" if action == "benchmark" else "profile"
+    data = {"implementation": implementation, "correctness_verified": False}
+    if action == "benchmark":
+        data["per_case"] = [{"case_idx": 0, "latency_ms": 0.25}]
+    body = resource("completed", **{check_name: check(**data)})
+
+    def respond(calls):
+        return (202, resource(), {}) if len(calls) == 1 else (200, body, {})
+
+    with server(respond) as (url, calls):
+        result, output = run_cli(inputs, url, action=action, sources=(implementation,))
+    assert result.returncode == 0
+    assert output == body
+    assert "correctness not verified" in result.stderr
+    assert json.loads(calls[0][3]) == {
+        f"{implementation}_code": files[implementation].read_text(),
+        "cases": [{"inputs": [1]}],
+    }
+    assert [call[0] for call in calls] == ["POST", "GET"]
+    assert files[implementation].read_text() not in result.stderr
+
+
+@pytest.mark.parametrize("action,sources,message", [
+    ("verify", (), "at least one"),
+    ("benchmark", (), "at least one"),
+    ("profile", (), "at least one"),
+    ("verify", ("torch",), "both --torch and --triton"),
+    ("verify", ("triton",), "both --torch and --triton"),
+])
+def test_missing_source_requirements_fail_before_credentials_or_network(
+    inputs, action, sources, message,
+):
+    for path in inputs[1:]:
+        path.unlink()
+    with server(lambda _: pytest.fail("unexpected service request")) as (url, calls):
+        result, output = run_cli(inputs, url, action=action, sources=sources)
+    assert not calls
+    assert result.returncode == 2
+    assert output["error"]["code"] == "INVALID_ARGUMENT"
+    assert message in output["error"]["message"]
+    assert "Traceback" not in result.stderr
+
+
+@pytest.mark.parametrize("check_name", ["performance", "profile"])
+def test_get_retains_single_measurement_without_claiming_correctness(inputs, check_name):
+    for source in inputs[1:4]:
+        source.unlink()
+    body = resource("completed", **{check_name: check(
+        implementation="torch", correctness_verified=False,
+    )})
+    with server(lambda _: (200, body, {})) as (url, calls):
+        result, output = run_cli(inputs, url, action="get", sources=())
+    assert result.returncode == 0
+    assert output == body
+    assert "correctness not verified" in result.stderr
+    assert [call[0] for call in calls] == ["GET"]
+
+
+def test_single_source_retries_exact_payload_and_session(inputs):
+    handle = inputs[0] / "single-handle.json"
+    inputs[2].unlink()
+
+    def respond(calls):
+        if len(calls) == 1:
+            return None, b"", {}
+        return 202, resource(), {}
+
+    with server(respond) as (url, calls):
+        result, output = run_cli(
+            inputs, url, "--no-wait", "--idempotency-key", "single-key",
+            "--session-id", "single-session", "--save-handle", str(handle),
+            action="benchmark", sources=("torch",),
+        )
+    assert result.returncode == 0 and output["state"] == "queued"
+    assert len(calls) == 2
+    assert calls[0][3] == calls[1][3]
+    assert set(json.loads(calls[0][3])) == {"torch_code", "cases"}
+    assert {call[2]["Idempotency-Key"] for call in calls} == {"single-key"}
+    assert {call[2]["X-Session-Id"] for call in calls} == {"single-session"}
+    assert json.loads(handle.read_text()) == {
+        "url": url, "evaluation_id": EID,
+        "idempotency_key": "single-key", "session_id": "single-session",
+    }
+    assert "correctness not verified" in result.stderr
+
+
 @pytest.mark.parametrize("flag,expected", [
     ("--use-baseline-cache", None), ("--no-baseline-cache", {"use_baseline_cache": False}),
 ])
-def test_benchmark_baseline_cache_option_reaches_service(inputs, flag, expected):
+@pytest.mark.parametrize("sources", [("torch", "triton"), ("torch",), ("triton",)])
+def test_benchmark_baseline_cache_option_reaches_service(inputs, flag, expected, sources):
     with server(lambda calls: (202, resource(), {})) as (url, calls):
-        result, output = run_cli(inputs, url, flag, "--no-wait", action="benchmark")
+        result, output = run_cli(
+            inputs, url, flag, "--no-wait", action="benchmark", sources=sources,
+        )
     assert result.returncode == 0
     assert output["state"] == "queued"
-    assert json.loads(calls[0][3]).get("performance") == expected
+    body = json.loads(calls[0][3])
+    assert body.get("performance") == expected
+    assert {name for name in body if name.endswith("_code")} == {
+        f"{implementation}_code" for implementation in sources
+    }
+    if len(sources) == 1:
+        assert "correctness not verified" in result.stderr
+        assert "baseline_cache_hit" not in result.stdout
 
 
 @pytest.mark.parametrize("action", ["verify", "profile", "get"])

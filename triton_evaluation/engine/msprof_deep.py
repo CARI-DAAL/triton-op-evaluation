@@ -92,8 +92,10 @@ def _float(value: Any) -> float | None:
         return None
 
 
-def _custom_name(name: str, kernel_names: list[str]) -> bool:
-    return any(name == kernel or name.startswith(kernel) for kernel in kernel_names)
+def _custom_name(name: str, kernel_names: list[str] | None) -> bool:
+    return bool(name) if kernel_names is None else any(
+        name == kernel or name.startswith(kernel) for kernel in kernel_names
+    )
 
 
 def _pick_longest(rows: list[dict[str, str]]) -> dict[str, str] | None:
@@ -109,7 +111,7 @@ def _pick_longest(rows: list[dict[str, str]]) -> dict[str, str] | None:
 
 def select_and_merge_metrics(
     metric_dirs: dict[str, str],
-    kernel_names: list[str],
+    kernel_names: list[str] | None,
 ) -> dict[str, Any]:
     rows_by_metric: dict[str, list[dict[str, str]]] = {}
     missing = [metric for metric in METRIC_GROUPS if metric not in metric_dirs]
@@ -428,7 +430,7 @@ def _failed_capture(error: str, warnings: list[str]) -> dict[str, Any]:
 def profile_deep_case(
     *,
     app_cmd: list[str],
-    kernel_names: list[str],
+    kernel_names: list[str] | None,
     output_dir: str,
     cwd: str,
     env: dict[str, str],
@@ -535,6 +537,11 @@ def profile_deep_case(
     if sample_ok and per_core is None:
         warnings.append(
             "sample-based output could not produce reliable per-core data"
+        )
+    if kernel_names is None:
+        warnings.append(
+            "Native profile captures the whole process, including initialization; "
+            "the longest captured kernel is not attributed exclusively to run()."
         )
     failed = merged["target_kernel"] is None
     partial = bool(warnings or missing_metrics)

@@ -55,11 +55,16 @@ class Case(StrictModel):
 
 
 class OperatorRequest(StrictModel):
-    torch_code: SourceCode
-    triton_code: SourceCode
+    torch_code: SourceCode | None = None
+    triton_code: SourceCode | None = None
     cases: list[Case] = Field(min_length=1, max_length=128)
     checks: list[Check] = Field(
-        default_factory=lambda: ["correctness", "performance"], min_length=1, max_length=4
+        default_factory=lambda data: (
+            ["correctness", "performance"]
+            if data.get("torch_code") is not None and data.get("triton_code") is not None
+            else ["performance"]
+        ),
+        min_length=1, max_length=4
     )
     deadline_seconds: int = Field(default=900, ge=10, le=3600)
     performance: PerformanceParams | None = None
@@ -68,6 +73,13 @@ class OperatorRequest(StrictModel):
 
     @model_validator(mode="after")
     def _normalize_checks(self):
+        codes = (self.torch_code, self.triton_code)
+        if all(code is None for code in codes):
+            raise ValueError("at least one of torch_code or triton_code is required")
+        if any(code is not None and not code.strip() for code in codes):
+            raise ValueError("provided implementation source must not be empty or whitespace")
+        if None in codes and "correctness" in self.checks:
+            raise ValueError("the correctness check requires both implementations")
         if len(set(self.checks)) != len(self.checks):
             raise ValueError("checks must not contain duplicates")
         order = ("compile", "correctness", "performance", "profile")

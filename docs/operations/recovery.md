@@ -18,7 +18,7 @@ or Redis errors disable reuse; an inconclusive explicit compile check reports
 do not call reference input factories or synthesize correctness case results.
 
 A positive precheck skips another precheck. New logical evaluations still
-measure correctness and performance. Backend JIT failures are not reused
+execute their requested checks and measurements. Backend JIT failures are not reused
 across inputs because they can depend on shape and dtype. Reference outputs and reference timings have a separate optional, pinned
 [reference-cache policy](reference-cache.md); candidate evaluation results are not cached.
 
@@ -28,8 +28,9 @@ for the opt-in policy, shared attempt budget and same-card recovery behavior.
 ## Upgrading
 
 Before switching to operator inputs, stop old admissions and collect in-flight
-results from their original instance. Update clients to send `torch_code`,
-`triton_code` and `cases`; both implementations must export `run(*args)`.
+results from their original instance. Update clients to send `cases` and at
+least one of `torch_code` or `triton_code`; each supplied implementation must
+export `run(*args)`. Correctness requests require both sources.
 The former task-ID facade, separate tool token and public low-level evaluation
 request are no longer accepted. Use the capability registry for all endpoints.
 
@@ -44,6 +45,12 @@ Rollback requires the matching clients, image and durable state. Never use
 `docker compose down -v`. Engine and reference-cache policies retain their
 existing deployment bounds; the new input interface does not establish device
 correctness or cache coverage without the corresponding validation.
+
+Single-source timing and profiling extend the operator interface while preserving
+the two-source comparison mode. Clients must accept the single-performance result
+and its `correctness_verified: false` marker; a latency is not a correctness
+verdict. Changes to execution support require a new evaluator build and renewed
+source/artifact pins as described below.
 
 ## Runtime module migration
 

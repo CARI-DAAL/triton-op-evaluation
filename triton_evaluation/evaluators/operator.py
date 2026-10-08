@@ -108,6 +108,17 @@ def get_inputs():
     return get_input_groups()[0]
 '''
 
+
+# Preserve the comparison source bytes, while single Triton runs only need the
+# input provider: no invented reference model or reference callable.
+_REFERENCE_MODEL = """class Model(_operator_torch.nn.Module):
+    def forward(self, *args):
+        return run(*args)
+
+
+"""
+_INPUT_SUPPORT = _REFERENCE_SUPPORT.replace(_REFERENCE_MODEL, "", 1)
+
 _CANDIDATE_SUPPORT = '''
 import torch as _operator_torch
 
@@ -125,17 +136,26 @@ def to_evaluation_request(
         [case.model_dump(mode="json") for case in request.cases],
         sort_keys=True, separators=(",", ":"), ensure_ascii=True, allow_nan=False,
     )
+    implementation = (
+        "triton" if request.torch_code is None
+        else "torch" if request.triton_code is None else "comparison"
+    )
+    reference_support = _INPUT_SUPPORT if implementation == "triton" else _REFERENCE_SUPPORT
     reference_code = (
-        request.torch_code + "\n" + _REFERENCE_SUPPORT
+        (request.torch_code or "") + "\n" + reference_support
         + "\n_operator_cases = _operator_json.loads(" + repr(cases) + ")\n"
     )
-    kernel_code = request.triton_code + "\n" + _CANDIDATE_SUPPORT
+    kernel_code = (
+        request.triton_code + "\n" + _CANDIDATE_SUPPORT
+        if request.triton_code is not None else ""
+    )
     if any(len(source.encode("utf-8")) > MAX_SOURCE_BYTES
            for source in (reference_code, kernel_code)):
         raise ValueError("generated operator source exceeds the 2 MiB engine limit")
     selected = request.checks if checks is None else checks
     return EvaluationRequest(
         schema_version="2.1", purpose="trial", op_name="operator",
+        implementation=implementation,
         reference_code=reference_code, kernel_code=kernel_code,
         triton_impl_name="triton_ascend_impl", checks=selected,
         deadline_seconds=request.deadline_seconds, non_compute=request.non_compute,

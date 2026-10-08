@@ -1,8 +1,10 @@
 # Operator input and durable execution
 
-The public `OperatorRequest` describes `torch_code`, `triton_code` and `cases`.
-Both implementations export `run(*args)`; cases describe positional tensors and
-scalars with deterministic seeds. HTTP validation establishes the input shape.
+The public `OperatorRequest` requires `cases` and at least one of `torch_code`
+or `triton_code`. Each implementation exports `run(*args)`; cases describe
+positional tensors and scalars with deterministic seeds. Both sources enable
+comparison; one source enables measurement and profiling without correctness.
+HTTP validation establishes the input shape.
 It does not import or execute supplied code.
 
 The operator adapter converts this input into the engine's existing reference
@@ -45,3 +47,9 @@ resource recovery with CPU test doubles at the device boundary. Real NPU
 correctness, timing and profiling require separate device validation. Existing
 engine/reference-cache compatibility remains scoped to its pinned deployments;
 the new input interface does not establish cache coverage for arbitrary operators.
+
+Single-implementation timing has a distinct result with `implementation`,
+`correctness_verified: false` and per-case latency, without reference speedup.
+Single-implementation profiling carries the same non-verification marker. The
+caller retains those semantics when interpreting a completed resource; success
+of a measurement is not evidence of equality with another implementation.

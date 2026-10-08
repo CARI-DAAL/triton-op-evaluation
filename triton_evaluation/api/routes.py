@@ -90,7 +90,12 @@ async def submit_evaluation(
 ) -> EvaluationResource:
     checks = {
         "verify": ["correctness"],
-        "benchmark": ["correctness", "performance"],
+        "benchmark": (
+            ["correctness", "performance"]
+            if evaluation_request.torch_code is not None
+            and evaluation_request.triton_code is not None
+            else ["performance"]
+        ),
         "profile": ["profile"],
     }.get(request.scope["route"].path.rsplit("/", 1)[-1])
     try:

@@ -4,6 +4,8 @@ benchmark.py's L1 gate reads the verify_result.json written by the
 correctness check, so the orchestrator only invokes this after a succeeded
 and correct subject outcome. A gate rejection (exit 2), a timeout, or missing
 output is an infrastructure failure, never a subject verdict.
+Single-implementation timing uses its standalone runner and bypasses all
+reference baseline production, caching, and comparison-result stamping.
 """
 
 import json
@@ -21,6 +23,7 @@ from .base import (
     engine_failure,
     engine_timeout,
     log_engine_crash,
+    materialize,
     materialize_reference,
     read_json,
     remaining_seconds,
@@ -53,6 +56,9 @@ class BenchmarkEvaluator:
         remaining = remaining_seconds(deadline_at)
         if remaining <= 0:
             return engine_timeout("performance", "resource deadline expired before performance ran")
+        single = request.implementation != "comparison"
+        if single:
+            materialize(request, work_dir)
         params = request.performance or PerformanceParams()
         if params.case_indices is not None and not params.case_indices:
             return engine_failure("performance", "performance case selection is empty")
@@ -60,7 +66,7 @@ class BenchmarkEvaluator:
         out_path = Path(work_dir) / "perf_result.json"
         cmd = [
             sys.executable,
-            str(Path(self.engine_dir) / "benchmark.py"),
+            str(Path(self.engine_dir) / ("single_benchmark.py" if single else "benchmark.py")),
             "--op_name",
             safe_module_stem(request),
             "--verify_dir",
@@ -74,16 +80,19 @@ class BenchmarkEvaluator:
             "--measurement-method",
             effective_method,
         ]
+        if single:
+            cmd += ["--implementation", request.implementation]
         if params.case_indices is not None:
             # Public indices are zero-based; the engine takes one-based labels.
             cmd += [
                 "--case-indices",
                 ",".join(str(index + 1) for index in params.case_indices),
             ]
-        cmd += ["--disable-reference-cache"]
+        if not single:
+            cmd += ["--disable-reference-cache"]
         timings = None
         hits = set()
-        if self.baseline_cache is not None and params.use_baseline_cache:
+        if not single and self.baseline_cache is not None and params.use_baseline_cache:
             try:
                 timings, hits = self._baseline(
                     request, cmd, params, device_id, deadline_at, lease_valid
@@ -114,10 +123,12 @@ class BenchmarkEvaluator:
             raise LeaseLostError("benchmark engine lost its lease")
         if outcome.timed_out or remaining_seconds(deadline_at) <= 0:
             return engine_timeout("performance", "performance exceeded the resource deadline")
-        if outcome.exit_code == 2:
+        if outcome.exit_code == 2 and not single:
             return engine_failure("performance", "benchmark verify gate rejected the run")
         result = read_json(out_path, root=work_dir)
         if outcome.exit_code == 0 and isinstance(result, dict):
+            if single:
+                return EngineCheckResult(status="succeeded", raw=result, error=None)
             try:
                 self._stamp_result(result, timings, hits, params.case_indices)
             except (ValueError, TypeError, KeyError) as error:

@@ -1,9 +1,11 @@
 # Submit and recover evaluations
 
-Submit `torch_code`, `triton_code` and `cases` to `POST /evaluations`. Both code
-strings define `run(*args)`. The service builds its engine interface from these
-sources and cases; callers do not define `Model`, input factories, task IDs or
-catalog manifests. Candidate and reference code execute only in worker attempts.
+Submit `cases` and at least one of `torch_code` or `triton_code` to
+`POST /evaluations`. Each supplied source defines `run(*args)`. One implementation
+supports performance and profiling; both enable correctness and comparative
+performance. The service builds its engine interface from these sources and
+cases; callers do not define `Model`, input factories, task IDs or catalog
+manifests. Supplied code executes only in worker attempts.
 
 ## Describe cases
 
@@ -31,7 +33,7 @@ limits and optional execution controls.
 ## Submit
 
 Put your implementations in `torch_impl.py` and `triton_impl.py`, each exporting
-`run` with arguments matching the cases. Create the minimal request:
+`run` with arguments matching the cases. Create a comparison request:
 
 ```bash
 python - <<'PYREQUEST'
@@ -54,6 +56,22 @@ curl -sS -i "$EVALUATION_URL/evaluations?wait_seconds=0" \
   --data-binary @request.json
 ```
 
+For a single-implementation measurement, omit the other source field entirely.
+For example, the complete minimal PyTorch-only body is:
+
+```json
+{
+  "torch_code": "def run(x):\n    return x + 1\n",
+  "cases": [{"inputs": [{"shape": [1024], "dtype": "float32"}]}]
+}
+```
+
+For Triton-only execution, supply `triton_code` and the same case format; its
+`run` function launches the kernel. The [CLI examples](../../README.md#quick-start)
+show both single-source choices. Do not duplicate one implementation into both
+fields: a single-source measurement reports latency without a correctness
+verdict or a reference speedup.
+
 Authentication uses the capability registry for every evaluation endpoint.
 `Idempotency-Key` and `X-Session-ID` are optional. Provide a key for submissions
 that may need retrying; repeat the same request and headers against the same
@@ -63,12 +81,15 @@ related requests and applies the session quota. A session grants no authority.
 
 ## Choose checks
 
-`checks` defaults to `["correctness", "performance"]` on `/evaluations`.
+`checks` defaults to `["performance"]` with one implementation and
+`["correctness", "performance"]` with both on `/evaluations`. An explicit
+correctness check requires both sources.
 
 | Intent | `checks` |
 | --- | --- |
-| Correctness | `["correctness"]` |
-| Correctness and timing | `["correctness", "performance"]` |
+| Correctness (both sources) | `["correctness"]` |
+| Correctness and comparative timing (both sources) | `["correctness", "performance"]` |
+| One implementation's timing | `["performance"]` |
 | Profiling | `["profile"]` |
 | Syntax/import precheck | `["compile"]` |
 
@@ -84,12 +105,17 @@ worker for the whole attempt, including an explicitly requested compile check.
 
 ## Reuse Torch baseline timings
 
-Performance checks default to `performance.use_baseline_cache=true`. A cache
-hit reuses the Torch timing; a miss measures it and saves it for later
-evaluations. Correctness and candidate timing still execute. Reference outputs,
+Two-source performance comparisons default to
+`performance.use_baseline_cache=true`. A cache hit reuses the Torch baseline
+timing; a miss measures it and saves it for later evaluations. Correctness and
+candidate timing still execute. Reference outputs,
 input tensors and candidate results are not stored in this cache.
 
-For a fresh baseline used only by this evaluation, submit:
+Single-source benchmarks always perform fresh measurements without reading or
+writing the baseline cache. They accept the cache option for request compatibility,
+but it does not enable reuse or add a `baseline_cache_hit` result.
+
+For a fresh comparison baseline used only by this evaluation, submit:
 
 ```json
 {"performance": {"use_baseline_cache": false}}
@@ -107,7 +133,7 @@ produces a different identity. Whitespace changes in source also cause a miss.
 `performance.case_indices` chooses which cases to measure and can incrementally
 fill the same task's cache; changing the full cases list creates a new task.
 
-Each performance case reports `baseline_cache_hit`: `true` means its Torch timing
+Each comparison performance case reports `baseline_cache_hit`: `true` means its Torch timing
 came from an existing cache entry, and `false` means it was measured for this
 evaluation. Older stored results can omit the field. Redis cache errors fall
 back to fresh measurement. If a reference-only measurement cannot produce usable
@@ -133,6 +159,14 @@ GET returns HTTP 200 with the current resource. Pending states include
 `running`, `completed`, `failed` and `timed_out`. For `completed`, inspect each
 check result: a completed evaluation can establish that the candidate is wrong.
 Infrastructure failure does not establish a correctness verdict.
+
+Single-implementation performance data identifies `implementation` as `torch`
+or `triton`, includes `correctness_verified: false`, and reports each case's
+`latency_ms` under `per_case`. It contains no reference comparison or speedup.
+Single-implementation profile data carries the same implementation and
+correctness markers alongside its profiling evidence. Successful measurement or
+profiling does not establish correctness. Supply both sources and request
+correctness when a comparison is needed.
 
 `/livez` reports process liveness. `/readyz` checks Redis, credentials and
 compatible CPU/NPU workers. Admission checks the capacity needed for the request.

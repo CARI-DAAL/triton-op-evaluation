@@ -47,10 +47,9 @@ def test_minimal_request_and_durable_defaults():
     assert "official" not in durable.reference_code
 
 
-@pytest.mark.parametrize("field", ["torch_code", "triton_code", "cases"])
-def test_three_inputs_are_required(field):
+def test_cases_are_required():
     payload = request().model_dump()
-    payload.pop(field)
+    payload.pop("cases")
     with pytest.raises(ValidationError):
         OperatorRequest.model_validate(payload)
 

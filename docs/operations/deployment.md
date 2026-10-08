@@ -98,7 +98,9 @@ for provenance, retention and admission checks.
 
 ## Torch baseline cache
 
-Workers use the existing instance Redis to retain per-case Torch latency scalars.
+For two-source comparisons, workers use the existing instance Redis to retain
+per-case Torch baseline latency scalars. Single-source measurements bypass this
+cache entirely.
 No additional database or precomputation service is needed. Entries use
 `<redis_prefix>:baseline:<sha256>` keys; they contain a case count and measured
 latencies, not source code or tensors. Storage grows with distinct tasks and
