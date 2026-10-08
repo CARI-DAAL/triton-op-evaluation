@@ -52,7 +52,10 @@ _COUNT_SNIPPET = (
     "spec = importlib.util.spec_from_file_location('reference_module', sys.argv[1])\n"
     "module = importlib.util.module_from_spec(spec)\n"
     "spec.loader.exec_module(module)\n"
-    "if hasattr(module, 'get_input_groups'):\n"
+    "if getattr(module, '_ADAPTER_VERSION', None) == 'official-task-v1' "
+    "and callable(getattr(module, 'get_case_count', None)):\n"
+    "    total = module.get_case_count()\n"
+    "elif hasattr(module, 'get_input_groups'):\n"
     "    try:\n"
     "        total = len(module.get_input_groups())\n"
     "    except NotImplementedError:\n"
@@ -86,9 +89,17 @@ def _extract_validate_json(text: str) -> dict | None:
 
 
 class VerifyEvaluator:
-    def __init__(self, engine_dir: str, budget_cap_seconds: int = 1500):
+    def __init__(
+        self,
+        engine_dir: str,
+        budget_cap_seconds: int = 1500,
+        reference_device_policy: str = "cpu-first",
+    ):
+        if reference_device_policy not in {"cpu-first", "npu-strict"}:
+            raise ValueError("unsupported reference_device_policy")
         self.engine_dir = engine_dir
         self.budget_cap_seconds = budget_cap_seconds
+        self.reference_device_policy = reference_device_policy
 
     def run(
         self,
@@ -230,6 +241,8 @@ class VerifyEvaluator:
             str(budget),
             "--output",
             str(out_path),
+            "--reference-device-policy",
+            self.reference_device_policy,
         ]
         if request.non_compute:
             cmd.append("--non-compute")
@@ -246,7 +259,7 @@ class VerifyEvaluator:
         if outcome.timed_out or remaining_seconds(deadline_at) <= 0:
             # The outer kill is ambiguous: never a candidate execution timeout.
             return engine_timeout("correctness", "correctness exceeded the resource deadline")
-        result = read_json(str(out_path))
+        result = read_json(out_path, root=work_dir)
         if outcome.exit_code == _ENGINE_WATCHDOG_EXIT_CODE:
             # Whole-run watchdog: the legitimate workload outgrew the budget.
             # Not a crash, never retryable — raise the budget cap or deadline.

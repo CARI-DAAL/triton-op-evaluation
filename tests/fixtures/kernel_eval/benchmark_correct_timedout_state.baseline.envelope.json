@@ -1,0 +1,32 @@
+{
+ "correct": true,
+ "correctness_raw": {
+  "decoy": false,
+  "domain_failure": null,
+  "failures": [],
+  "outcome": "correct",
+  "passed": true,
+  "passed_cases": 51,
+  "total_cases": 51
+ },
+ "decoy": false,
+ "speedup": 0.0,
+ "compiled": true,
+ "error": null,
+ "error_class": null,
+ "max_abs_err": null,
+ "mean_abs_err": null,
+ "pass_rate": null,
+ "infra_error": false,
+ "total_cases": 51,
+ "passed_cases": 51,
+ "failures": [],
+ "benchmark_available": false,
+ "benchmark": null,
+ "action": "benchmark",
+ "artifact_sha256": "aa29605787c5510c483c1c66ac5f4f5c28c5ac7060e7ff6b73f19333e14bc909",
+ "eval_turn": 1,
+ "eval_budget": "1/18",
+ "request_status": "completed",
+ "observation": "[kernel_eval]\naction=benchmark\nartifact_sha256=aa29605787c5510c483c1c66ac5f4f5c28c5ac7060e7ff6b73f19333e14bc909\neval_budget=1/18\nrequest_status=completed\n[kernel_eval][benchmark][unavailable] verify_cases=51/51"
+}

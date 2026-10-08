@@ -14,6 +14,7 @@ import threading
 import time
 from collections.abc import Callable
 from datetime import datetime, timezone
+from pathlib import Path
 
 import redis
 
@@ -26,12 +27,13 @@ from triton_evaluation.api.contract import (
     EvaluationRequest,
     EvaluationResult,
 )
-from triton_evaluation.api.contract_artifacts import canonical_json_bytes, sha256_hex
 from triton_evaluation.config import Settings
 from triton_evaluation.evaluators.base import LeaseLostError
 from triton_evaluation.evaluators.evaluation import EvaluationEvaluator
+from triton_evaluation.runtime import health
 from triton_evaluation.runtime.execution_environment import build_execution_environment
 from triton_evaluation.runtime.precheck import run_precheck
+from triton_evaluation.serialization import canonical_json_bytes, sha256_hex
 from triton_evaluation.service.broker import EvaluationStore
 from triton_evaluation.service.models import (
     AlgorithmVersions,
@@ -42,8 +44,6 @@ from triton_evaluation.service.models import (
 )
 from triton_evaluation.service.terminal_results import complete_evaluation
 
-from . import health
-
 logger = logging.getLogger(__name__)
 
 _BACKOFF_CAP_SECONDS = 30
@@ -52,7 +52,7 @@ _MAINTENANCE_BATCH = 100
 
 def _algorithms(settings: Settings) -> AlgorithmVersions:
     return AlgorithmVersions(
-        correctness=settings.correctness_algorithm_version,
+        correctness=settings.effective_correctness_algorithm_version,
         decoy=settings.decoy_algorithm_version,
         benchmark=settings.benchmark_algorithm_version,
         profiler=settings.profiler_algorithm_version,
@@ -152,6 +152,33 @@ class FencedProgress:
 class _CorruptedRequestError(RuntimeError):
     """The stored canonical request bytes no longer round-trip canonically."""
 
+
+
+def _retryable_engine_failure(result: EvaluationResult) -> bool:
+    """An engine failed without check data; the crash's origin is unknown.
+
+    A candidate crash can also lose the engine's output. Opt-in retries are
+    bounded by the existing attempt budget and never repeat produced evidence,
+    timeouts, or non-retryable failures. Inconclusive prechecks may accompany
+    the engine failure; they provide no evidence either.
+    """
+    engine_failed = False
+    for check in ("compile", "correctness", "performance", "profile"):
+        outcome = getattr(result, check)
+        if outcome is None or outcome.status == "skipped":
+            continue
+        if (
+            outcome.status != "failed"
+            or outcome.data is not None
+            or outcome.error is None
+            or not outcome.error.retryable
+        ):
+            return False
+        engine_failed |= (
+            outcome.error.code == "EVALUATOR_EXECUTION_FAILED"
+            and outcome.error.phase == "execution"
+        )
+    return engine_failed
 
 
 class Worker:
@@ -335,13 +362,36 @@ class Worker:
                         self._health.mark_suspicious()
                     return
 
+            retryable_failure = _retryable_engine_failure(validated)
+            if retryable_failure and self._health is not None:
+                self._health.mark_suspicious()
             if self._clock() >= lease.deadline_at_ms:
                 self._commit_deadline(lease, request.checks, progress.saved)
+                return
+            if (
+                self.settings.engine_failure_requeue
+                and retryable_failure
+                and self.store.requeue_retryable_engine_failure(
+                    lease, failed_card=self.device_id
+                )
+            ):
+                # No check evidence: retry only under the deployment's explicit
+                # policy. The fault may originate in the candidate itself.
+                logger.warning(
+                    "requeued retryable engine failure of attempt %s on card %s",
+                    lease.attempt_id, self.device_id,
+                )
                 return
             # False means another winner already terminalized the resource.
             self.store.commit_terminal(lease, "completed", validated)
         finally:
             if work_dir is not None:
+                if self.settings.reference_diagnostics_dir is not None:
+                    from triton_evaluation.reference_diagnostics import retain_reference_diagnostics
+
+                    retain_reference_diagnostics(
+                        self.settings, lease, Path(work_dir), self.device_id,
+                    )
                 shutil.rmtree(work_dir, ignore_errors=True)
 
     @staticmethod

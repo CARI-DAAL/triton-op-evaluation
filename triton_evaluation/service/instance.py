@@ -37,15 +37,14 @@ class EvaluationInstance:
 
     def __init__(
         self, *, settings: Settings, store: EvaluationStore,
-        catalog: ReleaseCatalog, metrics=None, artifacts_verified: bool = False,
+        catalog: ReleaseCatalog, metrics=None,
     ) -> None:
         self.settings = settings
         self.store = store
         self.catalog = catalog
         self.metrics = metrics
-        self.artifacts_verified = artifacts_verified
         self._algorithms = AlgorithmVersions(
-            correctness=settings.correctness_algorithm_version,
+            correctness=settings.effective_correctness_algorithm_version,
             decoy=settings.decoy_algorithm_version,
             benchmark=settings.benchmark_algorithm_version,
             profiler=settings.profiler_algorithm_version,
@@ -108,9 +107,6 @@ class EvaluationInstance:
         return True
 
     def _require_ready(self, execution_class: ExecutionClass) -> None:
-        if not self.artifacts_verified:
-            self._bump("worker_compatibility_total", outcome="incompatible")
-            raise InstanceNotReadyError()
         if not self.store.probe_storage():
             raise QueueUnavailableError()
         compatible = self.store.has_fresh_compatible_worker(WorkerCompatibility(

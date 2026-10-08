@@ -1,0 +1,588 @@
+{
+  "tasks_with_omitted_parameters": 9,
+  "default_types": {
+    "NoneType": 64,
+    "bool": 5,
+    "int": 13,
+    "float": 2,
+    "str": 3
+  },
+  "tasks": [
+    {
+      "problem_id": "official_l3_GroupedMatmul",
+      "cases": 45,
+      "fields": {
+        "offsets": {
+          "missing_cases": 31,
+          "default_expr": "None",
+          "literal_type": "NoneType",
+          "literal_value": null
+        }
+      }
+    },
+    {
+      "problem_id": "official_l4_FusionAttention",
+      "cases": 61,
+      "fields": {
+        "actual_seq_kvlen": {
+          "missing_cases": 61,
+          "default_expr": "None",
+          "literal_type": "NoneType",
+          "literal_value": null
+        },
+        "actual_seq_qlen": {
+          "missing_cases": 61,
+          "default_expr": "None",
+          "literal_type": "NoneType",
+          "literal_value": null
+        },
+        "atten_mask": {
+          "missing_cases": 57,
+          "default_expr": "None",
+          "literal_type": "NoneType",
+          "literal_value": null
+        },
+        "gen_mask_parallel": {
+          "missing_cases": 59,
+          "default_expr": "True",
+          "literal_type": "bool",
+          "literal_value": true
+        },
+        "inner_precise": {
+          "missing_cases": 51,
+          "default_expr": "0",
+          "literal_type": "int",
+          "literal_value": 0
+        },
+        "keep_prob": {
+          "missing_cases": 57,
+          "default_expr": "1.0",
+          "literal_type": "float",
+          "literal_value": 1.0
+        },
+        "next_tockens": {
+          "missing_cases": 56,
+          "default_expr": "2147483647",
+          "literal_type": "int",
+          "literal_value": 2147483647
+        },
+        "padding_mask": {
+          "missing_cases": 61,
+          "default_expr": "None",
+          "literal_type": "NoneType",
+          "literal_value": null
+        },
+        "pre_tockens": {
+          "missing_cases": 56,
+          "default_expr": "2147483647",
+          "literal_type": "int",
+          "literal_value": 2147483647
+        },
+        "prefix": {
+          "missing_cases": 61,
+          "default_expr": "None",
+          "literal_type": "NoneType",
+          "literal_value": null
+        },
+        "pse": {
+          "missing_cases": 52,
+          "default_expr": "None",
+          "literal_type": "NoneType",
+          "literal_value": null
+        },
+        "scale": {
+          "missing_cases": 44,
+          "default_expr": "1.0",
+          "literal_type": "float",
+          "literal_value": 1.0
+        },
+        "sink": {
+          "missing_cases": 55,
+          "default_expr": "None",
+          "literal_type": "NoneType",
+          "literal_value": null
+        },
+        "softmax_layout": {
+          "missing_cases": 61,
+          "default_expr": "''",
+          "literal_type": "str",
+          "literal_value": ""
+        },
+        "sparse_mode": {
+          "missing_cases": 52,
+          "default_expr": "0",
+          "literal_type": "int",
+          "literal_value": 0
+        },
+        "sync": {
+          "missing_cases": 59,
+          "default_expr": "False",
+          "literal_type": "bool",
+          "literal_value": false
+        }
+      }
+    },
+    {
+      "problem_id": "official_l4_SparseFlashAttention",
+      "cases": 72,
+      "fields": {
+        "block_table": {
+          "missing_cases": 70,
+          "default_expr": "None",
+          "literal_type": "NoneType",
+          "literal_value": null
+        },
+        "next_tokens": {
+          "missing_cases": 72,
+          "default_expr": "None",
+          "literal_type": "NoneType",
+          "literal_value": null
+        },
+        "pre_tokens": {
+          "missing_cases": 72,
+          "default_expr": "None",
+          "literal_type": "NoneType",
+          "literal_value": null
+        },
+        "return_softmax_lse": {
+          "missing_cases": 70,
+          "default_expr": "False",
+          "literal_type": "bool",
+          "literal_value": false
+        }
+      }
+    },
+    {
+      "problem_id": "official_l4_FusedInferAttentionScore",
+      "cases": 50,
+      "fields": {
+        "actual_seq_lengths": {
+          "missing_cases": 50,
+          "default_expr": "None",
+          "literal_type": "NoneType",
+          "literal_value": null
+        },
+        "actual_seq_lengths_kv": {
+          "missing_cases": 50,
+          "default_expr": "None",
+          "literal_type": "NoneType",
+          "literal_value": null
+        },
+        "actual_shared_prefix_len": {
+          "missing_cases": 50,
+          "default_expr": "None",
+          "literal_type": "NoneType",
+          "literal_value": null
+        },
+        "antiquant_mode": {
+          "missing_cases": 50,
+          "default_expr": "0",
+          "literal_type": "int",
+          "literal_value": 0
+        },
+        "antiquant_offset": {
+          "missing_cases": 50,
+          "default_expr": "None",
+          "literal_type": "NoneType",
+          "literal_value": null
+        },
+        "antiquant_scale": {
+          "missing_cases": 50,
+          "default_expr": "None",
+          "literal_type": "NoneType",
+          "literal_value": null
+        },
+        "atten_mask": {
+          "missing_cases": 10,
+          "default_expr": "None",
+          "literal_type": "NoneType",
+          "literal_value": null
+        },
+        "block_size": {
+          "missing_cases": 50,
+          "default_expr": "0",
+          "literal_type": "int",
+          "literal_value": 0
+        },
+        "block_table": {
+          "missing_cases": 50,
+          "default_expr": "None",
+          "literal_type": "NoneType",
+          "literal_value": null
+        },
+        "dequant_scale1": {
+          "missing_cases": 50,
+          "default_expr": "None",
+          "literal_type": "NoneType",
+          "literal_value": null
+        },
+        "dequant_scale2": {
+          "missing_cases": 50,
+          "default_expr": "None",
+          "literal_type": "NoneType",
+          "literal_value": null
+        },
+        "inner_precise": {
+          "missing_cases": 50,
+          "default_expr": "0",
+          "literal_type": "int",
+          "literal_value": 0
+        },
+        "key_antiquant_mode": {
+          "missing_cases": 50,
+          "default_expr": "0",
+          "literal_type": "int",
+          "literal_value": 0
+        },
+        "key_antiquant_offset": {
+          "missing_cases": 50,
+          "default_expr": "None",
+          "literal_type": "NoneType",
+          "literal_value": null
+        },
+        "key_antiquant_scale": {
+          "missing_cases": 50,
+          "default_expr": "None",
+          "literal_type": "NoneType",
+          "literal_value": null
+        },
+        "key_rope": {
+          "missing_cases": 50,
+          "default_expr": "None",
+          "literal_type": "NoneType",
+          "literal_value": null
+        },
+        "key_rope_antiquant_scale": {
+          "missing_cases": 50,
+          "default_expr": "None",
+          "literal_type": "NoneType",
+          "literal_value": null
+        },
+        "key_shared_prefix": {
+          "missing_cases": 50,
+          "default_expr": "None",
+          "literal_type": "NoneType",
+          "literal_value": null
+        },
+        "kv_padding_size": {
+          "missing_cases": 50,
+          "default_expr": "None",
+          "literal_type": "NoneType",
+          "literal_value": null
+        },
+        "next_tokens": {
+          "missing_cases": 50,
+          "default_expr": "2147483647",
+          "literal_type": "int",
+          "literal_value": 2147483647
+        },
+        "pre_tokens": {
+          "missing_cases": 50,
+          "default_expr": "2147483647",
+          "literal_type": "int",
+          "literal_value": 2147483647
+        },
+        "pse_shift": {
+          "missing_cases": 50,
+          "default_expr": "None",
+          "literal_type": "NoneType",
+          "literal_value": null
+        },
+        "quant_offset2": {
+          "missing_cases": 50,
+          "default_expr": "None",
+          "literal_type": "NoneType",
+          "literal_value": null
+        },
+        "quant_scale1": {
+          "missing_cases": 50,
+          "default_expr": "None",
+          "literal_type": "NoneType",
+          "literal_value": null
+        },
+        "quant_scale2": {
+          "missing_cases": 50,
+          "default_expr": "None",
+          "literal_type": "NoneType",
+          "literal_value": null
+        },
+        "query_padding_size": {
+          "missing_cases": 50,
+          "default_expr": "None",
+          "literal_type": "NoneType",
+          "literal_value": null
+        },
+        "query_rope": {
+          "missing_cases": 50,
+          "default_expr": "None",
+          "literal_type": "NoneType",
+          "literal_value": null
+        },
+        "softmax_lse_flag": {
+          "missing_cases": 50,
+          "default_expr": "False",
+          "literal_type": "bool",
+          "literal_value": false
+        },
+        "value_antiquant_mode": {
+          "missing_cases": 50,
+          "default_expr": "0",
+          "literal_type": "int",
+          "literal_value": 0
+        },
+        "value_antiquant_offset": {
+          "missing_cases": 50,
+          "default_expr": "None",
+          "literal_type": "NoneType",
+          "literal_value": null
+        },
+        "value_antiquant_scale": {
+          "missing_cases": 50,
+          "default_expr": "None",
+          "literal_type": "NoneType",
+          "literal_value": null
+        },
+        "value_shared_prefix": {
+          "missing_cases": 50,
+          "default_expr": "None",
+          "literal_type": "NoneType",
+          "literal_value": null
+        }
+      }
+    },
+    {
+      "problem_id": "official_l4_QuantMatmul",
+      "cases": 57,
+      "fields": {
+        "bias": {
+          "missing_cases": 40,
+          "default_expr": "None",
+          "literal_type": "NoneType",
+          "literal_value": null
+        },
+        "group_sizes": {
+          "missing_cases": 54,
+          "default_expr": "None",
+          "literal_type": "NoneType",
+          "literal_value": null
+        },
+        "offset": {
+          "missing_cases": 57,
+          "default_expr": "None",
+          "literal_type": "NoneType",
+          "literal_value": null
+        },
+        "pertoken_scale": {
+          "missing_cases": 49,
+          "default_expr": "None",
+          "literal_type": "NoneType",
+          "literal_value": null
+        }
+      }
+    },
+    {
+      "problem_id": "official_l4_WeightQuantBatchmatmul",
+      "cases": 48,
+      "fields": {
+        "antiquant_group_size": {
+          "missing_cases": 28,
+          "default_expr": "0",
+          "literal_type": "int",
+          "literal_value": 0
+        },
+        "antiquant_offset": {
+          "missing_cases": 12,
+          "default_expr": "None",
+          "literal_type": "NoneType",
+          "literal_value": null
+        },
+        "bias": {
+          "missing_cases": 15,
+          "default_expr": "None",
+          "literal_type": "NoneType",
+          "literal_value": null
+        },
+        "quant_offset": {
+          "missing_cases": 48,
+          "default_expr": "None",
+          "literal_type": "NoneType",
+          "literal_value": null
+        },
+        "quant_scale": {
+          "missing_cases": 48,
+          "default_expr": "None",
+          "literal_type": "NoneType",
+          "literal_value": null
+        }
+      }
+    },
+    {
+      "problem_id": "official_l4_GroupedMatmulSwigluQuantV2",
+      "cases": 50,
+      "fields": {
+        "bias": {
+          "missing_cases": 50,
+          "default_expr": "None",
+          "literal_type": "NoneType",
+          "literal_value": null
+        },
+        "dequant_dtype": {
+          "missing_cases": 50,
+          "default_expr": "0",
+          "literal_type": "int",
+          "literal_value": 0
+        },
+        "smooth_scale": {
+          "missing_cases": 50,
+          "default_expr": "None",
+          "literal_type": "NoneType",
+          "literal_value": null
+        },
+        "tuning_config": {
+          "missing_cases": 50,
+          "default_expr": "None",
+          "literal_type": "NoneType",
+          "literal_value": null
+        },
+        "weight_assist_matrix": {
+          "missing_cases": 50,
+          "default_expr": "None",
+          "literal_type": "NoneType",
+          "literal_value": null
+        }
+      }
+    },
+    {
+      "problem_id": "official_l4_LightningIndexer",
+      "cases": 20,
+      "fields": {
+        "block_table": {
+          "missing_cases": 20,
+          "default_expr": "None",
+          "literal_type": "NoneType",
+          "literal_value": null
+        },
+        "layout_key": {
+          "missing_cases": 20,
+          "default_expr": "'BSND'",
+          "literal_type": "str",
+          "literal_value": "BSND"
+        },
+        "layout_query": {
+          "missing_cases": 20,
+          "default_expr": "'BSND'",
+          "literal_type": "str",
+          "literal_value": "BSND"
+        },
+        "next_tokens": {
+          "missing_cases": 20,
+          "default_expr": "None",
+          "literal_type": "NoneType",
+          "literal_value": null
+        },
+        "pre_tokens": {
+          "missing_cases": 20,
+          "default_expr": "None",
+          "literal_type": "NoneType",
+          "literal_value": null
+        },
+        "return_value": {
+          "missing_cases": 17,
+          "default_expr": "False",
+          "literal_type": "bool",
+          "literal_value": false
+        }
+      }
+    },
+    {
+      "problem_id": "official_l4_FFN",
+      "cases": 53,
+      "fields": {
+        "antiquant_offset1": {
+          "missing_cases": 53,
+          "default_expr": "None",
+          "literal_type": "NoneType",
+          "literal_value": null
+        },
+        "antiquant_offset2": {
+          "missing_cases": 53,
+          "default_expr": "None",
+          "literal_type": "NoneType",
+          "literal_value": null
+        },
+        "antiquant_scale1": {
+          "missing_cases": 53,
+          "default_expr": "None",
+          "literal_type": "NoneType",
+          "literal_value": null
+        },
+        "antiquant_scale2": {
+          "missing_cases": 53,
+          "default_expr": "None",
+          "literal_type": "NoneType",
+          "literal_value": null
+        },
+        "bias1": {
+          "missing_cases": 47,
+          "default_expr": "None",
+          "literal_type": "NoneType",
+          "literal_value": null
+        },
+        "bias2": {
+          "missing_cases": 47,
+          "default_expr": "None",
+          "literal_type": "NoneType",
+          "literal_value": null
+        },
+        "deq_scale1": {
+          "missing_cases": 51,
+          "default_expr": "None",
+          "literal_type": "NoneType",
+          "literal_value": null
+        },
+        "deq_scale2": {
+          "missing_cases": 51,
+          "default_expr": "None",
+          "literal_type": "NoneType",
+          "literal_value": null
+        },
+        "expert_tokens": {
+          "missing_cases": 42,
+          "default_expr": "None",
+          "literal_type": "NoneType",
+          "literal_value": null
+        },
+        "expert_tokens_index": {
+          "missing_cases": 53,
+          "default_expr": "None",
+          "literal_type": "NoneType",
+          "literal_value": null
+        },
+        "inner_precise": {
+          "missing_cases": 2,
+          "default_expr": "None",
+          "literal_type": "NoneType",
+          "literal_value": null
+        },
+        "offset": {
+          "missing_cases": 51,
+          "default_expr": "None",
+          "literal_type": "NoneType",
+          "literal_value": null
+        },
+        "output_dtype": {
+          "missing_cases": 49,
+          "default_expr": "None",
+          "literal_type": "NoneType",
+          "literal_value": null
+        },
+        "scale": {
+          "missing_cases": 51,
+          "default_expr": "None",
+          "literal_type": "NoneType",
+          "literal_value": null
+        }
+      }
+    }
+  ]
+}

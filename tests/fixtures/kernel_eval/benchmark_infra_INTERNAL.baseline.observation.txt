@@ -1,0 +1,6 @@
+[kernel_eval]
+action=benchmark
+artifact_sha256=762d0a65e4a30a49d1836ef438c3adcc15c8537748dfcfbcff9cf2df8c7f634d
+eval_budget=1/18
+request_status=infra_error
+error=INTERNAL: unattributed case failure: RuntimeError: Possible Cause: 1. The resources have been occupied. 2. The device is being reset. 3. Software is not ready. Solution: 1. Close applications not in use. 2. Wait for a while and try again. TraceBack (most recent call last): rtGetDeviceCount execution failed, reason=driver error:internal error[FUNC:FuncErrorReason][FILE:error_message_manage.cc][LINE:61] get device count failed, runtime result = 507899.[FUNC:ReportCallError][FILE:log_inner.cpp][LINE:148] Get device cnt 

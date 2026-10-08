@@ -1,37 +1,56 @@
-"""Capability authentication dependencies.
+"""Bearer dependencies resolve capabilities before admitting any work."""
+from typing import Annotated
 
-Authentication precedes body parsing: these dependencies resolve the caller
-from the Authorization header before any JSON is read. Credential failures
-are indistinguishable by design.
-"""
-from fastapi import Depends, Request
+from fastapi import Depends
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from ..service.security import Caller, CapabilityRegistry
 from . import errors
-from .dependencies import get_context
+from .dependencies import AppContext, get_context
+
+capability_bearer = HTTPBearer(
+    scheme_name="CapabilityBearer", auto_error=False,
+    description="Capability token; submit/read/observer scope depends on the operation.",
+)
+tool_bearer = HTTPBearer(
+    scheme_name="KernelToolBearer", auto_error=False,
+    description="Dedicated kernel tool token, separate from capability credentials.",
+)
 
 SUBMIT_SCOPES = ("trial:submit", "grade:submit")
 READ_SCOPES = ("trial:read", "grade:read", "observer:read")
 
 
-def authenticate(request: Request, registry: CapabilityRegistry) -> Caller:
+def authenticate(
+    credential: HTTPAuthorizationCredentials | None, registry: CapabilityRegistry,
+) -> Caller:
     try:
-        return registry.authenticate(request.headers.get("Authorization"))
+        header = f"Bearer {credential.credentials}" if credential else None
+        return registry.authenticate(header)
     except Exception:
         raise errors.unauthenticated() from None
 
 
-def require_submit_caller(
-    request: Request, context=Depends(get_context)
+def require_caller(
+    context: Annotated[AppContext, Depends(get_context)],
+    credential: Annotated[HTTPAuthorizationCredentials | None, Depends(capability_bearer)],
 ) -> Caller:
-    caller = authenticate(request, context.registry)
+    return authenticate(credential, context.registry)
+
+
+def require_submit_caller(caller: Annotated[Caller, Depends(require_caller)]) -> Caller:
     if not any(scope in caller.scopes for scope in SUBMIT_SCOPES):
         raise errors.forbidden("caller lacks any submit scope")
     return caller
 
 
-def require_read_caller(request: Request, context=Depends(get_context)) -> Caller:
-    caller = authenticate(request, context.registry)
+def require_read_caller(caller: Annotated[Caller, Depends(require_caller)]) -> Caller:
     if not any(scope in caller.scopes for scope in READ_SCOPES):
         raise errors.forbidden("caller lacks any read scope")
+    return caller
+
+
+def require_observer(caller: Annotated[Caller, Depends(require_caller)]) -> Caller:
+    if "observer:read" not in caller.scopes:
+        raise errors.forbidden("metrics require observer scope")
     return caller

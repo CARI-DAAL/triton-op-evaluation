@@ -1,0 +1,7 @@
+[kernel_eval]
+action=profile
+artifact_sha256=6c7f7a0752ce4255770c3acf0f731c38fc1e3462aeba79d464032da0d02945a6
+eval_budget=1/18
+request_status=completed
+[kernel_eval][profile][timeout] task_status=TIMEOUT
+error=resource deadline expired

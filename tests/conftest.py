@@ -11,8 +11,8 @@ from triton_evaluation.api.contract import (
     EvaluationResult,
     Provenance,
 )
-from triton_evaluation.api.contract_artifacts import sha256_hex
 from triton_evaluation.config import Settings
+from triton_evaluation.serialization import sha256_hex
 from triton_evaluation.service.admission import admit
 from triton_evaluation.service.broker import EvaluationStore
 from triton_evaluation.service.catalog import ReleaseCatalog

@@ -56,6 +56,7 @@ from ..api.contract import (
     PerformanceCase,
     PerformanceResult,
     ProfileCounts,
+    ProfileParams,
     ProfileResult,
     SampleElement,
     StrictModel,
@@ -428,6 +429,13 @@ def shape_correctness(raw: dict[str, object], decoy: bool) -> CorrectnessResult:
 class _ShapeMeasurement(StrictModel):
     avg_latency_ms: float
     peak_memory_mb: float
+    latency_samples_ms: list[float] | None = None
+    latency_samples_source: str | None = None
+    latency_samples_proof_sha256: str | None = None
+    # Engine-private per-case record of which reference path served the case
+    # (cached_manifest | historical_validated | fresh_measurements |
+    # original_measurements); not part of the public contract.
+    reference_path: str | None = None
 
 
 class _AggregateMeasurement(StrictModel):
@@ -476,6 +484,9 @@ class _BenchmarkResult(StrictModel):
     speedup_vs_torch: float | None
     measurement_method: MeasurementMethod | None = None
     per_shape_results: list[_PerShapeResult]
+    # One-based original identities of the cases this run measured; None means
+    # the full contiguous task (legacy engine output).
+    case_indices: list[Annotated[int, Field(ge=1)]] | None = None
 
     @model_validator(mode="after")
     def _counts_and_identity(self):
@@ -486,8 +497,6 @@ class _BenchmarkResult(StrictModel):
         indices = [case.case_idx for case in self.per_shape_results]
         if len(set(indices)) != len(indices):
             raise ValueError("duplicate case_idx")
-        if any(index > self.total_cases for index in indices):
-            raise ValueError("case_idx out of range")
         abnormal = (
             self.nan_indices
             + self.inf_indices
@@ -497,8 +506,21 @@ class _BenchmarkResult(StrictModel):
         )
         if len(set(abnormal)) != len(abnormal):
             raise ValueError("abnormal-speedup index lists overlap")
-        if any(index < 1 or index > self.total_cases for index in abnormal):
-            raise ValueError("abnormal-speedup index out of range")
+        if self.case_indices is not None:
+            if len(self.case_indices) != self.total_cases:
+                raise ValueError("case_indices must cover every selected case")
+            if len(set(self.case_indices)) != len(self.case_indices):
+                raise ValueError("case_indices must be unique")
+            allowed = set(self.case_indices)
+            if any(index not in allowed for index in indices):
+                raise ValueError("case_idx outside the declared selection")
+            if any(index not in allowed for index in abnormal):
+                raise ValueError("abnormal-speedup index outside the declared selection")
+        else:
+            if any(index > self.total_cases for index in indices):
+                raise ValueError("case_idx out of range")
+            if any(index < 1 or index > self.total_cases for index in abnormal):
+                raise ValueError("abnormal-speedup index out of range")
         by_index = {case.case_idx: case for case in self.per_shape_results}
         for index in abnormal:
             case = by_index[index]
@@ -536,6 +558,9 @@ def shape_performance(raw: dict[str, object]) -> PerformanceResult:
                 reference_latency_ms=reference,
                 speedup_vs_reference=reference / implementation,
                 measurement_method=case.measurement_method,
+                reference_latency_samples_ms=case.framework.latency_samples_ms,
+                reference_latency_samples_source=case.framework.latency_samples_source,
+                reference_timing_policy_sha256=case.framework.latency_samples_proof_sha256,
             )
         )
     if not per_case:
@@ -819,19 +844,64 @@ def _deep_case(case: _ProfileCase) -> DeepProfileCase:
 
 
 def shape_profile(raw: dict[str, object]) -> ProfileResult:
-    envelope = _parse(_ProfileEnvelope, raw, "profile")
+    return _shape_profile_envelopes([_parse(_ProfileEnvelope, raw, "profile")])
+
+
+class _ProfileRuns(StrictModel):
+    """Service collection of untouched, separately emitted engine envelopes."""
+
+    profile_runs: list[_ProfileEnvelope]
+
+
+def shape_profile_runs(raw: dict[str, object], params: ProfileParams) -> ProfileResult:
+    """Validate each observation and its requested identity before combining it.
+
+    The runner collects envelopes without rewriting completion or selection
+    evidence. Only this boundary understands the private profile protocol.
+    Presentation options are applied after validation, so hiding recommendations
+    cannot repair malformed engine output.
+    """
+    if params.case_indices is None:
+        envelopes = [_parse(_ProfileEnvelope, raw, "profile")]
+        if envelopes[0].requested_case_idx is not None:
+            raise ShapingError("all-case profile reported a selected-case invocation")
+        if envelopes[0].selected_cases != envelopes[0].total_cases:
+            raise ShapingError("all-case profile does not cover the reference cases")
+    else:
+        envelopes = _parse(_ProfileRuns, raw, "profile runs").profile_runs
+        if not params.case_indices or len(envelopes) != len(params.case_indices):
+            raise ShapingError("profile invocation count differs from requested selection")
+        for index, envelope in zip(params.case_indices, envelopes, strict=True):
+            if envelope.requested_case_idx != index or [
+                case.case_idx for case in envelope.per_case_results
+            ] != [index]:
+                raise ShapingError("profile evidence differs from the requested case")
+    if any(envelope.profile_mode != params.mode for envelope in envelopes):
+        raise ShapingError("profile evidence differs from the requested mode")
+    if len({envelope.total_cases for envelope in envelopes}) != 1:
+        raise ShapingError("profile invocations disagree on reference case count")
+    result = _shape_profile_envelopes(envelopes)
+    if not params.include_recommendations and result.mode == "deep":
+        for case in result.cases:
+            case.recommendations = []
+    return result
+
+
+def _shape_profile_envelopes(envelopes: list[_ProfileEnvelope]) -> ProfileResult:
+    """Project validated observations directly, without synthesizing engine JSON."""
     counts = ProfileCounts(
-        selected=envelope.selected_cases,
-        complete=envelope.completed_cases,
-        partial=envelope.partial_cases,
-        failed=envelope.failed_cases,
+        selected=sum(envelope.selected_cases for envelope in envelopes),
+        complete=sum(envelope.completed_cases for envelope in envelopes),
+        partial=sum(envelope.partial_cases for envelope in envelopes),
+        failed=sum(envelope.failed_cases for envelope in envelopes),
     )
-    if envelope.profile_mode == "op":
+    cases = [case for envelope in envelopes for case in envelope.per_case_results]
+    if envelopes[0].profile_mode == "op":
         return _checked(
             lambda: OpProfileResult(
                 mode="op",
                 counts=counts,
-                cases=[_op_case(case) for case in envelope.per_case_results],
+                cases=[_op_case(case) for case in cases],
             ),
             "profile",
         )
@@ -839,7 +909,7 @@ def shape_profile(raw: dict[str, object]) -> ProfileResult:
         lambda: DeepProfileResult(
             mode="deep",
             counts=counts,
-            cases=[_deep_case(case) for case in envelope.per_case_results],
+            cases=[_deep_case(case) for case in cases],
         ),
         "profile",
     )

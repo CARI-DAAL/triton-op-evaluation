@@ -57,12 +57,12 @@ from triton_evaluation.api.contract import (
     EvaluationResult,
     dump_contract,
 )
-from triton_evaluation.api.contract_artifacts import (
+from triton_evaluation.config import Settings
+from triton_evaluation.serialization import (
     canonical_json_bytes,
     load_canonical,
     sha256_hex,
 )
-from triton_evaluation.config import Settings
 from triton_evaluation.service.models import (
     AlgorithmVersions,
     AttemptLease,
@@ -409,8 +409,9 @@ class EvaluationStore:
         state, revision, and started time and consumes the higher token the reaper
         reserved. Past-deadline members never start; duplicate members for claimed
         resources are removed. ``avoid_card`` skips members whose stored
-        ``last_failed_card`` matches (affinity avoidance): the member stays in the
-        queue for a worker on another card. ``card`` records the actual executing
+        ``last_failed_card`` matches (affinity avoidance): engine-failure retries
+        bound that avoidance by ``engine_retry_avoid_until_ms``; lease-loss
+        recovery keeps its existing exclusion policy. ``card`` records the actual executing
         card independently of affinity policy. Its advisory publication is owned
         by this method: failure never discards an already committed claim.
         """
@@ -460,8 +461,12 @@ class EvaluationStore:
                     if (
                         avoid_card is not None
                         and stored.get(b"last_failed_card") == str(avoid_card).encode()
+                        and (
+                            b"engine_retry_avoid_until_ms" not in stored
+                            or now_ms < int(stored[b"engine_retry_avoid_until_ms"])
+                        )
                     ):
-                        continue  # affinity avoidance: another card may claim it
+                        continue  # give another card the first chance at recovery
                     resource = EvaluationResource.model_validate_json(stored[b"resource"])
                     if now_ms >= int(stored[b"deadline_ms"]):
                         continue  # the deadline watchdog owns this resource
@@ -558,6 +563,9 @@ class EvaluationStore:
                 "attempt_card": "",
             },
         )
+        # The bounded avoidance belongs to the previous engine-failure retry,
+        # never to a later lease loss or another attempt's failure.
+        pipeline.hdel(resource_key, "engine_retry_avoid_until_ms")
         pipeline.zrem(ready_key, member)
         pipeline.zadd(leases_key, {evaluation_id: lease_expiry_ms})
         return AttemptLease(
@@ -684,6 +692,81 @@ class EvaluationStore:
     # ------------------------------------------------------------------
     # Terminal commit
     # ------------------------------------------------------------------
+
+    def requeue_retryable_engine_failure(
+        self, lease: AttemptLease, *, failed_card: int | None = None
+    ) -> bool:
+        """Requeue this running resource after a retryable engine failure.
+
+        Shares the lease-reaper's replacement transition (bumped
+        fencing token, ``replacement_pending``, fresh ready member, shared
+        ``MAX_ATTEMPTS`` claim budget across lease losses and engine failures).
+        The failed attempt's card is published as ``last_failed_card`` so the
+        affinity avoidance gives another card priority for at most one lease
+        window, capped at half the remaining resource deadline. Afterwards the
+        original worker may retry, subject to its mandatory health probe.
+        ``False`` means fenced out, past the deadline, or budget exhausted —
+        the caller terminalizes exactly as before this path existed.
+        """
+        resource_key = self._key(f"resource:{lease.evaluation_id}")
+        while True:
+            now_ms = self._clock()
+            pipeline = self._r.pipeline()
+            try:
+                pipeline.watch(resource_key)
+                stored = pipeline.hgetall(resource_key)
+                if not stored or not self._fence_conditions_met(stored, lease, now_ms):
+                    self.note_fenced_write()
+                    return False
+                if int(stored[b"attempt_count"]) >= MAX_ATTEMPTS:
+                    return False  # shared attempt budget exhausted
+                avoidance_ms = min(
+                    self._s.lease_seconds * 1000,
+                    (int(stored[b"deadline_ms"]) - now_ms) // 2,
+                )
+                metadata = (
+                    {
+                        "last_failed_card": str(failed_card),
+                        "engine_retry_avoid_until_ms": str(now_ms + avoidance_ms),
+                    }
+                    if failed_card is not None
+                    else {}
+                )
+                self._queue_replacement(
+                    pipeline, lease.evaluation_id, stored, metadata,
+                )
+                return True
+            except redis.WatchError:
+                continue
+            finally:
+                pipeline.reset()
+
+    def _queue_replacement(
+        self, pipeline, evaluation_id: str, stored: dict, metadata: dict,
+    ) -> None:
+        """Commit replacement work while the caller WATCHes the resource."""
+        ready_key = self._ready_key(
+            self._stored_traffic_class(stored), stored[b"execution_class"].decode("utf-8"),
+        )
+        sequence_key = self._key("queue-sequence")
+        pipeline.watch(ready_key, sequence_key)
+        successor = int(pipeline.get(sequence_key) or 0) + 1
+        pipeline.multi()
+        pipeline.set(sequence_key, successor)
+        pipeline.hset(
+            self._key(f"resource:{evaluation_id}"),
+            mapping={
+                "attempt_id": "",
+                "fencing_token": str(int(stored[b"fencing_token"]) + 1),
+                "replacement_pending": "1",
+                "active_check": "",
+                "lease_deadline_ms": "0",
+                **metadata,
+            },
+        )
+        pipeline.zrem(self._key("running-leases"), evaluation_id)
+        pipeline.zadd(ready_key, {evaluation_id: successor})
+        pipeline.execute()
 
     def commit_terminal(
         self, lease: AttemptLease, state: TerminalState, result: EvaluationResult
@@ -837,7 +920,6 @@ class EvaluationStore:
         evaluation_id = member.decode("utf-8")
         resource_key = self._key(f"resource:{evaluation_id}")
         leases_key = self._key("running-leases")
-        sequence_key = self._key("queue-sequence")
         while True:
             pipeline = self._r.pipeline()
             try:
@@ -898,28 +980,7 @@ class EvaluationStore:
                         )
                     return "failed"
                 if int(stored[b"attempt_count"]) < MAX_ATTEMPTS:
-                    ready_key = self._ready_key(
-                        self._stored_traffic_class(stored),
-                        stored[b"execution_class"].decode("utf-8"),
-                    )
-                    pipeline.watch(ready_key, sequence_key)
-                    successor = int(pipeline.get(sequence_key) or 0) + 1
-                    pipeline.multi()
-                    pipeline.set(sequence_key, successor)
-                    pipeline.hset(
-                        resource_key,
-                        mapping={
-                            "attempt_id": "",
-                            "fencing_token": str(int(stored[b"fencing_token"]) + 1),
-                            "replacement_pending": "1",
-                            "active_check": "",
-                            "lease_deadline_ms": "0",
-                            **metadata,
-                        },
-                    )
-                    pipeline.zrem(leases_key, member)
-                    pipeline.zadd(ready_key, {evaluation_id: successor})
-                    pipeline.execute()
+                    self._queue_replacement(pipeline, evaluation_id, stored, metadata)
                     return "requeued"
                 result = self._failure_result(
                     stored,

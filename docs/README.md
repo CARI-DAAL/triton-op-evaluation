@@ -1,0 +1,38 @@
+# Documentation
+
+The running service exposes its HTTP schemas at `/openapi.json` and interactive
+documentation at `/docs`. These pages explain workflows and behavior that a schema
+alone cannot convey.
+
+## Use the service
+
+- [Submit, poll and recover evaluations](usage/evaluations.md)
+- [Official-task tools: verify, benchmark and profile](usage/kernel-eval.md)
+
+## Operate an instance
+
+- [Deploy on one or multiple hosts](operations/deployment.md)
+- [Recovery, retries and upgrades](operations/recovery.md)
+- [Register and replay official tasks](operations/official-task-registration.md)
+- [Prepare the profiler runtime](operations/profiler-runtime.md)
+- [Prepare and use reference caches](operations/reference-cache.md)
+
+## Understand the implementation
+
+- [Domain vocabulary](../README.md#domain-vocabulary)
+- [Kernel evaluation caller intent](architecture/kernel-evaluation.md)
+- [Profile evidence ownership](architecture/profile-evidence.md)
+- [Card health](architecture/card-health.md)
+- [Attempt card provenance](architecture/attempt-card-provenance.md)
+- [Engine sandbox](architecture/engine-sandbox.md)
+- [Reference device policy](architecture/reference-device-policy.md)
+- [Official candidate input defaults](architecture/candidate-input-defaults.md)
+
+## Maintain it
+
+- [Contributing and repository conventions](../README.md#contributing)
+- [Test guide](../tests/README.md)
+- [Supported scripts](../scripts/README.md)
+- [Instance ownership decision](adr/0001-evaluation-instance-ownership.md)
+- [Admission and evidence decision](adr/0002-admission-before-execution.md)
+- [Historical designs and retired experiments](history.md)

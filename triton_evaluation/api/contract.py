@@ -7,11 +7,11 @@ model is strict: unknown fields, scalar coercion, and non-finite ordinary
 floats are rejected; NaN/Inf exist only as explicit string sentinels inside
 correctness samples.
 
-The supported interface is documented in
-``docs/architecture/evaluations-v21-contract.md`` and published under
-``contracts/evaluation-api/2.1``.
+FastAPI derives its OpenAPI schemas from these models. Recorded wire examples
+live in the test suite and are not needed to import or run the service.
 """
 import math
+import statistics
 from collections.abc import Callable
 from datetime import datetime
 from typing import Annotated, Generic, Literal, TypeVar
@@ -69,6 +69,9 @@ def utf8_len(max_bytes: int) -> Callable[[str], str]:
     return _check
 
 
+SourceCode = Annotated[str, AfterValidator(utf8_len(MAX_SOURCE_BYTES))]
+
+
 def redacted_text(max_bytes: int) -> Callable[[str], str]:
     """Return a validator for single-line redacted text bounded in UTF-8 bytes."""
 
@@ -92,6 +95,19 @@ class PerformanceParams(StrictModel):
     warmup: int = Field(default=5, ge=0, le=100)
     repeats: int = Field(default=50, ge=1, le=1000)
     method: Literal["event", "profiler"] = "event"
+    # Zero-based original case identities, mirroring ProfileParams. None keeps
+    # full-task performance coverage; the engine preserves original indices.
+    case_indices: list[Annotated[int, Field(ge=0)]] | None = Field(
+        default=None, max_length=128
+    )
+
+    @model_validator(mode="after")
+    def _case_indices_unique_then_sorted(self):
+        if self.case_indices is not None:
+            if len(set(self.case_indices)) != len(self.case_indices):
+                raise ValueError("case_indices must not contain duplicates")
+            self.case_indices = sorted(self.case_indices)
+        return self
 
 
 class ProfileParams(StrictModel):
@@ -118,11 +134,21 @@ class GradeContext(StrictModel):
 
 
 class EvaluationRequest(StrictModel):
+    """A durable request for evaluation evidence.
+
+    Checks must be unique. Performance requires correctness; performance and
+    profile parameters may only accompany their corresponding checks. Grade
+    requests require grade_context; trial and rollout requests cannot carry it.
+    Omitted check parameters use their declared defaults. Each source string
+    is limited to 2 MiB of UTF-8. Accepted work survives HTTP wait expiration
+    and is recovered by ID or by replaying the same idempotent submission.
+    """
+
     schema_version: SchemaVersion
     purpose: Purpose = "trial"
     op_name: str = Field(min_length=1, max_length=128)
-    reference_code: Annotated[str, AfterValidator(utf8_len(MAX_SOURCE_BYTES))]
-    kernel_code: Annotated[str, AfterValidator(utf8_len(MAX_SOURCE_BYTES))]
+    reference_code: SourceCode
+    kernel_code: SourceCode
     triton_impl_name: str = Field(
         default="triton_ascend_impl", min_length=1, max_length=128
     )
@@ -375,6 +401,11 @@ class InputShape(StrictModel):
     dtype: str | None = None
 
 
+ReferenceLatencySamplesSource = Literal[
+    "fresh_measurements", "cached_manifest", "historical_validated"
+]
+
+
 class PerformanceCase(StrictModel):
     case_idx: Annotated[int, Field(ge=0)]
     input_shapes: list[InputShape]
@@ -382,6 +413,41 @@ class PerformanceCase(StrictModel):
     reference_latency_ms: Annotated[float, Field(gt=0)]
     speedup_vs_reference: Annotated[float, Field(gt=0)]
     measurement_method: MeasurementMethod | None = None
+    # The eight reference-timing measurements behind reference_latency_ms.
+    # Absent when no sample evidence exists (for example a legacy scalar);
+    # present values are always real measurements, never fabricated.
+    reference_latency_samples_ms: list[Annotated[float, Field(gt=0)]] | None = None
+    reference_latency_samples_source: ReferenceLatencySamplesSource | None = None
+    # Proof identity for historical_validated samples: the SHA256 of the
+    # owner-adopted validated timing-reuse policy artifact that authorized
+    # serving these historical measurements on this runtime.
+    reference_timing_policy_sha256: Digest | None = None
+
+    @model_validator(mode="after")
+    def _reference_samples_match_source_and_median(self):
+        samples = self.reference_latency_samples_ms
+        if samples is None:
+            if self.reference_latency_samples_source is not None:
+                raise ValueError("reference_latency_samples_source requires samples")
+            if self.reference_timing_policy_sha256 is not None:
+                raise ValueError("reference_timing_policy_sha256 requires samples")
+            return self
+        if self.reference_latency_samples_source is None:
+            raise ValueError("reference latency samples require a source label")
+        if len(samples) != 8:
+            raise ValueError("reference latency samples must be exactly eight measurements")
+        if self.reference_latency_samples_source == "historical_validated":
+            if self.reference_timing_policy_sha256 is None:
+                raise ValueError("historical_validated samples require the policy digest")
+        elif self.reference_timing_policy_sha256 is not None:
+            raise ValueError(
+                "reference_timing_policy_sha256 belongs to historical_validated samples"
+            )
+        median = statistics.median(samples)
+        # The engine rounds the public scalar to four decimals.
+        if not math.isclose(median, self.reference_latency_ms, rel_tol=0, abs_tol=5.01e-5):
+            raise ValueError("reference_latency_ms must equal the median of its samples")
+        return self
 
 
 class UnmeasuredPerformanceCase(StrictModel):
@@ -654,7 +720,7 @@ class EvaluationResult(StrictModel):
 
 def dump_contract(model: StrictModel) -> bytes:
     """Serialize the sole public contract as canonical JSON, preserving null slots."""
-    from .contract_artifacts import canonical_json_bytes
+    from ..serialization import canonical_json_bytes
 
     return canonical_json_bytes(model.model_dump(mode="json", exclude_none=False))
 

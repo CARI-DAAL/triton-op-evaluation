@@ -523,6 +523,167 @@ def test_ensure_npu_ambient_device_switches_when_available(monkeypatch):
     assert switched == ["npu"]
 
 
+def test_ensure_npu_ambient_device_retries_transient_unavailability(monkeypatch):
+    """drvGetDevNum 瞬态失败：有界等待重试后设备出现，绝不选择 CPU。"""
+    from triton_evaluation.engine import _common_utils
+
+    monkeypatch.setattr(_common_utils, "AMBIENT_POLL_SECONDS", 0.0)
+    torch = _fake_torch_module()
+    calls = {"n": 0}
+
+    def flaky():
+        calls["n"] += 1
+        return calls["n"] > 2  # 两次瞬态失败后设备出现
+
+    torch.npu.is_available = flaky
+    switched = []
+    torch.set_default_device = switched.append
+
+    assert _common_utils.ensure_npu_ambient_device(torch, wait_seconds=5.0) is True
+    assert calls["n"] == 3
+    assert switched == ["npu"]
+
+
+def test_ensure_npu_ambient_device_stops_at_bounded_deadline(monkeypatch):
+    """等待耗尽仍不可用则返回 False（调用方立刻显式失败），不循环不回退。"""
+    from triton_evaluation.engine import _common_utils
+
+    monkeypatch.setattr(_common_utils, "AMBIENT_POLL_SECONDS", 0.0)
+    torch = _fake_torch_module()
+    calls = {"n": 0}
+
+    def never():
+        calls["n"] += 1
+        return False
+
+    torch.npu.is_available = never
+    switched = []
+    torch.set_default_device = switched.append
+
+    assert _common_utils.ensure_npu_ambient_device(torch, wait_seconds=0.05) is False
+    assert calls["n"] >= 2
+    assert switched == []
+
+
+def test_npu_strict_guard_raises_only_after_bounded_wait(tmp_path, monkeypatch):
+    """npu-strict 守护保留大声 fail-fast：有界等待耗尽后仍抛同样错误。"""
+    from triton_evaluation.engine import _common_utils
+
+    monkeypatch.setattr(_common_utils, "AMBIENT_POLL_SECONDS", 0.0)
+    monkeypatch.setattr(verify, "_AMBIENT_WAIT_CAP_SECONDS", 0.05)
+    reference = SimpleNamespace(
+        Model=object,
+        get_init_inputs=lambda: [],
+        get_inputs=lambda: [17],
+    )
+
+    def fake_import_module(name):
+        if name == "histc_torch":
+            return reference
+        if name == "histc_triton_ascend_impl":
+            raise TypeError("boom")
+        raise AssertionError(f"unexpected module import: {name}")
+
+    torch = _fake_torch_module()
+    torch.npu.is_available = lambda: False
+    monkeypatch.setitem(sys.modules, "torch", torch)
+    monkeypatch.setitem(sys.modules, "torch_npu", ModuleType("torch_npu"))
+    monkeypatch.setattr(verify.importlib, "import_module", fake_import_module)
+    monkeypatch.setattr(verify.sys, "path", list(verify.sys.path))
+
+    with pytest.raises(RuntimeError, match="npu-strict reference requires the ambient NPU device"):
+        verify.verify_implementations(
+            "histc",
+            str(tmp_path),
+            reference_device_policy="npu-strict",
+            subject_budget_seconds=30,
+        )
+
+
+def test_npu_strict_guard_recovers_within_bounded_wait(tmp_path, monkeypatch):
+    """瞬态窗口内恢复：守护等待后继续执行，不把基础设施瞬态当失败。"""
+    from triton_evaluation.engine import _common_utils
+
+    monkeypatch.setattr(_common_utils, "AMBIENT_POLL_SECONDS", 0.0)
+    reference = SimpleNamespace(
+        Model=object,
+        get_init_inputs=lambda: [],
+        get_inputs=lambda: [17],
+    )
+
+    def fake_import_module(name):
+        if name == "histc_torch":
+            return reference
+        if name == "histc_triton_ascend_impl":
+            raise TypeError("boom")
+        raise AssertionError(f"unexpected module import: {name}")
+
+    torch = _fake_torch_module()
+    calls = {"n": 0}
+
+    def flaky():
+        calls["n"] += 1
+        return calls["n"] > 1  # 首次瞬态失败，重试后设备出现
+
+    torch.npu.is_available = flaky
+    torch.set_default_device = lambda _name: None
+    monkeypatch.setitem(sys.modules, "torch", torch)
+    monkeypatch.setitem(sys.modules, "torch_npu", ModuleType("torch_npu"))
+    monkeypatch.setattr(verify.importlib, "import_module", fake_import_module)
+    monkeypatch.setattr(verify.sys, "path", list(verify.sys.path))
+
+    output = tmp_path / "verify_result.json"
+    assert verify.verify_implementations(
+        "histc",
+        str(tmp_path),
+        output_path=str(output),
+        reference_device_policy="npu-strict",
+        subject_budget_seconds=30,
+    ) == (0, 1)  # CompilationError 归因 —— 引擎已通过守护继续执行
+    assert calls["n"] == 2
+
+
+def test_ensure_npu_ambient_device_default_wait_follows_policy(monkeypatch):
+    """未显式传 wait_seconds 的调用点（benchmark / profile runner）由部署策略推导：
+    npu-strict 有界等待恢复，其余（含未配置）保持单次探测。"""
+    from triton_evaluation.engine import _common_utils
+
+    monkeypatch.setattr(_common_utils, "AMBIENT_POLL_SECONDS", 0.0)
+    calls = {"n": 0}
+
+    def flaky():
+        calls["n"] += 1
+        return calls["n"] > 1
+
+    torch = _fake_torch_module()
+    torch.npu.is_available = flaky
+    torch.set_default_device = lambda _name: None
+
+    monkeypatch.setenv("TRITON_EVAL_REFERENCE_DEVICE_POLICY", "npu-strict")
+    assert _common_utils.ensure_npu_ambient_device(torch) is True
+    assert calls["n"] == 2  # 默认等待吸收了首次瞬态失败
+
+    calls["n"] = 0
+    torch.npu.is_available = lambda: False
+    monkeypatch.setenv("TRITON_EVAL_REFERENCE_DEVICE_POLICY", "cpu-first")
+    assert _common_utils.ensure_npu_ambient_device(torch) is False
+    assert calls["n"] == 0  # cpu-first：单次探测，不进入等待循环
+
+    monkeypatch.delenv("TRITON_EVAL_REFERENCE_DEVICE_POLICY")
+    assert _common_utils.ensure_npu_ambient_device(torch, wait_seconds=0.0) is False
+
+
+def test_benchmark_npu_strict_fails_loud_without_ambient_device():
+    """benchmark 在 npu-strict 下同样大声失败：不静默退回 CPU 物化路径。
+    （该字节变更使 timing-reuse policy 目标指纹不再匹配 → 回退 fresh。）"""
+    from triton_evaluation.engine import benchmark
+
+    text = open(benchmark.__file__, encoding="utf-8").read()
+    assert "npu-strict benchmark requires the ambient NPU device" in text
+    assert "wait_seconds=_ambient_wait" in text
+    assert "set_default_device" not in text.replace("ensure_npu_ambient_device", "")
+
+
 class _KwOnlyModel:
     """Mimics lv4 references: forward(self, x1, x2, *, s1=None, s2=None)."""
 

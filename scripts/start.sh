@@ -63,29 +63,8 @@ if [[ -n "${TRITON_EVAL_ENGINE_DIR:-}" && ! -d "${TRITON_EVAL_ENGINE_DIR}" ]]; t
   exit 2
 fi
 
-cd "${ROOT_DIR}"
-
-# Fail closed before launching: the published contract artifacts must verify and,
-# when a capability secret / catalog are configured, they must load.
-if ! "${PYTHON_BIN}" - <<'PYSTART'
-import sys
-
-from triton_evaluation.api.contract_artifacts import (
-    CONTRACT_ROOT,
-    build_artifacts,
-    verify_artifacts,
-)
-
-problems = verify_artifacts(CONTRACT_ROOT, build_artifacts())
-if problems:
-    sys.exit("contract artifacts failed verification")
-PYSTART
-then
-  echo "artifact verification failed; refusing to start" >&2
-  exit 2
-fi
-
 mkdir -p "${LOG_DIR}"
+cd "${ROOT_DIR}"
 
 pids=()
 cleanup() {

@@ -1,0 +1,7 @@
+[kernel_eval]
+action=profile
+artifact_sha256=d69d2816d0453f4ca5e618b973455d7379dfac7dadc3363645a66b07182e2332
+eval_budget=1/18
+request_status=completed
+[kernel_eval][profile][failed] task_status=FAILED
+error=EVALUATOR_EXECUTION_FAILED: profile engine produced no usable result

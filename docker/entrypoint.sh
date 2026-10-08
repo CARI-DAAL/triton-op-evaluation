@@ -43,27 +43,17 @@ fi
 
 cd /opt/triton-eval
 
-# --- Fail closed before API/workers: artifacts, secret/catalog, build equality, bind ---
+# --- Fail closed before API/workers: secret/catalog, build equality, bind ---
 # The host preflight owns image/digest verification (no docker socket is mounted in the
 # container by design); this boundary re-verifies everything reachable in-process.
 verify_readiness() {
   "${PYTHON_BIN}" - <<'PYREADINESS'
+import os
 import sys
 
-from triton_evaluation.api.contract_artifacts import (
-    CONTRACT_ROOT,
-    build_artifacts,
-    verify_artifacts,
-)
 from triton_evaluation.service.catalog import ReleaseCatalog
-from triton_evaluation.service.security import CapabilityRegistry
-
-problems = verify_artifacts(CONTRACT_ROOT, build_artifacts())
-if problems:
-    sys.exit(f"contract artifacts failed verification: {len(problems)} file(s)")
-import os
-
 from triton_evaluation.config import Settings
+from triton_evaluation.service.security import CapabilityRegistry
 
 settings = Settings.from_env()
 try:

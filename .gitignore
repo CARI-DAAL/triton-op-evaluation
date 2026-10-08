@@ -6,6 +6,15 @@ __pycache__/
 .worktrees/
 .venv/
 .env
+docker.env
+.ruff_cache/
+.coverage
+htmlcov/
+build/
+dist/
+/.claude/
+/.codex/
+/.agents/
 logs/
 /spike-cache/
 /spike-cold-cache/

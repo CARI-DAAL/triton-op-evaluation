@@ -1,4 +1,5 @@
 """Durable evaluation API application factory."""
+
 import asyncio
 import logging
 from contextlib import asynccontextmanager
@@ -11,6 +12,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from . import errors
 from .contract import ErrorEnvelope
 from .dependencies import AppContext
+from .kernel_eval import router as kernel_eval_router
 from .middleware import RequestIdBodyLimitMiddleware, new_request_id
 from .routes import router
 
@@ -51,19 +53,8 @@ def _count_error_response(request: Request, error: errors.ApiError) -> None:
 def create_app(context: AppContext) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI):
-        # Fail closed before serving: verify published artifact bytes and
-        # load security/catalog data. A development credential is never
-        # constructed here — only the configured secret file is loaded.
-        from ..api.contract_artifacts import (
-            CONTRACT_ROOT,
-            build_artifacts,
-            verify_artifacts,
-        )
-
-        problems = verify_artifacts(CONTRACT_ROOT, build_artifacts())
-        if problems:
-            raise RuntimeError("published contract artifacts failed verification")
-        context.instance.artifacts_verified = True
+        # Runtime readiness depends on durable storage and compatible workers;
+        # schemas and golden examples are verified by tests, never at startup.
         context.instance.store.probe_storage()  # fail fast when the store rejects writes
 
         stop = asyncio.Event()
@@ -79,6 +70,7 @@ def create_app(context: AppContext) -> FastAPI:
     app.state.context = context
     app.add_middleware(RequestIdBodyLimitMiddleware)
     app.include_router(router)
+    app.include_router(kernel_eval_router)
     _install_exception_handlers(app)
     return app
 
@@ -92,9 +84,7 @@ async def _maintenance_loop(context: AppContext, stop: asyncio.Event) -> None:
         try:
             await asyncio.to_thread(_run_maintenance, context)
         except Exception as error:  # noqa: BLE001 — a daemon loop never dies
-            logger.warning(
-                "api maintenance error (%s); continuing", type(error).__name__
-            )
+            logger.warning("api maintenance error (%s); continuing", type(error).__name__)
         try:
             await asyncio.wait_for(stop.wait(), timeout=interval)
         except asyncio.TimeoutError:
@@ -115,13 +105,15 @@ def _install_exception_handlers(app: FastAPI) -> None:
 
     @app.exception_handler(RequestValidationError)
     async def handle_validation(request: Request, exc: RequestValidationError):
-        return _envelope_response(request, errors.invalid_request_schema(
-            "request failed schema validation"
-        ))
+        return _envelope_response(
+            request, errors.invalid_request_schema("request failed schema validation")
+        )
 
     @app.exception_handler(StarletteHTTPException)
     async def handle_http_error(request: Request, exc: StarletteHTTPException):
-        if exc.status_code == 404:
+        if exc.status_code == 400:
+            error = errors.invalid_request("request body could not be parsed")
+        elif exc.status_code == 404:
             error = errors.not_found()
         elif exc.status_code == 405:
             error = errors.not_found()

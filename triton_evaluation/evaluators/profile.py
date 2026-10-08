@@ -2,8 +2,9 @@
 
 Profile is independent of the correctness verdict. The engine profiles one
 explicit ``--case-idx`` per run, so a multi-index selection is executed as
-sequential engine runs in case order and merged back into one envelope; any
-timeout or failure aborts the whole check as an infrastructure outcome.
+sequential engine runs in case order. Raw envelopes are collected unchanged;
+the shaping boundary validates their identities before combining evidence.
+Any timeout or failure aborts the whole check as an infrastructure outcome.
 """
 import sys
 from pathlib import Path
@@ -24,40 +25,6 @@ from .base import (
 # The engine requires --timeout within [10, 86400].
 _MIN_ENGINE_TIMEOUT_SECONDS = 10
 _MAX_ENGINE_TIMEOUT_SECONDS = 86400
-
-
-def _merge_profile_envelopes(envelopes: list[dict]) -> dict:
-    """Merge sequential single-case engine envelopes into one protocol envelope."""
-    merged = dict(envelopes[0])
-    cases = []
-    warnings = []
-    wallclock = 0.0
-    for envelope in envelopes:
-        cases.extend(envelope["per_case_results"])
-        warnings.extend(envelope["warnings"])
-        wallclock += envelope["wallclock_sec"]
-    completed = sum(case["status"] == "complete" for case in cases)
-    partial = sum(case["status"] == "partial" for case in cases)
-    failed = sum(case["status"] == "failed" for case in cases)
-    merged.update(
-        {
-            "requested_case_idx": None,
-            "selected_cases": len(cases),
-            "completed_cases": completed,
-            "partial_cases": partial,
-            "failed_cases": failed,
-            "remaining_case_indices": [],
-            "timed_out": False,
-            "summary_text": (
-                f"profile mode={merged['profile_mode']}: complete={completed}, "
-                f"partial={partial}, failed={failed}, remaining=0"
-            ),
-            "warnings": warnings,
-            "wallclock_sec": wallclock,
-            "per_case_results": cases,
-        }
-    )
-    return merged
 
 
 class ProfileEvaluator:
@@ -94,10 +61,7 @@ class ProfileEvaluator:
                 if result.status != "succeeded":
                     return result
                 envelopes.append(result.raw)
-            raw = _merge_profile_envelopes(envelopes)
-        if not params.include_recommendations:
-            for case in raw["per_case_results"]:
-                case["recommendations"] = []
+            raw = {"profile_runs": envelopes}
         return EngineCheckResult(status="succeeded", raw=raw, error=None)
 
     def _run_once(
@@ -151,7 +115,7 @@ class ProfileEvaluator:
             return engine_timeout("profile", "profile exceeded the resource deadline")
         if remaining_seconds(deadline_at) <= 0:
             return engine_timeout("profile", "profile exceeded the resource deadline")
-        result = read_json(str(out_path))
+        result = read_json(out_path, root=work_dir)
         if outcome.exit_code == 0 and isinstance(result, dict):
             return EngineCheckResult(status="succeeded", raw=result, error=None)
         return engine_failure("profile", "profile engine produced no usable result")

@@ -1,0 +1,12 @@
+{
+ "origin": {
+  "branch": "budget_exhausted",
+  "note": "bridge-internal: no resource exists"
+ },
+ "params": {
+  "action": "verify",
+  "kernel_code": "def kernel(): pass\n",
+  "eval_budget": "18/18"
+ },
+ "resource": null
+}

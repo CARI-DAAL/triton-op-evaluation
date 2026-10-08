@@ -6,7 +6,7 @@ import pytest
 from pydantic import ValidationError
 
 from triton_evaluation.api.contract import EvaluationRequest
-from triton_evaluation.api.contract_artifacts import canonical_json_bytes, sha256_hex
+from triton_evaluation.serialization import canonical_json_bytes, sha256_hex
 from triton_evaluation.service.admission import ForbiddenError, admit
 from triton_evaluation.service.catalog import ManifestBindingError, ReleaseCatalog
 from triton_evaluation.service.security import Caller

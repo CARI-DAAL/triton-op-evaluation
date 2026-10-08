@@ -142,18 +142,32 @@ async def test_inconclusive_compile_is_not_inferred_from_failed_correctness(
 ):
     from test_evaluation_evaluator import StubCheck
 
-    app = app_with_precheck(tmp_path, release_catalog_files)
+    app = app_with_precheck(tmp_path, release_catalog_files, engine_failure_requeue=True)
     seed_worker(app)
     evaluator = Harness(verify=StubCheck(engine_failure("correctness", "runtime unavailable")))
-    worker = build_worker(app.store, app.settings, evaluator, app.clock)
+    worker = build_worker(
+        app.store, app.settings, evaluator, app.clock, canary=lambda **kwargs: True,
+    )
+    other_card = build_worker(
+        app.store, app.settings, evaluator, app.clock, device_id=1,
+        canary=lambda **kwargs: True,
+    )
     async with app.http as client:
         response = await post(client, payload(
             ["compile", "correctness"], "raise OSError('temporarily unavailable')"
         ))
+        eid = response.json()["evaluation_id"]
+        # Opt-in engine failures without check evidence requeue under the shared
+        # attempt budget instead of terminalizing the first attempt; the
+        # failed card's own worker skips the requeued member (affinity).
         assert worker.run_once()
-        got = await client.get(
-            f"/evaluations/{response.json()['evaluation_id']}", headers=trial_headers()
-        )
+        requeued = await client.get(f"/evaluations/{eid}", headers=trial_headers())
+        assert requeued.json()["state"] == "running"
+        assert not worker.run_once()  # card 0 is avoided by last_failed_card
+        assert other_card.run_once()  # attempt 2 on another card, requeued again
+        assert worker.run_once()      # attempt 3: budget exhausted, terminal
+        got = await client.get(f"/evaluations/{eid}", headers=trial_headers())
+    assert got.json()["state"] == "completed"
     result = got.json()["result"]
     assert result["compile"]["status"] == "failed"
     assert result["compile"]["data"] is None

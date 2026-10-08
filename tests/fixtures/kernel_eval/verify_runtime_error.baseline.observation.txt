@@ -1,0 +1,7 @@
+[kernel_eval]
+action=verify
+artifact_sha256=94ccde4ca338da5b0fc6b25268ae0598d84fb500b616fc6ec0a2e02ff58eb698
+eval_budget=1/18
+request_status=completed
+[kernel_eval][verify][jit_compile_error] cases=4/50
+error=[case 4] RuntimeError: candidate execution raised MLIRCompilationError

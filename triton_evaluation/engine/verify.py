@@ -46,7 +46,8 @@ REQUIRED_MATCHED_RATIO = 0.9
 
 # golden（参考输出）优先落在 CPU：fp32 精确计算、与 NPU 负载解耦；参考实现
 # 调 npu:: 专有算子、或 CPU 不支持该 dtype/格式时回退到 NPU 重试。只有回退
-# 后仍失败才判该用例失败；精度判定本身不受 golden 落点影响（沙箱语义）。
+# 后仍失败才判该用例失败。比较公式不变，但不同设备的数值舍入可能不同。
+# npu-strict 是另一个明确冻结的协议，只使用 NPU reference，不回退设备。
 GOLDEN_DEVICE_CPU = "cpu"
 ALLCLOSE_TOLS_STR = {
     "float32": (1e-3, 2**(-13)),  # 2**(-13)=1.220703125e-4
@@ -121,6 +122,11 @@ class CaseContext:
     total_cases: int
     # 单次候选执行预算秒数（correctness_algorithm 的一部分）；None 表示不启用。
     subject_budget_seconds: object = None
+    # Private device observations; never input/output values or public verdict data.
+    reference_trace: object = None
+    # A pinned manifest and independently owned CPU output, or None on a real miss.
+    cached_reference: object = None
+    reference_cache_status: object = None
 
 
 @dataclass
@@ -139,6 +145,7 @@ class ModelPair:
     framework: object
     impl: object
     golden_device: object = None
+    reference_input_model: object = None
 
 
 @dataclass
@@ -156,9 +163,11 @@ class InputSpec:
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from _log_utils import setup_logger as _setup_logger_shared  # noqa: E402	 
 from _common_utils import build_input_groups as _build_input_groups_shared  # noqa: E402
+from _common_utils import AMBIENT_WAIT_SECONDS as _AMBIENT_WAIT_CAP_SECONDS  # noqa: E402
 from _common_utils import ensure_npu_ambient_device as _ensure_npu_ambient_shared  # noqa: E402
 from _common_utils import describe_input as _describe_input_shared  # noqa: E402
 from _common_utils import enforce_conv_fp32 as _enforce_conv_fp32  # noqa: E402
+from _common_utils import prepare_candidate_inputs as _prepare_candidate_inputs_shared  # noqa: E402
 from _common_utils import invoke_model as _invoke_model_shared  # noqa: E402
 from _common_utils import set_process_title as _set_process_title  # noqa: E402
 from _divergence import classify_divergence as _classify_divergence  # noqa: E402
@@ -1082,20 +1091,39 @@ def run_single_case(models: ModelPair, inputs, device, case_ctx: CaseContext, no
     input_type, input_dtype = _infer_input_type(inputs)
 
     golden_device = models.golden_device or device
+    trace = case_ctx.reference_trace[-1] if case_ctx.reference_trace else None
+    candidate_inputs = _prepare_candidate_inputs_shared(
+        models.reference_input_model or models.framework, inputs, trace=trace,
+    )
     inputs_for_impl = [
         x.to(device) if isinstance(x, torch.Tensor) else x
-        for x in inputs
+        for x in candidate_inputs
     ]
-    inputs_for_framework = [
-        x.to(golden_device) if isinstance(x, torch.Tensor) else x
-        for x in inputs
-    ]
+    inputs_for_framework = None
+    if case_ctx.cached_reference is None:
+        inputs_for_framework = [
+            x.to(golden_device) if isinstance(x, torch.Tensor) else x
+            for x in inputs
+        ]
 
     with torch.no_grad():
         impl_output = _run_candidate_forward(
             models.impl, inputs_for_impl, case_ctx.subject_budget_seconds
         )
-        framework_output = _invoke_model_shared(models.framework, inputs_for_framework)
+        if case_ctx.cached_reference is None:
+            framework_output = _invoke_model_shared(models.framework, inputs_for_framework)
+        else:
+            framework_output = case_ctx.cached_reference[1]
+
+    if case_ctx.reference_trace is not None:
+        outputs = framework_output if isinstance(framework_output, (list, tuple)) else [framework_output]
+        case_ctx.reference_trace[-1].update({
+            "reference_completed": case_ctx.cached_reference is None,
+            "output_devices": [
+                {"output_index": i, "device": str(value.device)}
+                for i, value in enumerate(outputs) if isinstance(value, torch.Tensor)
+            ],
+        })
 
     if not isinstance(framework_output, (list, tuple)):
         framework_output = [framework_output]
@@ -1208,16 +1236,50 @@ def _attempt_case(modules, case_ctx: CaseContext, inputs, device,
     """在指定 golden_device 上跑一遍；成功返回 None，失败把异常抛给调用方。"""
     framework_model = None
     impl_model = None
+    if case_ctx.reference_trace is not None:
+        case_ctx.reference_trace.append({
+            "case_idx": case_ctx.case_idx,
+            "selected_reference_device": str(golden_device),
+            "reference_completed": False,
+            "output_devices": [],
+            # Per-case reference source: cache (sealed output compared with the
+            # unchanged tolerance) or fresh (reference computed on this run).
+            "reference_source": "cache" if case_ctx.cached_reference is not None else "fresh",
+        })
+    if case_ctx.reference_trace is not None and case_ctx.reference_cache_status is not None:
+        case_ctx.reference_trace[-1]["reference_cache_status"] = case_ctx.reference_cache_status
+        if case_ctx.cached_reference is not None:
+            from triton_evaluation.reference_cache import canonical_bytes, sha256
+            manifest = case_ctx.cached_reference[0]
+            case_ctx.reference_trace[-1].update({
+                "reference_manifest_sha256": sha256(canonical_bytes(manifest.model_dump(mode="json"))),
+                "reference_binding_sha256": manifest.binding.key,
+                "reference_output_sha256": manifest.output_sha256,
+            })
     try:
-        framework_model, impl_model = _instantiate_models(
-            modules["framework_cls"],
-            modules["impl_cls"],
-            modules["get_init_inputs"],
-            device,
-            golden_device=golden_device,
-        )
+        if case_ctx.cached_reference is None:
+            framework_model, impl_model = _instantiate_models(
+                modules["framework_cls"],
+                modules["impl_cls"],
+                modules["get_init_inputs"],
+                device,
+                golden_device=golden_device,
+            )
+        else:
+            # Do not instantiate or execute the reference on a cache hit. The candidate
+            # receives the exact same seed and initialization contract as the live path.
+            import torch
+            init_params = modules["get_init_inputs"]()
+            torch.manual_seed(0)
+            torch.npu.manual_seed(0)
+            try:
+                impl_model = modules["impl_cls"](*init_params).to(device)
+            except Exception as exc:
+                raise _CandidateInitializeError(
+                    f"candidate initialization failed: {type(exc).__name__}"
+                ) from exc
         run_single_case(
-            ModelPair(framework_model, impl_model, golden_device), inputs, device,
+            ModelPair(framework_model, impl_model, golden_device, modules.get("framework_cls")), inputs, device,
             case_ctx, non_compute=non_compute,
         )
     finally:
@@ -1226,15 +1288,26 @@ def _attempt_case(modules, case_ctx: CaseContext, inputs, device,
         cleanup_npu_memory()
 
 
-def _try_run_case(modules, case_ctx: CaseContext, inputs, device, non_compute=False):
+def _try_run_case(modules, case_ctx: CaseContext, inputs, device, non_compute=False,
+                  reference_device_policy="cpu-first"):
     """执行单个 case：成功返回 (True, None)；失败返回 (False, failure_dict)。
 
-    golden 优先落 CPU；CPU 跑不起来（参考实现调 npu:: 专有算子、CPU 不支持
+    npu-strict 固定使用 NPU reference，一次执行，不按候选结果重选设备。
+    默认 cpu-first 的 golden 优先落 CPU；CPU 跑不起来（参考实现调 npu:: 专有算子、CPU 不支持
     该 dtype/格式等）时回退 golden 到 NPU 重试，只有回退后仍失败才判失败。
     AccuracyError / AssertionError / _ShapeMismatchError 是比对结论（golden
     已成功运行），候选归因错误与 golden 落点无关 —— 三者都不重试。
     """
+    if reference_device_policy not in {"cpu-first", "npu-strict"}:
+        raise ValueError("unsupported reference_device_policy")
     try:
+        if case_ctx.cached_reference is not None:
+            _attempt_case(modules, case_ctx, inputs, device,
+                          case_ctx.cached_reference[0].selected_reference_device, non_compute)
+            return True, None
+        if reference_device_policy == "npu-strict":
+            _attempt_case(modules, case_ctx, inputs, device, device, non_compute)
+            return True, None
         try:
             _attempt_case(
                 modules, case_ctx, inputs, device, GOLDEN_DEVICE_CPU, non_compute
@@ -1302,6 +1375,7 @@ def _write_verify_result(output_path, result):
 def verify_implementations(
     op_name, verify_dir, triton_impl_name="triton_ascend_impl",
     output_path=None, non_compute=False, subject_budget_seconds=None,
+    reference_device_policy="cpu-first",
 ):
     """验证框架实现和生成实现的结果一致性。
 
@@ -1311,12 +1385,27 @@ def verify_implementations(
         non_compute: 若 True，所有 case 走"非计算类"二进制完全一致判定（搬移/Cast 等算子）
         subject_budget_seconds: 单次候选执行预算（秒）；候选 forward 超过预算时
             以 candidate execution timeout 归因并停止后续 case。None 表示不启用。
+        reference_device_policy: 固定 cpu-first 或 npu-strict；与 candidate 结果无关。
+            实际 reference 输出设备保存在独立的 verify_reference.json 私有诊断记录中。
 
     Returns:
         (passed_cases, total_cases)
     """
+    if reference_device_policy not in {"cpu-first", "npu-strict"}:
+        raise ValueError("unsupported reference_device_policy")
     import torch
     import torch_npu  # noqa: F401
+
+    from pathlib import Path
+    from triton_evaluation.reference_cache import (
+        ReferenceCache, ReferenceCacheMiss, official_source_metadata,
+    )
+    reference_source = None
+    reference_cache = ReferenceCache.from_environment()
+    if reference_cache is not None:
+        reference_source = Path(verify_dir, f"{op_name}_torch.py").read_text(encoding="utf-8")
+        if official_source_metadata(reference_source) is None:
+            reference_cache = None
 
     candidate_import_error = None
     try:
@@ -1330,12 +1419,32 @@ def verify_implementations(
     torch.npu.manual_seed(0)
 
     # 执行环境不变量：与沙箱一致以 NPU 为环境设备（见 _common_utils）。
-    _ensure_npu_ambient_shared(torch)
+    # npu-strict 下先有界等待驱动瞬态恢复（drvGetDevNum 短暂 rc!=0，
+    # 2026-10-06T18:45–18:48Z 生产窗口：同一沙箱/请求字节在窗口内两次失败、
+    # 窗口前后全部成功）；等待由整次运行预算封顶，耗尽仍不可用则立刻失败。
+    ambient_wait = 0.0
+    if reference_device_policy == "npu-strict":
+        ambient_wait = _AMBIENT_WAIT_CAP_SECONDS
+        if subject_budget_seconds:
+            ambient_wait = min(ambient_wait, float(subject_budget_seconds))
+    if (
+        not _ensure_npu_ambient_shared(torch, wait_seconds=ambient_wait)
+        and reference_device_policy == "npu-strict"
+    ):
+        # npu-strict 的 reference 必须在 NPU 上执行；环境设备未切换成功时
+        # 继续运行只会把输入物化静默落到单线程 CPU 路径（观测到的 900s
+        # 停滞形态），最终同样在首个 reference 处失败 —— 在这里立刻以
+        # 明确错误终止，让归因在秒级可读而不是烧完整整一个预算。
+        raise RuntimeError(
+            "npu-strict reference requires the ambient NPU device; "
+            "torch.npu is unavailable in this engine context"
+        )
 
     input_groups, total_cases = resolve_input_provider(modules["torch_module"])
     device = None if candidate_import_error is not None else torch.device("npu")
 
     failures = []
+    reference_trace = []
     passed_cases = 0
     for case_idx, inputs in enumerate(input_groups, start=1):
         if candidate_import_error is not None:
@@ -1350,14 +1459,31 @@ def verify_implementations(
                 ),
             })
             continue
+        cached_reference = None
+        cache_status = None
+        if reference_cache is not None:
+            try:
+                manifest = reference_cache.load_case(
+                    reference_source, case_idx, inputs,
+                    reference_device_policy=reference_device_policy,
+                )
+                cached_reference = (manifest, reference_cache.outputs(manifest))
+                cache_status = "hit"
+            except ReferenceCacheMiss:
+                cache_status = "miss"
+        case_ctx = CaseContext(
+            case_idx=case_idx,
+            total_cases=total_cases,
+            subject_budget_seconds=subject_budget_seconds,
+            reference_trace=reference_trace,
+            cached_reference=cached_reference,
+            reference_cache_status=cache_status,
+        )
         ok, failure = _try_run_case(
             modules,
-            CaseContext(
-                case_idx=case_idx,
-                total_cases=total_cases,
-                subject_budget_seconds=subject_budget_seconds,
-            ),
+            case_ctx,
             inputs, device, non_compute=non_compute,
+            reference_device_policy=reference_device_policy,
         )
         if ok:
             passed_cases += 1
@@ -1379,6 +1505,10 @@ def verify_implementations(
         "failures": failures,
     }
     _write_verify_result(output_path, result)
+    _write_verify_result(os.path.join(verify_dir, "verify_reference.json"), {
+        "reference_device_policy": reference_device_policy,
+        "cases": reference_trace,
+    })
 
     if failed_cases == 0:
         logger.info("验证成功：共 %d 组测试用例全部通过", total_cases)
@@ -1409,7 +1539,7 @@ def _terminate_expired_subprocess(proc, waited_seconds: int) -> None:
 
 
 if __name__ == "__main__":
-    _set_process_title("TritonEvalWork")
+    _set_process_title("EvalEngine")
     _setup_logger()
     parser = argparse.ArgumentParser(description="算子验证脚本")
     parser.add_argument("--op_name", required=True, help="算子名称")
@@ -1434,6 +1564,10 @@ if __name__ == "__main__":
         help="非计算类算子（搬移 / Cast 等），所有 case 走二进制完全一致判定",
     )
     parser.add_argument(
+        "--reference-device-policy", choices=("cpu-first", "npu-strict"), default="cpu-first",
+        help="固定 reference 设备策略：cpu-first 保留 CPU 优先回退；npu-strict 仅执行 NPU reference",
+    )
+    parser.add_argument(
         "--subprocess", action="store_true",
         help=argparse.SUPPRESS,  # 内部参数：子进程模式，直接执行验证
     )
@@ -1454,6 +1588,7 @@ if __name__ == "__main__":
                 args.op_name, verify_dir, args.triton_impl_name, args.output,
                 non_compute=args.non_compute,
                 subject_budget_seconds=args.timeout,
+                reference_device_policy=args.reference_device_policy,
             )
         except Exception as e:
             logger.error("%s", e)
@@ -1469,6 +1604,7 @@ if __name__ == "__main__":
             "--verify_dir", verify_dir,
             "--triton_impl_name", args.triton_impl_name,
             "--timeout", str(args.timeout),
+            "--reference-device-policy", args.reference_device_policy,
             "--subprocess",
         ]
         if args.output:

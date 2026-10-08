@@ -160,6 +160,7 @@ def test_same_compose_supports_single_or_multiple_cards(cards):
 
 
 @pytest.mark.parametrize("field, value, expected", [
+    ("reference_device_policy", "npu-strict", "npu-strict"),
     ("verify_budget_cap_seconds", "900", 900),
     ("benchmark_timeout_seconds", "120", 120),
     ("device_hold_mb", "0", 0),
@@ -501,8 +502,8 @@ printf 'cwd=%s\\n' "$PWD"
         capture_output=True, text=True,
     )
     assert result.returncode == 0, result.stderr
-    assert f"cwd={PROJECT_ROOT}" in result.stdout  # Preflight runs in the checkout too.
     arch_library = f"{set_env.parent}/aarch64-linux/lib64"
+    assert f"cwd={PROJECT_ROOT}" in (log_dir / "api.log").read_text()
     assert arch_library in (log_dir / "api.log").read_text()
     assert arch_library in (log_dir / "worker_8.log").read_text()
     assert "args=-m uvicorn scripts.run_api:app" in (log_dir / "api.log").read_text()

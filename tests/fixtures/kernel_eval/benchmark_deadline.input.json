@@ -1,0 +1,63 @@
+{
+ "origin": {
+  "redis_key": "triton-eval:v2.1:resource:ev_6cac1e8a40654f319e86cc8fc44316ee",
+  "branch": "benchmark_deadline"
+ },
+ "params": {
+  "action": "benchmark",
+  "kernel_code": "import torch\nimport triton\nimport triton.language as tl\n\n\n# Tile sizes. Every dimension used by tl.dot must be at least 16 on Ascend.\n_BLOCK_M = 64\n_BLOCK_N = 64\n_BLOCK_K = 64\n\n\n@triton.jit\ndef _bmm_kernel(\n    A, B, C,\n    stride_ab, stride_am, stride_ak,\n    stride_bb, stride_bk, stride_bp,\n    stride_cb, stride_cm, stride_cp,\n    M, N, P,\n    BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr, BLOCK_K: tl.constexpr,\n):\n    pid_m = tl.program_id(0)\n    pid_n = tl.program_id(1)\n    pid_b = tl.program_id(2)\n\n    rm = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)\n    rn = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)\n    rk = tl.arange(0, BLOCK_K)\n\n    a_ptrs = A + pid_b * stride_ab + rm[:, None] * stride_am + rk[None, :] * stride_ak\n    b_ptrs = B + pid_b * stride_bb + rk[:, None] * stride_bk + rn[None, :] * stride_bp\n\n    acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)\n    for k in range(0, N, BLOCK_K):\n        a_mask = (rm[:, None] < M) & ((k + rk)[None, :] < N)\n        b_mask = ((k + rk)[:, None] < N) & (rn[None, :] < P)\n        a = tl.load(a_ptrs, mask=a_mask, other=0.0)\n        b = tl.load(b_ptrs, mask=b_mask, other=0.0)\n        acc = tl.dot(a, b, acc)\n        a_ptrs += BLOCK_K * stride_ak\n        b_ptrs += BLOCK_K * stride_bk\n\n    c_ptrs = C + pid_b * stride_cb + rm[:, None] * stride_cm + rn[None, :] * stride_cp\n    c_mask = (rm[:, None] < M) & (rn[None, :] < P)\n    tl.store(c_ptrs, acc.to(C.dtype.element_ty), mask=c_mask)\n\n\nclass ModelNew(torch.nn.Module):\n    \"\"\"Batch matrix multiplication implemented with a Triton kernel.\"\"\"\n\n    def __init__(self):\n        super(ModelNew, self).__init__()\n\n    def forward(self, A: torch.Tensor, B: torch.Tensor) -> torch.Tensor:\n        A = A.contiguous()\n        B = B.contiguous()\n        batch, M, N = A.shape\n        _, N2, P = B.shape\n        C = torch.empty((batch, M, P), dtype=A.dtype, device=A.device)\n        if batch == 0 or M == 0 or P == 0:\n            return C\n\n        grid = (triton.cdiv(M, _BLOCK_M), triton.cdiv(P, _BLOCK_N), batch)\n        _bmm_kernel[grid](\n            A, B, C,\n            A.stride(0), A.stride(1), A.stride(2),\n            B.stride(0), B.stride(1), B.stride(2),\n            C.stride(0), C.stride(1), C.stride(2),\n            M, N, P,\n            BLOCK_M=_BLOCK_M, BLOCK_N=_BLOCK_N, BLOCK_K=_BLOCK_K,\n        )\n        return C\n",
+  "eval_turn": 1,
+  "eval_budget": "1/18"
+ },
+ "resource": {
+  "created_at": "2026-09-30T12:34:52.612000Z",
+  "deadline_at": "2026-09-30T12:49:52.612000Z",
+  "evaluation_id": "ev_6cac1e8a40654f319e86cc8fc44316ee",
+  "finished_at": "2026-09-30T13:18:57.720000Z",
+  "reference_digest": "adb9e8a450670341c2be7785386fac1e8cec85cdd62a2a634ecbf68bc3aa949d",
+  "request_digest": "06d2a9d3c115e4cc0a44b333df60e0c8da397591b24289082bd88d9cb49d65fd",
+  "result": {
+   "compile": null,
+   "correctness": {
+    "data": null,
+    "error": {
+     "check": "correctness",
+     "code": "DEADLINE_EXCEEDED",
+     "message": "resource deadline expired",
+     "phase": "deadline",
+     "retryable": false
+    },
+    "reason": null,
+    "status": "timeout"
+   },
+   "performance": {
+    "data": null,
+    "error": null,
+    "reason": {
+     "code": "RESOURCE_DEADLINE",
+     "depends_on": "correctness",
+     "message": "resource deadline expired before execution"
+    },
+    "status": "skipped"
+   },
+   "profile": null,
+   "provenance": {
+    "benchmark_algorithm": "geometric-mean-v1",
+    "correctness_algorithm": "correctness-v1:npu-strict-v1",
+    "decoy_algorithm": "decoy-v1",
+    "evaluator_build": "sha256:d3232fdf45295e489d2e135753a007a2ce11b94a5c9de95191df29560d88c447",
+    "execution_environment": null,
+    "grade_eligible": false,
+    "manifest_id": null,
+    "problem_id": null,
+    "profiler_algorithm": "profiler-v1",
+    "schema_version": "2.1"
+   }
+  },
+  "revision": 3,
+  "schema_version": "2.1",
+  "started_at": "2026-09-30T12:34:52.616000Z",
+  "state": "timed_out",
+  "updated_at": "2026-09-30T13:18:57.720000Z"
+ }
+}

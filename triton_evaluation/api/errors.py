@@ -7,10 +7,28 @@ value never varies by call site.
 """
 from collections.abc import Mapping
 from dataclasses import dataclass, field
+from http import HTTPStatus
 
-from ..api.contract import Check, ErrorInfo
+from pydantic import BaseModel
+
+from ..api.contract import Check, ErrorEnvelope, ErrorInfo
 
 RETRY_AFTER_ONE = {"Retry-After": "1"}
+
+
+def error_responses(*statuses: int, model: type[BaseModel] = ErrorEnvelope) -> dict:
+    """Declare the error bodies and headers emitted by the shared handlers."""
+    responses = {}
+    for status in statuses:
+        response = {"model": model, "description": HTTPStatus(status).phrase}
+        if status in {429, 503}:
+            response["headers"] = {"Retry-After": {"schema": {"type": "string", "const": "1"}}}
+        elif status == 401 and model is ErrorEnvelope:
+            response["headers"] = {
+                "WWW-Authenticate": {"schema": {"type": "string", "const": "Bearer"}},
+            }
+        responses[status] = response
+    return responses
 
 
 @dataclass(frozen=True)

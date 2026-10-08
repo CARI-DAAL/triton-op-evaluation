@@ -1,0 +1,37 @@
+{
+ "correct": false,
+ "correctness_raw": {
+  "decoy": false,
+  "domain_failure": {
+   "case_idx": 4,
+   "code": "SUBJECT_RUNTIME_ERROR",
+   "message": "candidate execution raised MLIRCompilationError",
+   "phase": "execute"
+  },
+  "failures": [],
+  "outcome": "runtime_error",
+  "passed": false,
+  "passed_cases": 4,
+  "total_cases": 50
+ },
+ "decoy": false,
+ "speedup": 0.0,
+ "compiled": true,
+ "error": "[case 4] RuntimeError: candidate execution raised MLIRCompilationError",
+ "error_class": "jit_compile_error",
+ "max_abs_err": null,
+ "mean_abs_err": null,
+ "pass_rate": null,
+ "infra_error": false,
+ "total_cases": 50,
+ "passed_cases": 4,
+ "failures": [],
+ "benchmark_available": false,
+ "benchmark": null,
+ "action": "verify",
+ "artifact_sha256": "94ccde4ca338da5b0fc6b25268ae0598d84fb500b616fc6ec0a2e02ff58eb698",
+ "eval_turn": 1,
+ "eval_budget": "1/18",
+ "request_status": "completed",
+ "observation": "[kernel_eval]\naction=verify\nartifact_sha256=94ccde4ca338da5b0fc6b25268ae0598d84fb500b616fc6ec0a2e02ff58eb698\neval_budget=1/18\nrequest_status=completed\n[kernel_eval][verify][jit_compile_error] cases=4/50\nerror=[case 4] RuntimeError: candidate execution raised MLIRCompilationError"
+}
