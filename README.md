@@ -1,178 +1,194 @@
 # triton-evaluation
 
-A FastAPI service that evaluates Triton-Ascend kernels against a reference:
-correctness, performance, profiling, and syntax/import checks. Submit three fields:
-`torch_code`, `triton_code`, and `cases`. Both source strings define `run(*args)`;
-cases describe positional inputs. No task registration or dataset is required.
+Evaluate Triton-Ascend operators against a PyTorch reference for correctness,
+performance and profiling. Supply **PyTorch code, Triton code and input cases**;
+both implementations expose `run(*args)`.
 
-An accepted evaluation is a durable resource. Workers execute it under a lease,
-publish typed evidence, and recover unfinished work after failures. Clients can
-reconnect and retrieve the result from the instance that accepted it. Each host
-owns its Redis state, CPU workers and assigned NPU cards.
+Use the bundled CLI from a developer machine or coding agent, or call the HTTP
+API directly. The evaluation service runs separately on an Ascend host. Accepted
+work is stored in Redis and can be recovered by ID after a client disconnect.
+
+[Quick start](#quick-start) · [API](#api) · [Deployment](#deploy) ·
+[Development](#contributing) · [Documentation](#documentation)
+
+## Quick start
+
+You need Python 3.10+, a [running service](docs/operations/deployment.md), and a
+caller capability file with submission and read access. The CLI uses only the
+Python standard library; the client machine needs no Torch, Triton or NPU stack.
+
+Run the following from the repository root with `torch_impl.py` and
+`triton_impl.py` ready. This example supplies one tensor argument to each
+implementation's `run` function:
+
+```bash
+export EVALUATION_URL=http://10.0.0.11:11907
+export EVALUATION_CAPABILITY_FILE=/path/to/caller-token
+TRITON_EVAL_CLI=plugins/triton-eval/skills/triton-eval/scripts/triton_eval.py
+
+cat > cases.json <<'JSON'
+[{"inputs": [{"shape": [1024], "dtype": "float32"}], "seed": 0}]
+JSON
+
+python3 "$TRITON_EVAL_CLI" verify \
+  --torch torch_impl.py --triton triton_impl.py --cases cases.json \
+  --save-handle evaluation-handle.json
+```
+
+The CLI waits for a result, writes JSON to stdout and progress to stderr. Use
+`benchmark` for correctness plus timing, or `profile` for profiling. Client
+wait expiry does not cancel accepted work; recover it on the same instance:
+
+```bash
+# Set EVALUATION_ID to the ID returned by the service.
+python3 "$TRITON_EVAL_CLI" get "$EVALUATION_ID"
+```
+
+See the [client guide](plugins/triton-eval/README.md) for configuration and the
+[skill](plugins/triton-eval/skills/triton-eval/SKILL.md) for agent usage. The
+plugin follows the standard `plugin.json` and `skills/` layout and is independent
+of the server deployment.
 
 ## API
 
-On a configured, running instance:
+All submission endpoints accept the same three required fields:
 
-- **`/docs`** — interactive API documentation.
-- **`/openapi.json`** — generated request, response and authentication schemas.
-- **`POST /evaluations`** — submit or replay an evaluation.
-- **`GET /evaluations/{evaluation_id}`** — recover its current state and results.
-- **`/livez`** and **`/readyz`** — process health and execution readiness.
+| Field | Contents |
+| --- | --- |
+| `torch_code` | PyTorch reference source defining `run(*args)` |
+| `triton_code` | Triton implementation source defining `run(*args)` |
+| `cases` | Ordered input arguments and an optional seed for each case |
 
-`POST /verify`, `/benchmark` and `/profile` accept the same three-field input
-and select the requested checks. All routes use the same capability credential
-and return durable evaluation resources. See [operation shortcuts](docs/usage/kernel-eval.md).
+Inputs may be JSON scalars or tensor descriptions with `shape`, `dtype` and an
+optional value range. [The request guide](docs/usage/evaluations.md) covers input
+validation, optional execution settings and complete HTTP examples.
 
-A minimal request reads the two implementations from local files:
+| Endpoint | Purpose |
+| --- | --- |
+| `POST /verify` | Check correctness |
+| `POST /benchmark` | Check correctness, then measure performance |
+| `POST /profile` | Collect profiling evidence |
+| `POST /evaluations` | Select checks, including syntax/import prechecks |
+| `GET /evaluations/{evaluation_id}` | Read or recover an evaluation |
 
-```python
-from pathlib import Path
+`/evaluations` defaults to correctness and performance. Evaluation endpoints
+use `Authorization: Bearer`. Provide an `Idempotency-Key`
+when a submission may need retrying. The operation shortcuts share the same
+request format, authentication and durable result lifecycle.
 
-request = {
-    "torch_code": Path("torch_impl.py").read_text(encoding="utf-8"),
-    "triton_code": Path("triton_impl.py").read_text(encoding="utf-8"),
-    "cases": [{"inputs": [{"shape": [1024], "dtype": "float32"}]}],
-}
-```
+A POST returns **200** for a terminal resource or **202** with a recovery
+`Location`. GET returns the current resource, including pending states. Inspect
+the per-check results: `completed` means execution finished, not necessarily
+that the candidate passed. See [recovery and upgrades](docs/operations/recovery.md).
 
-Each implementation receives one generated tensor.
-`POST /evaluations` defaults to correctness and performance. The
-[request example](docs/usage/evaluations.md) includes authentication, submission
-and result recovery.
+Each running instance also exposes:
 
-[Submit and recover an evaluation](docs/usage/evaluations.md) explains credentials,
-idempotency, asynchronous results and request examples. Python models and route
-declarations define the HTTP interface. FastAPI generates `/openapi.json` from
-those definitions by default, and `/docs` uses it to display the interactive API.
-Ordinary evaluation requests go directly to their endpoint without fetching the
-schema first. The service does not need a schema file on disk to start. See
-[FastAPI's OpenAPI explanation](https://fastapi.tiangolo.com/tutorial/first-steps/#openapi)
-and [response models](https://fastapi.tiangolo.com/tutorial/response-model/).
+- `/docs` — interactive API documentation.
+- `/openapi.json` — the API description generated from models and routes.
+- `/livez` and `/readyz` — liveness and execution readiness.
+- `/internal/metrics` — metrics for authenticated observers.
 
-## Client plugin
+## Deploy
 
-The [repository plugin](plugins/triton-eval/README.md) packages the
-[triton-eval skill](plugins/triton-eval/skills/triton-eval/SKILL.md) and its
-standard-library Python client. Use it to submit local source/case files or
-recover an evaluation from a separately deployed service. It follows the
-standard `plugin.json` and `skills/` layout and requires no local NPU stack.
+Each Ascend host runs an API, durable Redis, CPU workers for import prechecks,
+and NPU workers for device execution. Workers own leased attempts and publish
+results through fenced writes. Clients connect to the instance that accepted
+their evaluation.
 
-## Develop
+| Deployment | Configuration and entrypoint |
+| --- | --- |
+| Docker Compose | [`docker.env.example`](docker.env.example), [`docker-compose.yml`](docker-compose.yml) and `scripts/compose.sh` |
+| Host processes | [`.env.example`](.env.example), `scripts/start.sh` and `scripts/stop.sh` |
 
-Python 3.10+; run from the repository root. CPU tests require no Ascend device.
+Follow the [deployment guide](docs/operations/deployment.md) to configure caller
+credentials, private networking, Redis durability and the Ascend runtime. The
+[upgrade guide](docs/operations/recovery.md#upgrading) explains client migration
+and recovery of existing work. Runtime files with pinned source paths or hashes
+require rebuilt deployment manifests when those files change.
+
+## Contributing
+
+### Set up and validate
+
+Use Python 3.10+ and run commands from the repository root. CPU checks need no
+Ascend hardware; CI runs them on Python 3.10, 3.11 and 3.12.
 
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install -e '.[test,dev]'
 python -m pip install torch==2.9.0 --index-url https://download.pytorch.org/whl/cpu
-python -m pytest -m 'not npu' -q
-python -m ruff check .
-```
 
-See [Contributing](#contributing) for change verification and
-[tests/README.md](tests/README.md) for consumer and NPU checks.
-
-## Deploy
-
-Use [the deployment guide](docs/operations/deployment.md) with
-[`docker.env.example`](docker.env.example) and [`docker-compose.yml`](docker-compose.yml).
-For host execution, use [`.env.example`](.env.example) and `scripts/start.sh`.
-Both paths require configured credentials, durable Redis, and the
-appropriate Ascend runtime. API documentation is served on the instance's own URL.
-
-## Repository
-
-| Path | Purpose |
-| --- | --- |
-| [`triton_evaluation/`](triton_evaluation/) | Shared configuration and canonical serialization |
-| [`triton_evaluation/api/`](triton_evaluation/api/) | HTTP models, routes and generated OpenAPI |
-| [`triton_evaluation/service/`](triton_evaluation/service/) | Admission, durable scheduling, credentials and terminal evidence |
-| [`triton_evaluation/runtime/`](triton_evaluation/runtime/) | Workers, card health, sandbox, profiler, diagnostics and cache policies |
-| [`triton_evaluation/evaluators/`](triton_evaluation/evaluators/) | Check orchestration and adapters to the engine |
-| [`triton_evaluation/engine/`](triton_evaluation/engine/) | Bundled evaluation engine |
-| [`tests/`](tests/) | Behavior, HTTP compatibility, fixtures and hardware gates |
-| [`plugins/triton-eval/`](plugins/triton-eval/README.md) | Portable skill and HTTP client |
-| [`scripts/`](scripts/README.md) | API/worker entrypoints, preparation, deployment and diagnostic commands |
-| [`docker/`](docker/), `Dockerfile`, `docker-compose.yml` | Container entrypoint, image and deployment |
-| [`docs/`](docs/README.md) | Usage, operations, architecture and decisions |
-
-The source package stays at the root; process entrypoints live under `scripts/`.
-Test data and historical evidence are not part of the running service.
-
-## Get help
-
-Use [issues](https://github.com/CARI-DAAL/triton-op-evaluation/issues) for reproducible
-bugs and [pull requests](https://github.com/CARI-DAAL/triton-op-evaluation/pulls) for
-reviewed changes. Include the relevant revision, runtime and reproduction steps.
-
-## Contributing
-
-Read the [README](README.md) for setup and the [documentation index](docs/README.md)
-for the part you are changing. Use [Domain vocabulary](#domain-vocabulary) for domain terms.
-
-### Validate a change
-
-Install `.[test,dev]` in a virtual environment. Run focused tests while working,
-then the same CPU checks used by CI:
-
-```bash
 python -m ruff check .
 python -m pytest -m 'not npu' -q
-python -m compileall -q triton_evaluation scripts
+python -m compileall -q triton_evaluation scripts plugins
 git diff --check
 ```
 
-CI covers Python 3.10–3.12. NPU behavior needs the separate
-[hardware checks](tests/README.md); a passing CPU suite is not a throughput or
-device-correctness measurement.
+The [test guide](tests/README.md) lists focused checks, consumer integration and
+NPU validation. CPU test results do not establish device correctness or timing.
 
-### Keep ownership explicit
+### Prepare a change
 
-- HTTP models and routes generate OpenAPI. Verify `/openapi.json` when changing
-  request bodies, responses, authentication, headers or status codes.
-- Admission persists identity before candidate execution. Execution and result
-  publication belong to a fenced attempt.
-- Preserve observed evidence. An infrastructure failure is not a candidate
-  correctness verdict, and missing evidence cannot establish success.
-- Test through the interface callers use. Keep reusable examples and historical
-  regression bytes in `tests/fixtures/`, separate from runtime code.
-- Runtime and measurement changes require explicit evaluator identity and NPU
-  validation. Source files pinned by an active timing policy need a new policy
-  before deployment; broad formatting changes are not a runtime migration.
+- Keep each change focused and describe its behavior, validation and limits.
+- Update models, routes and OpenAPI coverage together when changing the HTTP
+  interface. Admission must persist identity before candidate execution.
+- Preserve check evidence and lease fencing. Infrastructure failures and missing
+  evidence must not become successful correctness verdicts.
+- Validate runtime and measurement changes on the target NPU with an explicit
+  evaluator build. Rebuild source-pinned policies before deployment.
+- Keep reusable regression inputs in `tests/fixtures/`, user workflows in
+  `docs/usage/`, operations in `docs/operations/`, implementation invariants in
+  `docs/architecture/`, and decisions in `docs/adr/`. Link to one maintained page
+  per subject; completed experiments belong in Git history or external artifacts.
 
-The bundled engine has third-party license headers and is excluded from general
-Ruff formatting. Make engine edits deliberately, preserving attribution and
-verifying the affected behavior. See [third-party source](#third-party-source).
+The bundled engine is excluded from general Ruff formatting. Preserve its
+copyright headers and verify deliberate engine changes; see
+[third-party source](#third-party-source).
 
-### Keep the repository useful
+Submit [issues](https://github.com/CARI-DAAL/triton-op-evaluation/issues) with a
+revision, runtime and reproducible example, or open a
+[pull request](https://github.com/CARI-DAAL/triton-op-evaluation/pulls) with the
+relevant checks. Keep credentials, private source and device dumps out of the
+repository.
 
-Put user workflows in `docs/usage/`, operator procedures in `docs/operations/`,
-current implementation invariants in `docs/architecture/`, and lasting trade-offs
-in `docs/adr/`. Keep one authoritative page for each subject and link to it.
-Completed plans, local deployment snapshots and one-off experiments belong in
-Git history or external run artifacts. Retain a fixture when it proves behavior
-that an active test or current explanation depends on.
+## Repository layout
 
-The source package remains at the root, with API and worker entrypoints under
-`scripts/`. Layout changes must improve ownership or distribution behavior and
-update their consumers together.
+| Path | Responsibility |
+| --- | --- |
+| [`triton_evaluation/api/`](triton_evaluation/api/) | HTTP models, routes, authentication and OpenAPI |
+| [`triton_evaluation/service/`](triton_evaluation/service/) | Admission, durable scheduling and terminal evidence |
+| [`triton_evaluation/runtime/`](triton_evaluation/runtime/) | Workers, device health, isolation, profiling and caches |
+| [`triton_evaluation/evaluators/`](triton_evaluation/evaluators/) | Check orchestration and result shaping |
+| [`triton_evaluation/engine/`](triton_evaluation/engine/) | Bundled evaluation engine |
+| [`config.py`](triton_evaluation/config.py), [`serialization.py`](triton_evaluation/serialization.py) | Shared configuration and canonical serialization |
+| [`plugins/triton-eval/`](plugins/triton-eval/) | Portable skill and standalone HTTP client |
+| [`scripts/`](scripts/README.md) | Process entrypoints, deployment and diagnostics |
+| [`docker/`](docker/), [`Dockerfile`](Dockerfile), [`docker-compose.yml`](docker-compose.yml) | Container image and host deployment |
+| [`tests/`](tests/README.md) | Protocol, execution, recovery and hardware checks |
+| [`docs/`](docs/README.md) | Usage, operations, architecture and decisions |
 
-### Submit for review
+## Documentation
 
-Describe the concrete problem, resulting behavior, verification and remaining
-limits. Keep unrelated changes separate. Update the relevant operating instructions
-and API models with the implementation. Use synthetic reproductions; keep tokens,
-private source, device dumps and local environment files outside the repository.
+- **Use:** [Operator requests](docs/usage/evaluations.md),
+  [operation shortcuts](docs/usage/kernel-eval.md),
+  [client plugin](plugins/triton-eval/README.md).
+- **Operate:** [Deployment](docs/operations/deployment.md),
+  [recovery and upgrades](docs/operations/recovery.md),
+  [profiler runtime](docs/operations/profiler-runtime.md),
+  [reference caches](docs/operations/reference-cache.md).
+- **Understand:** [Execution flow](docs/architecture/kernel-evaluation.md),
+  [sandbox](docs/architecture/engine-sandbox.md),
+  [card health](docs/architecture/card-health.md),
+  [domain vocabulary](#domain-vocabulary).
 
-The documentation layout follows GitHub's guidance for a
-[focused README](https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-readmes)
-and [discoverable contribution instructions](https://docs.github.com/en/communities/setting-up-your-project-for-healthy-contributions/setting-guidelines-for-repository-contributors).
-The [PyPA layout discussion](https://packaging.python.org/en/latest/discussions/src-layout-vs-flat-layout/)
-describes the trade-offs behind source-layout changes.
+The [documentation index](docs/README.md) includes the remaining architecture
+notes and decisions.
 
 ## Domain vocabulary
+
+<details>
+<summary>Expand the domain vocabulary</summary>
 
 **Evaluation instance**:
 The authority that admits an evaluation and owns its execution, durable
@@ -246,6 +262,8 @@ are generated from their shape, dtype and optional range; scalars pass through.
 **Operation shortcut**:
 An HTTP endpoint that selects correctness, performance or profiling while using
 the same request input, admission process and durable result lifecycle.
+
+</details>
 
 ## Third-party source
 
