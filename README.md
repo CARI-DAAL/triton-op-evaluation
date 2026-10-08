@@ -17,12 +17,18 @@ You need Python 3.10+, a [running service](docs/operations/deployment.md), and a
 caller capability file with submission and read access. The CLI uses only the
 Python standard library; the client machine needs no Torch, Triton or NPU stack.
 
+The example uses a local service listening on `127.0.0.1:11907`, the API's
+default bind address. For a remote service, use its reachable hostname or IP.
+Inside a container, `127.0.0.1` refers to that container. Compose deployments
+use their explicitly configured private host address. The CLI requires an
+explicit URL through `EVALUATION_URL` or `--url`.
+
 Run the following from the repository root with `torch_impl.py` and
 `triton_impl.py` ready. This example supplies one tensor argument to each
 implementation's `run` function:
 
 ```bash
-export EVALUATION_URL=http://10.0.0.11:11907
+export EVALUATION_URL=http://127.0.0.1:11907
 export EVALUATION_CAPABILITY_FILE=/path/to/caller-token
 TRITON_EVAL_CLI=plugins/triton-eval/skills/triton-eval/scripts/triton_eval.py
 
