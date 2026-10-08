@@ -1,7 +1,7 @@
 """Cached verdicts never bypass durable admission and leased execution."""
 import pytest
 from conftest import make_caller
-from test_api import build_app, post, request_payload, seed_worker
+from test_api import build_app, internal_request, post, request_payload, seed_worker
 
 from triton_evaluation.runtime import verdict_cache
 
@@ -15,9 +15,10 @@ async def test_cached_verdict_still_admits_queued_work(tmp_path, release_catalog
     app = build_app(tmp_path, release_catalog_files)
     execution_class = "cpu" if checks == ["compile"] else "npu"
     seed_worker(app, execution_class=execution_class)
-    payload = request_payload(kernel_code="def broken(: pass", checks=checks)
+    payload = request_payload(triton_code="def broken(: pass", checks=checks)
     digest = verdict_cache.digest_for(
-        payload["kernel_code"], "triton_ascend_impl", app.settings.cann_fingerprint,
+        internal_request(triton_code=payload["triton_code"], checks=checks).kernel_code,
+        "triton_ascend_impl", app.settings.cann_fingerprint,
     )
     verdict_cache.put(app.store, digest, "compile_error", 60)
     async with app.http as client:
@@ -87,6 +88,7 @@ async def test_v21_terminal_http_bodies_validate_against_published_schema(
     app = build_app(tmp_path, release_catalog_files, settings=make_test_settings(tmp_path))
     seed_worker(app)
     command = make_command(
+        request=internal_request(),
         caller=make_caller("trial-caller", "trial", ("trial:submit", "trial:read"))
     )
     app.store.create_or_replay(command)

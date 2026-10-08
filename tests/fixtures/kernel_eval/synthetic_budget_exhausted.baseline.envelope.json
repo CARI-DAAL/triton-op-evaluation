@@ -1,8 +1,0 @@
-{
- "action": "verify",
- "artifact_sha256": "b5cbc2fa4e1e56e9bb63b27d6cd7c6b87ea90a0b207219020b48dc3bc8b4c46b",
- "eval_turn": null,
- "eval_budget": "18/18",
- "request_status": "budget_exhausted",
- "observation": "[kernel_eval]\naction=verify\nartifact_sha256=b5cbc2fa4e1e56e9bb63b27d6cd7c6b87ea90a0b207219020b48dc3bc8b4c46b\neval_budget=18/18\nrequest_status=budget_exhausted\nfeedback=interactive evaluation budget exhausted; no evaluator request started"
-}

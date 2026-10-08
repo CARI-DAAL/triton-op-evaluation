@@ -10,7 +10,6 @@ from triton_evaluation.api.contract import EvaluationRequest, EvaluationResource
 from triton_evaluation.config import Settings
 from triton_evaluation.service.admission import admit
 from triton_evaluation.service.broker import EvaluationStore
-from triton_evaluation.service.catalog import ManifestBindingError, ReleaseCatalog
 from triton_evaluation.service.models import (
     AlgorithmVersions,
     CreateResourceCommand,
@@ -37,11 +36,10 @@ class EvaluationInstance:
 
     def __init__(
         self, *, settings: Settings, store: EvaluationStore,
-        catalog: ReleaseCatalog, metrics=None,
+        metrics=None,
     ) -> None:
         self.settings = settings
         self.store = store
-        self.catalog = catalog
         self.metrics = metrics
         self._algorithms = AlgorithmVersions(
             correctness=settings.effective_correctness_algorithm_version,
@@ -54,13 +52,7 @@ class EvaluationInstance:
         self, request: EvaluationRequest, caller: Caller, *,
         session_id: str, idempotency_key: str,
     ) -> CreateResourceResult:
-        try:
-            admission = admit(request, caller, self.catalog)
-        except ManifestBindingError:
-            self._bump("catalog_binding_outcomes_total", outcome="rejected_binding")
-            raise
-        if request.purpose == "grade":
-            self._bump("catalog_binding_outcomes_total", outcome="bound")
+        admission = admit(request, caller)
         is_rollout = request.purpose == "rollout" or (
             request.purpose == "trial"
             and caller.caller_id in self.settings.rollout_caller_ids
@@ -69,10 +61,7 @@ class EvaluationInstance:
             evaluation_id=new_evaluation_id(),
             caller_id=caller.caller_id,
             caller_class=caller.caller_class,
-            traffic_class=(
-                "rollout" if is_rollout
-                else "trial" if request.purpose == "trial" else "trusted"
-            ),
+            traffic_class="rollout" if is_rollout else "trial",
             session_id=session_id,
             idempotency_key=idempotency_key,
             admission=admission,

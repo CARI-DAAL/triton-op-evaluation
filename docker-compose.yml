@@ -69,8 +69,6 @@ services:
       TRITON_EVAL_WORKER_RUNTIME_VERSION: ${TRITON_EVAL_WORKER_RUNTIME_VERSION-CANN-9.1.1}
       TRITON_EVAL_WORKER_TOOLCHAIN_VERSION: ${TRITON_EVAL_WORKER_TOOLCHAIN_VERSION-CANN 9.1.1 / python 3.10 / torch 2.9.0 / torch_npu 2.9.0.post8 / triton_ascend 3.2.0}
       TRITON_EVAL_CAPABILITY_SECRET_PATH: /run/secrets/triton-eval
-      TRITON_EVAL_CATALOG_ROOT: /srv/triton-eval-release
-      TRITON_EVAL_CATALOG_MANIFEST_PATH: /srv/triton-eval-release/catalog.json
       CANN_SET_ENV_PATH: /opt/cann/ascend-toolkit/set_env.sh
       ASCEND_DRIVER_PATH: /usr/local/Ascend/driver                     # mounted from host
     volumes:
@@ -84,8 +82,6 @@ services:
       - ./logs:/opt/triton-eval/logs
       # Caller-scoped opaque capabilities: mounted read-only, container sees only the path.
       - ${TRITON_EVAL_CAPABILITY_SECRET_PATH:-/run/secrets/triton-eval}:/run/secrets/triton-eval:ro
-      # Trusted release catalog (manifest + references): read-only, no dynamic registration.
-      - ${TRITON_EVAL_CATALOG_ROOT:-/srv/triton-eval-release}:/srv/triton-eval-release:ro
 
   # Redis: the durable source of truth for evaluation API v2. Compose-managed so it
   # comes up with the service and survives reboot (restart: unless-stopped). AOF with

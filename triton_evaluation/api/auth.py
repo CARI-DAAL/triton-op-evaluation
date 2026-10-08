@@ -12,13 +12,8 @@ capability_bearer = HTTPBearer(
     scheme_name="CapabilityBearer", auto_error=False,
     description="Capability token; submit/read/observer scope depends on the operation.",
 )
-tool_bearer = HTTPBearer(
-    scheme_name="KernelToolBearer", auto_error=False,
-    description="Dedicated kernel tool token, separate from capability credentials.",
-)
-
-SUBMIT_SCOPES = ("trial:submit", "grade:submit")
-READ_SCOPES = ("trial:read", "grade:read", "observer:read")
+SUBMIT_SCOPES = ("trial:submit",)
+READ_SCOPES = ("trial:read", "observer:read")
 
 
 def authenticate(

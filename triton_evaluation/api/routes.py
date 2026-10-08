@@ -8,20 +8,22 @@ wait, headers, and session correlation never enter admission.
 import asyncio
 import time
 from typing import Annotated
+from uuid import uuid4
 
 from fastapi import APIRouter, Depends, Header, Query, Request
 from fastapi.responses import Response
 
+from ..evaluators.operator import to_evaluation_request
 from ..service.admission import ForbiddenError
 from ..service.broker import StorageError
-from ..service.catalog import ManifestBindingError
 from ..service.instance import EvaluationInstance, InstanceNotReadyError, QueueUnavailableError
 from ..service.security import Caller
 from . import errors
 from .auth import require_observer, require_read_caller, require_submit_caller
-from .contract import EvaluationRequest, EvaluationResource
+from .contract import EvaluationResource
 from .dependencies import AppContext, get_context, get_instance
 from .errors import error_responses
+from .operator import OperatorRequest
 from .schemas import IdempotencyKey, Liveness, Readiness, SessionId
 
 router = APIRouter()
@@ -57,42 +59,53 @@ async def _maybe_await(value):
     return result
 
 
-@router.post(
-    "/evaluations",
-    response_model=EvaluationResource,
-    responses={
-        **error_responses(400, 401, 403, 409, 413, 422, 429, 500, 503),
-        202: {
-            "model": EvaluationResource,
-            "description": "Accepted or replayed evaluation still running.",
-            "headers": {"Location": {
-                "description": "Resource recovery URL.", "schema": {"type": "string"},
-            }},
-        },
+SUBMIT_RESPONSES = {
+    **error_responses(400, 401, 403, 409, 413, 422, 429, 500, 503),
+    202: {
+        "model": EvaluationResource,
+        "description": "Accepted or replayed evaluation still running.",
+        "headers": {"Location": {
+            "description": "Resource recovery URL.", "schema": {"type": "string"},
+        }},
     },
-)
+}
+
+
+@router.post("/evaluations", response_model=EvaluationResource, responses=SUBMIT_RESPONSES)
+@router.post("/verify", response_model=EvaluationResource, responses=SUBMIT_RESPONSES)
+@router.post("/benchmark", response_model=EvaluationResource, responses=SUBMIT_RESPONSES)
+@router.post("/profile", response_model=EvaluationResource, responses=SUBMIT_RESPONSES)
 async def submit_evaluation(
     request: Request,
     response: Response,
-    evaluation_request: EvaluationRequest,
+    evaluation_request: OperatorRequest,
     caller: Annotated[Caller, Depends(require_submit_caller)],
     instance: Annotated[EvaluationInstance, Depends(get_instance)],
-    session_id: Annotated[SessionId, Header(alias="X-Session-ID")],
-    idempotency_key: Annotated[IdempotencyKey, Header(alias="Idempotency-Key")],
+    session_id: Annotated[SessionId | None, Header(alias="X-Session-ID")] = None,
+    idempotency_key: Annotated[IdempotencyKey | None, Header(alias="Idempotency-Key")] = None,
     wait_seconds: Annotated[int, Query(
         ge=0, le=60,
         description="Wait for a terminal result; expiry returns 202 without cancelling work.",
     )] = 0,
 ) -> EvaluationResource:
+    checks = {
+        "verify": ["correctness"],
+        "benchmark": ["correctness", "performance"],
+        "profile": ["profile"],
+    }.get(request.scope["route"].path.rsplit("/", 1)[-1])
+    try:
+        internal_request = to_evaluation_request(evaluation_request, checks=checks)
+    except ValueError:
+        raise errors.invalid_request_schema("request failed schema validation") from None
+    session_id = session_id or ("default" if idempotency_key else uuid4().hex)
+    idempotency_key = idempotency_key or uuid4().hex
     try:
         outcome = await asyncio.to_thread(
-            instance.submit, evaluation_request, caller,
+            instance.submit, internal_request, caller,
             session_id=session_id, idempotency_key=idempotency_key,
         )
     except ForbiddenError:
         raise errors.forbidden() from None
-    except ManifestBindingError:
-        raise errors.manifest_binding_failed() from None
     except InstanceNotReadyError:
         raise errors.not_ready() from None
     except QueueUnavailableError:
@@ -126,7 +139,9 @@ async def submit_evaluation(
             return final
 
     response.status_code = 202
-    response.headers["Location"] = f"/evaluations/{resource.evaluation_id}"
+    response.headers["Location"] = request.url_for(
+        "get_evaluation", evaluation_id=resource.evaluation_id
+    ).path
     return resource
 
 
@@ -159,10 +174,11 @@ async def get_evaluation(
 
 @router.get("/livez", response_model=Liveness, responses=error_responses(413, 500))
 async def livez():
-    """Constant process liveness; touches no store, catalog, or worker state."""
+    """Constant process liveness; touches no store or worker state."""
     return {"status": "ok"}
 
 
+@router.get("/health", response_model=Readiness, responses=error_responses(413, 500, 503))
 @router.get("/readyz", response_model=Readiness, responses=error_responses(413, 500, 503))
 async def readyz(instance: Annotated[EvaluationInstance, Depends(get_instance)]):
     ready = await asyncio.to_thread(instance.is_ready)

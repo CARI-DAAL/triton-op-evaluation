@@ -44,12 +44,7 @@ markers = [
 line-length = 100
 target-version = "py310"
 # engine/ is vendored (Huawei, CANN license) — do not lint or reformat it.
-# tests/fixtures/kernel_eval/legacy_bridge/reference holds verbatim retired-bridge
-# fixture bytes kept as evidence — same rule.
-extend-exclude = [
-    "triton_evaluation/engine",
-    "tests/fixtures/kernel_eval/legacy_bridge/reference",
-]
+extend-exclude = ["triton_evaluation/engine"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]

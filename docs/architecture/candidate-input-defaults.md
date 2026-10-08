@@ -1,9 +1,9 @@
 # Official candidate input defaults
 
-Use this contract when grading references produced by the offline
-[official-task adapter](../../scripts/adapters/official_task.py) with omitted
-workload parameters. The engine retains this compatibility behavior; generic
-catalog lookup does not require it of other reference files.
+This records retained engine compatibility for previously generated official
+references with omitted workload parameters. The old dataset importer is retired.
+New operator requests supply their positional inputs directly in `cases` and do
+not require dataset metadata or this legacy reference format.
 The assembler preserves an adapter-owned `_ABSENT` object in raw input groups;
 its reference `Model.forward` removes those positions before calling the
 original official `run(**kwargs)`. Sending that object to a candidate bypassed
@@ -36,7 +36,8 @@ The [omission inventory](evidence/official-absent-defaults.json)
 records nine B1 tasks and 87 omitted parameters: all defaults are immutable
 literals. The [pre-fix reproducer](evidence/absent-candidate-default-reproducer.json)
 shows the ordinary `scale=2` candidate failing on the raw sentinel while the
-reference returns 6. Controlled tests exercise a composed official reference,
+reference returns 6. Controlled tests use a
+[fixed legacy reference](../../tests/fixtures/legacy_candidate_defaults.py.txt) and exercise
 real CPU candidate calls, cache hit/miss paths, explicit values, keyword-only and
 non-None defaults, retained traces, and a separate profile child. Native NPU
 acceptance remains a separate gate.

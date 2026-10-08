@@ -18,10 +18,9 @@ its placeholders before starting:
 | `CANN_HOST`, `TRITON_EVAL_WORKER_*` | Host toolkit path and actual hardware/toolchain inventory |
 | `TRITON_EVAL_CARDS` | Unique physical card IDs, e.g. `0` or `0,1,3` |
 | `TRITON_EVAL_CAPABILITY_SECRET_PATH` | Caller registry JSON, permissions no broader than `0600` |
-| `TRITON_EVAL_CATALOG_ROOT`, `TRITON_EVAL_CATALOG_MANIFEST_PATH` | Release directory and catalog manifest |
 
-The file formats are defined in [capability loading](../../triton_evaluation/service/security.py)
-and [catalog loading](../../triton_evaluation/service/catalog.py). After editing `docker.env`:
+The registry format is defined in [capability loading](../../triton_evaluation/service/security.py).
+Catalog files and dataset registration are not deployment inputs. After editing `docker.env`:
 
 ```bash
 set -a
@@ -34,7 +33,7 @@ scripts/compose.sh logs -f
 ```
 
 Preflight validates the exact configuration being launched, locally available
-pinned images, private bind, mounted capability/catalog and Redis AOF settings.
+pinned images, private bind, mounted capability registry and Redis AOF settings.
 Export the env file before invoking the wrapper, as above. Use `up` to apply
 configuration changes; `start` and `restart` reuse existing containers.
 `TRITON_EVAL_CARDS` selects worker processes; the privileged Ascend container
@@ -71,7 +70,7 @@ Run one NPU worker per configured physical card. The host launcher and Compose
 manage these processes together. For a single HTTP listener, the API can also
 run as `uvicorn scripts.run_api:app --host "$TRITON_EVAL_API_HOST" --port 11907`.
 Use `python -m scripts.run_api` for the configured
-[native HTTP/TLS listeners](../usage/kernel-eval.md#native-https-for-the-platform-verifier).
+[native HTTP/TLS listeners](../usage/kernel-eval.md#native-http-and-https).
 
 Candidate code needs an operating-system boundary when evaluations must not
 read other attempts or service credentials. Subprocesses alone do not provide

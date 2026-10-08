@@ -33,7 +33,7 @@ async def test_admission_replay_conflict_and_rejection_never_execute_candidate(
     app = build_app(tmp_path, release_catalog_files, settings=settings)
     seed_worker(app)
     marker = tmp_path / "candidate-executed"
-    payload = request_payload(kernel_code=(
+    payload = request_payload(triton_code=(
         "from pathlib import Path\n"
         f"Path({str(marker)!r}).write_text('executed')\n"
         "class ModelNew: pass\n"
@@ -41,7 +41,7 @@ async def test_admission_replay_conflict_and_rejection_never_execute_candidate(
     async with app.http as client:
         first = await post(client, payload)
         replay = await post(client, payload)
-        conflict = await post(client, {**payload, "kernel_code": "class Other: pass"})
+        conflict = await post(client, {**payload, "triton_code": "class Other: pass"})
         limited = await post(client, payload, headers=trial_headers(key="second"))
     assert [r.status_code for r in (first, replay, conflict, limited)] == [202, 202, 409, 429]
     assert first.json()["evaluation_id"] == replay.json()["evaluation_id"]

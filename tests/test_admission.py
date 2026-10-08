@@ -1,4 +1,4 @@
-"""RED tests for canonical grade admission (design sections 3.1-3.2)."""
+"""Canonical trial/rollout admission and passive legacy-grade decoding."""
 import json
 import re
 
@@ -8,11 +8,9 @@ from pydantic import ValidationError
 from triton_evaluation.api.contract import EvaluationRequest
 from triton_evaluation.serialization import canonical_json_bytes, sha256_hex
 from triton_evaluation.service.admission import ForbiddenError, admit
-from triton_evaluation.service.catalog import ManifestBindingError, ReleaseCatalog
 from triton_evaluation.service.security import Caller
 
 KERNEL_CODE = "import torch\n\n\nclass ModelNew(torch.nn.Module):\n    pass\n"
-OTHER_REFERENCE_CODE = "import torch\n\n\nclass Other(torch.nn.Module):\n    pass\n"
 
 TRIAL = Caller(
     caller_id="trial-1", caller_class="trial",
@@ -61,19 +59,12 @@ def make_grade_request(files, reference_code=None, reference_digest=None,
     )
 
 
-@pytest.fixture
-def catalog(release_catalog_files):
-    return ReleaseCatalog.load(
-        release_catalog_files.root, release_catalog_files.manifest_path
-    )
-
-
 # ---------------------------------------------------------------------------
 # Canonicalization
 # ---------------------------------------------------------------------------
 
 
-def test_canonicalization_collapses_explicit_defaults(catalog, release_catalog_files):
+def test_canonicalization_collapses_explicit_defaults(release_catalog_files):
     minimal = make_request(release_catalog_files.reference_code)
     explicit = make_request(
         release_catalog_files.reference_code,
@@ -85,25 +76,25 @@ def test_canonicalization_collapses_explicit_defaults(catalog, release_catalog_f
         profile=None,
         grade_context=None,
     )
-    first = admit(minimal, TRIAL, catalog)
-    second = admit(explicit, TRIAL, catalog)
+    first = admit(minimal, TRIAL)
+    second = admit(explicit, TRIAL)
     assert first.canonical_request == second.canonical_request
     assert first.request_digest == second.request_digest
 
 
-def test_canonicalization_collapses_check_order(catalog, release_catalog_files):
+def test_canonicalization_collapses_check_order(release_catalog_files):
     forward = make_request(
         release_catalog_files.reference_code, checks=("correctness", "performance")
     )
     reverse = make_request(
         release_catalog_files.reference_code, checks=("performance", "correctness")
     )
-    assert admit(forward, TRIAL, catalog).canonical_request == admit(
-        reverse, TRIAL, catalog
+    assert admit(forward, TRIAL).canonical_request == admit(
+        reverse, TRIAL
     ).canonical_request
 
 
-def test_canonicalization_collapses_profile_case_order(catalog, release_catalog_files):
+def test_canonicalization_collapses_profile_case_order(release_catalog_files):
     ascending = make_request(
         release_catalog_files.reference_code,
         checks=("correctness", "profile"),
@@ -114,36 +105,36 @@ def test_canonicalization_collapses_profile_case_order(catalog, release_catalog_
         checks=("correctness", "profile"),
         profile={"case_indices": [2, 0]},
     )
-    assert admit(ascending, TRIAL, catalog).request_digest == admit(
-        descending, TRIAL, catalog
+    assert admit(ascending, TRIAL).request_digest == admit(
+        descending, TRIAL
     ).request_digest
 
 
 def test_requested_checks_follow_the_fixed_execution_order(
-    catalog, release_catalog_files
+    release_catalog_files
 ):
     request = make_request(
         release_catalog_files.reference_code, checks=("profile", "correctness")
     )
-    admission = admit(request, TRIAL, catalog)
+    admission = admit(request, TRIAL)
     assert tuple(admission.requested_checks) == ("correctness", "profile")
 
 
-def test_source_bytes_are_preserved_verbatim(catalog):
+def test_source_bytes_are_preserved_verbatim():
     source = "import torch  \n\n# trailing whitespace and blank lines\n\n\n"
-    admission = admit(make_request(source), TRIAL, catalog)
+    admission = admit(make_request(source), TRIAL)
     payload = json.loads(admission.canonical_request.decode("utf-8"))
     assert payload["reference_code"] == source
     assert payload["kernel_code"] == KERNEL_CODE
     assert admission.reference_digest == sha256_hex(source.encode("utf-8"))
-    other = admit(make_request(source + " "), TRIAL, catalog)
+    other = admit(make_request(source + " "), TRIAL)
     assert other.request_digest != admission.request_digest
     assert other.reference_digest != admission.reference_digest
 
 
-def test_canonical_bytes_match_the_rfc8785_contract(catalog, release_catalog_files):
+def test_canonical_bytes_match_the_rfc8785_contract(release_catalog_files):
     request = make_request(release_catalog_files.reference_code)
-    admission = admit(request, TRIAL, catalog)
+    admission = admit(request, TRIAL)
     expected = canonical_json_bytes(request.model_dump(mode="json", exclude_none=False))
     assert admission.canonical_request == expected
     assert admission.request_digest == sha256_hex(expected)
@@ -152,14 +143,14 @@ def test_canonical_bytes_match_the_rfc8785_contract(catalog, release_catalog_fil
 
 
 def test_wait_session_and_headers_never_enter_the_canonical_form(
-    catalog, release_catalog_files
+    release_catalog_files
 ):
     request = make_request(release_catalog_files.reference_code)
-    first = admit(request, TRIAL, catalog)
+    first = admit(request, TRIAL)
     other_caller = Caller(
         caller_id="trial-9", caller_class="trial", scopes=frozenset({"trial:submit"}),
     )
-    second = admit(request, other_caller, catalog)
+    second = admit(request, other_caller)
     # Caller identity, session correlation, and wait budgets are transport
     # metadata: the canonical request is identical for any admittable caller.
     assert first.canonical_request == second.canonical_request
@@ -173,48 +164,30 @@ def test_wait_session_and_headers_never_enter_the_canonical_form(
 # ---------------------------------------------------------------------------
 
 
-def test_trial_admission_has_no_catalog_binding(catalog, release_catalog_files):
-    admission = admit(make_request(release_catalog_files.reference_code), TRIAL, catalog)
+def test_trial_admission_has_no_legacy_grade_binding(release_catalog_files):
+    admission = admit(make_request(release_catalog_files.reference_code), TRIAL)
     assert admission.catalog_binding is None
 
 
 @pytest.mark.parametrize("who", [GRADE, OBSERVER, OBSERVER_WITH_GRADE_SUBMIT])
-def test_trial_requests_require_trial_submit(catalog, release_catalog_files, who):
+def test_trial_requests_require_trial_submit(release_catalog_files, who):
     request = make_request(release_catalog_files.reference_code)
     with pytest.raises(ForbiddenError) as excinfo:
-        admit(request, who, catalog)
+        admit(request, who)
     assert excinfo.value.code == "FORBIDDEN"
 
 
-def test_trial_read_alone_cannot_submit(catalog, release_catalog_files):
+def test_trial_read_alone_cannot_submit(release_catalog_files):
     request = make_request(release_catalog_files.reference_code)
     with pytest.raises(ForbiddenError):
-        admit(request, TRIAL_READONLY, catalog)
+        admit(request, TRIAL_READONLY)
 
 
-@pytest.mark.parametrize("who", [TRIAL, OBSERVER])
-def test_grade_requests_require_grade_submit(catalog, release_catalog_files, who):
+@pytest.mark.parametrize("who", [TRIAL, GRADE, OBSERVER, OBSERVER_WITH_GRADE_SUBMIT])
+def test_new_grade_requests_are_forbidden_even_with_grade_scope(release_catalog_files, who):
     request = make_grade_request(release_catalog_files)
     with pytest.raises(ForbiddenError):
-        admit(request, who, catalog)
-
-
-def test_grade_admission_binds_the_catalog(catalog, release_catalog_files):
-    admission = admit(make_grade_request(release_catalog_files), GRADE, catalog)
-    binding = admission.catalog_binding
-    assert binding is not None
-    assert binding.manifest_id == "release-1"
-    assert binding.problem_id == "addmm-1"
-    assert binding.reference_digest == release_catalog_files.reference_digest
-
-
-def test_observer_with_explicit_grade_submit_uses_grade_path(
-    catalog, release_catalog_files
-):
-    admission = admit(
-        make_grade_request(release_catalog_files), OBSERVER_WITH_GRADE_SUBMIT, catalog
-    )
-    assert admission.catalog_binding is not None
+        admit(request, who)
 
 
 # ---------------------------------------------------------------------------
@@ -239,39 +212,24 @@ def test_grade_requests_require_grade_context(release_catalog_files):
         make_request(release_catalog_files.reference_code, purpose="grade")
 
 
-# ---------------------------------------------------------------------------
-# Catalog triple and body digest are checked independently
-# ---------------------------------------------------------------------------
+def test_old_grade_records_remain_decodable_with_pinned_context(
+    release_catalog_files, make_command,
+):
+    request = make_grade_request(release_catalog_files)
+    command = make_command(request=request, caller=GRADE)
+    restored = EvaluationRequest.model_validate_json(command.admission.canonical_request)
+    assert restored == request
+    assert restored.purpose == "grade"
+    assert restored.grade_context == command.admission.catalog_binding
+    assert restored.grade_context.reference_digest == command.admission.reference_digest
+    with pytest.raises(ForbiddenError):
+        admit(restored, GRADE)
 
 
-def test_unknown_manifest_is_rejected(catalog, release_catalog_files):
-    request = make_grade_request(release_catalog_files, manifest_id="release-9")
-    with pytest.raises(ManifestBindingError) as excinfo:
-        admit(request, GRADE, catalog)
-    message = str(excinfo.value)
-    assert "release-9" not in message
-    assert release_catalog_files.reference_code not in message
-
-
-def test_unknown_problem_is_rejected(catalog, release_catalog_files):
-    request = make_grade_request(release_catalog_files, problem_id="relu-9")
-    with pytest.raises(ManifestBindingError):
-        admit(request, GRADE, catalog)
-
-
-def test_context_digest_must_match_the_catalog_entry(catalog, release_catalog_files):
-    request = make_grade_request(
-        release_catalog_files,
-        reference_digest=sha256_hex(OTHER_REFERENCE_CODE.encode("utf-8")),
+def test_new_grade_is_forbidden_even_with_both_submit_scopes(release_catalog_files):
+    caller = Caller(
+        caller_id="combined", caller_class="trusted",
+        scopes=frozenset({"grade:submit", "trial:submit"}),
     )
-    with pytest.raises(ManifestBindingError):
-        admit(request, GRADE, catalog)
-
-
-def test_body_reference_must_match_the_bound_digest(catalog, release_catalog_files):
-    request = make_grade_request(
-        release_catalog_files, reference_code=OTHER_REFERENCE_CODE
-    )
-    with pytest.raises(ManifestBindingError) as excinfo:
-        admit(request, GRADE, catalog)
-    assert OTHER_REFERENCE_CODE not in str(excinfo.value)
+    with pytest.raises(ForbiddenError):
+        admit(make_grade_request(release_catalog_files), caller)

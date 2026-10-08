@@ -27,14 +27,20 @@ for the opt-in policy, shared attempt budget and same-card recovery behavior.
 
 ## Upgrading
 
-For the change from official-only task lookup to generic catalog lookup, follow
-[the task-tool upgrade procedure](../usage/kernel-eval.md#upgrade-from-official-only-task-lookup).
-Catalog bytes remain valid, but translating `op_name` from `problem_id` can change
-internal request identity; collect old results before starting new operations.
+Before switching to operator inputs, stop old admissions and collect in-flight
+results from their original instance. Update clients to send `torch_code`,
+`triton_code` and `cases`; both implementations must export `run(*args)`.
+The former task-ID facade, separate tool token and public low-level evaluation
+request are no longer accepted. Use the capability registry for all endpoints.
 
-The service uses the `triton-eval:v2.1` namespace. Legacy routes, task polling,
-old dispatch queues, and the retired `kernel_eval` bridge are no longer shipped.
-Stop old admissions, collect all in-flight results from
-their original owner, then switch consumers and instances together. Old records
-are neither read nor deleted. Preserve the Redis volume; rollback requires
-the matching consumer and original namespace. Never use `docker compose down -v`.
+Start new operations with new session and idempotency keys. Replaying an old
+payload across this interface change is not a migration mechanism. Existing
+internal v2.1 records remain recoverable by ID on their owning instance; keep
+their handles and preserve Redis. Retained models support recovery, not old
+submission bodies or task-catalog resolution.
+
+The Redis namespace remains `triton-eval:v2.1`. Old records are not deleted.
+Rollback requires the matching clients, image and durable state. Never use
+`docker compose down -v`. Engine and reference-cache policies retain their
+existing deployment bounds; the new input interface does not establish device
+correctness or cache coverage without the corresponding validation.

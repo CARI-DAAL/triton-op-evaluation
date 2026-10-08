@@ -1,5 +1,8 @@
 """Smoke client against the durable API: headers, ID persistence, recovery."""
+import pytest
+
 from scripts import test_eval_service as smoke
+from triton_evaluation.api.operator import OperatorRequest
 
 QUEUED_RESOURCE = {
     "schema_version": "2.1",
@@ -78,7 +81,8 @@ def _fake_transport(monkeypatch, responses):
     return calls
 
 
-def test_main_sends_capability_headers_and_recovers_by_get(monkeypatch):
+@pytest.mark.parametrize("measure_speed", [True, False])
+def test_main_sends_capability_headers_and_recovers_by_get(monkeypatch, measure_speed):
     calls = _fake_transport(
         monkeypatch,
         [
@@ -91,7 +95,7 @@ def test_main_sends_capability_headers_and_recovers_by_get(monkeypatch):
     monkeypatch.setattr(
         smoke.sys, "argv",
         ["test_eval_service.py", "--url", "http://127.0.0.1:11907",
-         "--token", "secret-token"],
+         "--token", "secret-token"] + ([] if measure_speed else ["--no-speed"]),
     )
     assert smoke.main() == 0
 
@@ -99,8 +103,15 @@ def test_main_sends_capability_headers_and_recovers_by_get(monkeypatch):
     assert post["headers"]["Authorization"] == "Bearer secret-token"
     assert post["headers"]["X-Session-ID"] == "triton-eval-smoke"
     assert post["headers"]["Idempotency-Key"].startswith("smoke-")
-    assert post["body"]["schema_version"] == "2.1"
-    assert post["body"]["purpose"] == "trial"
+    request = OperatorRequest.model_validate(post["body"])
+    assert request.torch_code == smoke.REFERENCE_CODE
+    assert request.triton_code == smoke.KERNEL_CODE
+    assert [[tensor.shape for tensor in case.inputs] for case in request.cases] == [
+        [[4096], [4096]], [[8192], [8192]],
+    ]
+    assert all(case.seed == 0 for case in request.cases)
+    assert request.checks == (["correctness", "performance"] if measure_speed else ["correctness"])
+    assert (request.performance is not None) is measure_speed
 
     gets = [call for call in calls if call["method"] == "GET"
             and "/evaluations/" in call["url"]]

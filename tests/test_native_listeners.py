@@ -8,7 +8,7 @@ from contextlib import asynccontextmanager
 
 import httpx
 import pytest
-from test_kernel_eval_api import build_native_app
+from test_api import build_app
 
 from triton_evaluation.api.listeners import serve_app
 from triton_evaluation.config import Settings
@@ -22,8 +22,8 @@ def anyio_backend():
 
 
 @pytest.fixture
-def native_app(tmp_path):
-    return build_native_app(tmp_path)
+def native_app(tmp_path, release_catalog_files):
+    return build_app(tmp_path, release_catalog_files)
 
 
 def free_port():

@@ -84,7 +84,7 @@ async def test_no_submitted_source_or_token_appears_in_any_error(app):
     secret_source = "import torch\nclass Secret:\n    pass\n"
     async with app.http as client:
         response = await post(
-            client, payload=request_payload(reference_code=secret_source, checks=[])
+            client, payload=request_payload(torch_code=secret_source, checks=[])
         )
     body = response.text
     assert "Secret" not in body

@@ -1,41 +1,37 @@
 # Submit and recover evaluations
 
-The durable evaluation protocol is **v2.1**:
+Submit `torch_code`, `triton_code` and `cases` to `POST /evaluations`. Both code
+strings define `run(*args)`. The service builds its engine interface from these
+sources and cases; callers do not define `Model`, input factories, task IDs or
+catalog manifests. Candidate and reference code execute only in worker attempts.
 
-- `POST /evaluations?wait_seconds=0..60` requires `Authorization: Bearer`,
-  `X-Session-ID` and `Idempotency-Key`. HTTP 200 contains a terminal resource;
-  HTTP 202 contains an admitted resource and `Location`.
-- `GET /evaluations/{evaluation_id}` on the original instance returns HTTP 200
-  with its current state, including pending states. Pending resources include
-  `Retry-After: 1`. Unknown and invisible IDs return 404.
-- `/livez`: process liveness. `/readyz` requires Redis, catalog,
-  credentials and compatible CPU and NPU workers. Submissions require only
-  the execution capacity needed by their requested checks.
-- `/internal/metrics`: observer-authenticated metrics.
+## Describe cases
 
-The optional [native kernel_eval facade](kernel-eval.md) serves
-`POST /verify`, `/benchmark` and `/profile` for task-agent tools. It resolves
-task IDs from the service catalog and uses one `KERNEL_EVAL_TOKEN`.
+`cases` is a nonempty list. Each case contains `inputs`, an ordered list of
+positional arguments, and an optional `seed` (default `0`). Each input is either
+a tensor descriptor (`shape`, optional `dtype` and `range`) or a JSON scalar:
+integer, finite float, boolean, string or null. For example:
 
-| Caller intent | `checks` |
-| --- | --- |
-| Correctness | `["correctness"]` |
-| Correctness and timing | `["correctness", "performance"]` |
-| Profiling | `["profile"]` |
-| Syntax/import precheck | `["compile"]` |
+```json
+{"inputs": [{"shape": [32, 64], "dtype": "float32"}, 2.0, true, null], "seed": 0}
+```
 
-Timing uses the `performance` check in v2.1. `performance.method` defaults to
-`event`; callers may explicitly select `profiler`. Results identify the measurement
-method; consumers must not mix methods silently. Compile-only precheck does
-not prove that every input shape can compile on the device.
+The implementations receive four positional arguments for that case. `dtype`
+defaults to `float32`; supported types are `float16`, `bfloat16`, `float32`,
+`float64`, `int8`, `int16`, `int32`, `int64`, `uint8` and `bool`. `range` is
+`[low, high]` with an inclusive lower and exclusive upper bound. Integer ranges
+must have integral endpoints within the dtype's bounds; boolean tensors do not
+accept ranges.
 
-Admission validates and persists the request without executing candidate code.
-Compile-only requests enter a CPU queue and normally return HTTP 202; they can
-return 200 when an explicit wait observes completion. Every check executes
-within a leased attempt under the resource deadline. Mixed requests stay on
-one NPU worker, including an explicitly requested compile check.
+Without a range, floating tensors use a normal distribution, signed integers
+use `[-5, 5)`, unsigned integers use `[0, 5)`, and booleans use random false/true
+values. Generation is reproducible for the seed. `/docs` describes the validation
+limits and optional execution controls.
 
-Create `request.json` from your reference and candidate source files:
+## Submit
+
+Put your implementations in `torch_impl.py` and `triton_impl.py`, each exporting
+`run` with arguments matching the cases. Create the minimal request:
 
 ```bash
 python - <<'PYREQUEST'
@@ -43,56 +39,85 @@ import json
 from pathlib import Path
 
 request = {
-    "schema_version": "2.1",
-    "purpose": "trial",
-    "op_name": "add",
-    "reference_code": Path("reference.py").read_text(encoding="utf-8"),
-    "kernel_code": Path("kernel.py").read_text(encoding="utf-8"),
-    "checks": ["correctness", "performance"],
-    "deadline_seconds": 900,
-    "performance": {"warmup": 5, "repeats": 50, "method": "event"},
+    "torch_code": Path("torch_impl.py").read_text(encoding="utf-8"),
+    "triton_code": Path("triton_impl.py").read_text(encoding="utf-8"),
+    "cases": [{"inputs": [{"shape": [1024], "dtype": "float32"}]}],
 }
 Path("request.json").write_text(json.dumps(request), encoding="utf-8")
 PYREQUEST
 
 # Set EVALUATION_URL and EVALUATION_CAPABILITY_FILE for your instance.
-# Use a new key for new work; keep the same key and payload for retries.
 curl -sS -i "$EVALUATION_URL/evaluations?wait_seconds=0" \
   -H "Authorization: Bearer $(cat "$EVALUATION_CAPABILITY_FILE")" \
   -H 'Content-Type: application/json' \
-  -H 'X-Session-ID: example-session-1' \
   -H 'Idempotency-Key: example-evaluation-1' \
   --data-binary @request.json
+```
 
-# Set EVALUATION_ID to the returned evaluation_id; poll the original instance.
+Authentication uses the capability registry for every evaluation endpoint.
+`Idempotency-Key` and `X-Session-ID` are optional. Provide a key for submissions
+that may need retrying; repeat the same request and headers against the same
+instance. Without a key, every submission is new work. With a key but no session
+header, the service uses a stable default session; an explicit session groups
+related requests and applies the session quota. A session grants no authority.
+
+## Choose checks
+
+`checks` defaults to `["correctness", "performance"]` on `/evaluations`.
+
+| Intent | `checks` |
+| --- | --- |
+| Correctness | `["correctness"]` |
+| Correctness and timing | `["correctness", "performance"]` |
+| Profiling | `["profile"]` |
+| Syntax/import precheck | `["compile"]` |
+
+[Operation shortcuts](kernel-eval.md) select these checks through `/verify`,
+`/benchmark` or `/profile`. Timing defaults to `event`; optional performance
+settings can select `profiler`. Results identify the measurement method. Keep
+methods separate when comparing measurements. A syntax/import precheck cannot
+prove successful device compilation for every case.
+
+Admission persists identity, quotas and deadline before any supplied code runs.
+Compile-only requests use CPU workers. Requests with device checks use one NPU
+worker for the whole attempt, including an explicitly requested compile check.
+
+## Recover results
+
+`wait_seconds=0..60` bounds the HTTP wait. HTTP 202 returns an admitted resource
+and `Location`; HTTP 200 returns a terminal resource when the wait observes one.
+The response retains the internal v2.1 durable resource format. An HTTP timeout
+or client disconnect does not cancel accepted work.
+
+```bash
+# Set EVALUATION_ID from the submission response; poll the original instance.
 curl -sS -i "$EVALUATION_URL/evaluations/$EVALUATION_ID" \
   -H "Authorization: Bearer $(cat "$EVALUATION_CAPABILITY_FILE")"
 ```
 
-Resources have `queued`, `running`, `completed`, `failed` or `timed_out`
-states. For `completed` evaluations, inspect each check result: the kernel may be
-wrong or have a domain failure.
-Infrastructure failure is not a numeric correctness failure. Results never
-return hidden reference source or test inputs.
+GET returns HTTP 200 with the current resource. Pending states include
+`Retry-After: 1`; unknown or invisible IDs return 404. States are `queued`,
+`running`, `completed`, `failed` and `timed_out`. For `completed`, inspect each
+check result: a completed evaluation can establish that the candidate is wrong.
+Infrastructure failure does not establish a correctness verdict.
 
-Trial and rollout use trial capabilities; grade requires a trusted capability
-and manifest-bound `grade_context`. Caller identity owns visibility, primary
-quotas and idempotency. Session IDs correlate work and enforce a secondary
-quota; they grant no authority.
+`/livez` reports process liveness. `/readyz` checks Redis, credentials and
+compatible CPU/NPU workers. Admission checks the capacity needed for the request.
+`/internal/metrics` requires an observer capability.
 
-Request and response schemas are generated from the running application at
-`/openapi.json`; `/docs` provides interactive API documentation.
+## Validation and compatibility
 
-## Validation and errors
+FastAPI validates bodies, headers and query arguments before admission. Missing
+fields, unsupported values or invalid check combinations return 422
+`INVALID_REQUEST`. The 4 MiB body limit returns 413 `LIMIT_EXCEEDED`.
+Authentication failures return 401; authorization failures return 403. Errors
+include a request ID and a redacted explanation.
 
-FastAPI validates the declared body, header and query models before admission.
-Missing fields, wrong types, unsupported check combinations and invalid header
-values return 422 `INVALID_REQUEST`. Requests exceeding the 4 MiB body limit
-return 413 `LIMIT_EXCEEDED`. Authentication failures return 401; authorization
-failures return 403. Errors contain a request ID and a redacted explanation.
+Python models and routes define the interface; `/openapi.json` and `/docs` are
+generated from them. Ordinary requests do not first fetch the schema. Canonical
+JSON is an internal identity requirement, not an HTTP whitespace requirement.
 
-The request model's description in `/docs` defines check dependencies and grade
-binding rules. The schemas in `/openapi.json` are generated by FastAPI from the
-same models and route declarations used to validate and serialize HTTP traffic.
-Canonical JSON remains an internal storage and identity requirement; clients
-should consume JSON values, not depend on HTTP JSON whitespace or number spelling.
+The former task-ID facade and public `reference_code`/`kernel_code` request
+shape are retired. Existing internal durable records remain recoverable; this
+does not make the old submission shape valid. Follow the
+[upgrade procedure](../operations/recovery.md#upgrading) before switching clients.

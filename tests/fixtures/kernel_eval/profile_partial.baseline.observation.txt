@@ -1,7 +1,0 @@
-[kernel_eval]
-action=profile
-artifact_sha256=e75428588fc68f16bf469a5dcd920c72cecf84a4e6d9f9c16b93d143daca26b5
-eval_budget=1/18
-request_status=completed
-[kernel_eval][profile][partial] task_status=SUCCEEDED
-result={"cases": [{"bound": null, "case_idx": 45, "error": null, "missing_metrics": ["PipeUtilization.PUSHQ", "PipeUtilization.SCALARLDST"], "per_core_spread_ratio": 0.45941159106563034, "ratios": {"cube": null, "fixp": null, "mte2": null, "mte3": null, "scalar": null, "vec": null}, "recommendations": [], "status": "partial", "target_kernel": "_matmul_both_trans_kernel", "warnings": ["insufficient canonical pipe fields for Bound classification"]}], "failed_cases": 0, "partial_cases": 1, "remaining_case_indices": [], "selected_cases": 1, "timed_out": false}

@@ -1,7 +1,0 @@
-[kernel_eval]
-action=profile
-artifact_sha256=8fc129a8ed69a10e8637af4823d3bec8d30003b45382bc221a045c4f193e146d
-eval_budget=1/18
-request_status=completed
-[kernel_eval][profile][complete] task_status=SUCCEEDED
-result={"cases": [{"case_idx": 0, "error": null, "kernels": [{"metrics": {"aic_cube_ratio": 0.013611, "aic_fixpipe_ratio": 0.049907, "aic_l2_hit": 0.7073170500000001, "aic_mte2_ratio": 0.539365, "aiv_l2_hit": null, "aiv_mte2_ratio": null, "aiv_mte3_ratio": null, "aiv_vec_ratio": null, "gm_to_l1_usage": 0.00477219, "gm_to_ub_usage": null, "l0c_to_gm_usage": 0.00050234, "ub_to_gm_usage": null}, "op_name": "_bmm_kernel", "percentage": 100, "time_ms": 0.00282}], "status": "complete"}], "failed_cases": 0, "partial_cases": 0, "remaining_case_indices": [], "selected_cases": 1, "timed_out": false}

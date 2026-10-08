@@ -1,6 +1,0 @@
-[kernel_eval]
-action=benchmark
-artifact_sha256=b5cbc2fa4e1e56e9bb63b27d6cd7c6b87ea90a0b207219020b48dc3bc8b4c46b
-eval_budget=3/18
-request_status=infra_error
-error=benchmark request failed: cannot reach the evaluation service: ConnectionError('upstream unreachable')

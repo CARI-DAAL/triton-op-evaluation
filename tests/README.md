@@ -6,7 +6,15 @@ Run tests from the repository root after installing `.[test,dev]`.
 python -m pytest -m 'not npu' -q
 ```
 
-The suite exercises real HTTP handling, catalog loading and durable state changes
+To exercise tensor generation and both `run(...)` implementations on CPU, install
+the CPU Torch build first (the Python 3.12 CI job does this):
+
+```bash
+python -m pip install torch==2.9.0 --index-url https://download.pytorch.org/whl/cpu
+python -m pytest tests/test_operator_inputs.py -q
+```
+
+The suite exercises real HTTP handling, operator input adaptation and durable state changes
 with fakeredis. Process and NPU adapters are replaced where hardware is not the
 subject of the test. Real local subprocess, sandbox and HTTP/TLS tests run when
 their dependencies are available.
@@ -19,9 +27,8 @@ their dependencies are available.
 | Admission, identity, durable state | `test_admission*`, `test_broker.py`, `test_idempotency.py`, `test_fencing.py` |
 | Workers and recovery | `test_worker*`, `test_recovery.py`, `test_card_health*`, `test_engine_failure_requeue.py` |
 | Evidence and scoring | `test_evaluation_evaluator.py`, `test_shaping.py`, `test_profile_evidence.py` |
-| Catalog binding and task lookup | `test_catalog.py` |
-| Offline official-task conversion | `test_official_task.py`, `test_register_official_tasks.py` |
-| Tool operations and transport | `test_kernel_evaluation.py`, `test_kernel_eval_api.py`, `test_kernel_eval_budget.py` |
+| Host smoke and NPU-gate orchestration (CPU) | `test_smoke_script.py`, `test_npu_release_gate.py` |
+| Operator requests and transport | `test_operator*`, `test_api*`, `test_durable_http.py` |
 | Engine, runtime and cache | `test_verify*`, `test_benchmark*`, `test_profile*`, `test_reference*`, `test_engine*` |
 
 Test modules share helpers through `conftest.py` and narrowly scoped helper files.
@@ -30,22 +37,43 @@ behavior under test.
 
 ## Fixtures
 
-`fixtures/engine/` contains private engine observations. `fixtures/kernel_eval/`
-pins tool envelopes and observation text, including non-executable legacy bridge
-bytes and their provenance. `fixtures/evaluation_api/2.1/` contains compatibility
-examples and their schemas. These are regression data, not deployment inputs.
-Preserve hash-pinned reference bytes and licenses when moving fixtures.
+`fixtures/engine/` contains private engine observations.
+`fixtures/evaluation_api/2.1/` contains durable-record compatibility examples and
+their schemas; these are regression data, not deployment inputs.
+[`fixtures/legacy_candidate_defaults.py.txt`](fixtures/legacy_candidate_defaults.py.txt)
+is a fixed reference consumed by active engine input-default regression tests.
+It does not provide a dataset importer. Preserve hash-pinned fixture bytes when
+changing these tests. Retired tool envelopes and bridge archives remain in
+[Git history](../docs/history.md).
 
 ## External consumer and NPU checks
+
+The optional consumer checkout must support `torch_code`, `triton_code` and
+`cases`. The previous source/factory submission interface is no longer accepted.
 
 ```bash
 EVALUATION_CONSUMER_ROOT=/path/to/kernel-harness \
   python -m pytest tests/test_consumer_integration.py -q
 
-python scripts/npu_release_gate.py --help
+# Against a configured Ascend deployment; this performs real device work.
+python scripts/test_eval_service.py --url "$EVALUATION_URL" \
+  --token "$(cat "$EVALUATION_CAPABILITY_FILE")" --no-speed
+python scripts/npu_release_gate.py --service-url "$EVALUATION_URL" \
+  --capability-file "$EVALUATION_CAPABILITY_FILE" --output /tmp/npu-smoke-report.json
 ```
 
 The consumer suite needs the actual client checkout. The `npu` marker requires
 an Ascend host; `release_gate` checks are orchestrated by the release-gate script.
-Skipped external or hardware checks are not evidence of device correctness,
-isolation recovery, latency or cache coverage.
+The current gate checks liveness/readiness, two float32 add shapes (4096 and 8192),
+passed correctness and execution provenance. It polls HTTP 202 responses until a
+terminal resource arrives; skipped checks fail the gate. It does not run a full
+failure matrix, crash soak, timing-stability or profiling calibration.
+
+The report records `passed`, the scope `readiness-and-add-correctness-smoke`, and
+the SHA-256 of the target's live `/openapi.json` (fetched with a 10-second timeout).
+It does not label this limited check `production_ready`. There is no catalog
+manifest or separate grade token; the subprocess uses the caller capability via
+`TRITON_EVAL_CAPABILITY_TOKEN`. The smoke client measures performance by default;
+`--no-speed` selects correctness only, and its exit status reflects correctness.
+Passing or skipped CPU checks are not evidence of NPU correctness, isolation
+recovery, latency or cache coverage.

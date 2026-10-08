@@ -231,11 +231,10 @@ def test_worker_dimensions_are_instrumented(app):
     assert "fenced_write_rejections_total" in body
 
 
-def test_shaping_and_catalog_dimensions_exist(app):
+def test_shaping_and_execution_dimensions_exist(app):
     from triton_evaluation.service.metrics import ALLOWED_METRICS
 
     assert "shaping_failures_total" in ALLOWED_METRICS
-    assert "catalog_binding_outcomes_total" in ALLOWED_METRICS
     assert "worker_compatibility_total" in ALLOWED_METRICS
     assert "check_outcomes_total" in ALLOWED_METRICS
     assert "check_skips_total" in ALLOWED_METRICS

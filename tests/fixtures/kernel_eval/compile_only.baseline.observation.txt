@@ -1,6 +1,0 @@
-[kernel_eval]
-action=verify
-artifact_sha256=d1d2d3ed752c6e2021fec9574bab161c28c2b70b47796d320feb1c08e065b363
-eval_budget=1/18
-request_status=infra_error
-error=verify result missing

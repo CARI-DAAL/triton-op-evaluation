@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Smoke-test the synchronous evaluation v2 endpoint end-to-end.
+"""Smoke-test the durable operator endpoint end-to-end.
 
 Submits a known-good Ascend smoke op (elementwise add: a torch reference + a
 Triton kernel) once to ``POST /evaluations`` and prints a PASS/FAIL verdict.
-The service owns queue polling; this client waits for the terminal typed result.
+The client polls the admitted resource until it reaches a terminal result.
 
 Stdlib only — runs from the host against the service (the NPU work happens
 inside the triton-eval container):
@@ -22,23 +22,11 @@ import time
 import urllib.error
 import urllib.request
 
-# Known-good Ascend smoke case: elementwise add. reference_code defines a torch
-# Model + get_init_inputs/get_input_groups; kernel_code defines a triton kernel
-# + ModelNew with a matching forward(). (Same shape as tests/msprof_smoke_kernels.py.)
+# Elementwise add with two explicit workloads, using the public run(*args) interface.
 REFERENCE_CODE = """import torch
 
-class Model(torch.nn.Module):
-    def forward(self, x, y):
-        return x + y
-
-def get_init_inputs():
-    return []
-
-def get_input_groups():
-    return [
-        [torch.randn(4096), torch.randn(4096)],
-        [torch.randn(8192), torch.randn(8192)],
-    ]
+def run(x, y):
+    return x + y
 """
 
 KERNEL_CODE = """import torch
@@ -54,14 +42,31 @@ def add_kernel(x_ptr, y_ptr, output_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
     y = tl.load(y_ptr + offsets, mask=mask)
     tl.store(output_ptr + offsets, x + y, mask=mask)
 
-class ModelNew(torch.nn.Module):
-    def forward(self, x, y):
-        output = torch.empty_like(x)
-        n_elements = x.numel()
-        grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
-        add_kernel[grid](x, y, output, n_elements, BLOCK_SIZE=1024)
-        return output
+def run(x, y):
+    output = torch.empty_like(x)
+    n_elements = x.numel()
+    grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
+    add_kernel[grid](x, y, output, n_elements, BLOCK_SIZE=1024)
+    return output
 """
+
+
+def build_request(*, measure_speed: bool = True) -> dict:
+    """Build the public operator request shared by host and NPU smoke checks."""
+    body = {
+        "torch_code": REFERENCE_CODE,
+        "triton_code": KERNEL_CODE,
+        "cases": [
+            {"inputs": [{"shape": [size], "dtype": "float32"} for _ in range(2)], "seed": 0}
+            for size in (4096, 8192)
+        ],
+        "checks": ["correctness", "performance"] if measure_speed else ["correctness"],
+        "deadline_seconds": 600,
+    }
+    if measure_speed:
+        body["performance"] = {"warmup": 5, "repeats": 20}
+    return body
+
 
 def http_json(
     method: str,
@@ -153,7 +158,6 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--url", default="http://127.0.0.1:11907",
                     help="base URL of the triton-eval service")
-    ap.add_argument("--op", default="smoke_add", help="op_name (filename-safe slug)")
     ap.add_argument("--token", required=True,
                     help="caller-scoped opaque capability token (Bearer)")
     ap.add_argument("--measure-speed", dest="measure_speed", action="store_true",
@@ -181,22 +185,9 @@ def main() -> int:
         "X-Session-ID": args.session_id,
         "Idempotency-Key": f"smoke-{uuid.uuid4().hex}",
     }
-    body = {
-        "schema_version": "2.1",
-        "purpose": "trial",
-        "op_name": args.op,
-        "reference_code": REFERENCE_CODE,
-        "kernel_code": KERNEL_CODE,
-        "checks": (
-            ["correctness", "performance"] if args.measure_speed else ["correctness"]
-        ),
-        "non_compute": False,
-        "deadline_seconds": 600,
-    }
-    if args.measure_speed:
-        body["performance"] = {"warmup": 5, "repeats": 20}
+    body = build_request(measure_speed=args.measure_speed)
 
-    print(f"\n[evaluate] POST /evaluations  op={args.op} checks={body['checks']}")
+    print(f"\n[evaluate] POST /evaluations checks={body['checks']}")
     try:
         # Client HTTP timeout covers only wait_seconds plus transport margin;
         # recovery after that goes through GET with the persisted ID.

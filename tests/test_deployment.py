@@ -70,7 +70,7 @@ def _create_fake_cann(tmp_path: Path) -> Path:
     return set_env
 
 
-def _complete_deployment_env(tmp_path, release_catalog_files):
+def _complete_deployment_env(tmp_path):
     secret = tmp_path / "capabilities.json"
     secret.write_text(json.dumps({
         "capabilities": [{
@@ -83,8 +83,6 @@ def _complete_deployment_env(tmp_path, release_catalog_files):
         "TRITON_EVAL_REDIS_URL": "redis://127.0.0.1:6379/7",
         "TRITON_EVAL_CARDS": "0",
         "TRITON_EVAL_CAPABILITY_SECRET_PATH": str(secret),
-        "TRITON_EVAL_CATALOG_ROOT": str(release_catalog_files.root),
-        "TRITON_EVAL_CATALOG_MANIFEST_PATH": str(release_catalog_files.manifest_path),
     }
 
 
@@ -142,13 +140,15 @@ def test_production_compose_requires_an_image_input_without_default(tmp_path):
     assert "TRITON_EVAL_IMAGE" in result.stderr
 
 
-def test_production_compose_mounts_secret_and_catalog_read_only(tmp_path):
+def test_production_compose_mounts_secret_read_only_without_catalog(tmp_path):
     config = _render_compose("docker-compose.yml")
     service = config["services"]["triton-eval"]
     targets = {v["target"]: v for v in service["volumes"]}
-    for target in ("/run/secrets/triton-eval", "/srv/triton-eval-release"):
+    for target in ("/run/secrets/triton-eval",):
         assert target in targets, target
         assert targets[target].get("read_only") is True
+    assert "/srv/triton-eval-release" not in targets
+    assert not any("CATALOG" in name for name in service["environment"])
     for volume in service["volumes"]:
         assert "docker.sock" not in str(volume.get("source", ""))
 
@@ -191,12 +191,12 @@ def test_same_compose_supports_single_or_multiple_cards(cards):
     ("worker_toolchain_version", "Site CANN build", "Site CANN build"),
 ])
 def test_runtime_options_survive_compose_preflight_and_settings_parsing(
-    tmp_path, release_catalog_files, monkeypatch, field, value, expected,
+    tmp_path, monkeypatch, field, value, expected,
 ):
     from scripts.deployment_preflight import inspect_deployment
     from triton_evaluation.config import Settings
 
-    env = _complete_deployment_env(tmp_path, release_catalog_files)
+    env = _complete_deployment_env(tmp_path)
     env[f"TRITON_EVAL_{field.upper()}"] = value
     rendered = _render_compose("docker-compose.yml", env)
 
@@ -366,12 +366,12 @@ def test_control_actions_skip_startup_validation(tmp_path, action):
     (EVALUATOR_BUILD, 0), ("sha256:" + "b" * 64, 1),
 ])
 def test_container_readiness_checks_the_image_digest_build(
-    tmp_path, release_catalog_files, build, expected_exit,
+    tmp_path, build, expected_exit,
 ):
     bwrap = shutil.which("bwrap")
     if bwrap is None:
         pytest.skip("Bubblewrap is required to run the container readiness gate")
-    env = _complete_deployment_env(tmp_path, release_catalog_files)
+    env = _complete_deployment_env(tmp_path)
     env["TRITON_EVAL_EVALUATOR_BUILD"] = build
     env["PYTHON_BIN"] = sys.executable
     env["PYTHONPATH"] = os.environ.get("PYTHONPATH", "")
@@ -546,8 +546,8 @@ printf '%s\\n' \\
     ]
 
 
-def test_api_entrypoint_loads_via_uvicorn_import_path(tmp_path, release_catalog_files):
-    env = os.environ | _complete_deployment_env(tmp_path, release_catalog_files)
+def test_api_entrypoint_loads_via_uvicorn_import_path(tmp_path):
+    env = os.environ | _complete_deployment_env(tmp_path)
     result = subprocess.run(
         [sys.executable, "-c", (
             "from fastapi import FastAPI; "

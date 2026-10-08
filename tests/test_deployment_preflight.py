@@ -18,7 +18,6 @@ REDIS_IMAGE = (
 EVAL_IMAGE = "registry.example.com/triton-eval@sha256:" + "a" * 64
 EVALUATOR_BUILD = EVAL_IMAGE.rsplit("@", 1)[1]
 CAPABILITY_TOKEN = "preflight-seeded-secret-token"
-REFERENCE_SOURCE = "import torch  # preflight-seeded-reference"
 
 
 class FakeDocker:
@@ -84,15 +83,10 @@ class FakeDocker:
                     "TRITON_EVAL_CARDS": "0",
                     "TRITON_EVAL_EVALUATOR_BUILD": EVALUATOR_BUILD,
                     "TRITON_EVAL_CAPABILITY_SECRET_PATH": "/run/secrets/triton-eval",
-                    "TRITON_EVAL_CATALOG_ROOT": "/srv/triton-eval-release",
-                    "TRITON_EVAL_CATALOG_MANIFEST_PATH": "/srv/triton-eval-release/catalog.json",
                 },
                 "volumes": [
                     {"type": "bind", "source": str(self.secret),
                      "target": "/run/secrets/triton-eval",
-                     "read_only": True},
-                    {"type": "bind", "source": str(self.catalog),
-                     "target": "/srv/triton-eval-release",
                      "read_only": True},
                 ],
             },
@@ -120,18 +114,14 @@ class FakeDocker:
         return rendered
 
     secret = "/run/secrets/source"
-    catalog = "/srv/release-source"
 
 
 def base_env(tmp_path, **overrides):
     secret = _write_secret(tmp_path)
-    catalog_root = _write_catalog(tmp_path)
     env = {
         "TRITON_EVAL_API_HOST": INSTANCE_HOST,
         "TRITON_EVAL_API_PORT": "11907",
         "TRITON_EVAL_CAPABILITY_SECRET_PATH": str(secret),
-        "TRITON_EVAL_CATALOG_ROOT": str(catalog_root),
-        "TRITON_EVAL_CATALOG_MANIFEST_PATH": str(catalog_root / "catalog.json"),
         "TRITON_EVAL_IMAGE": EVAL_IMAGE,
         "TRITON_EVAL_EVALUATOR_BUILD": EVALUATOR_BUILD,
         "TRITON_EVAL_COMPOSE_FILE": "docker-compose.yml",
@@ -154,28 +144,9 @@ def _write_secret(tmp_path):
     return secret
 
 
-def _write_catalog(tmp_path):
-    root = tmp_path / "release"
-    (root / "references").mkdir(parents=True, exist_ok=True)
-    reference = root / "references" / "addmm-1.py"
-    reference.write_text(REFERENCE_SOURCE, encoding="utf-8")
-    from triton_evaluation.serialization import sha256_hex
-
-    (root / "catalog.json").write_text(json.dumps({
-        "schema_version": "1.0",
-        "entries": [{
-            "manifest_id": "release-1", "problem_id": "addmm-1",
-            "reference_digest": sha256_hex(REFERENCE_SOURCE.encode("utf-8")),
-            "reference_path": "references/addmm-1.py",
-        }],
-    }), encoding="utf-8")
-    return root
-
-
 def make_runner(tmp_path, **kwargs):
     runner = FakeDocker(**kwargs)
     runner.secret = tmp_path / "capability.json"
-    runner.catalog = tmp_path / "release"
     return runner
 
 
@@ -192,6 +163,7 @@ def test_valid_deployment_passes_and_returns_config(tmp_path):
     assert config.redis_image == REDIS_IMAGE
     assert config.evaluator_build == EVALUATOR_BUILD
     assert config.api_port == 11907
+    assert not (tmp_path / "release").exists()
 
 
 def test_preflight_never_shows_docker_or_pulls(tmp_path):
@@ -301,7 +273,7 @@ def test_runtime_settings_validation_ignores_unrendered_host_variables(tmp_path,
     inspect_deployment(base_env(tmp_path), make_runner(tmp_path))
 
 
-@pytest.mark.parametrize("target", ["/run/secrets/triton-eval", "/srv/triton-eval-release"])
+@pytest.mark.parametrize("target", ["/run/secrets/triton-eval"])
 def test_mounted_source_must_be_the_validated_host_path(tmp_path, target):
     runner = make_runner(tmp_path)
     rendered = runner._rendered()
@@ -313,20 +285,11 @@ def test_mounted_source_must_be_the_validated_host_path(tmp_path, target):
         inspect_deployment(base_env(tmp_path), runner)
 
 
-@pytest.mark.parametrize("setting", [
-    "TRITON_EVAL_CAPABILITY_SECRET_PATH", "TRITON_EVAL_CATALOG_ROOT",
-    "TRITON_EVAL_CATALOG_MANIFEST_PATH",
-])
+@pytest.mark.parametrize("setting", ["TRITON_EVAL_CAPABILITY_SECRET_PATH"])
 def test_runtime_security_paths_must_match_validated_mounts(tmp_path, setting):
     runner = make_runner(tmp_path, rendered_env={setting: "/unvalidated-path"})
     with pytest.raises(PreflightError, match="runtime"):
         inspect_deployment(base_env(tmp_path), runner)
-
-
-def test_validated_catalog_manifest_must_be_the_file_used_in_container(tmp_path):
-    env = base_env(tmp_path, TRITON_EVAL_CATALOG_MANIFEST_PATH=str(tmp_path / "different.json"))
-    with pytest.raises(PreflightError, match="manifest"):
-        inspect_deployment(env, make_runner(tmp_path))
 
 
 # ---------------------------------------------------------------------------
@@ -456,7 +419,7 @@ def test_absent_local_eval_image_digest_is_fatal(tmp_path):
         inspect_deployment(base_env(tmp_path), runner)
 
 
-def test_writable_secret_or_catalog_mount_is_fatal(tmp_path):
+def test_writable_secret_mount_is_fatal(tmp_path):
     good = make_runner(tmp_path)._rendered()
     volumes = [
         mount | ({"read_only": False} if mount["target"] == "/run/secrets/triton-eval" else {})
@@ -497,7 +460,7 @@ def test_preflight_subprocess_failure_is_fatal(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# Secret/catalog checks
+# Secret checks
 # ---------------------------------------------------------------------------
 
 
@@ -544,53 +507,7 @@ def test_duplicate_capability_configuration_is_fatal(tmp_path):
         )
 
 
-def test_catalog_duplicate_triple_is_fatal(tmp_path):
-    root = _write_catalog(tmp_path / "mutated")
-    payload = json.loads((root / "catalog.json").read_text())
-    payload["entries"].append(dict(payload["entries"][0]))
-    (root / "catalog.json").write_text(json.dumps(payload), encoding="utf-8")
-    runner = make_runner(tmp_path)
-    runner.catalog = root
-    with pytest.raises(PreflightError):
-        inspect_deployment(
-            base_env(tmp_path, TRITON_EVAL_CATALOG_ROOT=str(root),
-                     TRITON_EVAL_CATALOG_MANIFEST_PATH=str(root / "catalog.json")),
-            runner,
-        )
-
-
-def test_catalog_digest_mismatch_is_fatal(tmp_path):
-    root = _write_catalog(tmp_path / "mutated")
-    reference = root / "references" / "addmm-1.py"
-    reference.write_text(REFERENCE_SOURCE + "\n# mutated", encoding="utf-8")
-    runner = make_runner(tmp_path)
-    runner.catalog = root
-    with pytest.raises(PreflightError):
-        inspect_deployment(
-            base_env(tmp_path, TRITON_EVAL_CATALOG_ROOT=str(root),
-                     TRITON_EVAL_CATALOG_MANIFEST_PATH=str(root / "catalog.json")),
-            runner,
-        )
-
-
-def test_catalog_traversal_escape_is_fatal(tmp_path):
-    root = _write_catalog(tmp_path / "mutated")
-    outside = tmp_path / "outside.py"
-    outside.write_text(REFERENCE_SOURCE, encoding="utf-8")
-    payload = json.loads((root / "catalog.json").read_text())
-    payload["entries"][0]["reference_path"] = "../outside.py"
-    (root / "catalog.json").write_text(json.dumps(payload), encoding="utf-8")
-    runner = make_runner(tmp_path)
-    runner.catalog = root
-    with pytest.raises(PreflightError):
-        inspect_deployment(
-            base_env(tmp_path, TRITON_EVAL_CATALOG_ROOT=str(root),
-                     TRITON_EVAL_CATALOG_MANIFEST_PATH=str(root / "catalog.json")),
-            runner,
-        )
-
-
-def test_failures_never_reveal_seeded_secret_or_reference(tmp_path, capsys):
+def test_failures_never_reveal_seeded_secret(tmp_path, capsys):
     runner = make_runner(tmp_path)
     with pytest.raises(PreflightError):
         inspect_deployment(
@@ -598,7 +515,6 @@ def test_failures_never_reveal_seeded_secret_or_reference(tmp_path, capsys):
         )
     captured = capsys.readouterr()
     assert CAPABILITY_TOKEN not in captured.out + captured.err
-    assert REFERENCE_SOURCE not in captured.out + captured.err
 
 
 # ---------------------------------------------------------------------------

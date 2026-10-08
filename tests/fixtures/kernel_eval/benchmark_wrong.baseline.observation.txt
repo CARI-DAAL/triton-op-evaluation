@@ -1,9 +1,0 @@
-[kernel_eval]
-action=benchmark
-artifact_sha256=57ec0e9710d20a297d6af6f4237b4d04a2074512498efa18b4b4b40d738b2452
-eval_budget=1/18
-request_status=completed
-[kernel_eval][benchmark][nan_inf] cases=29/50
-error=[case 5] NonFiniteMismatch: NaN position mismatch between candidate and reference; sample=[{"candidate": "nan", "diff": "nan", "idx": [0, 0], "reference": -2.888671875}, {"candidate": "nan", "diff": "nan", "idx": [0, 1], "reference": 9.234375}, {"candidate": "nan", "diff": "nan", "idx": [0, 2], "reference": 7.4921875}, {"candidate": "nan", "diff": "nan", "idx": [0, 3], "reference": -7.08203125}, {"candidate": "nan", "diff": "nan", "idx": [0, 4], "reference": 10.96875}, {"candidate": "nan", "diff": "nan", "idx": [0, 5], "reference": -1.1923828125}, {"candidate": "nan", "diff": "nan", "idx": [0, 6], "reference": -1.0283203125}, {"candidate": "nan", "diff": "nan", "idx": [0, 7], "reference": -2.693359375}]
-[case 9] AccuracyError: Kernel produced incorrect results; {"max_abs_diff": 170989.75, "mere": 29.829517364501953, "matched_ratio": 0.11126708984375, "atol": 0.1, "rtol": 0.0078125}; sample=[{"candidate": -171008, "diff": -170989.75, "idx": [43, 48], "reference": -18.25}, {"candidate": 32512, "diff": 32514.21875, "idx": [11, 48], "reference": -2.21875}, {"candidate": 26752, "diff": 26745.71875, "idx": [43, 117], "reference": 6.28125}, {"candidate": 13376, "diff": 13377.6796875, "idx": [14, 51], "reference": -1.6796875}, {"candidate": -9088, "diff": -9088.9453125, "idx": [36, 75], "reference": 0.9453125}, {"candidate": 6240, "diff": 6233.4375, "idx": [92, 51], "reference": 6.5625}, {"candidate": -5888, "diff": -5883.8125, "idx": [43, 53], "reference": -4.1875}, {"candidate": 52
-…[truncated]…

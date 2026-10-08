@@ -2,7 +2,7 @@
 """Validate one independent evaluation instance before starting Compose.
 
 Validate an explicit private IPv4 bind, immutable images, mounted capabilities
-and catalog, and durable local Redis. Consumer sandbox networking and endpoint
+and durable local Redis. Consumer sandbox networking and endpoint
 selection belong to the consumer and are not deployment inputs here.
 """
 import argparse
@@ -33,8 +33,7 @@ REDIS_URL = "redis://127.0.0.1:6379/7"
 REDIS_PREFIX = "triton-eval:v2.1"
 _REQUIRED_ENV = (
     "TRITON_EVAL_API_HOST", "TRITON_EVAL_API_PORT",
-    "TRITON_EVAL_CAPABILITY_SECRET_PATH", "TRITON_EVAL_CATALOG_ROOT",
-    "TRITON_EVAL_CATALOG_MANIFEST_PATH", "TRITON_EVAL_IMAGE",
+    "TRITON_EVAL_CAPABILITY_SECRET_PATH", "TRITON_EVAL_IMAGE",
     "TRITON_EVAL_EVALUATOR_BUILD",
 )
 
@@ -51,8 +50,6 @@ class DeploymentConfig:
     api_host: ipaddress.IPv4Address
     api_port: int
     capability_file: Path
-    catalog_root: Path
-    catalog_manifest: Path
     redis_image: str
     evaluator_build: str
 
@@ -70,7 +67,7 @@ def inspect_deployment(
     rendered = _render_compose(env, runner)
     _validate_redis_service(rendered)
     _validate_eval_service(rendered, env, api_host)
-    _validate_secret_and_catalog(env, runner)
+    _validate_secret(env)
 
     _verify_local_image(runner, REDIS_IMAGE)
     _verify_local_image(runner, env["TRITON_EVAL_IMAGE"])
@@ -79,8 +76,6 @@ def inspect_deployment(
         api_host=api_host,
         api_port=API_PORT,
         capability_file=Path(env["TRITON_EVAL_CAPABILITY_SECRET_PATH"]),
-        catalog_root=Path(env["TRITON_EVAL_CATALOG_ROOT"]),
-        catalog_manifest=Path(env["TRITON_EVAL_CATALOG_MANIFEST_PATH"]),
         redis_image=REDIS_IMAGE,
         evaluator_build=env["TRITON_EVAL_EVALUATOR_BUILD"],
     )
@@ -229,20 +224,15 @@ def _validate_mounts(volumes: list[dict], settings_env: Mapping[str, str],
                      env: Mapping[str, str]) -> None:
     runtime_paths = {
         "TRITON_EVAL_CAPABILITY_SECRET_PATH": "/run/secrets/triton-eval",
-        "TRITON_EVAL_CATALOG_ROOT": "/srv/triton-eval-release",
-        "TRITON_EVAL_CATALOG_MANIFEST_PATH": "/srv/triton-eval-release/catalog.json",
     }
     if any(settings_env.get(name) != path for name, path in runtime_paths.items()):
-        raise PreflightError("runtime secret and catalog paths must match the validated mounts")
-    catalog_root = Path(env["TRITON_EVAL_CATALOG_ROOT"]).resolve()
-    if Path(env["TRITON_EVAL_CATALOG_MANIFEST_PATH"]).resolve() != catalog_root / "catalog.json":
-        raise PreflightError("catalog manifest must be catalog.json inside the mounted catalog")
+        raise PreflightError("runtime secret path must match the validated mounts")
 
     for volume in volumes:
         if "docker.sock" in str(volume.get("source", "")):
             raise PreflightError("the Docker socket must not be mounted")
     mounts = {v.get("target"): v for v in volumes}
-    for name in ("TRITON_EVAL_CAPABILITY_SECRET_PATH", "TRITON_EVAL_CATALOG_ROOT"):
+    for name in ("TRITON_EVAL_CAPABILITY_SECRET_PATH",):
         target = runtime_paths[name]
         mount = mounts.get(target)
         if mount is None:
@@ -255,26 +245,17 @@ def _validate_mounts(volumes: list[dict], settings_env: Mapping[str, str],
             raise PreflightError(f"mount source must equal the validated host path: {target}")
 
 
-def _validate_secret_and_catalog(env: Mapping[str, str], runner) -> None:
+def _validate_secret(env: Mapping[str, str]) -> None:
     try:
-        from triton_evaluation.service.catalog import ReleaseCatalog
         from triton_evaluation.service.security import CapabilityRegistry
     except ImportError:
         sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-        from triton_evaluation.service.catalog import ReleaseCatalog
         from triton_evaluation.service.security import CapabilityRegistry
 
     try:
         CapabilityRegistry.from_secret_file(Path(env["TRITON_EVAL_CAPABILITY_SECRET_PATH"]))
     except Exception:
         raise PreflightError("capability secret failed validation") from None
-    try:
-        ReleaseCatalog.load(
-            Path(env["TRITON_EVAL_CATALOG_ROOT"]),
-            Path(env["TRITON_EVAL_CATALOG_MANIFEST_PATH"]),
-        )
-    except Exception:
-        raise PreflightError("release catalog failed validation") from None
 
 
 def _verify_local_image(runner: CommandRunner, reference: str) -> None:

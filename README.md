@@ -1,7 +1,9 @@
 # triton-evaluation
 
 A FastAPI service that evaluates Triton-Ascend kernels against a reference:
-correctness, performance, profiling, and syntax/import checks.
+correctness, performance, profiling, and syntax/import checks. Submit three fields:
+`torch_code`, `triton_code`, and `cases`. Both source strings define `run(*args)`;
+cases describe positional inputs. No task registration or dataset is required.
 
 An accepted evaluation is a durable resource. Workers execute it under a lease,
 publish typed evidence, and recover unfinished work after failures. Clients can
@@ -18,9 +20,26 @@ On a configured, running instance:
 - **`GET /evaluations/{evaluation_id}`** — recover its current state and results.
 - **`/livez`** and **`/readyz`** — process health and execution readiness.
 
-The optional task-tool interface exposes `/verify`, `/benchmark` and `/profile`
-against any task in the configured reference catalog. See
-[tool usage](docs/usage/kernel-eval.md).
+`POST /verify`, `/benchmark` and `/profile` accept the same three-field input
+and select the requested checks. All routes use the same capability credential
+and return durable evaluation resources. See [operation shortcuts](docs/usage/kernel-eval.md).
+
+A minimal request reads the two implementations from local files:
+
+```python
+from pathlib import Path
+
+request = {
+    "torch_code": Path("torch_impl.py").read_text(encoding="utf-8"),
+    "triton_code": Path("triton_impl.py").read_text(encoding="utf-8"),
+    "cases": [{"inputs": [{"shape": [1024], "dtype": "float32"}]}],
+}
+```
+
+Each implementation receives one generated tensor.
+`POST /evaluations` defaults to correctness and performance. The
+[request example](docs/usage/evaluations.md) includes authentication, submission
+and result recovery.
 
 [Submit and recover an evaluation](docs/usage/evaluations.md) explains credentials,
 idempotency, asynchronous results and request examples. Python models and route
@@ -51,16 +70,16 @@ See [Contributing](#contributing) for change verification and
 Use [the deployment guide](docs/operations/deployment.md) with
 [`docker.env.example`](docker.env.example) and [`docker-compose.yml`](docker-compose.yml).
 For host execution, use [`.env.example`](.env.example) and `scripts/start.sh`.
-Both paths require configured credentials, a catalog, durable Redis, and the
+Both paths require configured credentials, durable Redis, and the
 appropriate Ascend runtime. API documentation is served on the instance's own URL.
 
 ## Repository
 
 | Path | Purpose |
 | --- | --- |
-| [`triton_evaluation/`](triton_evaluation/) | Shared configuration, task tools, profiler and reference-cache policies |
+| [`triton_evaluation/`](triton_evaluation/) | Shared configuration, profiler and reference-cache policies |
 | [`triton_evaluation/api/`](triton_evaluation/api/) | HTTP models, routes and generated OpenAPI |
-| [`triton_evaluation/service/`](triton_evaluation/service/) | Admission, durable scheduling, catalog, credentials and terminal evidence |
+| [`triton_evaluation/service/`](triton_evaluation/service/) | Admission, durable scheduling, credentials and terminal evidence |
 | [`triton_evaluation/runtime/`](triton_evaluation/runtime/) | Workers, card health, execution environment and precheck caching |
 | [`triton_evaluation/evaluators/`](triton_evaluation/evaluators/) | Check orchestration and adapters to the engine |
 | [`triton_evaluation/engine/`](triton_evaluation/engine/) | Bundled evaluation engine |
@@ -204,23 +223,19 @@ or an evaluator crash. A normal candidate failure is not a suspicious ending.
 An ordered sequence of increasingly disruptive card recovery actions, each
 followed by a canary to determine whether recovery succeeded.
 
-### Tool callers
+### Operator inputs
 
-**Kernel evaluation**:
-A tool caller's request to verify, benchmark or profile a candidate against a
-catalog task, with a bounded wait for recoverable evaluation evidence.
+**Operator request**:
+A PyTorch implementation, a Triton implementation and input cases for comparing
+their behavior under requested checks.
 
-**Tool operation**:
-One caller action within a trial. An explicitly identified operation can be
-retried without consuming another turn or creating a new evaluation.
+**Case**:
+One ordered list of positional inputs and a deterministic seed. Tensor inputs
+are generated from their shape, dtype and optional range; scalars pass through.
 
-**Trial turn**:
-A durable allowance consumed by a tool operation. Distinct legacy calls consume
-distinct turns even when they recover the same underlying evaluation.
-
-**Optional diagnostics**:
-Additional profiling evidence attached to a successful tool observation. Its
-absence does not invalidate the primary evidence or consume another trial turn.
+**Operation shortcut**:
+An HTTP endpoint that selects correctness, performance or profiling while using
+the same request input, admission process and durable result lifecycle.
 
 ## Third-party source
 
@@ -233,15 +248,5 @@ CANN Open Software License Agreement Version 2.0. Preserve those headers when
 modifying or redistributing the files. The repository currently does not include
 the full CANN license text referenced by those headers.
 
-### Historical observation fixtures
-
-The reference modules under
-[`tests/fixtures/kernel_eval/legacy_bridge/reference/kernel-agent-52affcb9/`](tests/fixtures/kernel_eval/legacy_bridge/reference/kernel-agent-52affcb9/)
-are retained verbatim for compatibility evidence. Their
-[provenance](tests/fixtures/kernel_eval/legacy_bridge/reference/kernel-agent-52affcb9/PROVENANCE.md)
-identifies the upstream revision; the corresponding
-[Apache-2.0 license](tests/fixtures/kernel_eval/legacy_bridge/reference/kernel-agent-52affcb9/LICENSE)
-is included.
-
-These notices record existing attribution. No repository-wide license has been
+This section records the bundled engine attribution. No repository-wide license has been
 selected for the remaining project source.

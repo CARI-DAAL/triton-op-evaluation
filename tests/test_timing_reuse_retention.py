@@ -28,7 +28,6 @@ import pytest
 from test_worker import StubEvaluator, build_worker
 
 from triton_evaluation.service.admission import admit
-from triton_evaluation.service.catalog import ReleaseCatalog
 from triton_evaluation.service.models import (
     AlgorithmVersions,
     CreateResourceCommand,
@@ -118,7 +117,7 @@ def _npu_strict_command(settings, caller=None):
 
     caller = caller or make_caller()
     request = make_request()
-    admission = admit(request, caller, ReleaseCatalog({}))
+    admission = admit(request, caller)
     return CreateResourceCommand(
         evaluation_id=new_evaluation_id(),
         caller_id=caller.caller_id,
