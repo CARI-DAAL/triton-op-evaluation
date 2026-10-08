@@ -8,6 +8,7 @@ __pycache__
 logs
 tests
 docs
+plugins
 .env
 docker.env
 *.md

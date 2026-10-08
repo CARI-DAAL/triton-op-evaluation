@@ -28,7 +28,7 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from triton_evaluation.profiler_runtime import inspect_sqlite_binding  # noqa: E402
+from triton_evaluation.runtime.profiler_runtime import inspect_sqlite_binding  # noqa: E402
 
 
 def sha(path: Path) -> str:
@@ -169,7 +169,7 @@ def replay(
             for name in (
                 "scripts/replay_profiler_export.py",
                 "triton_evaluation/engine/benchmark.py",
-                "triton_evaluation/profiler_runtime.py",
+                "triton_evaluation/runtime/profiler_runtime.py",
             )
         },
         "msprof_path": str(executable),

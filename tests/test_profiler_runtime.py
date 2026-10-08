@@ -12,7 +12,7 @@ from types import SimpleNamespace
 import pytest
 from test_profiler_export_replay import elf_binding  # noqa: F401
 
-from triton_evaluation import profiler_runtime as runtime
+from triton_evaluation.runtime import profiler_runtime as runtime
 
 
 @pytest.fixture
@@ -202,7 +202,7 @@ def test_actual_profile_entry_holds_alias_until_sync_callback_then_original_csv_
 
 
 def test_sandbox_requires_profile_pair_and_every_pinned_path_readonly_visible(deployed_runtime):
-    from triton_evaluation.evaluators.sandbox import EngineSandbox
+    from triton_evaluation.runtime.sandbox import EngineSandbox
 
     target, model = deployed_runtime
     env = {runtime.MANIFEST_ENV: str(target), runtime.DIGEST_ENV: runtime.sha(target)}
@@ -229,7 +229,7 @@ def test_sandbox_requires_profile_pair_and_every_pinned_path_readonly_visible(de
 def test_sandbox_actual_command_preserves_runtime_pair_and_readonly_alias(
     tmp_path, deployed_runtime
 ):
-    from triton_evaluation.evaluators.sandbox import EngineSandbox
+    from triton_evaluation.runtime.sandbox import EngineSandbox
 
     target, model = deployed_runtime
     env = {runtime.MANIFEST_ENV: str(target), runtime.DIGEST_ENV: runtime.sha(target)}
@@ -270,7 +270,7 @@ def test_settings_profiler_runtime_pair_is_separate_from_existing_anchors(monkey
 def test_cache_runtime_files_bind_actual_prepared_manifest_and_elf_bytes(
     tmp_path, deployed_runtime
 ):
-    from triton_evaluation.reference_cache import (
+    from triton_evaluation.runtime.reference_cache import (
         CacheDeployment,
         CacheMeasurement,
         ReferenceCacheError,
@@ -281,7 +281,8 @@ def test_cache_runtime_files_bind_actual_prepared_manifest_and_elf_bytes(
     engine.mkdir()
     for name in ("verify.py", "benchmark.py", "_common_utils.py"):
         (engine / name).write_text("controlled engine implementation")
-    helper = tmp_path / "profiler_runtime.py"
+    helper = tmp_path / "runtime" / "profiler_runtime.py"
+    helper.parent.mkdir()
     helper.write_bytes(Path(runtime.__file__).read_bytes())
     files = {str(target): runtime.sha(target)}
     for field in ("library", "consumer", "msprof", "alias", "elf_observations"):
@@ -293,7 +294,7 @@ def test_cache_runtime_files_bind_actual_prepared_manifest_and_elf_bytes(
         runtime_files=files,
         algorithm_files={
             **{path.name: runtime.sha(path) for path in engine.iterdir()},
-            "../profiler_runtime.py": runtime.sha(helper),
+            "../runtime/profiler_runtime.py": runtime.sha(helper),
         },
         device_conditions={"8": {"hardware": "CPU-controlled; not NPU acceptance"}},
         measurement=CacheMeasurement(method="profiler", warmup=5, repeats=20, cv_threshold=0.3),

@@ -20,7 +20,7 @@ from pathlib import Path
 import pytest
 
 from triton_evaluation.engine import benchmark
-from triton_evaluation.reference_cache import (
+from triton_evaluation.runtime.reference_cache import (
     CacheDeployment,
     CacheMeasurement,
     ReferenceCache,

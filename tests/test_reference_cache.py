@@ -11,7 +11,7 @@ from pydantic import ValidationError
 
 from triton_evaluation.config import Settings
 from triton_evaluation.engine import benchmark, verify
-from triton_evaluation.reference_cache import (
+from triton_evaluation.runtime.reference_cache import (
     BINDING_ENV,
     CACHE_ENV,
     DIGEST_ENV,
@@ -306,7 +306,7 @@ def test_config_cache_index_attestation_preserves_existing_anchors(tmp_path):
 
 
 def test_retained_private_cache_trace_has_no_tensor_values(tmp_path):
-    from triton_evaluation.reference_diagnostics import _read_trace
+    from triton_evaluation.runtime.reference_diagnostics import _read_trace
 
     trace = {
         "reference_device_policy": "npu-strict",

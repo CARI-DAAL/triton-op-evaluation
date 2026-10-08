@@ -206,7 +206,7 @@ def test_green_requires_all_eight_original_profiler_contexts_and_median(
 def test_configured_probe_requires_actual_pinned_callback_not_only_environment(
     tmp_path, monkeypatch, controlled_measurement, trace_kind
 ):
-    from triton_evaluation import profiler_runtime
+    from triton_evaluation.runtime import profiler_runtime
 
     expected = {
         "enabled": True,
@@ -233,9 +233,9 @@ def test_configured_probe_requires_actual_pinned_callback_not_only_environment(
                 "main_thread": True,
                 "process_id": os.getpid(),
                 "helper_sha256": hashlib.sha256(
-                    (probe.ROOT / "triton_evaluation/profiler_runtime.py").read_bytes()
+                    (probe.ROOT / "triton_evaluation/runtime/profiler_runtime.py").read_bytes()
                 ).hexdigest(),
-                "helper_path": str(probe.ROOT / "triton_evaluation/profiler_runtime.py"),
+                "helper_path": str(probe.ROOT / "triton_evaluation/runtime/profiler_runtime.py"),
                 "service_package_path": str(probe.ROOT / "triton_evaluation"),
                 "physical_device": "8",
                 "visible_devices": "8",
@@ -270,7 +270,8 @@ def test_configured_probe_requires_actual_pinned_callback_not_only_environment(
 def test_isolated_wrapper_uses_actual_boundary_and_rejects_missing_measurements(
     tmp_path, monkeypatch, valid
 ):
-    from triton_evaluation.evaluators import base, sandbox
+    from triton_evaluation.evaluators import base
+    from triton_evaluation.runtime import sandbox
 
     for key in (
         sandbox.CONFIG_ENV,

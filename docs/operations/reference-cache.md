@@ -30,7 +30,7 @@ Create one `CacheDeployment` JSON for all workers in the frozen generation:
 - `algorithm_files`: engine basenames and their SHA256 hashes, including at least
   `verify.py`, `benchmark.py`, `_common_utils.py`. A configured
   [profiler runtime](profiler-runtime.md) additionally requires the fixed key
-  `../profiler_runtime.py`; no other sibling traversal is allowed. Its actual
+  `../runtime/profiler_runtime.py`; no other sibling traversal is allowed. Its actual
   manifest/dependency files also belong in the immutable runtime closure. With
   the canonical CANN environment quartet configured, this includes the vendor
   source, captured environment artifact, observed version metadata and actual
@@ -168,6 +168,10 @@ SHA256, the covered physical cards, the 8×(warmup5/repeats20, profiler) timing
 contract (reconciled explicitly with reference8's identical per-sample
 protocol, never silently aliased), the target patched runtime file hashes, the
 consuming service source hash, and the sampled evidence that justified adoption.
+`target_service_source_sha256` paths are relative to the service package root.
+Runtime helper entries therefore use the `runtime/` prefix; a module move also
+changes source hashes. Reissue these policies under the
+[runtime migration procedure](recovery.md#runtime-module-migration).
 Record the scope of the supporting measurements explicitly. Sampled evidence
 does not establish individual validation of every case in the source inventory.
 

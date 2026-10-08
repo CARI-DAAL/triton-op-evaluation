@@ -17,9 +17,9 @@ from types import SimpleNamespace
 
 import pytest
 
-from triton_evaluation import reference_timing_reuse as reuse_module
 from triton_evaluation.engine import verify
-from triton_evaluation.reference_cache import (
+from triton_evaluation.runtime import reference_timing_reuse as reuse_module
+from triton_evaluation.runtime.reference_cache import (
     BINDING_ENV,
     CACHE_ENV,
     DIGEST_ENV,
@@ -35,7 +35,7 @@ from triton_evaluation.reference_cache import (
     build_model_bound_index,
     sha256,
 )
-from triton_evaluation.reference_timing_reuse import TimingReusePolicy, ValidatedTimingReuse
+from triton_evaluation.runtime.reference_timing_reuse import TimingReusePolicy, ValidatedTimingReuse
 
 torch = pytest.importorskip("torch")
 
@@ -154,7 +154,9 @@ def test_build_rekeys_unique_workloads_without_touching_sealed_bytes(sealed):
 
 def test_hit_resolves_from_any_same_model_card(sealed, monkeypatch):
     configure(monkeypatch, sealed, card="12")  # never the sealed card 3
-    monkeypatch.setattr("triton_evaluation.reference_cache.current_npu_model", lambda: MODEL)
+    monkeypatch.setattr(
+        "triton_evaluation.runtime.reference_cache.current_npu_model", lambda: MODEL,
+    )
     cache = ReferenceCache.from_environment()
     assert cache.model_index is not None and cache.model_bound_applicable
     for case_idx, size in ((1, 2), (2, 3)):
@@ -169,7 +171,9 @@ def test_hit_resolves_from_any_same_model_card(sealed, monkeypatch):
 
 def test_miss_on_unknown_workload(sealed, monkeypatch):
     configure(monkeypatch, sealed, card="12")
-    monkeypatch.setattr("triton_evaluation.reference_cache.current_npu_model", lambda: MODEL)
+    monkeypatch.setattr(
+        "triton_evaluation.runtime.reference_cache.current_npu_model", lambda: MODEL,
+    )
     cache = ReferenceCache.from_environment()
     with pytest.raises(ReferenceCacheMiss):
         cache.load_case(SOURCE, 9, [torch.ones(4)], reference_device_policy="npu-strict")
@@ -177,7 +181,9 @@ def test_miss_on_unknown_workload(sealed, monkeypatch):
 
 def test_model_mismatch_misses(sealed, monkeypatch):
     configure(monkeypatch, sealed, card="12")
-    monkeypatch.setattr("triton_evaluation.reference_cache.current_npu_model", lambda: OTHER_MODEL)
+    monkeypatch.setattr(
+        "triton_evaluation.runtime.reference_cache.current_npu_model", lambda: OTHER_MODEL,
+    )
     cache = ReferenceCache.from_environment()
     with pytest.raises(ReferenceCacheMiss):
         cache.load_case(SOURCE, 1, [torch.ones(2)], reference_device_policy="npu-strict")
@@ -185,7 +191,7 @@ def test_model_mismatch_misses(sealed, monkeypatch):
 
 def test_unobservable_model_misses(sealed, monkeypatch):
     configure(monkeypatch, sealed, card="12")
-    monkeypatch.setattr("triton_evaluation.reference_cache.current_npu_model", lambda: None)
+    monkeypatch.setattr("triton_evaluation.runtime.reference_cache.current_npu_model", lambda: None)
     cache = ReferenceCache.from_environment()
     with pytest.raises(ReferenceCacheMiss):
         cache.load_case(SOURCE, 1, [torch.ones(2)], reference_device_policy="npu-strict")
@@ -205,7 +211,9 @@ def test_runtime_fingerprint_mismatch_misses(sealed, monkeypatch):
     monkeypatch.setenv(STATE_ENV, str(sealed.tmp_path / "state"))
     monkeypatch.setenv("ASCEND_RT_VISIBLE_DEVICES", "12")
     runtime_file.write_text("a different runtime\n")
-    monkeypatch.setattr("triton_evaluation.reference_cache.current_npu_model", lambda: MODEL)
+    monkeypatch.setattr(
+        "triton_evaluation.runtime.reference_cache.current_npu_model", lambda: MODEL,
+    )
     cache = ReferenceCache.from_environment()
     assert cache is not None and not cache.model_bound_applicable
     with pytest.raises(ReferenceCacheMiss):
@@ -224,7 +232,9 @@ def test_build_refuses_a_changed_runtime_fingerprint(sealed, tmp_path):
 def test_tampered_index_sha_still_raises(sealed, monkeypatch):
     configure(monkeypatch, sealed, card="12")
     monkeypatch.setenv(DIGEST_ENV, "0" * 64)
-    monkeypatch.setattr("triton_evaluation.reference_cache.current_npu_model", lambda: MODEL)
+    monkeypatch.setattr(
+        "triton_evaluation.runtime.reference_cache.current_npu_model", lambda: MODEL,
+    )
     with pytest.raises(ReferenceCacheError, match="pinned SHA256"):
         ReferenceCache.from_environment()
 
@@ -237,7 +247,9 @@ def test_unconfigured_cache_is_none(monkeypatch):
 
 @pytest.fixture
 def engine(monkeypatch, sealed):
-    monkeypatch.setattr("triton_evaluation.reference_cache.current_npu_model", lambda: MODEL)
+    monkeypatch.setattr(
+        "triton_evaluation.runtime.reference_cache.current_npu_model", lambda: MODEL,
+    )
     monkeypatch.setattr(verify, "_ensure_npu_ambient_shared", lambda _t, **_k: True)
     monkeypatch.setattr(verify, "cleanup_npu_memory", lambda: None)
     monkeypatch.setattr(
@@ -328,7 +340,9 @@ def test_engine_failing_kernel_fails_identically_cached_and_fresh(sealed, monkey
 
 def test_engine_model_mismatch_computes_fresh(sealed, monkeypatch, engine):
     configure(monkeypatch, sealed, card="12")
-    monkeypatch.setattr("triton_evaluation.reference_cache.current_npu_model", lambda: OTHER_MODEL)
+    monkeypatch.setattr(
+        "triton_evaluation.runtime.reference_cache.current_npu_model", lambda: OTHER_MODEL,
+    )
     passed, total, trace, reference_calls, _ = run_verify(
         monkeypatch, sealed.tmp_path / "mismatch", lambda v: v + 1, lambda v: v + 1
     )

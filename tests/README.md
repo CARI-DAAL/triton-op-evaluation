@@ -25,6 +25,7 @@ their dependencies are available.
 
 | Area | Test files |
 | --- | --- |
+| Portable client plugin | `test_plugin_package.py`, `test_cli*` |
 | Generated HTTP documentation | `test_openapi.py` |
 | Admission, identity, durable state | `test_admission*`, `test_broker.py`, `test_idempotency.py`, `test_fencing.py` |
 | Workers and recovery | `test_worker*`, `test_recovery.py`, `test_card_health*`, `test_engine_failure_requeue.py` |

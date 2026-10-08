@@ -10,7 +10,7 @@ from pathlib import Path
 import pytest
 
 from triton_evaluation.evaluators.base import run_script
-from triton_evaluation.evaluators.sandbox import EngineSandbox
+from triton_evaluation.runtime.sandbox import EngineSandbox
 
 
 def test_runtime_manifest_cannot_overlay_attempt_state(tmp_path):

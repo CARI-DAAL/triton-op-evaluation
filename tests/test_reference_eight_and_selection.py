@@ -31,7 +31,7 @@ from triton_evaluation.engine import benchmark
 from triton_evaluation.evaluators import benchmark as benchmark_evaluator_module
 from triton_evaluation.evaluators.benchmark import BenchmarkEvaluator
 from triton_evaluation.evaluators.shaping import ShapingError, shape_performance
-from triton_evaluation.reference_cache import (
+from triton_evaluation.runtime.reference_cache import (
     CacheDeployment,
     CacheMeasurement,
     ReferenceCache,

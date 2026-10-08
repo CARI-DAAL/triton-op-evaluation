@@ -44,3 +44,28 @@ Rollback requires the matching clients, image and durable state. Never use
 `docker compose down -v`. Engine and reference-cache policies retain their
 existing deployment bounds; the new input interface does not establish device
 correctness or cache coverage without the corresponding validation.
+
+## Runtime module migration
+
+Execution support now lives in `triton_evaluation/runtime/`: profiler handling,
+reference cache, timing reuse, diagnostics and sandbox isolation join the worker
+and card-health modules. Shared configuration and serialization remain at the
+package root; evaluators orchestrate checks through the runtime layer.
+
+This move changes source paths and hashes used by pinned deployments. Use a new
+evaluator build and regenerate the profiler/sandbox manifests, cache deployment
+and index, runtime overlays and timing-reuse policies that bind those files.
+The profiler cache algorithm key is now `../runtime/profiler_runtime.py`, resolved
+from the engine directory; the old helper key is rejected. Timing-reuse policy
+`target_service_source_sha256` keys remain relative to the `triton_evaluation/`
+root, so pinned helpers now use `runtime/sandbox.py`,
+`runtime/reference_timing_reuse.py`, `runtime/reference_cache.py` and
+`runtime/profiler_runtime.py` as applicable. Engine source hashes also change
+where imports change. Follow the [profiler resealing procedure](profiler-runtime.md#reseal-before-device-acceptance)
+and [cache policy guidance](reference-cache.md) for artifact ordering and source
+closure. Preserve deployed manifests and hashes as historical evidence; prepare
+new artifacts instead of rewriting active pins to bypass a mismatch.
+
+CPU tests establish the moved modules' behavior and validation boundaries.
+Device acceptance, cache coverage and profiling accuracy must be re-established
+on the target deployment before claiming compatibility with its measurements.

@@ -11,9 +11,9 @@ from pathlib import Path
 import pytest
 from test_profiler_export_replay import elf_binding  # noqa: F401
 
-from triton_evaluation import profiler_runtime as runtime
-from triton_evaluation.evaluators import sandbox
 from triton_evaluation.evaluators.base import run_script
+from triton_evaluation.runtime import profiler_runtime as runtime
+from triton_evaluation.runtime import sandbox
 
 
 @pytest.fixture
@@ -269,7 +269,7 @@ def test_real_bwrap_old_cann_red_then_derived_child_loader_and_conditions_green(
     probe = work / "probe.py"
     probe.write_text(
         "import json,os,subprocess,sys\nfrom pathlib import Path\n"
-        "from triton_evaluation import profiler_runtime as r\n"
+        "from triton_evaluation.runtime import profiler_runtime as r\n"
         "description=r.describe_runtime()\n"
         "with r.profiler_export_runtime() as trace:\n"
         " code='import ctypes; ctypes.CDLL('+repr(description['consumer_path'])+')'\n"
@@ -289,7 +289,7 @@ def test_real_bwrap_old_cann_red_then_derived_child_loader_and_conditions_green(
     assert actual["effective_environment"]["ASCEND_HOME_PATH"] == str(root)
     assert "cann-0.0.old" not in json.dumps(actual["effective_environment"])
     assert actual["effective_environment"]["PYTHONPATH"].split(":")[0] == str(
-        Path(runtime.__file__).parent.parent
+        Path(runtime.__file__).parents[2]
     )
     assert (
         actual["effective_environment_sha256"]
@@ -312,7 +312,7 @@ def test_actual_cache_requires_cann_source_artifact_metadata_and_library_pins(
 ):
     import importlib.metadata
 
-    from triton_evaluation.reference_cache import (
+    from triton_evaluation.runtime.reference_cache import (
         CacheDeployment,
         CacheMeasurement,
         ReferenceCacheError,
@@ -336,12 +336,12 @@ def test_actual_cache_requires_cann_source_artifact_metadata_and_library_pins(
         "cann_environment",
     ):
         files[str(getattr(model, name + "_path"))] = getattr(model, name + "_sha256")
-    engine = Path(runtime.__file__).parent / "engine"
+    engine = Path(runtime.__file__).parents[1] / "engine"
     algorithms = {
         name: runtime.sha(engine / name)
         for name in ("verify.py", "benchmark.py", "_common_utils.py")
     }
-    algorithms["../profiler_runtime.py"] = runtime.sha(Path(runtime.__file__))
+    algorithms["../runtime/profiler_runtime.py"] = runtime.sha(Path(runtime.__file__))
     deployment = CacheDeployment(
         generation="controlled-cpu-cann",
         runtime_versions={"pytest": importlib.metadata.version("pytest")},
@@ -397,7 +397,7 @@ def test_actual_prepare_cli_import_ban_keeps_existing_cann_and_system_bytes(
     root, source, library, library_sha, consumer, consumer_sha, msprof = canonical_cann
     before = {path: runtime.sha(path) for path in (source, library, consumer, msprof)}
     output = tmp_path / "cli-runtime"
-    script = Path(runtime.__file__).parent.parent / "scripts/prepare_profiler_runtime.py"
+    script = Path(runtime.__file__).parents[2] / "scripts/prepare_profiler_runtime.py"
     argv = [
         str(script),
         "--output",

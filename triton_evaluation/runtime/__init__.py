@@ -1,1 +1,1 @@
-"""Worker execution, prechecks, and device health."""
+"""Worker execution, isolation, device health, and runtime evidence."""

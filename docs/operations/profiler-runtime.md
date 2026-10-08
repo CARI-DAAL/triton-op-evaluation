@@ -109,6 +109,9 @@ loaded helper path/SHA and host-canary denial separately.
 
 ## Reseal before device acceptance
 
+After a [runtime module migration](recovery.md#runtime-module-migration), prepare
+new pinned artifacts for the new evaluator build; keep active deployments intact.
+
 Regenerate the cache deployment/index for the implementation being deployed.
 Record the actual service revision, helper SHA and effective cache algorithm
 identity. Assign a new evaluator build whenever the execution environment or
@@ -117,8 +120,8 @@ actual runtime manifest, alias, ELF observations, source SQLite ELF, consumer,
 resolved msprof and complete CANN/torch_npu parser/native dependency closure in
 `runtime_files`. Bind the changed benchmark and fixed service-owned helper in
 `algorithm_files`. The only permitted sibling key is
-`../profiler_runtime.py`, resolving to
-`triton_evaluation/profiler_runtime.py` within the validated service root;
+`../runtime/profiler_runtime.py`, resolving to
+`triton_evaluation/runtime/profiler_runtime.py` within the validated service root;
 other traversal, absolute keys and symlink escape are refused. This is a fixed
 deployment dependency and does not expand candidate H/K materials. The three
 historically required engine files remain required and do not by themselves

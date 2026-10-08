@@ -19,16 +19,16 @@ from pathlib import Path
 import pytest
 from test_timing_reuse_policy import IMPL_LATENCY, write_task
 
-from triton_evaluation import reference_timing_reuse as reuse_module
 from triton_evaluation.engine import benchmark
-from triton_evaluation.reference_cache import (
+from triton_evaluation.runtime import reference_timing_reuse as reuse_module
+from triton_evaluation.runtime.reference_cache import (
     CacheDeployment,
     CacheMeasurement,
     ReferenceCache,
     ReferenceCacheMiss,
     sha256,
 )
-from triton_evaluation.reference_timing_reuse import (
+from triton_evaluation.runtime.reference_timing_reuse import (
     POLICY_ENV,
     POLICY_SHA_ENV,
     TimingReusePolicy,
@@ -133,8 +133,8 @@ def build_v4_policy(tmp_path: Path, *, cache_dir, index_path, index_sha, state_d
             name: reuse_module.current_service_source_sha256(name)
             for name in (
                 "engine/benchmark.py",
-                "reference_timing_reuse.py",
-                "reference_cache.py",
+                "runtime/reference_timing_reuse.py",
+                "runtime/reference_cache.py",
             )
         },
         "evidence": {"sampled_problem": "official_l3_BatchMatmul"},
@@ -472,7 +472,7 @@ def test_real_bmm51_card8_entry_resolves_from_device9_with_retained_input_sha():
     cache = ReferenceCache(
         REAL_CACHE_DIR, index.deployment, "9", entries=index.entries, state_dir=None
     )
-    from triton_evaluation.reference_cache import CaseBinding
+    from triton_evaluation.runtime.reference_cache import CaseBinding
 
     sealed_by_input = {}
     for key in index.entries:

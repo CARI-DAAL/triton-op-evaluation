@@ -407,7 +407,7 @@ def run_profiler_with_config(test_fn: callable, warmup: int, repeats: int, profi
     import torch
     import torch_npu
     import triton.runtime as runtime
-    from triton_evaluation.profiler_runtime import (
+    from triton_evaluation.runtime.profiler_runtime import (
         load_runtime as _load_profiler_runtime,
         check_synchronous_handler as _check_profiler_sync,
         profiler_export_runtime as _profiler_export_runtime,
@@ -972,7 +972,7 @@ def _try_validated_timing_reuse(config, model_spec, input_groups, case_indices, 
         return False
     from pathlib import Path
 
-    from triton_evaluation.reference_timing_reuse import (
+    from triton_evaluation.runtime.reference_timing_reuse import (
         current_device_id,
         load_validated_timing_reuse,
     )
@@ -993,7 +993,7 @@ def _try_validated_timing_reuse(config, model_spec, input_groups, case_indices, 
     )
     if manifests is None:
         return False
-    from triton_evaluation.reference_cache import canonical_bytes, sha256
+    from triton_evaluation.runtime.reference_cache import canonical_bytes, sha256
     first_idx = list(case_indices)[0]
     cached_ms = manifests[first_idx].reference_latency_median_ms
     # Fresh sentinel: the same live eight-sample protocol the same-generation
@@ -1071,7 +1071,7 @@ def _configure_reference_cache(config, model_spec, input_groups, device, case_in
     ``case_indices`` their original 1-based identities.
     """
     from pathlib import Path
-    from triton_evaluation.reference_cache import (
+    from triton_evaluation.runtime.reference_cache import (
         ReferenceCache, ReferenceCacheMiss, official_source_metadata,
         canonical_bytes, sha256,
     )
