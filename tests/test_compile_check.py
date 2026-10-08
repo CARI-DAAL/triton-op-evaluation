@@ -139,17 +139,22 @@ async def test_inconclusive_compile_is_not_inferred_from_failed_correctness(
 ):
     from test_evaluation_evaluator import StubCheck
 
-    app = app_with_precheck(tmp_path, release_catalog_files)
+    app = app_with_precheck(tmp_path, release_catalog_files, engine_failure_requeue=True)
     seed_worker(app)
     evaluator = Harness(verify=StubCheck(engine_failure("correctness", "runtime unavailable")))
-    worker = build_worker(app.store, app.settings, evaluator, app.clock)
-    other_card = build_worker(app.store, app.settings, evaluator, app.clock, device_id=1)
+    worker = build_worker(
+        app.store, app.settings, evaluator, app.clock, canary=lambda **kwargs: True,
+    )
+    other_card = build_worker(
+        app.store, app.settings, evaluator, app.clock, device_id=1,
+        canary=lambda **kwargs: True,
+    )
     async with app.http as client:
         response = await post(client, payload(
             ["compile", "correctness"], "raise OSError('temporarily unavailable')"
         ))
         eid = response.json()["evaluation_id"]
-        # Retryable pre-subject engine failures requeue under the shared
+        # Opt-in engine failures without check evidence requeue under the shared
         # attempt budget instead of terminalizing the first attempt; the
         # failed card's own worker skips the requeued member (affinity).
         assert worker.run_once()

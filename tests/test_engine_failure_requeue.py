@@ -1,17 +1,11 @@
-"""Retryable pre-subject engine failures requeue instead of terminalizing.
-
-Covers the 2026-10-07 uni-agent grade failures: EVALUATOR_EXECUTION_FAILED
-(engine exit=1, retryable, phase=execution, no subject outcome) terminalized
-the resource on the first attempt while other cards were healthy. The fix
-requeues the same resource under the shared MAX_ATTEMPTS claim budget and
-publishes last_failed_card so affinity avoidance steers the retry away.
-"""
+"""Opt-in retries of unknown engine failures preserve evidence and fencing."""
+import pytest
 from conftest import (
     make_caller,
     make_completed_result,
-    make_correctness_success,
     make_request,
 )
+from test_worker import StubEvaluator, build_worker
 
 from triton_evaluation.api.contract import (
     CheckFailed,
@@ -21,7 +15,157 @@ from triton_evaluation.api.contract import (
     SkipInfo,
 )
 from triton_evaluation.broker import MAX_ATTEMPTS
+from triton_evaluation.terminal_results import compile_outcome_from_precheck
 from triton_evaluation.worker import _retryable_engine_failure
+
+
+def test_engine_failure_retry_requires_explicit_opt_in(settings):
+    assert settings.engine_failure_requeue is False
+
+
+def _profile_failure_result(settings):
+    result = _engine_failure_result(settings)
+    result.profile = result.correctness.model_copy(deep=True)
+    result.profile.error.check = "profile"
+    result.correctness = result.performance = None
+    return EvaluationResult.model_validate(result.model_dump())
+
+
+def test_profile_failure_without_evidence_can_retry(settings):
+    assert _retryable_engine_failure(_profile_failure_result(settings))
+
+
+def test_profile_only_worker_retries_on_another_card(store, make_command, settings, clock):
+    settings = settings.model_copy(update={"engine_failure_requeue": True})
+    command = make_command(request=make_request(checks=["profile"], profile={"mode": "op"}))
+    store.create_or_replay(command)
+    evaluator = StubEvaluator(settings, result=_profile_failure_result(settings))
+    workers = [
+        build_worker(
+            store, settings, evaluator, clock, device_id=card, canary=lambda **kwargs: True,
+        )
+        for card in (0, 1)
+    ]
+    assert workers[0].run_once()
+    assert not workers[0].run_once()
+    assert workers[1].run_once()
+    assert workers[0].run_once()
+    result = store.get_visible(command.evaluation_id, make_caller())
+    assert result.state == "completed"
+    assert result.result.profile.error.code == "EVALUATOR_EXECUTION_FAILED"
+    assert len(evaluator.calls) == MAX_ATTEMPTS
+
+
+def test_failed_health_probe_blocks_same_card_fallback(store, make_command, settings, clock):
+    settings = settings.model_copy(update={"engine_failure_requeue": True})
+    command = make_command(request=make_request(checks=["correctness", "performance"]))
+    store.create_or_replay(command)
+    evaluator = StubEvaluator(settings, result=_engine_failure_result(settings))
+    worker = build_worker(
+        store, settings, evaluator, clock, canary=lambda **kwargs: False,
+        recovery_step=lambda *args, **kwargs: "noop",
+    )
+    assert worker.run_once()
+    assert store.is_card_unhealthy(0)
+    clock.advance_ms(settings.lease_seconds * 1000)
+    assert not worker.run_once()
+    assert len(evaluator.calls) == 1
+
+
+def test_failure_at_deadline_still_checks_card_health(store, make_command, settings, clock):
+    command = make_command(request=make_request(
+        checks=["correctness", "performance"], deadline_seconds=10,
+    ))
+    store.create_or_replay(command)
+    probes = []
+
+    def canary(**kwargs):
+        probes.append(kwargs["device_id"])
+        return True
+
+    evaluator = StubEvaluator(
+        settings, result=_engine_failure_result(settings), hook=lambda _: clock.advance_ms(10_000),
+    )
+    worker = build_worker(store, settings, evaluator, clock, canary=canary)
+    assert worker.run_once()
+    assert probes == [0]
+    # Past-deadline writes are fenced; the deadline watchdog owns the terminal.
+    assert store.expire_due_resources() == 1
+    assert store.get_visible(command.evaluation_id, make_caller()).state == "timed_out"
+
+
+def test_other_check_evidence_prevents_retry(settings):
+    result = _engine_failure_result(settings)
+    result.compile = compile_outcome_from_precheck("precheck_passed")
+    result = EvaluationResult.model_validate(result.model_dump())
+    assert not _retryable_engine_failure(result)
+
+
+@pytest.mark.parametrize("deadline_seconds", [10, 1800])
+def test_failed_card_can_retry_before_deadline_after_bounded_avoidance(
+    store, make_command, make_worker, settings, clock, deadline_seconds,
+):
+    command = make_command(request=make_request(deadline_seconds=deadline_seconds))
+    store.create_or_replay(command)
+    worker = make_worker()
+    lease = store.claim_next(worker, card=0, avoid_card=0)
+    assert store.requeue_retryable_engine_failure(lease, failed_card=0)
+    assert store.claim_next(worker, card=0, avoid_card=0) is None
+    wait_ms = min(settings.lease_seconds * 1000, deadline_seconds * 1000 // 2)
+    clock.advance_ms(wait_ms)
+    replacement = store.claim_next(worker, card=0, avoid_card=0)
+    assert replacement is not None
+    assert clock() < replacement.deadline_at_ms
+    assert not store.commit_terminal(lease, "completed", make_completed_result(settings))
+    assert store.commit_terminal(replacement, "completed", make_completed_result(settings))
+
+
+@pytest.mark.parametrize("retry_enabled", [True, False])
+def test_engine_failure_probes_card_even_when_retry_is_disabled(
+    store, make_command, settings, clock, retry_enabled,
+):
+    settings = settings.model_copy(update={"engine_failure_requeue": retry_enabled})
+    command = make_command(request=make_request(checks=["correctness", "performance"]))
+    store.create_or_replay(command)
+    probes = []
+
+    def canary(**kwargs):
+        probes.append(kwargs["device_id"])
+        return True
+
+    worker = build_worker(
+        store, settings, StubEvaluator(settings, result=_engine_failure_result(settings)),
+        clock, canary=canary,
+    )
+    assert worker.run_once()
+    assert probes == [0]
+    visible = store.get_visible(command.evaluation_id, make_caller())
+    assert visible.state == ("running" if retry_enabled else "completed")
+
+
+def test_single_card_worker_exhausts_shared_budget_and_checks_health(
+    store, make_command, settings, clock, redis_client,
+):
+    settings = settings.model_copy(update={"engine_failure_requeue": True})
+    command = make_command(request=make_request(checks=["correctness", "performance"]))
+    store.create_or_replay(command)
+    probes = []
+
+    def canary(**kwargs):
+        probes.append(kwargs["device_id"])
+        return True
+
+    evaluator = StubEvaluator(settings, result=_engine_failure_result(settings))
+    worker = build_worker(store, settings, evaluator, clock, canary=canary)
+    for attempt in range(MAX_ATTEMPTS):
+        assert worker.run_once()
+        assert len(probes) == attempt + 1
+        assert not worker.run_once()
+        clock.advance_ms(settings.lease_seconds * 1000)
+    assert len(evaluator.calls) == MAX_ATTEMPTS
+    assert store.get_visible(command.evaluation_id, make_caller()).state == "completed"
+    resource_key = _key(settings, f"resource:{command.evaluation_id}")
+    assert redis_client.hget(resource_key, "attempt_count") == str(MAX_ATTEMPTS).encode()
 
 
 def _key(settings, suffix):
@@ -115,25 +259,46 @@ def test_requeue_publishes_replacement_and_card_avoidance(
     )
 
 
-def test_requeue_shares_the_attempt_budget(
-    store, make_command, make_worker, clock, settings
+def test_requeue_shares_the_attempt_budget(store, make_command, make_worker, clock, settings):
+    command = make_command()
+    store.create_or_replay(command)
+    # A lost lease consumes the first attempt; engine retries share that budget.
+    assert store.claim_next(make_worker()) is not None
+    clock.advance_ms(settings.lease_seconds * 1000 + 1)
+    assert store.recover_expired_leases().requeued == 1
+    for attempt in range(2, MAX_ATTEMPTS + 1):
+        lease = store.claim_next(make_worker())
+        assert lease is not None
+        assert store.requeue_retryable_engine_failure(lease) is (attempt < MAX_ATTEMPTS)
+    assert store.commit_terminal(lease, "completed", make_completed_result(settings))
+    assert store.claim_next(make_worker()) is None
+
+
+def test_engine_avoidance_does_not_weaken_later_lease_loss_policy(
+    store, make_command, make_worker, settings, clock,
 ):
     command = make_command()
     store.create_or_replay(command)
-    for _ in range(MAX_ATTEMPTS):
-        lease = store.claim_next(make_worker())
-        assert lease is not None
-        if store.requeue_retryable_engine_failure(lease, failed_card=0) is False:
-            break  # budget exhausted exactly at the last claim
-    # No further requeue is possible; the next claim never happens.
-    final = None
-    for _ in range(MAX_ATTEMPTS):
-        lease = store.claim_next(make_worker())
-        if lease is None:
-            break
-        final = lease
-    if final is not None:
-        assert store.requeue_retryable_engine_failure(final, failed_card=0) is False
+    worker = make_worker()
+    first = store.claim_next(worker, card=0)
+    assert store.requeue_retryable_engine_failure(first, failed_card=0)
+    assert store.claim_next(worker, card=1, avoid_card=1) is not None
+    clock.advance_ms(settings.lease_seconds * 1000 + 1)
+    assert store.recover_expired_leases().requeued == 1
+    # The previous engine's avoidance timer must not permit card 1 to pick up
+    # its own lost lease; the lease reaper retains its existing poison policy.
+    assert store.claim_next(worker, card=1, avoid_card=1) is None
+    assert store.claim_next(worker, card=0, avoid_card=0) is not None
+
+
+def test_deadline_rejects_requeue(store, make_command, make_worker, clock):
+    command = make_command(request=make_request(deadline_seconds=10))
+    store.create_or_replay(command)
+    lease = store.claim_next(make_worker(), card=0)
+    clock.advance_ms(10_000)
+    assert not store.requeue_retryable_engine_failure(lease, failed_card=0)
+    assert store.expire_due_resources() == 1
+    assert store.get_visible(command.evaluation_id, make_caller()).state == "timed_out"
 
 
 def test_stale_lease_cannot_requeue(

@@ -96,10 +96,9 @@ class Settings(BaseSettings):
     poison_death_threshold: int = Field(default=2, ge=2)
     card_affinity_avoidance: bool = Field(default=True)
 
-    # Retryable pre-subject engine failures (device/envelope distress, never a
-    # subject verdict) requeue the same resource under the shared MAX_ATTEMPTS
-    # claim budget instead of terminalizing the first infrastructure failure.
-    engine_failure_requeue: bool = Field(default=True)
+    # Opt in to bounded retries when an engine failure produced no check data.
+    # Missing output cannot establish whether a candidate ran or crashed.
+    engine_failure_requeue: bool = Field(default=False)
 
     # Canary + recovery ladder (spec §10).
     canary_budget_seconds: int = Field(default=120, gt=0)

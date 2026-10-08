@@ -52,6 +52,36 @@ resumes heartbeats and claims without waiting for another canary interval.
 - Evaluation leases, terminal fencing, poison counting, and claim/card
   provenance remain owned by the existing durable evaluation logic.
 
+## Optional engine-failure retries
+
+`TRITON_EVAL_ENGINE_FAILURE_REQUEUE=true` enables retries within the same
+evaluation when an engine returns a retryable execution failure and no requested
+check produced data. The default is `false`: missing output does **not** prove
+the failure happened before candidate execution. A candidate that crashes the
+engine can also enter this path. This policy does not repair such a candidate
+or turn an unknown crash into a candidate verdict.
+
+The worker supports correctness and profile-only failures, including an
+inconclusive compile precheck. Any produced check data, timeout, or
+non-retryable error prevents a retry. The existing resource deadline and shared
+three-attempt budget (including lease-loss recovery) still apply; terminal
+fencing, identity, and quotas do not change. Disabling the flag affects future
+retry decisions; already pending replacements remain claimable.
+
+These failures require a new canary even with retry disabled or the attempt
+budget exhausted. Unhealthy workers drain through the existing recovery ladder.
+With affinity avoidance enabled, another card may claim immediately. The failed
+card waits at most one lease window, capped at half the remaining resource
+deadline, and may then retry only after passing the health gate. This allows
+single-card instances to make progress. The bounded avoidance belongs only to
+engine-failure replacements; the lease reaper retains its existing exclusion
+and poison-counting policy.
+
+`tests/test_engine_failure_requeue.py` covers opt-in behavior, evidence
+preservation, single-card progress, cross-card preference, canary checks,
+shared budgets, deadlines and stale attempts. Real NPU recovery behavior still
+requires validation on an Ascend host before enabling this deployment option.
+
 ## Verification
 
 `tests/test_card_health.py` exercises the module interface with fakeredis,

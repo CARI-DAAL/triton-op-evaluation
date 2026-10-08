@@ -154,23 +154,31 @@ class _CorruptedRequestError(RuntimeError):
 
 
 
-def _retryable_engine_failure(result) -> bool:
-    """True for a pre-subject engine infrastructure failure, never a verdict.
+def _retryable_engine_failure(result: EvaluationResult) -> bool:
+    """An engine failed without check data; the crash's origin is unknown.
 
-    Matches exactly the evaluator's ``engine_failure`` shape (exit=1 class:
-    ambient-device loss, CANN inner errors) — a produced verdict, a candidate
-    compile/run failure, or a deadline/watchdog timeout never requeues.
+    A candidate crash can also lose the engine's output. Opt-in retries are
+    bounded by the existing attempt budget and never repeat produced evidence,
+    timeouts, or non-retryable failures. Inconclusive prechecks may accompany
+    the engine failure; they provide no evidence either.
     """
-    correctness = result.correctness
-    return (
-        correctness is not None
-        and correctness.status == "failed"
-        and correctness.data is None
-        and correctness.error is not None
-        and correctness.error.retryable
-        and correctness.error.code == "EVALUATOR_EXECUTION_FAILED"
-        and correctness.error.phase == "execution"
-    )
+    engine_failed = False
+    for check in ("compile", "correctness", "performance", "profile"):
+        outcome = getattr(result, check)
+        if outcome is None or outcome.status == "skipped":
+            continue
+        if (
+            outcome.status != "failed"
+            or outcome.data is not None
+            or outcome.error is None
+            or not outcome.error.retryable
+        ):
+            return False
+        engine_failed |= (
+            outcome.error.code == "EVALUATOR_EXECUTION_FAILED"
+            and outcome.error.phase == "execution"
+        )
+    return engine_failed
 
 
 class Worker:
@@ -354,19 +362,21 @@ class Worker:
                         self._health.mark_suspicious()
                     return
 
+            retryable_failure = _retryable_engine_failure(validated)
+            if retryable_failure and self._health is not None:
+                self._health.mark_suspicious()
             if self._clock() >= lease.deadline_at_ms:
                 self._commit_deadline(lease, request.checks, progress.saved)
                 return
             if (
                 self.settings.engine_failure_requeue
-                and _retryable_engine_failure(validated)
+                and retryable_failure
                 and self.store.requeue_retryable_engine_failure(
                     lease, failed_card=self.device_id
                 )
             ):
-                # Device/envelope distress before any subject outcome: the same
-                # resource retries under the shared attempt budget, and the
-                # failed card is skipped by affinity avoidance.
+                # No check evidence: retry only under the deployment's explicit
+                # policy. The fault may originate in the candidate itself.
                 logger.warning(
                     "requeued retryable engine failure of attempt %s on card %s",
                     lease.attempt_id, self.device_id,
