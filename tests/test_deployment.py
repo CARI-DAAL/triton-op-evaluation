@@ -40,7 +40,8 @@ def _render_compose(filename: str, extra_env=None) -> dict:
     if extra_env:
         env.update(extra_env)
     result = subprocess.run(
-        [docker, "compose", "--env-file", "/dev/null", "-f", filename,
+        [docker, "compose", "--project-directory", str(PROJECT_ROOT),
+         "--env-file", "/dev/null", "-f", filename,
          "config", "--format", "json"],
         cwd=PROJECT_ROOT, env=env, capture_output=True, text=True,
     )
@@ -91,8 +92,37 @@ def _complete_deployment_env(tmp_path):
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.parametrize("project_name", [None, "evaluation-instance"])
+def test_relocated_compose_preserves_paths_and_volume_identity(tmp_path, project_name):
+    if shutil.which("docker") is None:
+        pytest.skip("Docker Compose is required to render deployment configuration")
+    env = {
+        key: value for key, value in os.environ.items()
+        if not key.startswith(("TRITON_EVAL_", "COMPOSE_"))
+    }
+    env.update(COMPOSE_RENDER_ENV)
+    if project_name:
+        env["COMPOSE_PROJECT_NAME"] = project_name
+    result = subprocess.run(
+        ["bash", str(PROJECT_ROOT / "scripts/compose.sh"), "config", "--format", "json"],
+        cwd=tmp_path, env=env, capture_output=True, text=True,
+    )
+    assert result.returncode == 0, result.stderr
+    config = json.loads(result.stdout)
+    expected_name = project_name or PROJECT_ROOT.name.lower()
+    assert config["name"] == expected_name
+    service = config["services"]["triton-eval"]
+    assert service["build"]["context"] == str(PROJECT_ROOT)
+    assert service["build"]["dockerfile"] == "docker/Dockerfile"
+    logs = next(v for v in service["volumes"] if v["target"] == "/opt/triton-eval/logs")
+    assert logs["source"] == str(PROJECT_ROOT / "logs")
+    assert config["volumes"]["triton-eval-redis-v2"]["name"] == (
+        f"{expected_name}_triton-eval-redis-v2"
+    )
+
+
 def test_production_compose_pins_the_reviewed_multiplatform_redis(tmp_path):
-    config = _render_compose("docker-compose.yml")
+    config = _render_compose("docker/compose.yaml")
     redis = config["services"]["redis"]
     assert redis["image"] == REDIS_IMAGE
     assert redis["network_mode"] == "host"
@@ -111,7 +141,7 @@ def test_production_compose_pins_the_reviewed_multiplatform_redis(tmp_path):
 
 
 def test_production_compose_binds_the_api_to_the_private_host(tmp_path):
-    config = _render_compose("docker-compose.yml")
+    config = _render_compose("docker/compose.yaml")
     service = config["services"]["triton-eval"]
     assert service["environment"]["TRITON_EVAL_API_HOST"] == INSTANCE_HOST
     assert service["environment"]["TRITON_EVAL_API_PORT"] == "11907"
@@ -132,7 +162,8 @@ def test_production_compose_requires_an_image_input_without_default(tmp_path):
     env.update(COMPOSE_RENDER_ENV)
     env["TRITON_EVAL_IMAGE"] = ""
     result = subprocess.run(
-        [docker, "compose", "--env-file", "/dev/null", "-f", "docker-compose.yml",
+        [docker, "compose", "--project-directory", str(PROJECT_ROOT),
+         "--env-file", "/dev/null", "-f", "docker/compose.yaml",
          "config", "--format", "json"],
         cwd=PROJECT_ROOT, env=env, capture_output=True, text=True,
     )
@@ -141,7 +172,7 @@ def test_production_compose_requires_an_image_input_without_default(tmp_path):
 
 
 def test_production_compose_mounts_secret_read_only_without_catalog(tmp_path):
-    config = _render_compose("docker-compose.yml")
+    config = _render_compose("docker/compose.yaml")
     service = config["services"]["triton-eval"]
     targets = {v["target"]: v for v in service["volumes"]}
     for target in ("/run/secrets/triton-eval",):
@@ -155,7 +186,7 @@ def test_production_compose_mounts_secret_read_only_without_catalog(tmp_path):
 
 @pytest.mark.parametrize("cards", ["0", "0,1,3"])
 def test_same_compose_supports_single_or_multiple_cards(cards):
-    config = _render_compose("docker-compose.yml", {"TRITON_EVAL_CARDS": cards})
+    config = _render_compose("docker/compose.yaml", {"TRITON_EVAL_CARDS": cards})
     assert config["services"]["triton-eval"]["environment"]["TRITON_EVAL_CARDS"] == cards
 
 
@@ -198,7 +229,7 @@ def test_runtime_options_survive_compose_preflight_and_settings_parsing(
 
     env = _complete_deployment_env(tmp_path)
     env[f"TRITON_EVAL_{field.upper()}"] = value
-    rendered = _render_compose("docker-compose.yml", env)
+    rendered = _render_compose("docker/compose.yaml", env)
 
     def docker_read(argv):
         if argv[:2] == ["docker", "compose"]:
@@ -305,7 +336,7 @@ def test_preflight_and_startup_use_same_files_outside_repository(tmp_path, custo
         "TRITON_EVAL_PYTHON": str(fake_python),
         "TRITON_EVAL_ENV_FILE": str(env_file),
     })
-    compose_file = PROJECT_ROOT / "docker-compose.yml"
+    compose_file = PROJECT_ROOT / "docker/compose.yaml"
     if custom_compose:
         compose_file = tmp_path / "custom compose.yml"
         env["TRITON_EVAL_COMPOSE_FILE"] = str(compose_file)
@@ -317,7 +348,10 @@ def test_preflight_and_startup_use_same_files_outside_repository(tmp_path, custo
     calls = log.read_text().splitlines()
     assert f"compose-file={compose_file}" in calls
     assert f"env-file={env_file}" in calls
-    assert f"docker compose --env-file {env_file} -f {compose_file} up" in calls
+    assert (
+        f"docker compose --project-directory {PROJECT_ROOT}"
+        f" --env-file {env_file} -f {compose_file} up"
+    ) in calls
 
 
 def test_env_file_inputs_must_be_exported_before_startup(tmp_path):

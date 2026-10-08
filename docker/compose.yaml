@@ -1,15 +1,17 @@
 # One independent v2.1 evaluation instance per host. Configure its private bind,
-# cards and host runtime paths in docker.env; the consumer owns instance selection.
+# cards and host runtime paths in docker/.env; the consumer owns instance selection.
 # AOF data survives container replacement. Never remove the named data volume.
-# Start through scripts/compose.sh after exporting the same docker.env inputs.
+# Start through scripts/compose.sh after exporting the same docker/.env inputs.
+# The wrapper sets --project-directory to the repository root for relative paths
+# and the existing Compose project / Redis volume identity.
 
 services:
   triton-eval:
     build:
       context: .
-      dockerfile: Dockerfile
+      dockerfile: docker/Dockerfile
       args:
-        # Same declared build as `docker build .`; versions live in pyproject [npu].
+        # Same declared build as `docker build -f docker/Dockerfile .`; versions live in pyproject [npu].
         # Keep the BASE_IMAGE default in sync with the Dockerfile ARG.
         BASE_IMAGE: ${BASE_IMAGE:-python:3.11}
         PIP_EXTRA_INDEX_URL: ${PIP_EXTRA_INDEX_URL:-}

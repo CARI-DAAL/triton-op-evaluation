@@ -9,7 +9,7 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PREFLIGHT_PYTHON="${TRITON_EVAL_PYTHON:-python3}"
 
-compose_file="${TRITON_EVAL_COMPOSE_FILE:-$REPO_ROOT/docker-compose.yml}"
+compose_file="${TRITON_EVAL_COMPOSE_FILE:-$REPO_ROOT/docker/compose.yaml}"
 env_file="${TRITON_EVAL_ENV_FILE:-/dev/null}"
 # Preflight and the final Compose command must render the same files even when
 # this wrapper is launched outside the repository. Deployment variables must
@@ -34,11 +34,11 @@ case "$action" in
     fi
     export TRITON_EVAL_API_HOST="$api_host"
     printf '%s\n' "$api_host"
-    exec docker compose --env-file "$env_file" -f "$compose_file" "$action" "$@"
+    exec docker compose --project-directory "$REPO_ROOT" --env-file "$env_file" -f "$compose_file" "$action" "$@"
     ;;
   down|stop|logs|ps|config|build|pull)
     # Read/control commands: no startup validation claimed.
-    exec docker compose --env-file "$env_file" -f "$compose_file" "$action" "$@"
+    exec docker compose --project-directory "$REPO_ROOT" --env-file "$env_file" -f "$compose_file" "$action" "$@"
     ;;
   *)
     echo "unknown compose action: $action" >&2

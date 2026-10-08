@@ -67,7 +67,8 @@ python3 "$TRITON_EVAL_CLI" get "$EVALUATION_ID"
 See the [client guide](plugins/triton-eval/README.md) for configuration and the
 [skill](plugins/triton-eval/skills/triton-eval/SKILL.md) for agent usage. The
 plugin is independent of the server deployment. Its directory keeps portable
-metadata, client compatibility manifests and skill content separate:
+metadata, client compatibility manifests and skill content separate. The plugin
+root is a self-contained package within this service repository:
 
 ```text
 plugins/triton-eval/              # Repository location; this is the plugin root
@@ -138,7 +139,7 @@ their evaluation.
 
 | Deployment | Configuration and entrypoint |
 | --- | --- |
-| Docker Compose | [`docker.env.example`](docker.env.example), [`docker-compose.yml`](docker-compose.yml) and `scripts/compose.sh` |
+| Docker Compose | [`docker/.env.example`](docker/.env.example), [`docker/compose.yaml`](docker/compose.yaml) and `scripts/compose.sh` |
 | Host processes | [`.env.example`](.env.example), `scripts/start.sh` and `scripts/stop.sh` |
 
 Follow the [deployment guide](docs/operations/deployment.md) to configure caller
@@ -214,9 +215,12 @@ Key directories and configuration files:
 ├── scripts/                    # Entrypoints, deployment and diagnostics
 ├── tests/                      # Protocol, execution and recovery checks
 ├── docs/                       # Usage, operations and architecture
-├── docker/                     # Container entrypoint
-├── Dockerfile                  # Service image build
-├── docker-compose.yml          # Host deployment
+├── docker/                     # Container build and deployment
+│   ├── Dockerfile              # Service image build
+│   ├── compose.yaml            # Host deployment
+│   ├── .env.example            # Deployment settings template
+│   └── entrypoint.sh           # Container startup
+├── .dockerignore               # Exclusions for the repository build context
 └── pyproject.toml              # Dependencies and tooling
 ```
 

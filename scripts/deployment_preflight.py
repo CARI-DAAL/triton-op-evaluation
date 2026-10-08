@@ -16,6 +16,7 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
 API_PORT = 11907
 REDIS_IMAGE = (
     "docker.io/library/redis:7.4.10-alpine3.21"
@@ -106,11 +107,12 @@ def _validate_bind(env: Mapping[str, str]) -> ipaddress.IPv4Address:
 
 
 def _render_compose(env: Mapping[str, str], runner: CommandRunner) -> dict:
-    compose_file = env.get("TRITON_EVAL_COMPOSE_FILE", "docker-compose.yml")
+    compose_file = env.get("TRITON_EVAL_COMPOSE_FILE", str(PROJECT_ROOT / "docker/compose.yaml"))
     env_file = env.get("TRITON_EVAL_ENV_FILE", "/dev/null")
     payload = _run(
         runner,
-        ["docker", "compose", "--env-file", env_file, "-f", compose_file,
+        ["docker", "compose", "--project-directory", str(PROJECT_ROOT),
+         "--env-file", env_file, "-f", compose_file,
          "config", "--format", "json"],
     )
     try:
