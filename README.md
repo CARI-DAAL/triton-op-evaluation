@@ -50,6 +50,14 @@ schema first. The service does not need a schema file on disk to start. See
 [FastAPI's OpenAPI explanation](https://fastapi.tiangolo.com/tutorial/first-steps/#openapi)
 and [response models](https://fastapi.tiangolo.com/tutorial/response-model/).
 
+## Client plugin
+
+The [repository plugin](plugins/triton-eval/README.md) packages the
+[triton-eval skill](plugins/triton-eval/skills/triton-eval/SKILL.md) and its
+standard-library Python client. Use it to submit local source/case files or
+recover an evaluation from a separately deployed service. It follows the
+standard `plugin.json` and `skills/` layout and requires no local NPU stack.
+
 ## Develop
 
 Python 3.10+; run from the repository root. CPU tests require no Ascend device.
@@ -78,13 +86,14 @@ appropriate Ascend runtime. API documentation is served on the instance's own UR
 
 | Path | Purpose |
 | --- | --- |
-| [`triton_evaluation/`](triton_evaluation/) | Shared configuration, profiler and reference-cache policies |
+| [`triton_evaluation/`](triton_evaluation/) | Shared configuration and canonical serialization |
 | [`triton_evaluation/api/`](triton_evaluation/api/) | HTTP models, routes and generated OpenAPI |
 | [`triton_evaluation/service/`](triton_evaluation/service/) | Admission, durable scheduling, credentials and terminal evidence |
-| [`triton_evaluation/runtime/`](triton_evaluation/runtime/) | Workers, card health, execution environment and precheck caching |
+| [`triton_evaluation/runtime/`](triton_evaluation/runtime/) | Workers, card health, sandbox, profiler, diagnostics and cache policies |
 | [`triton_evaluation/evaluators/`](triton_evaluation/evaluators/) | Check orchestration and adapters to the engine |
 | [`triton_evaluation/engine/`](triton_evaluation/engine/) | Bundled evaluation engine |
 | [`tests/`](tests/) | Behavior, HTTP compatibility, fixtures and hardware gates |
+| [`plugins/triton-eval/`](plugins/triton-eval/README.md) | Portable skill and HTTP client |
 | [`scripts/`](scripts/README.md) | API/worker entrypoints, preparation, deployment and diagnostic commands |
 | [`docker/`](docker/), `Dockerfile`, `docker-compose.yml` | Container entrypoint, image and deployment |
 | [`docs/`](docs/README.md) | Usage, operations, architecture and decisions |

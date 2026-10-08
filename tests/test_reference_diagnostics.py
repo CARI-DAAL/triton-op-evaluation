@@ -4,7 +4,7 @@ from pathlib import Path
 import pytest
 from test_worker import StubEvaluator, build_worker
 
-from triton_evaluation.reference_diagnostics import _read_trace
+from triton_evaluation.runtime.reference_diagnostics import _read_trace
 
 
 def _trace():

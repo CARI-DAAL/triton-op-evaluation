@@ -387,7 +387,9 @@ class Worker:
         finally:
             if work_dir is not None:
                 if self.settings.reference_diagnostics_dir is not None:
-                    from triton_evaluation.reference_diagnostics import retain_reference_diagnostics
+                    from triton_evaluation.runtime.reference_diagnostics import (
+                        retain_reference_diagnostics,
+                    )
 
                     retain_reference_diagnostics(
                         self.settings, lease, Path(work_dir), self.device_id,

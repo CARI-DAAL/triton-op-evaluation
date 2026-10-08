@@ -69,7 +69,7 @@ def probe(output: Path, physical_device: int, samples: int = 8) -> int:
             for name in (
                 "scripts/probe_profiler_latency.py",
                 "triton_evaluation/engine/benchmark.py",
-                "triton_evaluation/profiler_runtime.py",
+                "triton_evaluation/runtime/profiler_runtime.py",
             )
         },
     }
@@ -77,7 +77,7 @@ def probe(output: Path, physical_device: int, samples: int = 8) -> int:
     write_report(target, report)
     cleanup = None
     try:
-        from triton_evaluation.profiler_runtime import describe_runtime
+        from triton_evaluation.runtime.profiler_runtime import describe_runtime
 
         report["profiler_runtime"] = describe_runtime()
         import torch
@@ -205,9 +205,9 @@ def probe(output: Path, physical_device: int, samples: int = 8) -> int:
                         "main_thread": True,
                         "process_id": os.getpid(),
                         "helper_sha256": report["source_sha256"][
-                            "triton_evaluation/profiler_runtime.py"
+                            "triton_evaluation/runtime/profiler_runtime.py"
                         ],
-                        "helper_path": str(ROOT / "triton_evaluation/profiler_runtime.py"),
+                        "helper_path": str(ROOT / "triton_evaluation/runtime/profiler_runtime.py"),
                         "service_package_path": str(ROOT / "triton_evaluation"),
                         "physical_device": str(physical_device),
                         "visible_devices": visible,
@@ -281,7 +281,7 @@ def main() -> int:
 def isolated_probe(output: Path, physical_device: int) -> int:
     """Run this exact tracked probe through the production invocation boundary."""
     from triton_evaluation.evaluators.base import run_script
-    from triton_evaluation.evaluators.sandbox import (
+    from triton_evaluation.runtime.sandbox import (
         CONFIG_ENV,
         DIGEST_ENV,
         OVERLAY_CONFIG_ENV,

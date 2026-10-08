@@ -228,7 +228,7 @@ def current_patched_runtime_sha256(relative_name: str) -> str | None:
 
 def current_service_source_sha256(relative_name: str) -> str | None:
     """Hash a service source file relative to this package (engine identity)."""
-    path = Path(__file__).resolve().parent / relative_name
+    path = Path(__file__).resolve().parents[1] / relative_name
     try:
         return sha256(path.read_bytes())
     except OSError:

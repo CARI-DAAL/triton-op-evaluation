@@ -8,8 +8,8 @@ import pytest
 
 from triton_evaluation.engine import benchmark, verify
 from triton_evaluation.engine._common_utils import invoke_model, prepare_candidate_inputs
-from triton_evaluation.reference_cache import value_sha256
-from triton_evaluation.reference_diagnostics import _read_trace
+from triton_evaluation.runtime.reference_cache import value_sha256
+from triton_evaluation.runtime.reference_diagnostics import _read_trace
 
 torch = pytest.importorskip("torch")
 

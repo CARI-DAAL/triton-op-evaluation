@@ -19,12 +19,12 @@ from types import SimpleNamespace
 import pytest
 from pydantic import ValidationError
 
-from triton_evaluation import reference_timing_reuse as reuse_module
 from triton_evaluation.api.contract import PerformanceCase
 from triton_evaluation.engine import benchmark, verify
-from triton_evaluation.evaluators import sandbox
 from triton_evaluation.evaluators.shaping import shape_performance
-from triton_evaluation.reference_cache import (
+from triton_evaluation.runtime import reference_timing_reuse as reuse_module
+from triton_evaluation.runtime import sandbox
+from triton_evaluation.runtime.reference_cache import (
     CacheDeployment,
     CacheMeasurement,
     CaseBinding,
@@ -32,7 +32,7 @@ from triton_evaluation.reference_cache import (
     ReferenceCache,
     sha256,
 )
-from triton_evaluation.reference_timing_reuse import (
+from triton_evaluation.runtime.reference_timing_reuse import (
     POLICY_ENV,
     POLICY_SHA_ENV,
     TimingReuseError,
@@ -173,7 +173,7 @@ def build_policy(tmp_path: Path, *, cache_dir, index_path, index_sha, state_dir,
     if service_files is None:
         service_files = {
             name: reuse_module.current_service_source_sha256(name)
-            for name in ("engine/benchmark.py", "evaluators/sandbox.py")
+            for name in ("engine/benchmark.py", "runtime/sandbox.py")
         }
     policy = {
         "schema_version": "validated-timing-reuse-policy-v2",

@@ -14,7 +14,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from triton_evaluation.profiler_runtime import prepare_runtime, sha  # noqa: E402
+from triton_evaluation.runtime.profiler_runtime import prepare_runtime, sha  # noqa: E402
 
 
 def main() -> int:

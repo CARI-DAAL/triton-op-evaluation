@@ -14,8 +14,8 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from .config import Settings
-from .service.models import AttemptLease
+from ..config import Settings
+from ..service.models import AttemptLease
 
 logger = logging.getLogger(__name__)
 _MAX_BYTES = 1024 * 1024

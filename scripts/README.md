@@ -18,4 +18,8 @@ the checkout. The API entrypoint starts the configured listeners.
 coverage, not complete production calibration. It fetches the target's live
 OpenAPI schema for its report; schema files are not startup dependencies.
 
+The reusable caller CLI is bundled in the
+[triton-eval plugin](../plugins/triton-eval/README.md); `scripts/` keeps service
+startup, deployment and diagnostic tools.
+
 Retired compilation experiments are recorded in [Git history](../docs/history.md).

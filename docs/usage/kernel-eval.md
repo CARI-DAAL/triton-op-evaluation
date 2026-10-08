@@ -32,6 +32,14 @@ each call submits new work. Poll `/evaluations/{evaluation_id}` to recover the
 resource after the HTTP wait ends. There is no task catalog, separate tool token,
 trial-turn budget or observation-text envelope on these endpoints.
 
+## Bundled client
+
+The [triton-eval plugin](../../plugins/triton-eval/README.md) provides `verify`,
+`benchmark`, `profile` and `get` commands through its skill's standalone Python
+script. It reads source files and a JSON array of cases, sends the same public
+request, and polls the durable resource. Its documented recovery workflow keeps
+the original instance and idempotency key after transport failures.
+
 ## Native HTTP and HTTPS
 
 Use `python -m scripts.run_api` to serve the configured HTTP listener and an

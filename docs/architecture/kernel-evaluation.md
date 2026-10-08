@@ -28,6 +28,12 @@ quotas. An optional session groups work, and an optional idempotency key makes
 retry safe within its caller/session scope. Omitted keys submit fresh work.
 Neither operation requires catalog lookup, a dataset adapter or a tool budget.
 
+Worker execution support lives under `triton_evaluation/runtime/`, including
+sandbox isolation, profiler integration, reference caches and diagnostics.
+Evaluators own check orchestration; shared configuration and canonical
+serialization remain at the package root. Moving these implementations requires
+[new deployment source pins](../operations/recovery.md#runtime-module-migration).
+
 Workers execute supplied code after admission. CPU workers own compile-only
 checks; one NPU worker owns all requested device checks in an attempt. Evidence
 publication is fenced so an older attempt cannot replace a newer result.

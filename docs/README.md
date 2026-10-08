@@ -6,6 +6,7 @@ alone cannot convey.
 
 ## Use the service
 
+- [Client plugin and skill](../plugins/triton-eval/README.md)
 - [Submit, poll and recover evaluations](usage/evaluations.md)
 - [Operator shortcuts: verify, benchmark and profile](usage/kernel-eval.md)
 

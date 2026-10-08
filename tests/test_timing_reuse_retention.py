@@ -261,7 +261,7 @@ def test_retained_timing_reuse_observations_round_trip_through_the_model(
 ):
     # The retained record must be re-loadable by the same strict model, so an
     # auditor can validate retained evidence against the parser itself.
-    from triton_evaluation.reference_diagnostics import _ReferenceTrace
+    from triton_evaluation.runtime.reference_diagnostics import _ReferenceTrace
 
     record = _run_retention(
         tmp_path, store, settings, clock, make_command, _timing_reuse_trace("timing_reuse")

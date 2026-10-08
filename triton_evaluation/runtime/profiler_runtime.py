@@ -638,7 +638,7 @@ def profiler_export_runtime():
         "manifest_sha256": digest,
         "helper_sha256": sha(Path(__file__)),
         "helper_path": str(Path(__file__).resolve()),
-        "service_package_path": str(Path(__file__).resolve().parent),
+        "service_package_path": str(Path(__file__).resolve().parents[1]),
         "alias_path": str(model.alias_path),
         "alias_sha256": model.alias_sha256,
         "library_path": str(model.library_path),

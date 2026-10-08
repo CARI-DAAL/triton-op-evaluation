@@ -79,7 +79,7 @@ class CacheDeployment(BaseModel):
     runtime_versions: dict[str, str] = Field(min_length=1)
     # Operator supplies the actual immutable CANN/driver version files, not labels alone.
     runtime_files: dict[str, str] = Field(min_length=1)
-    # Engine basenames, plus the one explicitly named sibling runtime helper.
+    # Engine basenames, plus the one explicitly named runtime helper.
     algorithm_files: dict[str, str] = Field(min_length=1)
     device_conditions: dict[str, dict[str, str]] = Field(min_length=1)
     # NPU model identity for the model-bound index v2 (e.g. "Ascend910_9362").
@@ -98,7 +98,7 @@ class CacheDeployment(BaseModel):
         for path, digest in self.algorithm_files.items():
             if (
                 (Path(path).name != path or path in {".", ".."})
-                and path != "../profiler_runtime.py"
+                and path != "../runtime/profiler_runtime.py"
             ) or not _DIGEST.fullmatch(digest):
                 raise ValueError("algorithm files require engine basenames and SHA256")
         if not {"verify.py", "benchmark.py", "_common_utils.py"} <= self.algorithm_files.keys():
@@ -127,7 +127,7 @@ class CacheDeployment(BaseModel):
         for path, expected in self.runtime_files.items():
             if sha256(Path(path).read_bytes()) != expected:
                 raise ReferenceCacheError("cache runtime file changed")
-        engine_dir = engine_dir or Path(__file__).parent / "engine"
+        engine_dir = engine_dir or Path(__file__).parents[1] / "engine"
         from .profiler_runtime import (
             DIGEST_ENV,
             MANIFEST_ENV,
@@ -137,7 +137,7 @@ class CacheDeployment(BaseModel):
         )
 
         if any(key in os.environ for key in RUNTIME_ENV_KEYS):
-            if "../profiler_runtime.py" not in self.algorithm_files:
+            if "../runtime/profiler_runtime.py" not in self.algorithm_files:
                 raise ReferenceCacheError(
                     "cache must pin the configured profiler runtime algorithm"
                 )
@@ -167,18 +167,18 @@ class CacheDeployment(BaseModel):
                 raise ReferenceCacheError("cache must pin every configured profiler runtime file")
         for name, expected in self.algorithm_files.items():
             algorithm = engine_dir / name
-            if name == "../profiler_runtime.py":
-                # This is the one fixed service-owned sibling, never a general
+            if name == "../runtime/profiler_runtime.py":
+                # This is the one fixed service-owned runtime helper, never a general
                 # traversal permission or part of candidate material.
                 root = engine_dir.parent.resolve(strict=True)
-                algorithm = engine_dir.parent / "profiler_runtime.py"
+                algorithm = engine_dir.parent / "runtime" / "profiler_runtime.py"
                 if (
                     engine_dir.resolve(strict=True) != engine_dir.absolute()
                     or algorithm.is_symlink()
-                    or algorithm.resolve(strict=True) != root / "profiler_runtime.py"
+                    or algorithm.resolve(strict=True) != root / "runtime" / "profiler_runtime.py"
                 ):
                     raise ReferenceCacheError(
-                        "profiler runtime algorithm must stay in service root"
+                        "profiler runtime algorithm must stay in service runtime package"
                     )
             if sha256(algorithm.read_bytes()) != expected:
                 raise ReferenceCacheError(f"cache algorithm changed: {name}")

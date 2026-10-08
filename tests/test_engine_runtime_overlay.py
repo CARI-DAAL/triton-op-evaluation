@@ -11,9 +11,8 @@ import pytest
 from test_profiler_export_replay import elf_binding  # noqa: F401
 from test_profiler_runtime import deployed_runtime  # noqa: F401
 
-from triton_evaluation import profiler_runtime
-from triton_evaluation.evaluators import sandbox
 from triton_evaluation.evaluators.base import run_script
+from triton_evaluation.runtime import profiler_runtime, sandbox
 
 
 @pytest.fixture
@@ -58,7 +57,7 @@ def test_unchanged_anchor_uses_overlay_in_actual_clearenv_command(anchored_overl
     for key in profiler_runtime.RUNTIME_ENV_KEYS:
         assert key in wrapped
     assert str(model.alias_path.parent.parent) in wrapped
-    assert str(Path(profiler_runtime.__file__).parent) in wrapped
+    assert str(Path(profiler_runtime.__file__).parents[1]) in wrapped
     assert base.read_bytes() == original
     boundary = json.loads(next(work.glob("engine-runtime-boundary-*.json")).read_bytes())
     assert boundary["base_manifest_sha256"] == hashlib.sha256(original).hexdigest()
@@ -172,7 +171,7 @@ def test_real_bwrap_child_loads_pinned_alias_and_new_helper_without_host_canary(
     probe = work / "probe.py"
     probe.write_text(
         "import json,os,stat,subprocess,sys\nfrom pathlib import Path\n"
-        "from triton_evaluation import profiler_runtime as r\n"
+        "from triton_evaluation.runtime import profiler_runtime as r\n"
         "m=r.load_runtime()\n"
         "observed=r.describe_runtime()\n"
         "with r.profiler_export_runtime() as trace:\n"
@@ -231,7 +230,7 @@ def test_overlay_cannot_supply_or_change_existing_policy_anchor(anchored_overlay
 def test_overlay_cache_uses_two_artifact_namespaces_and_exact_state(tmp_path, anchored_overlay):
     import importlib.metadata
 
-    from triton_evaluation.reference_cache import (
+    from triton_evaluation.runtime.reference_cache import (
         BINDING_ENV,
         CACHE_ENV,
         DIGEST_ENV,
@@ -250,7 +249,7 @@ def test_overlay_cache_uses_two_artifact_namespaces_and_exact_state(tmp_path, an
     state.mkdir()
     marker = tmp_path / "runtime-version"
     marker.write_text("CPU-controlled closure")
-    package = Path(profiler_runtime.__file__).parent
+    package = Path(profiler_runtime.__file__).parents[1]
     index = CacheIndex(
         deployment=CacheDeployment(
             generation="controlled-overlay-not-NPU",

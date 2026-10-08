@@ -318,7 +318,7 @@ def prepare_candidate_inputs(reference_model, inputs, *, trace=None):
             defaulted.append(name)
         candidate_inputs.append(value)
     if trace is not None:
-        from triton_evaluation.reference_cache import value_sha256
+        from triton_evaluation.runtime.reference_cache import value_sha256
         trace.update(
             candidate_input_semantics="official-run-defaults-v1",
             candidate_defaulted_parameters=defaulted,

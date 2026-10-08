@@ -1249,7 +1249,7 @@ def _attempt_case(modules, case_ctx: CaseContext, inputs, device,
     if case_ctx.reference_trace is not None and case_ctx.reference_cache_status is not None:
         case_ctx.reference_trace[-1]["reference_cache_status"] = case_ctx.reference_cache_status
         if case_ctx.cached_reference is not None:
-            from triton_evaluation.reference_cache import canonical_bytes, sha256
+            from triton_evaluation.runtime.reference_cache import canonical_bytes, sha256
             manifest = case_ctx.cached_reference[0]
             case_ctx.reference_trace[-1].update({
                 "reference_manifest_sha256": sha256(canonical_bytes(manifest.model_dump(mode="json"))),
@@ -1397,7 +1397,7 @@ def verify_implementations(
     import torch_npu  # noqa: F401
 
     from pathlib import Path
-    from triton_evaluation.reference_cache import (
+    from triton_evaluation.runtime.reference_cache import (
         ReferenceCache, ReferenceCacheMiss, official_source_metadata,
     )
     reference_source = None

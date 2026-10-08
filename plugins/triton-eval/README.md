@@ -1,0 +1,24 @@
+# Triton evaluation plugin
+
+This repository contains a client plugin for an independently deployed
+triton-evaluation HTTP service. It follows the
+[standard plugin layout](https://developers.openai.com/plugins/build/plugins):
+`plugin.json` at the plugin root and a discoverable skill under `skills/`.
+
+The [skill](skills/triton-eval/SKILL.md) bundles a Python 3.10+ standard-library
+[CLI](skills/triton-eval/scripts/triton_eval.py). No service package, Torch or
+Ascend installation is required on the client machine. Configure the service
+URL and a caller capability-file path, then run it directly:
+
+```bash
+export EVALUATION_URL=http://10.0.0.11:11907
+export EVALUATION_CAPABILITY_FILE=/path/to/caller-token
+python3 skills/triton-eval/scripts/triton_eval.py verify \
+  --torch /path/to/torch_impl.py --triton /path/to/triton_impl.py \
+  --cases /path/to/cases.json
+```
+
+Run this example from the plugin root. The three operation commands are
+`verify`, `benchmark` and `profile`; `get EVALUATION_ID` recovers existing work.
+Each command's `--help` describes its options. This is a repository package;
+it does not install a global command or deploy the HTTP service.

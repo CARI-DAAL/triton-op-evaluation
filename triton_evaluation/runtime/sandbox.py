@@ -15,16 +15,16 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from ..profiler_runtime import (
+from .profiler_runtime import (
     CANN_ENV_KEYS,
     derive_cann_environment,
     read_cann_environment,
     read_runtime,
 )
-from ..profiler_runtime import DIGEST_ENV as PROFILER_DIGEST_ENV
-from ..profiler_runtime import MANIFEST_ENV as PROFILER_MANIFEST_ENV
-from ..profiler_runtime import RUNTIME_ENV_KEYS as PROFILER_RUNTIME_ENV_KEYS
-from ..reference_cache import (
+from .profiler_runtime import DIGEST_ENV as PROFILER_DIGEST_ENV
+from .profiler_runtime import MANIFEST_ENV as PROFILER_MANIFEST_ENV
+from .profiler_runtime import RUNTIME_ENV_KEYS as PROFILER_RUNTIME_ENV_KEYS
+from .reference_cache import (
     BINDING_ENV,
     CACHE_ENV,
     CACHE_ENV_KEYS,
@@ -33,13 +33,13 @@ from ..reference_cache import (
     CacheIndex,
     CacheIndexV2,
 )
-from ..reference_cache import DIGEST_ENV as CACHE_DIGEST_ENV
-from ..reference_timing_reuse import POLICY_ENV as TIMING_REUSE_POLICY_ENV
-from ..reference_timing_reuse import POLICY_SHA_ENV as TIMING_REUSE_SHA_ENV
-from ..reference_timing_reuse import (
+from .reference_cache import DIGEST_ENV as CACHE_DIGEST_ENV
+from .reference_timing_reuse import POLICY_ENV as TIMING_REUSE_POLICY_ENV
+from .reference_timing_reuse import POLICY_SHA_ENV as TIMING_REUSE_SHA_ENV
+from .reference_timing_reuse import (
     POLICY_ENV_KEYS as TIMING_REUSE_ENV_KEYS,
 )
-from ..reference_timing_reuse import TimingReusePolicy as ValidatedTimingReusePolicy
+from .reference_timing_reuse import TimingReusePolicy as ValidatedTimingReusePolicy
 
 CONFIG_ENV = "TRITON_EVAL_ENGINE_SANDBOX_CONFIG"
 DIGEST_ENV = "TRITON_EVAL_ENGINE_SANDBOX_SHA256"
