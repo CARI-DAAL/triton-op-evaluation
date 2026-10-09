@@ -85,7 +85,8 @@ class RandomInput(StrictModel):
     type: Literal["random"] = "random"
     dtype: Dtypes | None = None
     shape: Shape | None = None
-    range: Annotated[list[int], Field(min_length=2, max_length=2)] | None = None
+    # Upstream reads range only for integer dtypes; length is checked there.
+    range: Annotated[list[int], Field(max_length=32)] | None = None
     distribution: (
         Literal["mixed", "randn", "uniform", "normal", "zeros", "ones", "uniform_signed"] | None
     ) = None
@@ -200,11 +201,15 @@ def _parse_axis_expression(expression: str) -> tuple[ast.expr, frozenset[str]]:
 
 
 def resolve_axes(definition: Definition, values: dict[str, int] | None) -> dict[str, int]:
+    """Upstream resolve_shape_expression semantics plus resource bounds.
+
+    Like upstream get_resolved_axes_values, expressions are evaluated once in
+    definition order with the full operator set (including any ``**``). Only
+    integers wider than 1024 bits are refused, so huge powers cannot exhaust
+    the API; the resolved value must still be an integral dimension.
+    """
     resolved = {name: axis.value for name, axis in definition.axes.items() if axis.type == "const"}
     resolved.update(values or {})
-    pending = {
-        name: axis.expression for name, axis in definition.axes.items() if axis.type == "expr"
-    }
     operations = {
         ast.Add: operator.add,
         ast.Sub: operator.sub,
@@ -212,48 +217,50 @@ def resolve_axes(definition: Definition, values: dict[str, int] | None) -> dict[
         ast.FloorDiv: operator.floordiv,
         ast.Div: operator.truediv,
         ast.Mod: operator.mod,
+        ast.Pow: operator.pow,
     }
 
     def evaluate(node):
-        if isinstance(node, ast.Constant) and type(node.value) in (int, float):
+        if isinstance(node, ast.Constant) and isinstance(node.value, (int, float)):
             value = node.value
         elif isinstance(node, ast.Name):
             value = resolved[node.id]
-        elif isinstance(node, ast.BinOp) and isinstance(node.op, ast.Pow):
-            base, exponent = evaluate(node.left), evaluate(node.right)
-            if type(exponent) is not int or not 0 <= exponent <= 31:
-                raise ValueError("axis exponent must be an integer between zero and 31")
-            value = base**exponent
         elif isinstance(node, ast.BinOp) and type(node.op) in operations:
-            value = operations[type(node.op)](evaluate(node.left), evaluate(node.right))
+            left, right = evaluate(node.left), evaluate(node.right)
+            if (
+                isinstance(node.op, ast.Pow) and isinstance(left, int) and isinstance(right, int)
+                and abs(left) > 1 and (abs(left).bit_length() - 1) * right >= 1024
+            ):
+                raise ValueError("axis arithmetic exceeds the 1024-bit integer limit")
+            value = operations[type(node.op)](left, right)
         elif isinstance(node, ast.UnaryOp) and isinstance(node.op, (ast.UAdd, ast.USub)):
             value = evaluate(node.operand) * (-1 if isinstance(node.op, ast.USub) else 1)
         else:
             raise ValueError("unsupported axis arithmetic (calls are forbidden)")
-        if abs(value) > 2**31 - 1:
-            raise ValueError("axis arithmetic exceeds dimension limit")
+        if isinstance(value, complex):
+            raise ValueError("axis arithmetic must stay real")
+        if isinstance(value, int) and value.bit_length() > 1024:
+            raise ValueError("axis arithmetic exceeds the 1024-bit integer limit")
         return value
 
-    # Evaluate an expression only once its names are resolved: re-parsing every
-    # pending expression on each pass made reverse-ordered axes quadratic.
-    trees = {name: _parse_axis_expression(expression) for name, expression in pending.items()}
-    while pending:
-        progressed = False
-        for name in list(pending):
-            body, names = trees[name]
-            if not names <= resolved.keys():
-                continue
-            try:
-                value = evaluate(body)
-            except (SyntaxError, ZeroDivisionError, OverflowError) as error:
-                raise ValueError("invalid axis arithmetic") from error
-            if int(value) != value:
+    for name, axis in definition.axes.items():
+        if axis.type != "expr":
+            continue
+        body, names = _parse_axis_expression(axis.expression)
+        missing = sorted(names - resolved.keys())
+        if missing:
+            raise ValueError(f"axis {name} uses {missing[0]}, which is not resolved before it")
+        try:
+            value = evaluate(body)
+        except (ZeroDivisionError, OverflowError) as error:
+            raise ValueError("invalid axis arithmetic") from error
+        if isinstance(value, float):
+            if not value.is_integer():
                 raise ValueError("axis expression must resolve to an integer")
-            resolved[name] = int(value)
-            del pending[name]
-            progressed = True
-        if not progressed:
-            raise ValueError("unresolved or cyclic axis expression")
+            value = int(value)
+        if abs(value) > 2**31 - 1:
+            raise ValueError("axis arithmetic exceeds dimension limit")
+        resolved[name] = int(value)
     return resolved
 
 
@@ -312,30 +319,36 @@ def normalize_workloads(request: "OperatorRequest") -> list[dict[str, Any]]:
                     if dtype not in limits:
                         # Upstream applies range only to integer dtypes.
                         data.pop("range")
-                    else:
+                    elif spec.fill is None:
+                        # torch.randint refuses these for every seed; a fill ignores range.
+                        if len(spec.range) != 2:
+                            raise ValueError("integer range must be [low, high]")
                         low, high = spec.range
                         minimum, maximum = limits[dtype]
                         if not minimum <= low < high <= maximum:
                             raise ValueError(
                                 "integer range must satisfy dtype bounds and low < high"
                             )
-                uniform_defaults = (
-                    (0.3, 3.0) if spec.distribution == "uniform_signed" else (-5.0, 5.0)
-                )
-                for low_key, high_key, defaults in [
-                    ("low", "high", uniform_defaults),
-                    ("mu_low", "mu_high", (-5.0, 5.0)),
-                    ("sigma_low", "sigma_high", (0.1, 2.0)),
-                ]:
-                    given_low, given_high = getattr(spec, low_key), getattr(spec, high_key)
-                    low = given_low if given_low is not None else defaults[0]
-                    high = given_high if given_high is not None else defaults[1]
-                    if low > high:
-                        raise ValueError(f"{low_key} must not exceed {high_key}")
-                if any(
-                    value is not None and value <= 0 for value in [spec.sigma_low, spec.sigma_high]
-                ):
-                    raise ValueError("normal sigma bounds must be positive")
+                # Reject only bounds that torch refuses for every seed: an explicit
+                # float distribution always reads them. The case-level family and
+                # "mixed" pick bounds by RNG; fills and other dtypes ignore them.
+                if dtype in ("float32", "float16", "bfloat16") and spec.fill is None:
+                    bounds = {
+                        "uniform": [("low", "high", -5.0, 5.0)],
+                        "uniform_signed": [("low", "high", 0.3, 3.0)],
+                        "normal": [
+                            ("mu_low", "mu_high", -5.0, 5.0),
+                            ("sigma_low", "sigma_high", 0.1, 2.0),
+                        ],
+                    }.get(spec.distribution, [])
+                    for low_key, high_key, low_default, high_default in bounds:
+                        low, high = getattr(spec, low_key), getattr(spec, high_key)
+                        low = low_default if low is None else low
+                        high = high_default if high is None else high
+                        if low > high:
+                            raise ValueError(f"{low_key} must not exceed {high_key}")
+                    if spec.distribution == "normal" and (spec.sigma_high or 0.0) < 0:
+                        raise ValueError("normal sigma_high must not be negative")
             if isinstance(spec, TensorListInput) and spec.dtype == "float64":
                 raise ValueError("official random generation does not support float64")
             inputs[name] = data

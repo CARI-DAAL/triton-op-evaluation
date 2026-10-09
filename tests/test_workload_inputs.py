@@ -178,24 +178,28 @@ def test_official_metadata_extra_inputs_and_float_range_are_ignored():
     assert "range" not in case["inputs"]["x"]
 
 
-def test_reverse_ordered_axis_chain_resolves_without_quadratic_reparsing():
-    axes = {
-        f"a{i}": {"type": "expr", "expression": " + ".join(["1"] * 30) + f" + a{i - 1}"}
-        for i in range(127, 0, -1)
-    }
-    axes["a0"] = {"type": "const", "value": 1}
-    definition = {
-        "axes": axes,
-        "inputs": {"x": {"shape": ["a127"], "dtype": "float32"}},
-        "reference": "def run(x): return x",
+@pytest.mark.parametrize("order", ["forward", "reverse"])
+def test_axis_chain_resolves_in_one_definition_order_pass(order):
+    axes = {"a0": {"type": "const", "value": 1}}
+    for i in range(1, 128) if order == "forward" else range(127, 0, -1):
+        axes[f"a{i}"] = {"type": "expr", "expression": " + ".join(["1"] * 30) + f" + a{i - 1}"}
+    body = {
+        "definition": {
+            "axes": axes,
+            "inputs": {"x": {"shape": ["a127"], "dtype": "float32"}},
+            "reference": "def run(x): return x",
+        },
+        "workloads": [{"inputs": {}}] * 128,
     }
     start = time.perf_counter()
-    request = OperatorRequest.model_validate(
-        {"definition": definition, "workloads": [{"inputs": {}}] * 128}
-    )
-    cases = normalize_workloads(request)
-    assert cases[-1]["inputs"]["x"]["shape"] == [1 + 127 * 30]
-    # Re-parsing every pending expression per pass took about a minute here.
+    if order == "forward":
+        cases = normalize_workloads(OperatorRequest.model_validate(body))
+        assert cases[-1]["inputs"]["x"]["shape"] == [1 + 127 * 30]
+    else:
+        # Upstream resolves once in definition order, so a later axis is unknown.
+        with pytest.raises(ValidationError, match="not resolved before it"):
+            OperatorRequest.model_validate(body)
+    # The old any-order loop re-parsed pending expressions: about a minute here.
     assert time.perf_counter() - start < 5
 
 
@@ -249,7 +253,10 @@ def test_one_sided_distribution_bounds_rejected():
                 workloads=[
                     {
                         "inputs": {
-                            "x": {"type": "random", "dtype": "float32", "shape": [2], "high": -6.0}
+                            "x": {
+                                "type": "random", "dtype": "float32", "shape": [2],
+                                "distribution": "uniform", "high": -6.0,
+                            }
                         }
                     }
                 ]

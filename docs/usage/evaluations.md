@@ -37,7 +37,10 @@ order, so it is not an interchangeable request.
 
 A workload descriptor overrides its input's definition shape/dtype. Definitions
 can use constant, variable or arithmetic-expression axes. Axis evaluation is
-bounded metadata processing, not Python `eval`. A missing workload input uses
+bounded metadata processing, not Python `eval`. As upstream, expressions are
+evaluated once in definition order (an expression may use only axes defined
+before it) with `+ - * / // % **`; the only added bounds refuse integers wider
+than 1024 bits and resolved values beyond ±(2³¹−1). A missing workload input uses
 definition defaults; if neither default shape nor dtype exists, it supplies
 `None`, matching the official protocol rather than a Python function default.
 Definitions may have empty inputs for zero-argument operators. There are at most
@@ -63,6 +66,10 @@ Distributions are `mixed`, `randn`, `uniform`, `normal`, `zeros`, `ones` and
 `sigma_low`/`sigma_high` tune their ranges. `fill` accepts `inf`, `-inf`, `nan`
 and `zero` without putting nonfinite numbers into JSON. Integer `range` uses an
 exclusive upper bound; as upstream, `range` on float and bool inputs is ignored.
+Admission rejects only bounds that upstream refuses for every seed: an explicit
+`uniform`, `uniform_signed` or `normal` whose bounds torch cannot sample, or an
+integer `range` torch cannot draw. Every other combination reaches the generator
+and behaves exactly as upstream, including its seed-dependent failures.
 Device support is still required for the selected dtype;
 the request cannot manufacture unavailable NPU capabilities.
 
