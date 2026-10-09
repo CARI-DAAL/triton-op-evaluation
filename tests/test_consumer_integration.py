@@ -86,9 +86,9 @@ def test_consumer_recovers_ambiguous_submit_and_polls_real_api(
     )
     client._transport = httpx.MockTransport(dispatch)
     outcome = client.evaluate(
-        torch_code="def run(x): return x + 1",
+        definition={"inputs": {"x": {}}, "reference": "def run(x): return x + 1"},
         triton_code="def run(x): return x + 1",
-        cases=[{"inputs": [{"shape": [2], "dtype": "float32"}]}],
+        workloads=[{"inputs": {"x": {"type": "random", "shape": [2], "dtype": "float32"}}}],
         non_compute=False, checks=checks,
         **({"profile": {"mode": "op"}} if checks == ["profile"] else {}),
     )

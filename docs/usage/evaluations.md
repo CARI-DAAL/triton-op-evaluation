@@ -1,54 +1,114 @@
 # Submit and recover evaluations
 
-Submit `cases` and at least one of `torch_code` or `triton_code` to
-`POST /evaluations`. Each supplied source defines `run(*args)`. One implementation
-supports performance and profiling; both enable correctness and comparative
-performance. The service builds its engine interface from these sources and
-cases; callers do not define `Model`, input factories, task IDs or catalog
-manifests. Supplied code executes only in worker attempts.
+Send `definition` and `workloads` to `POST /evaluations`, with at least one of
+`definition.reference` (Torch) or `triton_code`. This is the only public input
+protocol. The named workload format follows NPUKernelBench's pinned
+[definition](https://gitcode.com/Ascend/ascendc-kernelgen-data/blob/0607a29d231cde384c9dfdb8a39f54f91837c327/npu-kernelbench/src/npu_kernelbench/data/definition.py)
+and [workload](https://gitcode.com/Ascend/ascendc-kernelgen-data/blob/0607a29d231cde384c9dfdb8a39f54f91837c327/npu-kernelbench/src/npu_kernelbench/data/workload.py)
+models. The service does not require the upstream package, a task catalog or task
+registration. Supplied code and input generators execute only in worker attempts.
 
-## Describe cases
-
-`cases` is a nonempty list. Each case contains `inputs`, an ordered list of
-positional arguments, and an optional `seed` (default `0`). Each input is either
-a tensor descriptor (`shape`, optional `dtype` and `range`) or a JSON scalar:
-integer, finite float, boolean, string or null. For example:
+## Describe a task and its workloads
 
 ```json
-{"inputs": [{"shape": [32, 64], "dtype": "float32"}, 2.0, true, null], "seed": 0}
+{
+  "definition": {
+    "name": "add_one",
+    "axes": {"N": {"type": "var"}},
+    "inputs": {"x": {"shape": ["N"], "dtype": "float32"}},
+    "outputs": {},
+    "reference": "def run(x): return x + 1"
+  },
+  "triton_code": "... actual source defining run(x) ...",
+  "workloads": [
+    {"uuid": "small", "axes": {"N": 1024}, "inputs": {"x": {"type": "random"}}}
+  ],
+  "seed": 200
+}
 ```
 
-The implementations receive four positional arguments for that case. `dtype`
-defaults to `float32`; supported types are `float16`, `bfloat16`, `float32`,
-`float64`, `int8`, `int16`, `int32`, `int64`, `uint8` and `bool`. `range` is
-`[low, high]` with an inclusive lower and exclusive upper bound. Integer ranges
-must have integral endpoints within the dtype's bounds; boolean tensors do not
-accept ranges.
+The two implementations receive positional arguments in `definition.inputs`
+order. Preserve that order when serializing the definition. Workloads are ordered,
+with result `case_idx` values starting at zero. UUIDs are retained when supplied;
+otherwise the service derives `case-1`, `case-2`, etc. Source, workload order,
+input order, generation code, custom source and seed are bound into request and
+reference identities. Reordering definition inputs can change argument and RNG
+order, so it is not an interchangeable request.
 
-Without a range, floating tensors use a normal distribution, signed integers
-use `[-5, 5)`, unsigned integers use `[0, 5)`, and booleans use random false/true
-values. Generation is reproducible for the seed. `/docs` describes the validation
-limits and optional execution controls.
+A workload descriptor overrides its input's definition shape/dtype. Definitions
+can use constant, variable or arithmetic-expression axes. Axis evaluation is
+bounded metadata processing, not Python `eval`. A missing workload input uses
+definition defaults; if neither default shape nor dtype exists, it supplies
+`None`, matching the official protocol rather than a Python function default.
+Definitions may have empty inputs for zero-argument operators. There are at most
+128 workloads and 128 named inputs; `/docs` describes other validation bounds.
+
+| Input kind | Meaning |
+| --- | --- |
+| `random` | Concrete or inherited shape/dtype, optional distribution parameters, integer `range`, and special `fill` |
+| `scalar` | JSON scalar, list or explicit null; nested values must be finite JSON |
+| `tensor_list` | One argument containing tensors of a common dtype and per-tensor `shapes` |
+| `custom` | A named value returned by the explicitly declared custom generator |
+
+Generation resets Python, Torch and NPU RNGs for every workload, using top-level
+`seed` (default `200`), and produces tensors on the assigned NPU. For ordinary
+floating inputs without a distribution override, all inputs in a workload share
+one normal/uniform family choice. Explicit `mixed` selects per tensor. Normal
+means/stddevs, BF16 generation/casting and RNG draw order follow the pinned
+[official generator](https://gitcode.com/Ascend/ascendc-kernelgen-data/blob/0607a29d231cde384c9dfdb8a39f54f91837c327/npu-kernelbench/src/npu_kernelbench/evaluator/generator.py).
+There is no legacy CPU standard-normal input mode.
+
+Distributions are `mixed`, `randn`, `uniform`, `normal`, `zeros`, `ones` and
+`uniform_signed`. Optional `low`/`high`, `mu_low`/`mu_high` and
+`sigma_low`/`sigma_high` tune their ranges. `fill` accepts `inf`, `-inf`, `nan`
+and `zero` without putting nonfinite numbers into JSON. Integer `range` uses an
+exclusive upper bound. Device support is still required for the selected dtype;
+the request cannot manufacture unavailable NPU capabilities.
+
+The supported named dtypes are float16, bfloat16, float32, the official FP8/FP4
+names, int8/int16/int32/int64 and bool. Upstream has no float64 random branch;
+float64 is accepted only with `fill`. uint8 is not in the official dtype map.
+Unsupported combinations fail validation or device execution explicitly, without
+silently casting to another dtype.
+
+## Custom inputs and unsupported resources
+
+Declare `definition.custom_inputs_entrypoint` as a function name, e.g.
+`make_inputs`. By default the function is read from `definition.reference`;
+`custom_inputs_code` can supply an explicit replacement module or support a
+Triton-only request. It receives `(resolved_axes, torch.device)` and must return
+a dictionary keyed by input name. It executes only when a custom workload is
+materialized in the worker, in a fresh namespace with the official seed schedule.
+A workload cannot mix custom and non-custom input descriptors.
+
+The service never interprets a custom entrypoint as a local file path.
+`safetensors` input paths are rejected before admission: this HTTP protocol has
+no uploaded-artifact transport. Do not send paths from a client filesystem and
+expect the worker to resolve them.
+
+Non-default per-workload `tolerance` overrides are also rejected. Input generation
+compatibility does not mean the service uses the upstream framework's accuracy
+policy, scheduler or profiling implementation. This service retains its own
+existing correctness and measurement algorithms.
 
 ## Submit
 
-Put your implementations in `torch_impl.py` and `triton_impl.py`, each exporting
-`run` with arguments matching the cases. Create a comparison request:
+Load existing official files directly; the JSONL file becomes a `workloads` array:
 
 ```bash
-python - <<'PYREQUEST'
+python3 - <<'PYREQUEST'
 import json
 from pathlib import Path
-
-request = {
-    "torch_code": Path("torch_impl.py").read_text(encoding="utf-8"),
-    "triton_code": Path("triton_impl.py").read_text(encoding="utf-8"),
-    "cases": [{"inputs": [{"shape": [1024], "dtype": "float32"}]}],
+body = {
+    "definition": json.loads(Path("definition.json").read_text()),
+    "workloads": [json.loads(line) for line in Path("workload.jsonl").read_text().splitlines()
+                  if line.strip()],
+    "triton_code": Path("triton_impl.py").read_text(),
+    "seed": 200,
 }
-Path("request.json").write_text(json.dumps(request), encoding="utf-8")
+Path("request.json").write_text(json.dumps(body))
 PYREQUEST
 
-# Set EVALUATION_URL and EVALUATION_CAPABILITY_FILE for your instance.
 curl -sS -i "$EVALUATION_URL/evaluations?wait_seconds=0" \
   -H "Authorization: Bearer $(cat "$EVALUATION_CAPABILITY_FILE")" \
   -H 'Content-Type: application/json' \
@@ -56,135 +116,56 @@ curl -sS -i "$EVALUATION_URL/evaluations?wait_seconds=0" \
   --data-binary @request.json
 ```
 
-For a single-implementation measurement, omit the other source field entirely.
-For example, the complete minimal PyTorch-only body is:
+For Torch-only measurement, omit `triton_code`. For Triton-only measurement,
+omit `definition.reference`. The bundled client provides `--triton-only` to
+remove that source from a loaded definition without modifying its file.
 
-```json
-{
-  "torch_code": "def run(x):\n    return x + 1\n",
-  "cases": [{"inputs": [{"shape": [1024], "dtype": "float32"}]}]
-}
-```
+`checks` defaults to correctness and performance with both sources, or performance
+with one. `/verify` requires both sources; `/benchmark` and `/profile` also support
+single implementations. A single-source result reports `correctness_verified:
+false` and no comparison speedup. Compile checks remain syntax/import checks;
+they do not generate inputs or establish device correctness.
 
-For Triton-only execution, supply `triton_code` and the same case format; its
-`run` function launches the kernel. The [CLI examples](../../README.md#quick-start)
-show both single-source choices. Do not duplicate one implementation into both
-fields: a single-source measurement reports latency without a correctness
-verdict or a reference speedup.
-
-Authentication uses the capability registry for every evaluation endpoint.
-`Idempotency-Key` and `X-Session-ID` are optional. Provide a key for submissions
-that may need retrying; repeat the same request and headers against the same
-instance. Without a key, every submission is new work. With a key but no session
-header, the service uses a stable default session; an explicit session groups
-related requests and applies the session quota. A session grants no authority.
-
-## Choose checks
-
-`checks` defaults to `["performance"]` with one implementation and
-`["correctness", "performance"]` with both on `/evaluations`. An explicit
-correctness check requires both sources.
-
-| Intent | `checks` |
-| --- | --- |
-| Correctness (both sources) | `["correctness"]` |
-| Correctness and comparative timing (both sources) | `["correctness", "performance"]` |
-| One implementation's timing | `["performance"]` |
-| Profiling | `["profile"]` |
-| Syntax/import precheck | `["compile"]` |
-
-[Operation shortcuts](kernel-eval.md) select these checks through `/verify`,
-`/benchmark` or `/profile`. Timing defaults to `event`; optional performance
-settings can select `profiler`. Results identify the measurement method. Keep
-methods separate when comparing measurements. A syntax/import precheck cannot
-prove successful device compilation for every case.
-
-Admission persists identity, quotas and deadline before any supplied code runs.
-Compile-only requests use CPU workers. Requests with device checks use one NPU
-worker for the whole attempt, including an explicitly requested compile check.
+`Idempotency-Key` and `X-Session-ID` are optional. A key enables recovery-safe
+retries on the same instance; without a key each submission is new work. A session
+groups quotas and is not an authorization credential.
 
 ## Reuse Torch baseline timings
 
-Two-source performance comparisons default to
-`performance.use_baseline_cache=true`. A cache hit reuses the Torch baseline
-timing; a miss measures it and saves it for later evaluations. Correctness and
-candidate timing still execute. Reference outputs,
-input tensors and candidate results are not stored in this cache.
+Comparison performance defaults to `performance.use_baseline_cache=true`.
+A hit reuses Torch latency; a miss measures and stores it. Correctness and candidate
+timing still execute. Only latency scalars are retained, not reference outputs.
 
-Single-source benchmarks always perform fresh measurements without reading or
-writing the baseline cache. They accept the cache option for request compatibility,
-but it does not enable reuse or add a `baseline_cache_hit` result.
+Set `performance.use_baseline_cache=false` for a fresh baseline used only by this
+evaluation, leaving existing cache entries untouched. Use a new idempotency key
+for a new evaluation; replaying an accepted request does not rerun it.
 
-For a fresh comparison baseline used only by this evaluation, submit:
-
-```json
-{"performance": {"use_baseline_cache": false}}
-```
-
-Include this option alongside the usual `torch_code`, `triton_code` and `cases`.
-This bypasses both cache reads and writes, leaving any existing baseline intact.
-Use a new idempotency key (or omit it) when requesting a new evaluation; replaying
-an accepted request recovers its existing resource rather than rerunning it.
-
-The cache identity includes Torch source, the complete normalized cases with
-seeds, and the measurement method, warmup and repeat count. Changing only the
-Triton candidate can reuse the baseline. Changing code, cases or timing settings
-produces a different identity. Whitespace changes in source also cause a miss.
-`performance.case_indices` chooses which cases to measure and can incrementally
-fill the same task's cache; changing the full cases list creates a new task.
-
-Each comparison performance case reports `baseline_cache_hit`: `true` means its Torch timing
-came from an existing cache entry, and `false` means it was measured for this
-evaluation. Older stored results can omit the field. Redis cache errors fall
-back to fresh measurement. If a reference-only measurement cannot produce usable
-timings, performance falls back to the normal per-case measurement flow without
-caching that output. The cache assumes a fixed instance environment; see
-[deployment scope](../operations/deployment.md#torch-baseline-cache).
+Reference source, normalized workloads, input generator code, custom source and
+seed affect cache identity, along with method/warmup/repeats. Changing only the
+candidate can reuse the baseline. `performance.case_indices` can incrementally
+fill selected timings. Each measured case reports `baseline_cache_hit`; older
+stored results may omit it. Single-source measurements always run fresh.
+Cache/producer failures fall back to ordinary measurement, while deadlines and
+lease loss still stop execution. See [deployment scope](../operations/deployment.md#torch-baseline-cache).
 
 ## Recover results
 
 `wait_seconds=0..60` bounds the HTTP wait. HTTP 202 returns an admitted resource
-and `Location`; HTTP 200 returns a terminal resource when the wait observes one.
-The response retains the internal v2.1 durable resource format. An HTTP timeout
-or client disconnect does not cancel accepted work.
+and `Location`; HTTP 200 returns a terminal resource when available. Disconnects
+and wait expiry do not cancel accepted work.
 
 ```bash
-# Set EVALUATION_ID from the submission response; poll the original instance.
 curl -sS -i "$EVALUATION_URL/evaluations/$EVALUATION_ID" \
   -H "Authorization: Bearer $(cat "$EVALUATION_CAPABILITY_FILE")"
 ```
 
-GET returns HTTP 200 with the current resource. Pending states include
-`Retry-After: 1`; unknown or invisible IDs return 404. States are `queued`,
-`running`, `completed`, `failed` and `timed_out`. For `completed`, inspect each
-check result: a completed evaluation can establish that the candidate is wrong.
-Infrastructure failure does not establish a correctness verdict.
+Pending resources include `Retry-After: 1`; unknown or invisible IDs return 404.
+Terminal states are `completed`, `failed` and `timed_out`. Inspect each check:
+completed work can establish that the candidate is wrong, while infrastructure
+failure establishes no correctness verdict.
 
-Single-implementation performance data identifies `implementation` as `torch`
-or `triton`, includes `correctness_verified: false`, and reports each case's
-`latency_ms` under `per_case`. It contains no reference comparison or speedup.
-Single-implementation profile data carries the same implementation and
-correctness markers alongside its profiling evidence. Successful measurement or
-profiling does not establish correctness. Supply both sources and request
-correctness when a comparison is needed.
-
-`/livez` reports process liveness. `/readyz` checks Redis, credentials and
-compatible CPU/NPU workers. Admission checks the capacity needed for the request.
-`/internal/metrics` requires an observer capability.
-
-## Validation and compatibility
-
-FastAPI validates bodies, headers and query arguments before admission. Missing
-fields, unsupported values or invalid check combinations return 422
-`INVALID_REQUEST`. The 4 MiB body limit returns 413 `LIMIT_EXCEEDED`.
-Authentication failures return 401; authorization failures return 403. Errors
-include a request ID and a redacted explanation.
-
-Python models and routes define the interface; `/openapi.json` and `/docs` are
-generated from them. Ordinary requests do not first fetch the schema. Canonical
-JSON is an internal identity requirement, not an HTTP whitespace requirement.
-
-The former task-ID facade and public `reference_code`/`kernel_code` request
-shape are retired. Existing internal durable records remain recoverable; this
-does not make the old submission shape valid. Follow the
-[upgrade procedure](../operations/recovery.md#upgrading) before switching clients.
+The old public `torch_code` and positional `cases` body is retired. Existing
+internal v2.1 records remain recoverable; they do not enable legacy submissions.
+Follow the [upgrade procedure](../operations/recovery.md#upgrading) and deploy
+matching API, worker and client builds. Native `/openapi.json` and `/docs` are the
+live schemas; no separately generated schema is required to start the service.

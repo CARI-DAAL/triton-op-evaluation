@@ -40,9 +40,14 @@ async def test_isolated_client_submits_replays_and_recovers_real_resource(tmp_pa
     cases = tmp_path / "cases.json"
     marker = tmp_path / "executed-during-admission"
     source = f"from pathlib import Path\nPath({str(marker)!r}).touch()\ndef run(x): return x\n"
-    torch_source.write_text(source)
+    torch_source.write_text(json.dumps({
+        "axes": {}, "inputs": {"x": {}}, "outputs": {}, "reference": source,
+    }))
     candidate.write_text(source)
-    cases.write_text('[{"inputs":[{"shape":[2],"dtype":"float32"}]}]')
+    cases.write_text(json.dumps([{
+        "uuid": "test", "axes": None,
+        "inputs": {"x": {"type": "random", "shape": [2], "dtype": "float32"}},
+    }]))
     handle = tmp_path / "handle.json"
 
     async def invoke(*arguments):
@@ -62,8 +67,8 @@ async def test_isolated_client_submits_replays_and_recovers_real_resource(tmp_pa
         return json.loads(stdout)
 
     submit = (
-        "verify", "--torch", str(torch_source), "--triton", str(candidate),
-        "--cases", str(cases), "--idempotency-key", "cli-integration",
+        "verify", "--definition", str(torch_source), "--triton", str(candidate),
+        "--workloads", str(cases), "--idempotency-key", "cli-integration",
         "--session-id", "cli-session", "--save-handle", str(handle),
     )
     try:

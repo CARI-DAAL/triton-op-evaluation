@@ -1,7 +1,7 @@
 # Verify, benchmark and profile an operator
 
-The shortcuts use the same source-and-cases request as
-[`POST /evaluations`](evaluations.md). `cases` and at least one source are
+The shortcuts use the same definition/workloads request as
+[`POST /evaluations`](evaluations.md). `workloads` and at least one source are
 required; correctness additionally needs both sources. Each uses the same
 `Authorization: Bearer` capability and returns the same durable evaluation
 resource with HTTP 200 or 202.
@@ -58,8 +58,9 @@ request, and polls the durable resource. For example, with the client path in
 `TRITON_EVAL_CLI` and URL/capability configured:
 
 ```bash
-python3 "$TRITON_EVAL_CLI" benchmark --torch torch_impl.py --cases cases.json
-python3 "$TRITON_EVAL_CLI" profile --triton triton_impl.py --cases cases.json
+python3 "$TRITON_EVAL_CLI" benchmark --definition definition.json --workloads workload.jsonl
+python3 "$TRITON_EVAL_CLI" profile --definition definition.json --workloads workload.jsonl \
+  --triton triton_impl.py --triton-only
 ```
 
 These measure one implementation with `correctness_verified: false`; a zero

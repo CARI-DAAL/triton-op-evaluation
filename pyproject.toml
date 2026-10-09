@@ -36,6 +36,9 @@ dev = ["ruff==0.16.0"]
 [tool.setuptools.packages.find]
 include = ["triton_evaluation*"]
 
+[tool.setuptools.package-data]
+"triton_evaluation.runtime" = ["INPUT_GENERATION_LICENSE"]
+
 [tool.pytest.ini_options]
 markers = [
     "npu: requires a real Ascend NPU and a deployed service (production release gate)",

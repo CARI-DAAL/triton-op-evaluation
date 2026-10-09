@@ -39,52 +39,47 @@ For remote or containerized clients, set the URL to the address reachable from
 the client. Compose uses the service's configured private host address; the
 CLI itself has no default URL.
 
-Configure the service URL and a caller capability-file path, then run directly:
+Configure the service URL and caller capability-file path:
 
 ```bash
 export EVALUATION_URL=http://127.0.0.1:11907
-export EVALUATION_CAPABILITY_FILE=/path/to/caller-token
-python3 skills/triton-eval/scripts/triton_eval.py verify \
-  --torch /path/to/torch_impl.py --triton /path/to/triton_impl.py \
-  --cases /path/to/cases.json
+export EVALUATION_CAPABILITY_FILE=/path/to/capability
+python3 plugins/triton-eval/skills/triton-eval/scripts/triton_eval.py verify \
+  --definition /path/to/definition.json --workloads /path/to/workloads.jsonl \
+  --triton /path/to/triton_impl.py --save-handle evaluation-handle.json
 ```
 
-Run this example from the plugin root. `verify` requires both implementations.
-For a single implementation, measure or profile with only its source flag:
+Version 0.3.0 accepts the official definition and workload files directly.
+Workloads can be JSONL or a JSON array. The definition contains `axes`, ordered
+named `inputs`, `outputs`, optional `name`, and optional Python `reference`.
+A workload has `uuid`, `axes`, and named input specifications, for example:
 
-```bash
-python3 skills/triton-eval/scripts/triton_eval.py benchmark \
-  --torch /path/to/torch_impl.py --cases /path/to/cases.json
-python3 skills/triton-eval/scripts/triton_eval.py benchmark \
-  --triton /path/to/triton_impl.py --cases /path/to/cases.json
-python3 skills/triton-eval/scripts/triton_eval.py profile \
-  --torch /path/to/torch_impl.py --cases /path/to/cases.json
+```json
+{"uuid":"add-1024","axes":null,"inputs":{"x":{"type":"random","shape":[1024],"dtype":"float32"},"y":{"type":"random","shape":[1024],"dtype":"float32"}}}
 ```
 
-`cases.json` is a JSON array of cases. Each provided source exports `run(*args)`.
-Supplying both sources to `benchmark` retains correctness and speedup comparison.
-One source returns measurement data with `implementation`,
-`correctness_verified: false` and per-case latency for performance; it supplies
-no reference speedup. The client prints `correctness not verified` to stderr and
-preserves the service resource on stdout. Exit zero means the requested
-measurement succeeded, not that a single implementation's correctness was proved.
+The request seed defaults to 200 (`--seed` overrides it). A candidate is supplied
+with `--triton`; custom input generator source uses `--custom-inputs`.
+`verify` requires both the definition reference and candidate. `benchmark` and
+`profile` also support a single implementation. For Torch alone, omit `--triton`.
+For Triton alone, pass `--triton-only` alongside `--triton` to remove the reference
+from the submitted definition. Files are read as data and never executed locally.
 
-`--save-handle` writes the original URL, evaluation ID, idempotency key and
-session ID without the credential. Known IDs recover through `get` on that URL;
-ambiguous submissions retry the unchanged source/cases with the same key/session.
+For custom workloads, declare `custom_inputs_entrypoint` in the definition.
+With `--triton-only`, the client preserves the original reference source as
+`custom_inputs_code` for that factory; the submitted definition omits its
+mathematical reference. An explicit `--custom-inputs` file takes precedence.
 
-The three operation commands are
-`verify`, `benchmark` and `profile`; `get EVALUATION_ID` recovers existing work.
-Each command's `--help` describes its options. This is a repository package;
-it does not install a global command or deploy the HTTP service.
+The client prints one JSON resource to stdout and progress to stderr. It retains
+HTTP admission, polling and recovery behavior: `--save-handle` records the URL,
+evaluation ID, idempotency key and session ID; use `get EVALUATION_ID` against the
+original URL to recover. Retry an ambiguous submission with unchanged files,
+options, session and idempotency key. Client timeout does not cancel accepted work.
 
-The repository does not register a marketplace or install this plugin. Codex's
-`plugin add` command expects a configured marketplace selector, not a direct
-directory path. Run the bundled script directly as above when using this checkout.
+Comparison benchmarks cache Torch baseline timing by default. Pass
+`--no-baseline-cache` to measure a fresh reference baseline. Single implementation
+benchmarks measure fresh. Cache switches apply only to `benchmark`.
 
-With both sources, `benchmark` reuses cached Torch baseline timing by default
-while measuring the Triton candidate each time. Use `--no-baseline-cache` to
-measure the comparison baseline fresh without reading or writing the cache, or
-`--use-baseline-cache` to select the default explicitly. Comparison timing results
-report `baseline_cache_hit` per case. Single-source benchmarks always measure
-fresh, regardless of this flag, and neither read nor write the baseline cache.
+A successful single implementation measurement reports `correctness_verified:
+false`; preserve that limitation when interpreting its timing or profile result.
+See the [skill](skills/triton-eval/SKILL.md) for recovery and result interpretation.

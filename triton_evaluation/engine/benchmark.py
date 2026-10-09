@@ -12,6 +12,7 @@
 # 性能测试脚本 — 使用 torch_npu.profiler 测试生成算子的性能表现
 
 import argparse
+from collections.abc import Sequence
 import gc
 import importlib
 import json
@@ -991,7 +992,7 @@ def _try_validated_timing_reuse(config, model_spec, input_groups, case_indices, 
         reference_device_policy=policy,
         device_id=device_id,
         case_indices=list(case_indices),
-        input_groups=list(input_groups),
+        input_groups=input_groups,
     )
     if manifests is None:
         return False
@@ -1220,6 +1221,31 @@ def benchmark_reference_only(config):
             "warmup": config.warmup, "repeats": config.repeats}
 
 
+class _SelectedInputGroups(Sequence):
+    """Reiterable case selection without retaining materialized device inputs."""
+
+    def __init__(self, groups, indices):
+        self.groups = groups
+        self.indices = tuple(index - 1 for index in indices)
+
+    def __len__(self):
+        return len(self.indices)
+
+    def __getitem__(self, index):
+        if isinstance(index, slice):
+            return _SelectedInputGroups(self.groups,
+                                        [value + 1 for value in self.indices[index]])
+        return self.groups[self.indices[index]]
+
+    def __iter__(self):
+        # Preserve the historical official adapter's O(n) full-pass iterator.
+        if self.indices == tuple(range(len(self.groups))):
+            yield from self.groups
+        else:
+            for index in self.indices:
+                yield self.groups[index]
+
+
 def benchmark_implementations(config: BenchmarkConfig) -> BenchmarkResult:
     """执行完整的性能测试，支持多组输入。每个 shape 独立 try/except。"""
     import torch
@@ -1250,7 +1276,7 @@ def benchmark_implementations(config: BenchmarkConfig) -> BenchmarkResult:
     # Selection preserves original 1-based case identities; it only chooses
     # which groups this performance run measures.
     selected_indices = _resolve_selected_indices(config.case_indices, total_cases)
-    selected_groups = [input_groups[index - 1] for index in selected_indices]
+    selected_groups = _SelectedInputGroups(input_groups, selected_indices)
     selected_cases = len(selected_indices)
 
     if config.baseline_timings is not None:
@@ -1264,13 +1290,18 @@ def benchmark_implementations(config: BenchmarkConfig) -> BenchmarkResult:
                                    case_indices=selected_indices)
     _write_reference_cache_trace(config)
 
-    per_shape_results: List[SingleShapeResult] = [
-        _run_shape_case(
-            config, model_spec,
-            inputs, device, CaseContext(case_idx=case_idx, total_cases=selected_cases),
-        )
-        for case_idx, inputs in zip(selected_indices, selected_groups)
-    ]
+    per_shape_results: List[SingleShapeResult] = []
+    selected_iterator = iter(selected_groups)
+    for case_idx in selected_indices:
+        inputs = next(selected_iterator)
+        try:
+            per_shape_results.append(_run_shape_case(
+                config, model_spec, inputs, device,
+                CaseContext(case_idx=case_idx, total_cases=selected_cases),
+            ))
+        finally:
+            # Drop this workload before the iterator allocates the next one.
+            del inputs
 
     passed_cases = sum(1 for r in per_shape_results if r.status == "pass")
     failed_cases = selected_cases - passed_cases

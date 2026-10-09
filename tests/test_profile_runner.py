@@ -345,3 +345,64 @@ def test_profile_child_uses_real_default_preparation_before_candidate_call(tmp_p
     )
     assert outcome.exit_code == 0, outcome.stderr
     assert marker.read_text() == "21"
+
+
+def test_runner_materializes_only_one_lazy_case_at_a_time(tmp_path, monkeypatch):
+    _write_fake_runtime(tmp_path)
+    _write_task(tmp_path)
+    (tmp_path / "sample_torch.py").write_text(
+        "import gc, os, weakref\n"
+        "class Payload:\n"
+        "    def __init__(self, index): self.index = index\n"
+        "    def __str__(self): return str(self.index)\n"
+        "_live = []\n"
+        "class Groups:\n"
+        "    def __len__(self): return 3\n"
+        "    def __getitem__(self, index):\n"
+        "        gc.collect()\n"
+        "        if any(ref() is not None for ref in _live):\n"
+        "            raise RuntimeError('previous case retained')\n"
+        "        open(os.environ['MATERIALIZED_LOG'], 'a').write(f'{index}\\n')\n"
+        "        value = Payload(index)\n"
+        "        _live.append(weakref.ref(value))\n"
+        "        return [value]\n"
+        "def get_init_inputs(): return []\n"
+        "def get_input_groups(): return Groups()\n",
+        encoding="utf-8",
+    )
+    log = tmp_path / "materialized.txt"
+    monkeypatch.setenv("MATERIALIZED_LOG", str(log))
+    runner = profile.write_runner(str(tmp_path))
+    assert [case["case_idx"] for case in _discover(tmp_path, runner)] == [0, 1, 2]
+    assert log.read_text().split() == ["0", "1", "2"]
+
+    log.unlink()
+    kernel_marker = tmp_path / "kernel.txt"
+    env = {
+        **os.environ,
+        "PYTHONPATH": str(tmp_path),
+        "HF32_MARKER": str(tmp_path / "hf32.txt"),
+        "KERNEL_MARKER": str(kernel_marker),
+    }
+    outcome = profile.run_command(
+        [
+            sys.executable,
+            runner,
+            "--engine-dir",
+            str(tmp_path),
+            "--verify-dir",
+            str(tmp_path),
+            "--op-name",
+            "sample",
+            "--triton-impl-name",
+            "triton_ascend_impl",
+            "--case-idx",
+            "2",
+        ],
+        cwd=str(tmp_path),
+        env=env,
+        timeout=30,
+    )
+    assert outcome.exit_code == 0, outcome.stderr
+    assert kernel_marker.read_text() == "2"
+    assert log.read_text().split() == ["2"]

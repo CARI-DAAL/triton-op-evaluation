@@ -94,6 +94,7 @@ async def test_all_entrypoints_require_capability_submit_scope(app, path):
 @pytest.mark.parametrize("field,value", [
     ("purpose", "grade"), ("task_id", "old-task"), ("token", "old-token"),
     ("grade_context", {}), ("reference_code", "REF"), ("kernel_code", "IMPL"),
+    ("torch_code", "REF"), ("cases", [{"inputs": []}]),
 ])
 async def test_retired_request_fields_are_rejected(app, field, value):
     async with app.http as client:

@@ -24,9 +24,14 @@ from triton_evaluation.service.terminal_results import complete_evaluation
 
 
 def payload(implementation, **options):
+    source = "def run(x): return x + 1\n"
     return {
-        implementation + "_code": "def run(x): return x + 1\n",
-        "cases": [{"inputs": [{"shape": [2], "dtype": "float32"}]}],
+        "definition": {
+            "inputs": {"x": {}},
+            **({"reference": source} if implementation == "torch" else {}),
+        },
+        **({"triton_code": source} if implementation == "triton" else {}),
+        "workloads": [{"inputs": {"x": {"type": "random", "shape": [2], "dtype": "float32"}}}],
         **options,
     }
 
@@ -190,7 +195,10 @@ async def test_single_verify_rejected_before_any_admission(tmp_path, implementat
 async def test_single_compile_checks_the_supplied_source(tmp_path, implementation):
     app = app_with_precheck(tmp_path, None)
     body = payload(implementation, checks=["compile"])
-    body[implementation + "_code"] = "def broken(: pass\n"
+    if implementation == "torch":
+        body["definition"]["reference"] = "def broken(: pass\n"
+    else:
+        body["triton_code"] = "def broken(: pass\n"
     worker = cpu_worker(app)
     async with app.http as client:
         response = await client.post("/evaluations", json=body, headers=trial_headers())

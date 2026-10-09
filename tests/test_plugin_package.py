@@ -21,6 +21,7 @@ def test_plugin_archive_discovers_skill_and_runs_isolated_client(tmp_path):
 
     manifest = json.loads((isolated / "plugin.json").read_text())
     assert manifest["$schema"] == "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json"
+    assert manifest["version"] == "0.3.0"
     skills = set((isolated / "skills").glob("*/SKILL.md"))
     assert skills
     for directory in (".codex-plugin", ".claude-plugin"):

@@ -70,9 +70,12 @@ def arguments(argv):
         if action == "get":
             command.add_argument("evaluation_id")
         else:
-            command.add_argument("--torch", type=Path)
+            command.add_argument("--definition", type=Path, required=True)
+            command.add_argument("--custom-inputs", type=Path)
+            command.add_argument("--seed", type=int, default=200)
+            command.add_argument("--triton-only", action="store_true")
             command.add_argument("--triton", type=Path)
-            command.add_argument("--cases", type=Path, required=True)
+            command.add_argument("--workloads", type=Path, required=True)
             command.add_argument("--idempotency-key")
             command.add_argument("--session-id")
         if action == "benchmark":
@@ -88,11 +91,8 @@ def arguments(argv):
             )
             command.set_defaults(use_baseline_cache=True)
     args = parser.parse_args(argv)
-    if args.command != "get":
-        if args.torch is None and args.triton is None:
-            raise ClientError("INVALID_ARGUMENT", "provide at least one of --torch or --triton")
-        if args.command == "verify" and (args.torch is None or args.triton is None):
-            raise ClientError("INVALID_ARGUMENT", "verify requires both --torch and --triton")
+    if args.command != "get" and args.triton_only and args.triton is None:
+        raise ClientError("INVALID_ARGUMENT", "--triton-only requires --triton")
     return args
 
 
@@ -323,14 +323,52 @@ class Client:
                 raise ClientError("INVALID_ARGUMENT", "evaluation ID has an invalid format")
             resource = self.request("GET", "/evaluations/" + self.evaluation_id)
         else:
-            cases = json_value(read_text(self.args.cases, "cases file"))
-            if not isinstance(cases, list) or not cases:
-                raise ClientError("INVALID_INPUT", "cases file must contain a nonempty JSON array")
-            payload = {"cases": cases}
-            for implementation in ("torch", "triton"):
-                path = getattr(self.args, implementation)
-                if path is not None:
-                    payload[f"{implementation}_code"] = read_text(path, f"{implementation} source")
+            definition = json_value(read_text(self.args.definition, "definition file"))
+            if not isinstance(definition, dict):
+                raise ClientError("INVALID_INPUT", "definition file must contain a JSON object")
+            original_reference = definition.get("reference")
+            if self.args.triton_only:
+                definition.pop("reference", None)
+            reference = definition.get("reference")
+            if not reference and self.args.triton is None:
+                raise ClientError("INVALID_ARGUMENT", "provide definition.reference or --triton")
+            if self.args.command == "verify" and (not reference or self.args.triton is None):
+                raise ClientError(
+                    "INVALID_ARGUMENT", "verify requires definition.reference and --triton"
+                )
+            text = read_text(self.args.workloads, "workloads file").strip()
+            workloads = (
+                json_value(text) if text.startswith("[") else
+                [json_value(line) for line in text.splitlines() if line.strip()]
+            )
+            if not isinstance(workloads, list) or not workloads or any(
+                not isinstance(workload, dict) or not isinstance(workload.get("inputs"), dict)
+                for workload in workloads
+            ):
+                raise ClientError("INVALID_INPUT", "workloads must be nonempty named input objects")
+            payload = {"definition": definition, "workloads": workloads, "seed": self.args.seed}
+            if self.args.triton is not None:
+                payload["triton_code"] = read_text(self.args.triton, "triton source")
+            if self.args.custom_inputs is not None:
+                payload["custom_inputs_code"] = read_text(
+                    self.args.custom_inputs, "custom inputs source"
+                )
+            uses_custom = any(
+                isinstance(spec, dict) and spec.get("type") == "custom"
+                for workload in workloads for spec in workload["inputs"].values()
+            )
+            if uses_custom:
+                if not definition.get("custom_inputs_entrypoint"):
+                    raise ClientError(
+                        "INVALID_INPUT", "custom inputs require custom_inputs_entrypoint"
+                    )
+                if (self.args.triton_only and self.args.custom_inputs is None
+                        and original_reference):
+                    payload["custom_inputs_code"] = original_reference
+                if not (reference or payload.get("custom_inputs_code")):
+                    raise ClientError(
+                        "INVALID_INPUT", "custom inputs require reference or --custom-inputs source"
+                    )
             if self.args.command == "benchmark" and not self.args.use_baseline_cache:
                 payload["performance"] = {"use_baseline_cache": False}
             if self.key is None:
@@ -354,7 +392,7 @@ class Client:
             if resource["state"] in TERMINAL or self.args.no_wait:
                 status = exit_status(resource)
                 single_input = self.args.command != "get" and (
-                    self.args.torch is None or self.args.triton is None
+                    not reference or self.args.triton is None
                 )
                 result = resource.get("result") or {}
                 unverified = any(

@@ -1,85 +1,25 @@
 """Generate self-contained engine modules without evaluating caller source."""
 
 import json
+from pathlib import Path
 
 from ..api.contract import MAX_SOURCE_BYTES, Check, EvaluationRequest
-from ..api.operator import OperatorRequest
+from ..api.operator import OperatorRequest, normalize_workloads
 
-_REFERENCE_SUPPORT = '''
-import collections.abc as _operator_collections
-import json as _operator_json
-import torch as _operator_torch
-
-class Model(_operator_torch.nn.Module):
+_REFERENCE_MODEL = """class Model(_operator_torch.nn.Module):
     def forward(self, *args):
         return run(*args)
 
 
+"""
+_INPUT_SUPPORT = """
+import collections.abc as _operator_collections
+import json as _operator_json
+import torch as _operator_torch
+
+
 def get_init_inputs():
     return []
-
-
-def _operator_integer(shape, dtype, low, high, generator):
-    if dtype == _operator_torch.int64 and high == 2**63:
-        # randint's Python high argument cannot represent the exclusive int64
-        # upper bound. Build all 64 bits, rejecting values below low.
-        def draw(size):
-            magnitude = _operator_torch.empty(
-                size, dtype=dtype, device="cpu"
-            ).random_(generator=generator)
-            sign = _operator_torch.randint(
-                0, 2, size, dtype=dtype, device="cpu", generator=generator
-            )
-            return magnitude | (sign << 63)
-        if low >= 0:
-            return _operator_torch.randint(
-                low - 1, high - 1, shape, dtype=dtype,
-                device="cpu", generator=generator,
-            ) + 1
-        result = draw(shape)
-        invalid = result < low
-        while invalid.any():
-            result[invalid] = draw((int(invalid.sum()),))
-            invalid = result < low
-        return result
-    return _operator_torch.randint(
-        low, high, shape, dtype=dtype, device="cpu", generator=generator,
-    )
-
-
-def _operator_tensor(spec, generator):
-    shape = spec["shape"]
-    dtype = getattr(_operator_torch, spec["dtype"])
-    limits = spec["range"]
-    if dtype == _operator_torch.bool:
-        return _operator_torch.randint(
-            0, 2, shape, dtype=dtype, device="cpu", generator=generator,
-        )
-    if not dtype.is_floating_point:
-        low, high = limits if limits is not None else (
-            (0, 5) if dtype == _operator_torch.uint8 else (-5, 5)
-        )
-        return _operator_integer(shape, dtype, low, high, generator)
-    if limits is None:
-        return _operator_torch.randn(
-            shape, dtype=dtype, device="cpu", generator=generator,
-        )
-    low, high = limits
-    # Calculate in float64, then keep the final dtype's values inside [low, high).
-    uniform = _operator_torch.rand(
-        shape, dtype=_operator_torch.float64, device="cpu", generator=generator,
-    )
-    result = (low * (1 - uniform) + high * uniform).to(dtype)
-    lower = _operator_torch.tensor(low, dtype=dtype, device="cpu")
-    upper = _operator_torch.tensor(high, dtype=dtype, device="cpu")
-    infinity = _operator_torch.tensor(float("inf"), dtype=dtype, device="cpu")
-    if float(lower) < low:
-        lower = _operator_torch.nextafter(lower, infinity)
-    if float(upper) >= high:
-        upper = _operator_torch.nextafter(upper, -infinity)
-    if not _operator_torch.isfinite(lower) or not _operator_torch.isfinite(upper) or lower > upper:
-        raise ValueError("range contains no finite values of the requested dtype")
-    return result.clamp(min=lower, max=upper)
 
 
 class _OperatorInputGroups(_operator_collections.Sequence):
@@ -91,13 +31,17 @@ class _OperatorInputGroups(_operator_collections.Sequence):
             return [self[i] for i in range(*index.indices(len(self)))]
         if type(index) is not int:
             raise TypeError("case index must be an integer")
-        case = _operator_cases[index]
-        generator = _operator_torch.Generator(device="cpu")
-        generator.manual_seed(case["seed"])
-        return [
-            _operator_tensor(value, generator) if isinstance(value, dict) else value
-            for value in case["inputs"]
-        ]
+        return _operator_generate_inputs(
+            _operator_cases[index], seed=_operator_seed, device="npu",
+            custom_inputs_code=_operator_custom_code,
+            custom_inputs_entrypoint=_operator_custom_entrypoint,
+        )
+
+    def __iter__(self):
+        # Sequence.__iter__ keeps the previous workload bound while generating
+        # the next; yield unbound so consumers hold one device workload at a time.
+        for index in range(len(self)):
+            yield self[index]
 
 
 def get_input_groups():
@@ -106,18 +50,8 @@ def get_input_groups():
 
 def get_inputs():
     return get_input_groups()[0]
-'''
-
-
-# Preserve the comparison source bytes, while single Triton runs only need the
-# input provider: no invented reference model or reference callable.
-_REFERENCE_MODEL = """class Model(_operator_torch.nn.Module):
-    def forward(self, *args):
-        return run(*args)
-
-
 """
-_INPUT_SUPPORT = _REFERENCE_SUPPORT.replace(_REFERENCE_MODEL, "", 1)
+_REFERENCE_SUPPORT = _INPUT_SUPPORT + "\n" + _REFERENCE_MODEL
 
 _CANDIDATE_SUPPORT = '''
 import torch as _operator_torch
@@ -133,17 +67,32 @@ def to_evaluation_request(
 ) -> EvaluationRequest:
     """Translate operator input to the durable engine contract using only strings."""
     cases = json.dumps(
-        [case.model_dump(mode="json") for case in request.cases],
+        normalize_workloads(request),
         sort_keys=True, separators=(",", ":"), ensure_ascii=True, allow_nan=False,
     )
     implementation = (
-        "triton" if request.torch_code is None
+        "triton" if request.definition.reference is None
         else "torch" if request.triton_code is None else "comparison"
     )
     reference_support = _INPUT_SUPPORT if implementation == "triton" else _REFERENCE_SUPPORT
+    generation_source = Path(__file__).parents[1].joinpath(
+        "runtime/input_generation.py"
+    ).read_text(encoding="utf-8")
+    custom_code = (
+        request.custom_inputs_code if request.custom_inputs_code is not None
+        else request.definition.reference
+    )
     reference_code = (
-        (request.torch_code or "") + "\n" + reference_support
+        (request.definition.reference or "") + "\n"
+        + "_operator_generator_namespace = {'__name__': '_operator_input_generation'}\n"
+        + "exec(" + repr(generation_source) + ", _operator_generator_namespace)\n"
+        + "_operator_generate_inputs = _operator_generator_namespace['generate_inputs']\n"
+        + reference_support
         + "\n_operator_cases = _operator_json.loads(" + repr(cases) + ")\n"
+        + "_operator_seed = " + repr(request.seed) + "\n"
+        + "_operator_custom_code = " + repr(custom_code) + "\n"
+        + "_operator_custom_entrypoint = "
+        + repr(request.definition.custom_inputs_entrypoint) + "\n"
     )
     kernel_code = (
         request.triton_code + "\n" + _CANDIDATE_SUPPORT

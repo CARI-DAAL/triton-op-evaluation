@@ -154,9 +154,9 @@ def grade_headers(session="session-g", key="key-g"):
 
 def request_payload(**overrides):
     payload = {
-        "torch_code": "REF",
+        "definition": {"inputs": {}, "reference": "REF"},
         "triton_code": "IMPL",
-        "cases": [{"inputs": []}],
+        "workloads": [{"inputs": {}}],
         "checks": ["correctness"],
     }
     payload.update(overrides)

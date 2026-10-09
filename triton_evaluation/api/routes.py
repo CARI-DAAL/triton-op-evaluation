@@ -92,7 +92,7 @@ async def submit_evaluation(
         "verify": ["correctness"],
         "benchmark": (
             ["correctness", "performance"]
-            if evaluation_request.torch_code is not None
+            if evaluation_request.definition.reference is not None
             and evaluation_request.triton_code is not None
             else ["performance"]
         ),

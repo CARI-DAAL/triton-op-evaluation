@@ -266,7 +266,9 @@ async def test_idempotency_conflict_is_409(app):
     seed_worker(app)
     async with app.http as client:
         await post(client)  # same key, canonical request pinned
-        response = await post(client, payload=request_payload(torch_code="OTHER"))
+        response = await post(
+            client, payload=request_payload(definition={"inputs": {}, "reference": "OTHER"}),
+        )
     assert response.status_code == 409
     envelope = ErrorEnvelope.model_validate_json(response.content)
     assert envelope.error.code == "IDEMPOTENCY_CONFLICT"
