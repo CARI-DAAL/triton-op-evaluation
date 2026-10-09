@@ -12,8 +12,11 @@ import json
 import os
 import re
 import shutil
+import signal
 import stat
 import subprocess
+import sys
+import tempfile
 import threading
 from contextlib import contextmanager
 from pathlib import Path
@@ -408,6 +411,103 @@ def inspect_sqlite_binding(
     }
 
 
+def probe_alias_binding(
+    consumer: Path, symbol: str, alias: Path, environment: dict | None = None
+) -> str:
+    """Preflight eager consumer relocation and provider dladdr in a fresh child.
+
+    This does not prove the binding of every subsequent vendor subprocess.
+    """
+    consumer = consumer.resolve(strict=True)
+    alias = alias.resolve(strict=True)
+    child_env = dict(os.environ if environment is None else environment)
+    child_env.update(LD_BIND_NOW="1", LD_DEBUG="bindings", LC_ALL="C")
+    child_env.pop("LD_DEBUG_OUTPUT", None)
+    code = r"""
+import ctypes, json, os, sys
+consumer = ctypes.CDLL(sys.argv[1], mode=os.RTLD_NOW)
+print("TRITON_EVAL_RELOCATIONS_COMPLETE", file=sys.stderr, flush=True)
+try:
+    function = getattr(ctypes.CDLL(None), sys.argv[2])
+except AttributeError:
+    function = getattr(consumer, sys.argv[2])
+address = ctypes.cast(function, ctypes.c_void_p)
+class Info(ctypes.Structure):
+    _fields_ = [("name", ctypes.c_char_p), ("base", ctypes.c_void_p),
+                ("symbol", ctypes.c_char_p), ("address", ctypes.c_void_p)]
+try:
+    loader = ctypes.CDLL("libdl.so.2")
+except OSError:
+    loader = ctypes.CDLL(None)
+loader.dladdr.argtypes = [ctypes.c_void_p, ctypes.POINTER(Info)]
+loader.dladdr.restype = ctypes.c_int
+info = Info()
+if not loader.dladdr(address, ctypes.byref(info)) or not info.name:
+    raise RuntimeError("dladdr could not identify the consumer symbol provider")
+print(json.dumps(os.path.realpath(os.fsdecode(info.name))))
+"""
+    try:
+        command = [sys.executable, "-c", code, str(consumer), symbol]
+        # Files avoid inherited pipe descriptors keeping communicate() alive
+        # after a constructor forks. Own the whole group, even on success.
+        with tempfile.TemporaryFile() as stdout, tempfile.TemporaryFile() as stderr:
+            process = subprocess.Popen(
+                command, env=child_env, stdout=stdout, stderr=stderr, start_new_session=True
+            )
+            try:
+                process.wait(timeout=30)
+            finally:
+                try:
+                    os.killpg(process.pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+                process.wait()
+            stdout.seek(0)
+            stderr.seek(0)
+            result = subprocess.CompletedProcess(
+                command,
+                process.returncode,
+                stdout.read().decode(errors="replace"),
+                stderr.read().decode(errors="replace"),
+            )
+    except subprocess.TimeoutExpired as error:
+        raise RuntimeError(
+            "SQLite alias binding probe timed out after 30 seconds; check consumer dependencies"
+        ) from error
+    except OSError as error:
+        raise RuntimeError(
+            f"SQLite alias binding probe could not execute ({type(error).__name__}); "
+            "check the interpreter and pinned consumer dependencies"
+        ) from error
+    if result.returncode:
+        diagnostic = "\n".join(
+            line for line in result.stderr.splitlines() if not re.match(r"\s*\d+:", line)
+        )[-1000:]
+        raise RuntimeError(
+            "SQLite alias binding probe failed; check pinned consumer dependencies: " + diagnostic
+        )
+    try:
+        provider = Path(json.loads(result.stdout.strip())).resolve(strict=True)
+    except (ValueError, OSError) as error:
+        raise RuntimeError(
+            "SQLite alias binding probe produced invalid provider evidence"
+        ) from error
+    bindings = re.findall(
+        r"binding file (.*?) \[\d+\] to (.*?) \[\d+\]:.*?symbol [`']" + re.escape(symbol) + r"'",
+        result.stderr.split("TRITON_EVAL_RELOCATIONS_COMPLETE", 1)[0],
+    )
+    providers = [
+        Path(target).resolve() for source, target in bindings if Path(source).resolve() == consumer
+    ]
+    if provider != alias or not providers or any(target != alias for target in providers):
+        raise RuntimeError(
+            f"Pinned SQLite alias bypassed or consumer relocation unverified: consumer={consumer}, "
+            f"symbol={symbol}, expected={alias}, lookup={provider}, relocations={providers}. "
+            "Check competing RPATH/preloads and glibc loader support before capturing."
+        )
+    return str(provider)
+
+
 class ProfilerRuntimeManifest(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -631,36 +731,44 @@ def profiler_export_runtime():
             "Configured profiler runtime requires one main-thread capture per process"
         )
     previous = os.environ.get("LD_LIBRARY_PATH")
+    previous_preload = os.environ.get("LD_PRELOAD")
     config, digest = os.environ[MANIFEST_ENV], os.environ[DIGEST_ENV]
-    evidence = {
-        "enabled": True,
-        "manifest_path": config,
-        "manifest_sha256": digest,
-        "helper_sha256": sha(Path(__file__)),
-        "helper_path": str(Path(__file__).resolve()),
-        "service_package_path": str(Path(__file__).resolve().parents[1]),
-        "alias_path": str(model.alias_path),
-        "alias_sha256": model.alias_sha256,
-        "library_path": str(model.library_path),
-        "library_sha256": model.library_sha256,
-        "consumer_path": str(model.consumer_path),
-        "consumer_sha256": model.consumer_sha256,
-        "msprof_path": str(model.msprof_path),
-        "msprof_sha256": model.msprof_sha256,
-        "process_id": os.getpid(),
-        "visible_devices": os.environ.get("ASCEND_RT_VISIBLE_DEVICES"),
-        "physical_device": os.environ.get(
-            "TRITON_EVAL_REFERENCE_CACHE_DEVICE_ID", os.environ.get("ASCEND_RT_VISIBLE_DEVICES")
-        ),
-        "reference_device_policy": os.environ.get(
-            "TRITON_EVAL_REFERENCE_DEVICE_POLICY", "cpu-first"
-        ),
-        "main_thread": True,
-        "cann_runtime": actual_cann_environment(model),
-        "previous_ld_sha256": hashlib.sha256((previous or "").encode()).hexdigest(),
-        "callback_scope_completed": False,
-    }
+    evidence = {}
     try:
+        evidence.update(
+            {
+                "enabled": True,
+                "manifest_path": config,
+                "manifest_sha256": digest,
+                "helper_sha256": sha(Path(__file__)),
+                "helper_path": str(Path(__file__).resolve()),
+                "service_package_path": str(Path(__file__).resolve().parents[1]),
+                "alias_path": str(model.alias_path),
+                "alias_sha256": model.alias_sha256,
+                "library_path": str(model.library_path),
+                "library_sha256": model.library_sha256,
+                "consumer_path": str(model.consumer_path),
+                "consumer_sha256": model.consumer_sha256,
+                "msprof_path": str(model.msprof_path),
+                "msprof_sha256": model.msprof_sha256,
+                "process_id": os.getpid(),
+                "visible_devices": os.environ.get("ASCEND_RT_VISIBLE_DEVICES"),
+                "physical_device": os.environ.get(
+                    "TRITON_EVAL_REFERENCE_CACHE_DEVICE_ID",
+                    os.environ.get("ASCEND_RT_VISIBLE_DEVICES"),
+                ),
+                "reference_device_policy": os.environ.get(
+                    "TRITON_EVAL_REFERENCE_DEVICE_POLICY", "cpu-first"
+                ),
+                "main_thread": True,
+                "cann_runtime": actual_cann_environment(model),
+                "previous_ld_sha256": hashlib.sha256((previous or "").encode()).hexdigest(),
+                "callback_scope_completed": False,
+                "previous_preload_sha256": hashlib.sha256(
+                    (previous_preload or "").encode()
+                ).hexdigest(),
+            }
+        )
         os.environ["LD_LIBRARY_PATH"] = str(model.alias_path.parent) + (
             os.pathsep + previous if previous else ""
         )
@@ -668,6 +776,22 @@ def profiler_export_runtime():
         evidence["effective_ld_sha256"] = hashlib.sha256(
             os.environ["LD_LIBRARY_PATH"].encode()
         ).hexdigest()
+        os.environ["LD_PRELOAD"] = str(model.alias_path) + (
+            " " + previous_preload if previous_preload else ""
+        )
+        evidence["effective_preload"] = os.environ["LD_PRELOAD"]
+        evidence["effective_preload_sha256"] = hashlib.sha256(
+            os.environ["LD_PRELOAD"].encode()
+        ).hexdigest()
+        probe_symbol = model.required_sqlite_symbols[0]
+        provider = probe_alias_binding(model.consumer_path, probe_symbol, model.alias_path)
+        evidence["alias_binding"] = {
+            "consumer_path": str(model.consumer_path),
+            "probe_symbol": probe_symbol,
+            "provider_path": provider,
+            "alias_path": str(model.alias_path),
+            "verified": True,
+        }
         yield evidence
         read_runtime(config, digest)
         evidence["callback_scope_completed"] = True
@@ -676,5 +800,10 @@ def profiler_export_runtime():
             os.environ.pop("LD_LIBRARY_PATH", None)
         else:
             os.environ["LD_LIBRARY_PATH"] = previous
+        if previous_preload is None:
+            os.environ.pop("LD_PRELOAD", None)
+        else:
+            os.environ["LD_PRELOAD"] = previous_preload
+        evidence["base_preload_restored"] = os.environ.get("LD_PRELOAD") == previous_preload
         evidence["base_ld_restored"] = os.environ.get("LD_LIBRARY_PATH") == previous
         _ENV_LOCK.release()

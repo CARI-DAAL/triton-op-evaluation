@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""Validate one independent evaluation instance before starting Compose.
+"""Validate Compose deployment or host engine imports before startup.
 
 Validate an explicit private IPv4 bind, immutable images, mounted capabilities
 and durable local Redis. Consumer sandbox networking and endpoint
@@ -10,8 +10,10 @@ import ipaddress
 import json
 import os
 import re
+import shlex
 import subprocess
 import sys
+import tempfile
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -53,6 +55,34 @@ class DeploymentConfig:
     capability_file: Path
     redis_image: str
     evaluator_build: str
+
+
+def check_engine_import_context(interpreter: str, env: Mapping[str, str]) -> None:
+    """Check host engine imports from an attempt cwd, without exposing diagnostics."""
+    # A configured sandbox owns its package visibility; this is a host-only probe.
+    if env.get("TRITON_EVAL_ENGINE_SANDBOX_CONFIG"):
+        return
+    if os.sep in interpreter and not Path(interpreter).is_absolute():
+        interpreter = str(Path(interpreter).absolute())
+    remedy = (
+        f"from repository root {PROJECT_ROOT}, run "
+        f"{shlex.quote(interpreter)} -m pip install -e . --no-deps"
+    )
+    try:
+        with tempfile.TemporaryDirectory(prefix="triton-eval-import-") as cwd:
+            result = subprocess.run(
+                [interpreter, "-c", "import triton_evaluation"],
+                cwd=cwd, env=dict(env), capture_output=True, timeout=60,
+                check=False,
+            )
+    except subprocess.TimeoutExpired:
+        raise PreflightError(f"engine import probe timed out after 60 seconds; {remedy}") from None
+    except OSError:
+        raise PreflightError(f"engine import probe interpreter unavailable; {remedy}") from None
+    if result.returncode != 0:
+        raise PreflightError(
+            f"engine cannot import triton_evaluation from an attempt directory; {remedy}"
+        )
 
 
 def inspect_deployment(
@@ -291,11 +321,26 @@ def main(argv: Sequence[str] | None = None) -> int:
         "--json", action="store_true",
         help="print the validated instance bind as machine-readable JSON",
     )
+    parser.add_argument(
+        "--engine-import-context", action="store_true",
+        help=("validate host engine package visibility outside the repository "
+              "(skip for configured sandbox)"),
+    )
     try:
-        parser.parse_args(argv)
+        args = parser.parse_args(argv)
     except SystemExit as exit_request:
         return int(exit_request.code or 0)
     try:
+        if args.engine_import_context:
+            check_engine_import_context(sys.executable, deployment_environment())
+            skipped = bool(os.environ.get("TRITON_EVAL_ENGINE_SANDBOX_CONFIG"))
+            status = "skipped" if skipped else "ok"
+            if args.json:
+                print(json.dumps({"engine_import_context": status}))
+            else:
+                print("engine import context skipped: configured sandbox owns package visibility"
+                      if skipped else "engine import context ok")
+            return 0
         config = inspect_deployment(deployment_environment(), real_runner())
     except PreflightError as error:
         print(f"deployment preflight failed: {error}", file=sys.stderr)

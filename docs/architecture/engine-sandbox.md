@@ -13,6 +13,17 @@ Absent sandbox settings preserve the existing host execution
 mode. A configured but missing, invalid or unusable sandbox fails the invocation;
 it never retries candidate code directly on the host.
 
+The sandbox probes its Bubblewrap executable for environment-reset support with
+a five-second timeout and caches the result for that executable identity. It
+uses `--clearenv` when available, or `--unsetenv` before the declared `--setenv`
+values on older hosts. The Bubblewrap process already receives an explicit
+outer environment containing only `PATH`; the legacy path clears that actual
+outer environment rather than copying parent credentials into the command.
+A failed capability probe or a binary without either reset option rejects the
+invocation. Bubblewrap introduced `--clearenv` in
+[version 0.5.0](https://github.com/containers/bubblewrap/releases/tag/v0.5.0).
+
+
 The standard worker entrypoint reads both values into validated `Settings`
 (`engine_sandbox_config` and `engine_sandbox_sha256`) and builds one subprocess
 environment snapshot at startup. All checks share that snapshot, including CPU

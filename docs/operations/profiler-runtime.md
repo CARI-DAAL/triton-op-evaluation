@@ -8,8 +8,9 @@ torch, system libraries, loader configuration, or the host installation.
 
 The original `torch_npu` profiler and synchronous trace callback remain in use.
 The callback must expose its existing `async_mode=False` default. The engine
-holds a private loader prefix through profile creation, collection and callback
-completion, then restores the process's original `LD_LIBRARY_PATH`. This runs in
+holds a private `LD_LIBRARY_PATH` prefix and prepends the pinned alias to
+`LD_PRELOAD` through profile creation, collection and callback completion, then
+restores both original variables, including their absent state. This runs in
 the main thread of one engine check process; ordinary worker concurrency uses
 different processes. Nested and concurrent captures in the same process fail
 closed. Audit case children are a separate execution boundary.
@@ -19,8 +20,21 @@ closed. Audit case children are a separate execution boundary.
 Run the tracked CLI in the trusted deployment preparation step. It performs
 static `readelf` checks of ELF class/data/machine, target SONAME, consumer
 DT_NEEDED and all required SQLite exports. It neither imports the NPU stack nor
-loads either inspected ELF. The worker subsequently checks hashes only and does
-not require `readelf` or access to deployment preparation tools.
+loads either inspected ELF. Runtime pin checks still require no `readelf` or
+access to deployment preparation tools. Before a configured capture, the engine
+also runs a bounded fresh-child loader probe with the same interpreter: it loads
+the pinned consumer and verifies the selected SQLite symbol's eager relocation
+and provider path. A global symbol lookup alone cannot establish that the
+consumer actually bound to the alias.
+
+The probe uses glibc binding diagnostics and `dladdr`; failure to establish the
+binding stops capture. The probe owns a separate process group and cleans up
+its descendants on success, failure and timeout. `LD_PRELOAD` addresses the observed legacy interpreter
+`DT_RPATH` precedence over a directory prefix. See the Linux
+[loader rules](https://man7.org/linux/man-pages/man8/ld.so.8.html) and
+[symbol lookup semantics](https://man7.org/linux/man-pages/man3/dlsym.3.html).
+This is a same-interpreter preflight, not proof of every vendor export child;
+actual NPU capture and export still need the acceptance checks below.
 
 Set the paths and SHA256 values from the actual target host before preparation:
 
@@ -55,13 +69,13 @@ TRITON_EVAL_PROFILER_RUNTIME_SHA256=<actual CLI output SHA>
 
 Missing halves, changed files, writable artifacts or unexpected resolved
 `msprof` paths fail closed. Do not prefix the host shell, API or worker parent
-with the alias directory. The engine derives that prefix only while executing
+with the alias directory or preload. The engine derives both only while executing
 the original profiler context. An unconfigured historical deployment retains
 its previous behavior; that compatibility does not authorize omitting this
 pair from an experiment that requires it.
 
-Keep the original sandbox manifest bytes and SHA unchanged. Its `--clearenv`
-boundary does not forward new parent variables. Prepare a separate sparse
+Keep the original sandbox manifest bytes and SHA unchanged. Its environment
+reset (`--clearenv`, or the legacy explicit reset) does not forward new parent variables. Prepare a separate sparse
 overlay after sealing its referenced dependencies:
 
 ```bash
@@ -138,8 +152,11 @@ overlay file from `runtime_files` does not close that final admission binding.
 Every configured profiler invocation writes `profiler-runtime.json` inside its
 profile directory after the original callback completes. It records actual
 helper, manifest, alias, library, consumer and msprof SHAs, process identity,
-prefix and environment-value SHAs, callback completion and restoration. This
-proves that the measurement entered the configured context; an environment pair
+loader prefix/preload and their environment-value SHAs, verified alias-binding
+preflight evidence, callback completion and restoration of both loader variables.
+The replay export tool applies and probes the same loader environment only for
+its export child, recording the verified provider and environment differences.
+This proves that the measurement entered the configured context; an environment pair
 alone does not. Bind this artifact and the raw profiler outputs to device
 acceptance observations.
 
