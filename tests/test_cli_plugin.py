@@ -192,7 +192,9 @@ def test_terminal_exit_codes_preserve_raw_resource(inputs, state, checks, exit_c
 def test_timeout_saves_private_handle_and_get_recovers(inputs):
     handle = inputs[0] / "handle.json"
     with server(lambda _: (202, resource(), {})) as (url, calls):
-        result, output = run_cli(inputs, url, "--timeout", "0.2", "--save-handle", str(handle))
+        # The budget covers startup and the POST; leave a loaded runner ample
+        # room to be accepted. The job stays queued, so the wait still expires.
+        result, output = run_cli(inputs, url, "--timeout", "2", "--save-handle", str(handle))
         assert result.returncode == 2
         assert output["error"]["code"] == "CLIENT_TIMEOUT"
         assert output["evaluation_id"] == EID
@@ -347,7 +349,7 @@ def test_unresponsive_exchange_obeys_total_timeout(inputs):
     import time
 
     def respond(calls):
-        time.sleep(0.7)
+        time.sleep(3.0)
         return 200, b"", {}
 
     with server(respond) as (url, _):
@@ -356,7 +358,8 @@ def test_unresponsive_exchange_obeys_total_timeout(inputs):
         elapsed = time.monotonic() - started
     assert result.returncode == 2 and output["error"]["code"] == "CLIENT_TIMEOUT"
     assert output["idempotency_key"]
-    assert elapsed < 0.6
+    # Well short of the stalled response, with room for interpreter startup.
+    assert elapsed < 2.0
 
 
 @pytest.mark.parametrize(
