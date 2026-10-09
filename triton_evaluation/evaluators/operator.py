@@ -66,6 +66,10 @@ def get_input_groups():
 
 def get_inputs():
     return get_input_groups()[0]
+
+
+def get_case_tolerances():
+    return [case.get("tolerance") for case in _operator_cases]
 """
 _REFERENCE_SUPPORT = _INPUT_SUPPORT + "\n" + _REFERENCE_MODEL
 

@@ -2,8 +2,9 @@
 
 Two float32 add workloads exercise the real worker and execution provenance. A
 workload the pinned generator refuses must come back as a non-retryable request
-error while the card keeps serving. This is not a full domain-failure matrix,
-timing/profile calibration or crash soak.
+error while the card keeps serving, and a declared official tolerance must decide
+the verdict. This is not a full domain-failure matrix, timing/profile
+calibration or crash soak.
 """
 import json
 import os
@@ -102,3 +103,29 @@ def test_refused_workload_is_a_request_error_and_the_card_keeps_serving():
     body = _wait_for_terminal(body)
     assert body["state"] == "completed"
     assert body["result"]["correctness"]["data"]["passed"] is True
+
+
+def _offset_add(tolerance):
+    body = build_request(measure_speed=False)
+    # A fixed 4e-3 error: past this service's float32 policy, within a declared 1e-2 atol.
+    kernel = body["triton_code"].replace("x + y, mask=mask", "x + y + 0.004, mask=mask")
+    assert kernel != body["triton_code"]
+    body["triton_code"] = kernel
+    for workload in body["workloads"]:
+        if tolerance is not None:
+            workload["tolerance"] = tolerance
+    return body
+
+
+def test_declared_tolerance_decides_the_correctness_verdict():
+    _skip_without_service()
+    verdicts = []
+    for tolerance in (None, {"max_atol": 0.01}):
+        status, body = _request("POST", "/evaluations?wait_seconds=0", _offset_add(tolerance))
+        assert status in (200, 202)
+        body = _wait_for_terminal(body)
+        assert body["state"] == "completed"
+        correctness = body["result"]["correctness"]
+        assert correctness["status"] == "succeeded"
+        verdicts.append(correctness["data"]["passed"])
+    assert verdicts == [False, True]

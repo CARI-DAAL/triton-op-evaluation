@@ -127,6 +127,8 @@ class CaseContext:
     # A pinned manifest and independently owned CPU output, or None on a real miss.
     cached_reference: object = None
     reference_cache_status: object = None
+    # Official per-workload tolerance; None keeps this service's accuracy policy.
+    tolerance: object = None
 
 
 @dataclass
@@ -171,6 +173,8 @@ from _common_utils import prepare_candidate_inputs as _prepare_candidate_inputs_
 from _common_utils import invoke_model as _invoke_model_shared  # noqa: E402
 from _common_utils import set_process_title as _set_process_title  # noqa: E402
 from _divergence import classify_divergence as _classify_divergence  # noqa: E402
+from _official_tolerance import compute_error_stats as _official_error_stats  # noqa: E402
+from _official_tolerance import resolve_tolerance as _official_tolerance  # noqa: E402
 
 logger = logging.getLogger("triton_op_verifier.verify")
 
@@ -769,7 +773,55 @@ def _compare_float_output(fw_finite, impl_finite, ctx):
     _check_accuracy_npu_benchmark(fw_finite, impl_finite, ctx.data_type)
 
 
-def compare(fw_out, impl_out, data_type, input_spec=None, non_compute=False):
+def _compare_declared_tolerance(fw_out, impl_out, fw_flat, impl_flat, tolerance):
+    """Workload 声明了官方 tolerance：按固定版本官方判定（dtype、非有限值、比例、上限）。"""
+    resolved = _official_tolerance(tolerance, fw_flat.dtype)
+    if impl_flat.dtype != fw_flat.dtype:
+        stats = {}
+        message = f"输出 dtype 不一致: framework={fw_flat.dtype}, impl={impl_flat.dtype}"
+    else:
+        stats, exceeds = _official_error_stats(impl_flat, fw_flat, tolerance)
+        if not exceeds:
+            return
+        message = (
+            f"超出声明的官方 tolerance {resolved}: "
+            f"max_abs={stats.get('max_absolute_error')}, "
+            f"matched_ratio={stats.get('matched_ratio')}, "
+            f"max_error_limit={stats.get('max_error_limit')}, "
+            f"has_nan={stats.get('has_nan')}, has_inf={stats.get('has_inf')}"
+        )
+    metrics = {
+        "max_abs_diff": stats.get("max_absolute_error"),
+        "matched_ratio": stats.get("matched_ratio"),
+        "atol": resolved["max_atol"],
+        "rtol": resolved["max_rtol"],
+        "required_matched_ratio": resolved["required_matched_ratio"],
+        "max_error_limit": stats.get("max_error_limit"),
+        "tolerance": "declared",
+    }
+    # 诊断按声明的 atol/rtol 分类，与判定口径一致；不改变判定结论。
+    reference = [_diagnostic_value(value) for value in fw_flat.tolist()]
+    candidate = [_diagnostic_value(value) for value in impl_flat.tolist()]
+    small_value_threshold, small_value_error, rel_threshold = get_limits(fw_flat.dtype)
+    finite_reference = [value for value in reference if math.isfinite(value)]
+    small_count = sum(abs(value) < small_value_threshold for value in finite_reference)
+    try:
+        metrics["divergence"] = _failure_divergence(
+            reference, candidate, tuple(fw_out.shape),
+            atol=resolved["max_atol"], rtol=resolved["max_rtol"],
+            small_value_threshold=small_value_threshold,
+            small_value_error=small_value_error,
+            rel_threshold=rel_threshold,
+            small_count=small_count,
+            normal_count=len(finite_reference) - small_count,
+        )
+    except Exception:
+        metrics["divergence"] = {"kind": "scattered", "sample": []}
+    raise AccuracyError(message, metrics)
+
+
+def compare(fw_out, impl_out, data_type, input_spec=None, non_compute=False,
+            tolerance=None):
     """对比框架输出和实现输出。
 
     Args:
@@ -824,6 +876,10 @@ def compare(fw_out, impl_out, data_type, input_spec=None, non_compute=False):
                 f"误差要求=二进制完全一致（view-as-int bit pattern 全等，含 NaN payload）"
             )
             _compare_binary_exact(fw_out, impl_out, data_type)
+            return
+
+        if tolerance is not None:
+            _compare_declared_tolerance(fw_out, impl_out, fw_flat, impl_flat, tolerance)
             return
 
         _check_nan_inf(fw_flat, impl_flat, size)
@@ -1152,6 +1208,7 @@ def run_single_case(models: ModelPair, inputs, device, case_ctx: CaseContext, no
                     fw_out, impl_out, data_type,
                     InputSpec(input_type, input_dtype),
                     non_compute=non_compute,
+                    tolerance=case_ctx.tolerance,
                 )
             except _ShapeMismatchError:
                 # 裸 raise 保留原始异常类型与 fw_shape/impl_shape 属性，使 _try_run_case
@@ -1446,6 +1503,8 @@ def verify_implementations(
     failures = []
     reference_trace = []
     passed_cases = 0
+    declared = getattr(modules["torch_module"], "get_case_tolerances", None)
+    declared_tolerances = declared() if declared is not None else None
     for case_idx, inputs in enumerate(input_groups, start=1):
         if candidate_import_error is not None:
             failures.append({
@@ -1478,6 +1537,7 @@ def verify_implementations(
             reference_trace=reference_trace,
             cached_reference=cached_reference,
             reference_cache_status=cache_status,
+            tolerance=declared_tolerances[case_idx - 1] if declared_tolerances else None,
         )
         ok, failure = _try_run_case(
             modules,
