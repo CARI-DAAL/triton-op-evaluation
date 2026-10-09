@@ -8,6 +8,9 @@
 | --- | --- | --- |
 | `python -m pytest -m 'not npu' -q`；CI Python 3.10–3.12 | HTTP、Pydantic、输入生成、幂等/状态机、lease/fencing、缓存、worker、结果整形；大量使用 fakeredis、stub runner 或 fake NPU | 覆盖软件协议与编排；不能替代真实 NPU 算子、时延、profiling、故障恢复或压力验证 |
 | [scripts/npu_release_gate.py](../../scripts/npu_release_gate.py) → [tests/test_npu_release_calibration.py](../../tests/test_npu_release_calibration.py) | 真实服务 `/livez`、`/readyz`，两组 float32 add：4096、8192；只执行 correctness，检查执行环境非空 | 是 readiness + add correctness smoke；不是完整 release calibration，不能证明性能、缓存、profile、恢复或稳定性 |
+| [tests/test_event_timing_npu.py](../../tests/test_event_timing_npu.py) | 真实 NPU Event 测量一个 64×64 ReLU；需显式启用 | 验证基础计时机制，不代表完整 HTTP 性能链路或复杂题目覆盖 |
+| [tests/test_profile_npu_integration.py](../../tests/test_profile_npu_integration.py) | 真实 msprof op/deep，直接运行 engine 的 add 测试；需显式启用 | 已有实机 profile 集成测试，但不是 HTTP、admission 和 worker 的端到端验收 |
+| [scripts/npu_batchmatmul_gate.py](../../scripts/npu_batchmatmul_gate.py) | 一题 51 cases，通过 HTTP 运行 correctness、event/profiler 计时、op/deep profile | 新增官方输入协议的实机验收入口；本地 CPU 测试证明编排，硬件结果仍待目标主机执行 |
 | [scripts/test_eval_service.py](../../scripts/test_eval_service.py) | 同样两组 add，可默认请求 performance | 退出码只检查 correctness；performance 失败仍可能退出 0，不能作为性能验收门槛 |
 | [tests/test_card_health_npu.py](../../tests/test_card_health_npu.py) | 指定真实 NPU 的健康 canary | 证明健康卡上的 canary 可执行；不证明故障隔离、恢复阶梯或复位后再接单 |
 | [scripts/probe_profiler_latency.py](../../scripts/probe_profiler_latency.py) | 本机 NPU profiler 诊断，256×256 matmul，8 次有效观测及中位数，保留采集产物 | 诊断本机 profiler 链路；未经过 HTTP admission、worker lease 和结果恢复 |
@@ -45,6 +48,59 @@ python scripts/probe_profiler_latency.py \
 ```
 
 完整方案不能只执行 `pytest -m npu`：现有 release_gate 有自己的凭证、URL、超时和“不允许 skip”的入口；压力与恢复场景还缺驱动工具。
+
+## 2.1 本轮只用一题：官方 BatchMatmul
+
+测试材料固定为 [BatchMatmul fixture](../../tests/fixtures/npu_kernelbench/batchmatmul/README.md)，
+保留全部 **51 cases**。官方 GitCode 提交为
+`0607a29d231cde384c9dfdb8a39f54f91837c327`；`definition.json` 和 `workload.jsonl`
+字节未改，其组合 SHA256（中间一个 NUL 字节）为
+`57e902365bd9b2fa437cc500cf0d862989b5881f439b2157de7341b127126c73`，
+与 open-evo 归档声明的 `official_digest` 一致。
+
+| 官方 UUID | A × B | dtype | 覆盖点 |
+| --- | --- | --- | --- |
+| BatchMatmul-003 | `[2,7,15]` × `[2,15,7]` | float16 | 小尺寸、非对齐维度 |
+| BatchMatmul-006 | `[1,2,3]` × `[1,3,2]` | float32 | 最小输入规模 |
+| BatchMatmul-010 | `[9,607,1213]` × `[9,1213,607]` | bfloat16 | BF16 和非对齐 K |
+| BatchMatmul-044 | `[128,1024,2048]` × `[128,2048,1024]` | float32 | A+B 为 2 GiB，加输出约 2.5 GiB；不是峰值显存估计 |
+| BatchMatmul-051 | `[40,2590,5181]` × `[40,5181,2590]` | float16 | 大尺寸、非对齐尾块 |
+
+以上是边界示例，完整入口仍执行全部 51 cases，含 FP32 18、FP16 18、BF16 15 组。
+服务现在以 `definition/workloads` 为唯一输入协议，按固定版本官方生成策略在 NPU
+生成数据，默认 seed 200。归档 adapter 的 seed 0/标准正态路径与此不同，历史 tensor
+hash 和旧时延不能直接作为当前输入或速度结论。输入生成对齐不更换服务自己的精度
+判定算法，也不把历史候选视为已通过当前构建。
+
+先离线验证 fixture，随后对部署的新接口运行完整链路：
+
+```bash
+python scripts/npu_batchmatmul_gate.py \
+  --check-only --output /tmp/batchmatmul-fixture-check.json
+
+python scripts/npu_batchmatmul_gate.py \
+  --url "$EVALUATION_URL" \
+  --capability-file "$EVALUATION_CAPABILITY_FILE" \
+  --deadline-seconds 3600 --job-timeout 19000 \
+  --output /tmp/batchmatmul-npu-report.json
+```
+
+服务须配置 `TRITON_EVAL_REFERENCE_DEVICE_POLICY=npu-strict`，并为大 case 配置足够的
+设备内存、verify/benchmark/profile 时间预算。引擎按 case 在 NPU 生成输入：benchmark
+与 profile 在生成下一组前释放上一组，verify 最多同时持有相邻两组，不会一次物化全部
+51 组。客户端 deadline 不会扩大服务端已有预算。计时阶段明确关闭 baseline cache，以得到新鲜 Torch/候选测量。报告保留
+资源 ID、输入/reference digest、部署 provenance 以及逐阶段结果；任一阶段缺失、
+失败或 profile partial 都不会标记全量通过。`--check-only` 只检查文件一致性，
+`hardware_verified` 明确为 false。
+
+已有底层 Event/profile 测试也可单独执行：
+
+```bash
+TRITON_EVAL_RUN_NPU_PROFILE_TESTS=1 ASCEND_RT_VISIBLE_DEVICES=0 \
+  python -m pytest tests/test_event_timing_npu.py tests/test_profile_npu_integration.py -m npu -q
+```
+
+这些底层测试与 HTTP BatchMatmul 验收分别记录，不合并推断覆盖范围。
 
 ## 3. 测试环境与证据
 
@@ -124,7 +180,7 @@ python scripts/probe_profiler_latency.py \
 
 建议保留现有 smoke 入口，补一套与业务源码分开的测试工具：
 
-1. 先补 `tests/npu/` 的真实HTTP功能矩阵，复用已有纯逻辑断言；对必需用例禁止 skip。将性能成功条件纳入正式门禁，不能沿用 smoke 的 correctness-only 退出判定。
+1. 在已有 BatchMatmul HTTP 入口上补齐异常与恢复矩阵，复用已有纯逻辑断言；对必需用例禁止 skip。将性能成功条件纳入正式门禁，不能沿用 smoke 的 correctness-only 退出判定。
 2. 增加负载驱动：固定并发与定速两种模式、提交台账、幂等/恢复、轮询限速、排空、资源采样和结果汇总。可使用标准 Python + 仓库已有 httpx；暂不需要部署新的压测平台。
 3. 增加显式选择的故障注入阶段，驱动只操作测试实例的具体 worker/Redis，保存故障前后证据。
 4. 统一输出 report JSON、JUnit、请求台账 JSONL、资源时间序列与失败样本；report分别给出functional、performance、recovery、load、soak的状态，缺项不生成“全量通过”。

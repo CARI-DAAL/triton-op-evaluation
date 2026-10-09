@@ -14,7 +14,7 @@ before enabling reuse. CPU tests establish neither device equality nor a through
 
 This guide describes retained compatibility for existing pinned reference-cache
 deployments. The operator input API does not register datasets or generalize
-these cache identities. Arbitrary `torch_code` and cases do not gain cache
+these cache identities. Arbitrary reference code and workloads do not gain cache
 coverage through submission; validate a matching deployment before reuse.
 
 ## Produce and seal evidence

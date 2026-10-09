@@ -23,3 +23,8 @@ The reusable caller CLI is bundled in the
 startup, deployment and diagnostic tools.
 
 Retired compilation experiments are recorded in [Git history](../docs/history.md).
+
+`npu_batchmatmul_gate.py` validates the pinned 51-case official BatchMatmul fixture
+and runs its correctness/timing/profile checks through the HTTP API. Use
+`--check-only` for file integrity without device execution. The
+[NPU validation plan](../docs/operations/npu-validation.md) describes its scope.

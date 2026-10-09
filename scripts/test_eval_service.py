@@ -54,12 +54,19 @@ def run(x, y):
 def build_request(*, measure_speed: bool = True) -> dict:
     """Build the public operator request shared by host and NPU smoke checks."""
     body = {
-        "torch_code": REFERENCE_CODE,
+        "definition": {
+            "name": "elementwise_add_smoke", "axes": {},
+            "inputs": {"x": {}, "y": {}}, "outputs": {},
+            "reference": REFERENCE_CODE,
+        },
         "triton_code": KERNEL_CODE,
-        "cases": [
-            {"inputs": [{"shape": [size], "dtype": "float32"} for _ in range(2)], "seed": 0}
-            for size in (4096, 8192)
+        "workloads": [
+            {"uuid": f"add-{size}", "axes": None, "inputs": {
+                name: {"type": "random", "shape": [size], "dtype": "float32"}
+                for name in ("x", "y")
+            }} for size in (4096, 8192)
         ],
+        "seed": 200,
         "checks": ["correctness", "performance"] if measure_speed else ["correctness"],
         "deadline_seconds": 600,
     }

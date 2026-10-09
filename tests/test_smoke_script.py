@@ -104,12 +104,11 @@ def test_main_sends_capability_headers_and_recovers_by_get(monkeypatch, measure_
     assert post["headers"]["X-Session-ID"] == "triton-eval-smoke"
     assert post["headers"]["Idempotency-Key"].startswith("smoke-")
     request = OperatorRequest.model_validate(post["body"])
-    assert request.torch_code == smoke.REFERENCE_CODE
+    assert request.definition.reference == smoke.REFERENCE_CODE
     assert request.triton_code == smoke.KERNEL_CODE
-    assert [[tensor.shape for tensor in case.inputs] for case in request.cases] == [
-        [[4096], [4096]], [[8192], [8192]],
-    ]
-    assert all(case.seed == 0 for case in request.cases)
+    assert [[tensor.shape for tensor in workload.inputs.values()]
+            for workload in request.workloads] == [[[4096], [4096]], [[8192], [8192]]]
+    assert request.seed == 200
     assert request.checks == (["correctness", "performance"] if measure_speed else ["correctness"])
     assert (request.performance is not None) is measure_speed
 

@@ -115,10 +115,10 @@ def test_target_check_submits_real_operator_input_and_polls_202(monkeypatch):
         if method == "POST":
             parsed = OperatorRequest.model_validate(body)
             assert parsed.checks == ["correctness"]
-            assert len(parsed.cases) == 2
-            assert "def run(" in parsed.torch_code
+            assert len(parsed.workloads) == 2
+            assert "def run(" in parsed.definition.reference
             assert "def run(" in parsed.triton_code
-            assert "..." not in parsed.torch_code + parsed.triton_code
+            assert "..." not in parsed.definition.reference + parsed.triton_code
             return 202, {"evaluation_id": "ev_test", "state": "queued"}
         return 200, terminal
 

@@ -195,6 +195,7 @@ class _OfficialInputGroups:
             case = next(stream)
             state = snapshot()
             yield case
+            del case
 
 
 def build_input_groups(torch_module: Any) -> List[Any]:

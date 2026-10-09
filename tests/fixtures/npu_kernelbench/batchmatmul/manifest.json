@@ -1,0 +1,97 @@
+{
+  "schema_version": 1,
+  "problem_id": "official_l3_BatchMatmul",
+  "case_count": 51,
+  "input_order": [
+    "A",
+    "B"
+  ],
+  "dtype_case_counts": {
+    "float32": 18,
+    "float16": 18,
+    "bfloat16": 15
+  },
+  "official_source": {
+    "repository": "https://gitcode.com/Ascend/ascendc-kernelgen-data",
+    "commit": "0607a29d231cde384c9dfdb8a39f54f91837c327",
+    "definition": {
+      "url": "https://gitcode.com/Ascend/ascendc-kernelgen-data/blob/0607a29d231cde384c9dfdb8a39f54f91837c327/npu-kernelbench/data/kernel_generator/level3/BatchMatmul/definition.json",
+      "git_blob_sha": "efce5cd7fd08a26bfc8a1e8b8b79bdb221f095f5"
+    },
+    "workload": {
+      "url": "https://gitcode.com/Ascend/ascendc-kernelgen-data/blob/0607a29d231cde384c9dfdb8a39f54f91837c327/npu-kernelbench/data/kernel_generator/level3/BatchMatmul/workload.jsonl",
+      "git_blob_sha": "7dd2af2e7973a4ed9c418e16c8d4a4d9c714eebe"
+    },
+    "license": {
+      "spdx": "Apache-2.0",
+      "url": "https://gitcode.com/Ascend/ascendc-kernelgen-data/blob/0607a29d231cde384c9dfdb8a39f54f91837c327/LICENSE"
+    },
+    "generator": {
+      "url": "https://gitcode.com/Ascend/ascendc-kernelgen-data/blob/0607a29d231cde384c9dfdb8a39f54f91837c327/npu-kernelbench/src/npu_kernelbench/evaluator/generator.py",
+      "sha256": "7e921faa284024e23dfa0f4c34315f6cd5d3301baf78827af4cf04a8cec5bb8c"
+    }
+  },
+  "candidate_source": {
+    "url": "https://github.com/CARI-DAAL/open-evo/blob/16913b64f1683aa58d08af5fa5d2d02c5b53a6a8/machine2-retirement-20261008/nb5-round3-integrate-and-gates-20261008/WORK/raw/grade/fanout/dsh-official_l3_BatchMatmul-t1--20261007T215545Z-3071528.request.json",
+    "commit": "16913b64f1683aa58d08af5fa5d2d02c5b53a6a8",
+    "json_field": "kernel_code",
+    "sha256": "ade816bea5998a02e73db672aed90be085470cf41a24ee2a1a05174961bf731c",
+    "entrypoint": "ModelNew",
+    "modifications": []
+  },
+  "archived_reference_code_sha256": "3115965c4696fd45d30d97a0774f6d6432e2cc2910d2a8a0d88f017ccaf3c780",
+  "official_reference_text_sha256": "b721620792d1950eaafd4a50c29549eb3efb74e29452d2e893fee6ba56d4e4f9",
+  "case_index_mapping": {
+    "service_index_base": 0,
+    "official_uuid_first": "BatchMatmul-001",
+    "official_uuid_last": "BatchMatmul-051",
+    "ordering": "workload.jsonl line order"
+  },
+  "generation_policy": {
+    "official": "gen_inputs seeds Python/Torch/NPU per workload with configured seed and generates normal/uniform family directly on target device",
+    "archived_adapter": "Ambient Torch default device (torch.randn has no device argument), global RNG standard normal, audit seed 0; preceding cases consume RNG sequentially. NB0 binding is npu-strict with selected_reference_device npu:0; CPU materialization is not established.",
+    "equivalent": false,
+    "fixture_tensor_bytes_preserved": false,
+    "validation_must_record": [
+      "generator_policy",
+      "seed",
+      "device"
+    ],
+    "official_cli_default_seed": 200,
+    "archived_reference_audit_seed": 0
+  },
+  "input_storage_bytes": {
+    "minimum": 48,
+    "maximum": 2147483648,
+    "is_peak_memory_estimate": false
+  },
+  "files": {
+    "LICENSE": {
+      "sha256": "c5accbbd8546e94c34aed24afe689a617627d18eed5a6c48277e48db57c23851",
+      "size_bytes": 11356
+    },
+    "README.md": {
+      "sha256": "a10a90e549853bfeae95a735c740f47d11948ca231fe93d99f23082b4f083833",
+      "size_bytes": 1977
+    },
+    "candidate.py": {
+      "sha256": "ade816bea5998a02e73db672aed90be085470cf41a24ee2a1a05174961bf731c",
+      "size_bytes": 4256
+    },
+    "definition.json": {
+      "sha256": "b0bcbf829ce5c2f521e2025f4348235197c4d35eb8ca69ea039760b83a969c85",
+      "size_bytes": 2518
+    },
+    "workload.jsonl": {
+      "sha256": "bce8f6cd55348e1a28dd424fdfa0bd593b09d6f2fe6e258a91c2a6a197187d21",
+      "size_bytes": 9992
+    }
+  },
+  "manifest_integrity": "Manifest does not hash itself; its version is bound by the repository commit.",
+  "official_digest": {
+    "algorithm": "sha256(definition_bytes || 0x00 || workload_bytes)",
+    "value": "57e902365bd9b2fa437cc500cf0d862989b5881f439b2157de7341b127126c73",
+    "matches_archived_official_digest": true,
+    "separator_hex": "00"
+  }
+}

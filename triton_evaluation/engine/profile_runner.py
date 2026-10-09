@@ -122,6 +122,21 @@ def build_runner_source() -> str:
                     yield self[index]
 
 
+        class NormalizedGroups:
+            """Normalize one case on access without retaining device workloads."""
+            def __init__(self, groups):
+                self.groups = groups
+
+            def __len__(self):
+                return len(self.groups)
+
+            def __getitem__(self, index):
+                group = self.groups[index]
+                if not isinstance(group, (list, tuple)):
+                    raise TypeError(f"case {index} must be a list or tuple of arguments")
+                return list(group)
+
+
         def resolve_groups(reference, torch):
             seed(torch)
             if (hasattr(reference, "_ADAPTER_VERSION")
@@ -129,8 +144,10 @@ def build_runner_source() -> str:
                     and hasattr(reference, "get_case_count")):
                 return OfficialGroups(reference, torch)
             if hasattr(reference, "get_input_groups"):
-                groups = list(build_input_groups(reference, torch))
-                if not groups:
+                groups = build_input_groups(reference, torch)
+                if not hasattr(groups, "__len__") or not hasattr(groups, "__getitem__"):
+                    groups = list(groups)
+                if len(groups) == 0:
                     raise RuntimeError("get_input_groups() returned no cases")
             elif hasattr(reference, "get_inputs"):
                 groups = [reference.get_inputs()]
@@ -138,14 +155,7 @@ def build_runner_source() -> str:
                 raise RuntimeError(
                     "reference defines neither get_input_groups nor get_inputs"
                 )
-            normalized = []
-            for index, group in enumerate(groups):
-                if not isinstance(group, (list, tuple)):
-                    raise TypeError(
-                        f"case {index} must be a list or tuple of arguments"
-                    )
-                normalized.append(list(group))
-            return normalized
+            return NormalizedGroups(groups)
 
 
         def to_npu(value, torch):
@@ -190,8 +200,10 @@ def build_runner_source() -> str:
                 print(json.dumps({
                     "total_cases": len(groups),
                     "cases": [
-                        {"case_idx": index, "input_desc": describe_input(group)}
-                        for index, group in enumerate(groups)
+                        # Index access: enumerate would keep the previous case
+                        # alive while the next one is materialized.
+                        {"case_idx": index, "input_desc": describe_input(groups[index])}
+                        for index in range(len(groups))
                     ],
                 }))
                 return
@@ -225,7 +237,7 @@ def build_runner_source() -> str:
                 torch.npu.synchronize()
             print(json.dumps({
                 "case_idx": index,
-                "input_desc": describe_input(groups[index]),
+                "input_desc": describe_input(raw_inputs),
             }))
 
 

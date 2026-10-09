@@ -27,12 +27,18 @@ for the opt-in policy, shared attempt budget and same-card recovery behavior.
 
 ## Upgrading
 
-Before switching to operator inputs, stop old admissions and collect in-flight
-results from their original instance. Update clients to send `cases` and at
-least one of `torch_code` or `triton_code`; each supplied implementation must
-export `run(*args)`. Correctness requests require both sources.
-The former task-ID facade, separate tool token and public low-level evaluation
-request are no longer accepted. Use the capability registry for all endpoints.
+Before switching input protocols, stop old admissions and collect in-flight
+results from their original instance. Update clients to send `definition` and
+`workloads`, with at least one of `definition.reference` or `triton_code`.
+The old `torch_code` and positional `cases` fields are rejected, not translated.
+The CLI accepts `--definition` and `--workloads` instead of `--torch` and `--cases`.
+Input generation now follows the pinned official per-workload seed/distribution
+policy on the assigned NPU; default seed is 200. Regenerate input-dependent
+expectations and measure fresh baselines when validating the upgrade. The
+embedded generator bytes and normalized workloads change reference/cache identity.
+
+The task-ID facade, separate tool token and public low-level evaluation request
+remain retired. Use the capability registry for all endpoints.
 
 Start new operations with new session and idempotency keys. Replaying an old
 payload across this interface change is not a migration mechanism. Existing

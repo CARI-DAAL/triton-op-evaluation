@@ -57,8 +57,8 @@ hardware coverage, proposed functional and recovery matrix, load/soak stages,
 and acceptance criteria. It distinguishes existing commands from tests still
 to be implemented.
 
-The optional consumer checkout must support `torch_code`, `triton_code` and
-`cases`. The previous source/factory submission interface is no longer accepted.
+The optional consumer checkout must support `definition`, `workloads` and
+optional `triton_code`. Older positional input clients are no longer accepted.
 
 ```bash
 EVALUATION_CONSUMER_ROOT=/path/to/kernel-harness \
@@ -102,3 +102,11 @@ Single-source NPU benchmarks should report fresh per-case latency and
 changing a comparison baseline entry. They should not report correctness or
 reference speedup. These are separate hardware checks, not evidence established
 by the CPU CLI tests.
+
+The [official BatchMatmul fixture](fixtures/npu_kernelbench/batchmatmul/README.md)
+preserves one official task and all 51 workloads. `scripts/npu_batchmatmul_gate.py`
+exercises correctness, fresh event/profiler timing and op/deep profiling through
+HTTP on a configured NPU service. It requires complete evidence from all cases;
+`--check-only` verifies source hashes without claiming hardware acceptance. See
+the [NPU plan](../docs/operations/npu-validation.md#21-本轮只用一题官方-batchmatmul)
+for commands, deployment requirements and coverage limits.

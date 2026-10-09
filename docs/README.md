@@ -15,6 +15,7 @@ alone cannot convey.
 - [Deploy on one or multiple hosts](operations/deployment.md)
 - [Recovery, retries and upgrades](operations/recovery.md)
 - [NPU 全量验证方案：功能、恢复、压力与稳定性](operations/npu-validation.md)
+- [官方 BatchMatmul 单题 fixture](../tests/fixtures/npu_kernelbench/batchmatmul/README.md)
 - [Prepare the profiler runtime](operations/profiler-runtime.md)
 - [Prepare and use reference caches](operations/reference-cache.md)
 

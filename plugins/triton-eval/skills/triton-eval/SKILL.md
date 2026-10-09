@@ -14,39 +14,46 @@ invoke its absolute path from the directory containing the user's inputs.
 
 ## Submit an operator
 
-Use a JSON **array** of cases and at least one UTF-8 source file (PyTorch or
-Triton). Each supplied implementation defines `run(*args)`. Each case has positional
-`inputs` and an optional `seed` (default `0`). An input is a scalar or a tensor
-descriptor with `shape`, optional `dtype` (default `float32`) and optional
-`range: [low, high]` (upper bound exclusive). For example, `cases.json` can be:
+Use the official definition JSON and workloads JSONL files unchanged for a
+comparison. A JSON array of workload objects is also accepted. The definition
+contains `axes`, ordered named `inputs`, `outputs`, and optional `reference`
+Python source; `name` is optional. Each workload contains `uuid`, `axes` and
+named `inputs`. Random inputs carry `type: "random"`, `shape` and `dtype`.
+The request seed defaults to 200; set `--seed` to reproduce a different seed.
 
-```json
-[{"inputs": [{"shape": [1024], "dtype": "float32"}], "seed": 0}]
-```
-
-Choose `verify` with both sources for correctness. `benchmark` measures one
-implementation, or checks correctness and speedup when both are supplied.
-`profile` accepts either one or both sources. Supply only the implementations
-the user wants measured; duplicating one source into two fields creates a
-misleading comparison. Put options after the subcommand. With
-`TRITON_EVAL_CLI` set to the resolved client path:
+Choose `verify` with a reference in the definition and a candidate Triton
+source. `benchmark` measures one implementation, or compares correctness and
+speedup when both are present. `profile` accepts one or both implementations.
+Each implementation defines `run` with arguments matching definition input
+order. With `TRITON_EVAL_CLI` set to the resolved client path:
 
 ```bash
 python3 "$TRITON_EVAL_CLI" verify \
-  --torch torch_impl.py --triton triton_impl.py --cases cases.json \
-  --save-handle evaluation-handle.json
+  --definition definition.json --workloads workloads.jsonl \
+  --triton triton_impl.py --save-handle evaluation-handle.json
 ```
 
-For one implementation, omit the other flag:
+For Torch alone, use the reference in the definition without `--triton`.
+For Triton alone, use `--triton-only` to remove the reference from the submitted
+definition while preserving the official file on disk:
 
 ```bash
-python3 "$TRITON_EVAL_CLI" benchmark --torch torch_impl.py --cases cases.json
-python3 "$TRITON_EVAL_CLI" profile --triton triton_impl.py --cases cases.json
+python3 "$TRITON_EVAL_CLI" benchmark --definition definition.json --workloads workloads.jsonl
+python3 "$TRITON_EVAL_CLI" profile --definition definition.json --workloads workloads.jsonl \
+  --triton triton_impl.py --triton-only
 ```
 
+When workloads use custom input generators, pass their UTF-8 Python source with
+`--custom-inputs custom_inputs.py`; it becomes `custom_inputs_code` in the request.
+
+For custom workloads, declare `custom_inputs_entrypoint` in the definition.
+With `--triton-only`, the client preserves the original reference source as
+`custom_inputs_code` for that factory; the submitted definition omits its
+mathematical reference. An explicit `--custom-inputs` file takes precedence.
+
 The client reads the capability from its file and sends it only as the
-Authorization credential. Keep credentials out of source files, cases, output
-artifacts and pasted logs. The supplied source files and cases are sent to the
+Authorization credential. Keep credentials out of source files, workloads, output
+artifacts and pasted logs. The supplied definition, workloads and source files are sent to the
 configured evaluation service; importing them locally is unnecessary.
 
 For two-source `benchmark`, Torch baseline timing is cached by default. Use
@@ -71,7 +78,7 @@ python3 "$TRITON_EVAL_CLI" get EVALUATION_ID --url ORIGINAL_SERVICE_URL
 
 `--save-handle` records `url`, `evaluation_id`, `idempotency_key` and `session_id`.
 Retain these values for recovery; a missing session is recorded as null. If a POST gets
-no response, retry only with the same source bytes, cases, options, session and
+no response, retry only with the same definition, workloads, source bytes, options, session and
 `--idempotency-key`. A different key creates new work. After bounded retries or
 a service outage, report the recoverable handle or original request identity;
 resume recovery when the service is available.

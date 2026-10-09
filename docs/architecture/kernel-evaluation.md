@@ -1,17 +1,23 @@
 # Operator input and durable execution
 
-The public `OperatorRequest` requires `cases` and at least one of `torch_code`
-or `triton_code`. Each implementation exports `run(*args)`; cases describe
-positional tensors and scalars with deterministic seeds. Both sources enable
-comparison; one source enables measurement and profiling without correctness.
-HTTP validation establishes the input shape.
-It does not import or execute supplied code.
+The public `OperatorRequest` contains an official-shaped `definition` and
+`workloads`, optional `triton_code`, optional custom-generator source, and a seed.
+`definition.reference` supplies Torch code; either source may be omitted for
+single-implementation measurements. Both implementations expose `run(*args)` in
+the declared input order. HTTP validation resolves bounded input metadata and
+axes without executing supplied source or importing Torch.
 
-The operator adapter converts this input into the engine's existing reference
-and candidate interfaces. It supplies the `Model` and input factories internally.
-The resulting request enters `EvaluationInstance` and its ordinary durable
-admission, lease, execution and recovery path. Internal v2.1 record models remain
-available for persisted resources; they are not an alternative public input.
+The operator adapter embeds the audited input generator source in a private
+namespace inside the reference module. Its code bytes, ordered input names,
+normalized workloads, seed and custom source therefore participate in durable
+reference identity and the baseline-cache key. Candidate source stays separate.
+Random values are generated only inside a leased device attempt, using the
+assigned NPU and the pinned official seed/distribution rules.
+
+The resulting internal request follows the same `EvaluationInstance` admission,
+lease, execution and recovery path. Stored v2.1 records remain recoverable; the
+retired positional public request is not accepted. There is no benchmark catalog
+or task-registration endpoint.
 
 ```mermaid
 flowchart LR

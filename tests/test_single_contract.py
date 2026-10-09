@@ -18,16 +18,23 @@ from triton_evaluation.evaluators.operator import to_evaluation_request
 from triton_evaluation.serialization import canonical_json_bytes, sha256_hex
 
 SOURCE = "def run(x):\n    return x + 1\n"
-CASES = [{"inputs": [{"shape": [4], "dtype": "float32"}]}]
+WORKLOADS = [{"inputs": {"x": {"type": "random", "shape": [4], "dtype": "float32"}}}]
 
 
-def operator(**values):
-    return OperatorRequest.model_validate({"cases": CASES, **values})
+def operator(*, reference=None, **values):
+    return OperatorRequest.model_validate({
+        "definition": {"inputs": {"x": {}}, "reference": reference},
+        "workloads": WORKLOADS, **values,
+    })
+
+
+def source_kwargs(implementation):
+    return {"reference" if implementation == "torch" else "triton_code": SOURCE}
 
 
 @pytest.mark.parametrize("implementation", ["torch", "triton"])
 def test_single_implementation_defaults_to_performance(implementation):
-    body = operator(**{implementation + "_code": SOURCE})
+    body = operator(**source_kwargs(implementation))
     assert body.checks == ["performance"]
     durable = to_evaluation_request(body)
     assert durable.implementation == implementation
@@ -43,7 +50,7 @@ def test_single_implementation_defaults_to_performance(implementation):
 @pytest.mark.parametrize("implementation", ["torch", "triton"])
 @pytest.mark.parametrize("checks", [["compile"], ["profile"], ["compile", "performance"]])
 def test_single_checks_do_not_require_comparison(implementation, checks):
-    body = operator(**{implementation + "_code": SOURCE}, checks=checks)
+    body = operator(**source_kwargs(implementation), checks=checks)
     durable = to_evaluation_request(body)
     assert durable.checks == checks
     assert (durable.profile is not None) == ("profile" in checks)
@@ -52,15 +59,15 @@ def test_single_checks_do_not_require_comparison(implementation, checks):
 @pytest.mark.parametrize("implementation", ["torch", "triton"])
 def test_single_implementation_cannot_request_correctness(implementation):
     with pytest.raises(ValidationError, match="both implementations"):
-        operator(**{implementation + "_code": SOURCE}, checks=["correctness"])
-    body = operator(**{implementation + "_code": SOURCE})
+        operator(**source_kwargs(implementation), checks=["correctness"])
+    body = operator(**source_kwargs(implementation))
     with pytest.raises(ValidationError, match="both implementations"):
         to_evaluation_request(body, checks=["correctness"])
 
 
 @pytest.mark.parametrize("values", [
-    {}, {"torch_code": None, "triton_code": None}, {"torch_code": ""},
-    {"triton_code": " \n\t"}, {"torch_code": SOURCE, "triton_code": " "},
+    {}, {"reference": None, "triton_code": None}, {"reference": ""},
+    {"triton_code": " \n\t"}, {"reference": SOURCE, "triton_code": " "},
 ])
 def test_at_least_one_real_source_is_required_and_supplied_blanks_are_rejected(values):
     with pytest.raises(ValidationError):
@@ -68,44 +75,49 @@ def test_at_least_one_real_source_is_required_and_supplied_blanks_are_rejected(v
 
 
 @pytest.mark.parametrize("implementation", ["torch", "triton"])
-def test_cases_still_required_for_single_code(implementation):
+def test_workloads_still_required_for_single_code(implementation):
     with pytest.raises(ValidationError):
-        OperatorRequest.model_validate({implementation + "_code": SOURCE})
+        payload = operator(**source_kwargs(implementation)).model_dump()
+        payload.pop("workloads")
+        OperatorRequest.model_validate(payload)
 
 
 def test_torch_only_generates_only_a_real_reference_model():
-    pytest.importorskip("torch")
+    torch = pytest.importorskip("torch")
     source = "# preserve leading/trailing source whitespace \n" + SOURCE + "\n"
-    durable = to_evaluation_request(operator(torch_code=source))
+    durable = to_evaluation_request(operator(reference=source))
     assert durable.reference_code.startswith(source + "\n")
     assert durable.kernel_code == ""
     namespace = {}
     exec(durable.reference_code, namespace)
-    inputs = namespace["get_inputs"]()
+    inputs = [torch.arange(4, dtype=torch.float32)]
     assert namespace["Model"]()(*inputs).equal(inputs[0] + 1)
 
 
 def test_triton_only_generates_inputs_without_an_invented_reference_model():
-    pytest.importorskip("torch")
+    torch = pytest.importorskip("torch")
     durable = to_evaluation_request(operator(triton_code=SOURCE))
     reference, candidate = {}, {}
     exec(durable.reference_code, reference)
     exec(durable.kernel_code, candidate)
     assert "run" not in reference and "Model" not in reference
     assert reference["get_init_inputs"]() == []
-    inputs = reference["get_input_groups"]()[0]
+    inputs = [torch.arange(4, dtype=torch.float32)]
     assert candidate["ModelNew"]()(*inputs).equal(inputs[0] + 1)
     assert durable.kernel_code.startswith(SOURCE + "\n")
 
 
-def test_comparison_generation_and_identity_preserve_previous_bytes():
-    body = operator(torch_code=SOURCE, triton_code=SOURCE)
+def test_comparison_generation_declares_a_new_input_protocol_identity():
+    body = operator(reference=SOURCE, triton_code=SOURCE)
     assert body.checks == ["correctness", "performance"]
     durable = to_evaluation_request(body)
     assert durable.implementation == "comparison"
     assert "implementation" not in durable.model_dump(mode="json")
-    # Computed with the converter at main 352d6d4, before single-mode support.
-    assert sha256_hex(canonical_json_bytes(durable.model_dump(mode="json"))) == (
+    # The official input policy must not reuse the old CPU-randn request identity.
+    raw = canonical_json_bytes(durable.model_dump(mode="json"))
+    recovered = EvaluationRequest.model_validate_json(raw).model_dump(mode="json")
+    assert raw == canonical_json_bytes(recovered)
+    assert sha256_hex(raw) != (
         "5392e3d2e29743b1d16120a06a60fe4befe38862e256229dc11796c8a09975e6"
     )
 
