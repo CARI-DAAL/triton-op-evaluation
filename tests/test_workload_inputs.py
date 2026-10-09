@@ -1,5 +1,7 @@
 """Pure validation of official workload descriptors."""
 
+import time
+
 import pytest
 from pydantic import ValidationError
 
@@ -99,7 +101,6 @@ def test_unsafe_or_invalid_axes_rejected(expression):
         {"type": "random", "shape": [-1], "dtype": "float32"},
         {"type": "random", "shape": [2], "dtype": "int8", "range": [0, 129]},
         {"type": "random", "shape": [2], "dtype": "int8", "range": [2, 2]},
-        {"type": "random", "shape": [2], "dtype": "float32", "range": [0, 2]},
     ],
 )
 def test_invalid_input_descriptors_rejected(spec):
@@ -142,7 +143,6 @@ def test_scalar_list_and_tensor_list_and_custom_axes():
         {"torch_code": "def run(x): return x"},
         {"cases": [{"inputs": []}]},
         {"workloads": [{"inputs": {"x": {"type": "custom"}}}]},
-        {"workloads": [{"inputs": {"unknown": {"type": "scalar", "value": 1}}}]},
         {
             "workloads": [
                 {"inputs": {"x": {"type": "scalar", "value": 1}}, "tolerance": {"max_atol": 0.1}}
@@ -153,6 +153,54 @@ def test_scalar_list_and_tensor_list_and_custom_axes():
 def test_old_schema_and_unsupported_semantics_rejected(updates):
     with pytest.raises(ValidationError):
         OperatorRequest.model_validate(body(**updates))
+
+
+def test_official_metadata_extra_inputs_and_float_range_are_ignored():
+    # Official SwiGLU, Gather and Nonzero workloads carry these; upstream ignores them.
+    request = OperatorRequest.model_validate(
+        body(
+            workloads=[
+                {
+                    "inputs": {
+                        "x": {
+                            "type": "random", "dtype": "float32", "shape": [2],
+                            "range": [-10, 10],
+                        },
+                        "sparse_grad": {"type": "scalar", "value": True},
+                    },
+                    "perf_baseline": {"hardware": "Ascend910B3", "latency_ms": 0.2},
+                }
+            ]
+        )
+    )
+    [case] = normalize_workloads(request)
+    assert case["input_order"] == ["x"]
+    assert "range" not in case["inputs"]["x"]
+
+
+@pytest.mark.parametrize("order", ["forward", "reverse"])
+def test_axis_chain_resolves_in_one_definition_order_pass(order):
+    axes = {"a0": {"type": "const", "value": 1}}
+    for i in range(1, 128) if order == "forward" else range(127, 0, -1):
+        axes[f"a{i}"] = {"type": "expr", "expression": " + ".join(["1"] * 30) + f" + a{i - 1}"}
+    body = {
+        "definition": {
+            "axes": axes,
+            "inputs": {"x": {"shape": ["a127"], "dtype": "float32"}},
+            "reference": "def run(x): return x",
+        },
+        "workloads": [{"inputs": {}}] * 128,
+    }
+    start = time.perf_counter()
+    if order == "forward":
+        cases = normalize_workloads(OperatorRequest.model_validate(body))
+        assert cases[-1]["inputs"]["x"]["shape"] == [1 + 127 * 30]
+    else:
+        # Upstream resolves once in definition order, so a later axis is unknown.
+        with pytest.raises(ValidationError, match="not resolved before it"):
+            OperatorRequest.model_validate(body)
+    # The old any-order loop re-parsed pending expressions: about a minute here.
+    assert time.perf_counter() - start < 5
 
 
 def test_single_implementation_modes():
@@ -205,7 +253,10 @@ def test_one_sided_distribution_bounds_rejected():
                 workloads=[
                     {
                         "inputs": {
-                            "x": {"type": "random", "dtype": "float32", "shape": [2], "high": -6.0}
+                            "x": {
+                                "type": "random", "dtype": "float32", "shape": [2],
+                                "distribution": "uniform", "high": -6.0,
+                            }
                         }
                     }
                 ]

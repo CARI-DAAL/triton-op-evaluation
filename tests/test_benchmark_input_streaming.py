@@ -111,3 +111,70 @@ def test_generated_operator_groups_release_each_workload(monkeypatch, indices):
     assert measured == ([1, 2, 3, 4] if indices is None else [2, 4])
     assert generated == ([0, 1, 2, 3] if indices is None else [1, 3])
     assert all(ref() is None for ref in references)
+
+
+@pytest.mark.parametrize("miss_at", [None, 2])
+def test_reference_cache_lookup_releases_each_workload(monkeypatch, tmp_path, miss_at):
+    from triton_evaluation.runtime import reference_cache
+
+    loaded, fallback = [], []
+
+    class Cache:
+        deployment = SimpleNamespace(digest="d")
+        device_id = 0
+
+        def check_measurement(self, config):
+            pass
+
+        def load_case(self, source, case_idx, inputs, *, reference_device_policy):
+            loaded.append(case_idx)
+            if case_idx == miss_at:
+                raise reference_cache.ReferenceCacheMiss("absent")
+            return SimpleNamespace(
+                reference_latency_median_ms=1.0, latency_samples_ms=[1.0],
+                binding=SimpleNamespace(case_idx=case_idx),
+                model_dump=lambda **_: {"case_idx": case_idx},
+            )
+
+        def needs_remeasurement(self, cached, measured):
+            return False
+
+    def reuse(config, spec, groups, indices, device):
+        # The miss fallback may materialize a workload of its own.
+        fallback.append(len(groups[0]))
+        return False
+
+    class Model:
+        def __init__(self, *_):
+            pass
+
+        def to(self, _):
+            return self
+
+    torch = SimpleNamespace(
+        manual_seed=lambda _: None, npu=SimpleNamespace(manual_seed=lambda _: None)
+    )
+    monkeypatch.setitem(sys.modules, "torch", torch)
+    monkeypatch.setattr(
+        reference_cache.ReferenceCache, "from_environment", classmethod(lambda cls: Cache())
+    )
+    monkeypatch.setattr(reference_cache, "official_source_metadata", lambda _: ("d", "official"))
+    monkeypatch.setattr(benchmark, "_try_validated_timing_reuse", reuse)
+    monkeypatch.setattr(benchmark, "_measure_framework", lambda *_: (None, 1.0, None, None))
+    monkeypatch.setattr(benchmark, "cleanup_npu_memory", lambda: None)
+    (tmp_path / "task_torch.py").write_text("# official reference\n")
+    config = benchmark.BenchmarkConfig("task", str(tmp_path))
+    groups = LazyGroups()
+    benchmark._configure_reference_cache(
+        config, benchmark.BenchmarkModelSpec(Model, object, lambda: []),
+        benchmark._SelectedInputGroups(groups, [1, 2, 3, 4]), "npu", case_indices=[1, 2, 3, 4],
+    )
+    if miss_at is None:
+        # Four cache lookups, then the sentinel case.
+        assert loaded == [1, 2, 3, 4] and groups.generated == [0, 1, 2, 3, 0]
+        assert config.reference_evidence_source == "cached_manifest"
+    else:
+        assert loaded == [1, 2] and fallback == [1]
+        assert groups.generated == [0, 1, 0]
+        assert config.reference_measure_eight
+    assert all(ref() is None for ref in groups.references)

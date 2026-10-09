@@ -1,13 +1,13 @@
 # Eval service NPU 全量验证方案
 
-审查日期：2026-10-08。功能基线为 main `1f48857`（含 PR #50 的单实现评测）；[PR #51](https://github.com/CARI-DAAL/triton-op-evaluation/pull/51) 的显式依赖组装、环境快照和 metrics 并发修复也纳入待验收范围；这些项目以该 PR 合并后的部署版本为验收对象。先固定实际部署的合并提交和 evaluator build，再开始实机测试。本文是测试方案；下列“需补充”项目尚未实现为实机测试工具，也未在 NPU 上执行。
+审查日期：2026-10-08，2026-10-09 更新输入协议部分。输入协议的验收对象为 main `e4f68e5`（含 PR #54 部署修复与 #55 官方 definition/workloads 协议）加上其后的上游准入对齐 follow-up。原功能基线为 main `1f48857`（含 PR #50 的单实现评测）；[PR #51](https://github.com/CARI-DAAL/triton-op-evaluation/pull/51) 的显式依赖组装、环境快照和 metrics 并发修复也纳入待验收范围；这些项目以该 PR 合并后的部署版本为验收对象。先固定实际部署的合并提交和 evaluator build，再开始实机测试。本文是测试方案；下列“需补充”项目尚未实现为实机测试工具，也未在 NPU 上执行。
 
 ## 1. 当前测试实际上覆盖到哪里
 
 | 已有入口 | 实际执行内容 | 能证明什么 / 不能证明什么 |
 | --- | --- | --- |
 | `python -m pytest -m 'not npu' -q`；CI Python 3.10–3.12 | HTTP、Pydantic、输入生成、幂等/状态机、lease/fencing、缓存、worker、结果整形；大量使用 fakeredis、stub runner 或 fake NPU | 覆盖软件协议与编排；不能替代真实 NPU 算子、时延、profiling、故障恢复或压力验证 |
-| [scripts/npu_release_gate.py](../../scripts/npu_release_gate.py) → [tests/test_npu_release_calibration.py](../../tests/test_npu_release_calibration.py) | 真实服务 `/livez`、`/readyz`，两组 float32 add：4096、8192；只执行 correctness，检查执行环境非空 | 是 readiness + add correctness smoke；不是完整 release calibration，不能证明性能、缓存、profile、恢复或稳定性 |
+| [scripts/npu_release_gate.py](../../scripts/npu_release_gate.py) → [tests/test_npu_release_calibration.py](../../tests/test_npu_release_calibration.py) | 真实服务 `/livez`、`/readyz`，两组 float32 add：4096、8192；只执行 correctness，检查执行环境非空；再提交一个上游必然拒绝的 workload，须返回不可重试的 `INPUT_GENERATION_FAILED`，随后正确任务照常通过 | 是 readiness + add correctness + 请求错误归因 smoke；不是完整 release calibration，不能证明性能、缓存、profile、恢复或稳定性 |
 | [tests/test_event_timing_npu.py](../../tests/test_event_timing_npu.py) | 真实 NPU Event 测量一个 64×64 ReLU；需显式启用 | 验证基础计时机制，不代表完整 HTTP 性能链路或复杂题目覆盖 |
 | [tests/test_profile_npu_integration.py](../../tests/test_profile_npu_integration.py) | 真实 msprof op/deep，直接运行 engine 的 add 测试；需显式启用 | 已有实机 profile 集成测试，但不是 HTTP、admission 和 worker 的端到端验收 |
 | [scripts/npu_batchmatmul_gate.py](../../scripts/npu_batchmatmul_gate.py) | 一题 51 cases，通过 HTTP 运行 correctness、event/profiler 计时、op/deep profile | 新增官方输入协议的实机验收入口；本地 CPU 测试证明编排，硬件结果仍待目标主机执行 |
@@ -72,6 +72,12 @@ python scripts/probe_profiler_latency.py \
 hash 和旧时延不能直接作为当前输入或速度结论。输入生成对齐不更换服务自己的精度
 判定算法，也不把历史候选视为已通过当前构建。
 
+准入以固定版本上游代码为规范：API 只拒绝安全/资源上限、上游对任何 seed 都必然
+失败的参数，以及 per-workload tolerance（服务的正确性判定尚不支持）。其余请求原样
+交给生成器，行为与上游一致，包括取决于 seed 的生成失败。按此规则，固定提交的 105
+个官方题中 100 个可原样提交；DequantSwigluQuant、TopKTopP 和 3 个
+MiniMaxSparseAttention 因 tolerance 被明确拒绝，暂不能做实机验收。
+
 先离线验证 fixture，随后对部署的新接口运行完整链路：
 
 ```bash
@@ -87,8 +93,8 @@ python scripts/npu_batchmatmul_gate.py \
 
 服务须配置 `TRITON_EVAL_REFERENCE_DEVICE_POLICY=npu-strict`，并为大 case 配置足够的
 设备内存、verify/benchmark/profile 时间预算。引擎按 case 在 NPU 生成输入：benchmark
-与 profile 在生成下一组前释放上一组，verify 最多同时持有相邻两组，不会一次物化全部
-51 组。客户端 deadline 不会扩大服务端已有预算。计时阶段明确关闭 baseline cache，以得到新鲜 Torch/候选测量。报告保留
+（含历史官方 adapter 的 reference cache 查询）与 profile 在生成下一组前释放上一组，
+verify 最多同时持有相邻两组，不会一次物化全部 51 组。客户端 deadline 不会扩大服务端已有预算。计时阶段明确关闭 baseline cache，以得到新鲜 Torch/候选测量。报告保留
 资源 ID、输入/reference digest、部署 provenance 以及逐阶段结果；任一阶段缺失、
 失败或 profile partial 都不会标记全量通过。`--check-only` 只检查文件一致性，
 `hardware_verified` 明确为 false。
@@ -119,7 +125,8 @@ TRITON_EVAL_RUN_NPU_PROFILE_TESTS=1 ASCEND_RT_VISIBLE_DEVICES=0 \
 | 接入与契约 | `/evaluations`、`/verify`、`/benchmark`、`/profile`、GET、健康、OpenAPI、metrics；缺失/错误凭证、权限、非法 JSON/字段、体积上限、超限 | 状态码和 typed error 正确；被拒请求不执行代码；observer-only metrics；错误流量不阻塞健康检查 |
 | 生命周期 | wait=0 / bounded wait；客户端断连；相同 key 重放；相同 key 不同内容冲突；跨 caller 读取 | 一个已接受逻辑请求对应一个可恢复 ID；重放不重新执行；权限隔离；客户端 timeout 不取消已接受任务 |
 | 运行模式 | comparison、Torch-only、Triton-only；compile、correctness、performance、profile 及所有合法组合 | comparison 才给正确性和 speedup；单实现结果明确 unverified、无伪造 counterpart；单实现 `/verify` 拒绝；compile 检查实际提供的源码 |
-| 输入生成 | 多 case、seed、shape、dtype、range、标量参数、选择子集、空张量等边界 | 正确映射原 case index；相同 seed 可复现；不支持的设备能力给明确失败/未测，不能伪造成功；不要求硬件不支持的 dtype 通过 |
+| 输入生成 | 多 case、seed、shape、dtype、range、标量参数、选择子集、空张量等边界；官方 100 题原样提交（含 `perf_baseline`、未声明输入、浮点 `range`）；上游取决于 seed 的生成失败（如未指定分布、`high` 小于默认 `low`、seed 0 抽到 uniform family） | 正确映射原 case index；相同 seed 可复现；不支持的设备能力给明确失败/未测，不能伪造成功；不要求硬件不支持的 dtype 通过；生成失败须返回不可重试的 `INPUT_GENERATION_FAILED` 并指明 workload，卡不被标为 suspicious、不重排；torch `RuntimeError`/OOM 仍按引擎故障处理，不能被归为请求错误 |
+| 历史官方 reference cache | 启用 reference cache 的 seed 0 归档任务：命中、miss 回退、哨兵重测 | 逐 case 查询、miss 回退与哨兵测量时设备上只持有一组输入；case 编号与缓存 manifest 一致 |
 | 数值正确性 | 已知正确 pointwise/reduction/matmul 语料；错误输出、shape/dtype 不符、NaN/Inf、输入修改；non_compute 分支 | 精度判定与配置一致；错误 candidate 是有效失败 evidence，不能变成基础设施成功或漏跑；正确性失败后的依赖检查按规则 skipped |
 | compile / JIT / runtime | Python 语法、import 错误、Triton JIT 错误、执行异常 | 语法/import verdict 与设备编译失败分清；negative verdict 缓存不能错误接管依赖 shape 的 JIT 失败 |
 | 性能 | event、profiler；不同 warmup/repeats；case subset；部分/全部不稳定；单实现与comparison | 正时延、正确 method/coverage；comparison speedup 可从分母重算；没有稳定样本时显式未测/失败；不能只检查 correctness 退出码 |

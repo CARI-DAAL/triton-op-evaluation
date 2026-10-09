@@ -2,10 +2,12 @@
 
 Primary source: Ascend/AscendC-KernelGen-data (Apache-2.0),
 0607a29d231cde384c9dfdb8a39f54f91837c327,
-npu-kernelbench/src/npu_kernelbench/evaluator/generator.py.
+npu-kernelbench/src/npu_kernelbench/evaluator/generator.py and data/shapes.py.
 Only the framework model namespace/device is replaced; RNG logic is original.
 """
 
+import ast
+import operator
 import random
 from collections.abc import Callable
 from enum import Enum
@@ -15,7 +17,7 @@ from typing import Any, Optional
 import pytest
 import torch
 
-from triton_evaluation.runtime.input_generation import generate_inputs
+from triton_evaluation.runtime.input_generation import InputGenerationError, generate_inputs
 
 OFFICIAL_SOURCE = (
     "def _rand_tensor(\n"
@@ -418,6 +420,69 @@ OFFICIAL_CUSTOM_LOADER_SOURCE = (
     " return custom_fn(resolved_axes, dev)\n\n    return wrapper"
 )
 
+# Pinned data/shapes.py axis evaluator (Definition.get_resolved_axes_values uses it).
+OFFICIAL_SHAPES_SOURCE = (
+    "_BIN_OPS = {\n"
+    "    ast.Add: op.add,\n"
+    "    ast.Sub: op.sub,\n"
+    "    ast.Mult: op.mul,\n"
+    "    ast.Div: op.truediv,\n"
+    "    ast.FloorDiv: op.floordiv,\n"
+    "    ast.Mod: op.mod,\n"
+    "    ast.Pow: op.pow,\n"
+    "}\n"
+    "\n"
+    "\n"
+    "_UNARY_OPS = {\n"
+    "    ast.UAdd: op.pos,\n"
+    "    ast.USub: op.neg,\n"
+    "}\n"
+    "\n"
+    "\n"
+    "def resolve_shape_expression(expr: str, vars: dict[str, int]) -> int:\n"
+    '    """Safely evaluate a simple arithmetic expression with variables."""\n'
+    "\n"
+    "    def eval_node(node):\n"
+    "        if isinstance(node, ast.Constant):\n"
+    "            if isinstance(node.value, (int, float)):\n"
+    "                return node.value\n"
+    '            raise TypeError(f"Unsupported constant type: {type(node.value).__name__}")\n'
+    "\n"
+    "        if isinstance(node, ast.Name):\n"
+    "            if node.id in vars:\n"
+    "                v = vars[node.id]\n"
+    "                if not isinstance(v, int):\n"
+    "                    raise TypeError(\n"
+    '                        f"Variable \'{node.id}\' must be int, got {type(v).__name__}"\n'
+    "                    )\n"
+    "                return v\n"
+    '            raise NameError(f"Unknown variable: {node.id}")\n'
+    "\n"
+    "        if isinstance(node, ast.BinOp):\n"
+    "            op_type = type(node.op)\n"
+    "            if op_type not in _BIN_OPS:\n"
+    '                raise TypeError(f"Unsupported operator: {op_type.__name__}")\n'
+    "            return _BIN_OPS[op_type](eval_node(node.left), eval_node(node.right))\n"
+    "\n"
+    "        if isinstance(node, ast.UnaryOp):\n"
+    "            op_type = type(node.op)\n"
+    "            if op_type not in _UNARY_OPS:\n"
+    '                raise TypeError(f"Unsupported unary operator: {op_type.__name__}")\n'
+    "            return _UNARY_OPS[op_type](eval_node(node.operand))\n"
+    "\n"
+    '        raise TypeError(f"Unsupported expression node: {type(node).__name__}")\n'
+    "\n"
+    '    tree = ast.parse(expr, mode="eval")\n'
+    "    value = eval_node(tree.body)\n"
+    "    if isinstance(value, float) and value.is_integer():\n"
+    "        value = int(value)\n"
+    "    if not isinstance(value, int):\n"
+    "        raise TypeError(\n"
+    '            f"Expression \'{expr}\' must evaluate to an integer, got {type(value).__name__}"\n'
+    "        )\n"
+    "    return value\n"
+)
+
 
 class ScalarInput(SimpleNamespace):
     pass
@@ -736,6 +801,42 @@ def test_noncustom_workload_ignores_custom_source(monkeypatch):
     )
 
 
+def test_noncustom_request_embeds_reference_once():
+    from triton_evaluation.api.operator import OperatorRequest
+    from triton_evaluation.evaluators.operator import to_evaluation_request
+
+    reference = "def run(x): return x  # embedded-once"
+    request = OperatorRequest.model_validate(
+        {
+            "definition": {
+                "inputs": {"x": {}}, "reference": reference, "custom_inputs_entrypoint": "build",
+            },
+            "workloads": [{"inputs": {"x": {"type": "random", "dtype": "float32", "shape": [2]}}}],
+        }
+    )
+    source = to_evaluation_request(request).reference_code
+    assert source.count("embedded-once") == 1
+    namespace = {}
+    exec(source, namespace)
+    assert namespace["_operator_custom_code"] is None
+
+
+def test_float_range_is_ignored_like_upstream(monkeypatch):
+    # Official Nonzero workloads put range on float32; upstream applies it only to integers.
+    from triton_evaluation.api.operator import OperatorRequest, normalize_workloads
+
+    spec = {"type": "random", "shape": [17], "dtype": "float32", "range": [-10, 10]}
+    request = OperatorRequest.model_validate(
+        {
+            "definition": {"inputs": {"x0": {}}, "reference": "def run(x0): return x0"},
+            "workloads": [{"inputs": {"x0": spec}}],
+        }
+    )
+    [case] = normalize_workloads(request)
+    assert "range" not in case["inputs"]["x0"]
+    assert_equal(generate_inputs(case, 200, "cpu"), official(case_for(spec), 200, monkeypatch))
+
+
 def test_reference_callback_source_used_when_no_override(monkeypatch):
     from triton_evaluation.api.operator import OperatorRequest
     from triton_evaluation.evaluators.operator import to_evaluation_request
@@ -761,3 +862,123 @@ def test_reference_callback_source_used_when_no_override(monkeypatch):
         namespace["_operator_cases"][0], 200, "cpu", reference, "build"
     )
     torch.testing.assert_close(result[0], torch.ones(2))
+
+
+def official_axes(axes, values):
+    """Upstream Definition.get_resolved_axes_values: one pass in definition order."""
+    namespace = {"ast": ast, "op": operator}
+    exec(OFFICIAL_SHAPES_SOURCE, namespace)
+    resolved = {name: axis["value"] for name, axis in axes.items() if axis["type"] == "const"}
+    resolved.update(values)
+    for name, axis in axes.items():
+        if axis["type"] == "expr":
+            resolved[name] = namespace["resolve_shape_expression"](axis["expression"], resolved)
+    return resolved
+
+
+def api_axes(axes, values):
+    from triton_evaluation.api.operator import Definition, resolve_axes
+
+    return resolve_axes(Definition.model_validate({"axes": axes, "inputs": {}}), values)
+
+
+@pytest.mark.parametrize(
+    "expression",
+    [
+        "N ** 0.5",
+        "N / 4 * 3",
+        "-N + 2 * N",
+        "N % 5 + True",
+        "2 ** 40 // 2 ** 30",
+        "2 ** 600 // 2 ** 595",
+    ],
+)
+def test_axis_expressions_match_upstream(expression):
+    axes = {"N": {"type": "var"}, "M": {"type": "expr", "expression": expression}}
+    assert api_axes(axes, {"N": 16}) == official_axes(axes, {"N": 16})
+
+
+@pytest.mark.parametrize(
+    "axes",
+    [
+        # Upstream resolves once in definition order, so a later axis is unknown.
+        {"M": {"type": "expr", "expression": "K + 1"}, "K": {"type": "expr", "expression": "2"}},
+        {"M": {"type": "expr", "expression": "(-8) ** 0.5"}},
+        {"M": {"type": "expr", "expression": "N / 3"}},
+        {"M": {"type": "expr", "expression": "N // 0"}},
+        {"M": {"type": "expr", "expression": "len(N)"}},
+    ],
+)
+def test_axis_expressions_rejected_where_upstream_fails(axes):
+    axes = {"N": {"type": "var"}, **axes}
+    with pytest.raises((NameError, TypeError, ZeroDivisionError)):
+        official_axes(axes, {"N": 16})
+    with pytest.raises(ValueError):
+        api_axes(axes, {"N": 16})
+
+
+def api_case(spec):
+    from triton_evaluation.api.operator import OperatorRequest, normalize_workloads
+
+    request = OperatorRequest.model_validate(
+        {
+            "definition": {"inputs": {"x0": {}}, "reference": "def run(x0): return x0"},
+            "workloads": [{"inputs": {"x0": spec}}],
+        }
+    )
+    return normalize_workloads(request)[0]
+
+
+def outcome(generate):
+    try:
+        return generate()
+    except (RuntimeError, ValueError) as error:
+        return error
+
+
+# Seed 0 draws the uniform case family and seed 200 the normal one.
+@pytest.mark.parametrize("seed", [0, 200])
+@pytest.mark.parametrize(
+    "spec",
+    [
+        {"distribution": "normal", "sigma_low": 0.0, "sigma_high": 0.5},
+        {"distribution": "normal", "sigma_low": -1.0, "sigma_high": 2.0},
+        {"distribution": "randn", "low": 5.0, "high": -5.0},
+        {"distribution": "mixed", "low": 5.0, "high": -5.0},
+        {"high": -6.0},
+        {"dtype": "bool", "distribution": "uniform", "low": 1.0, "high": 0.0},
+        {"dtype": "int8", "fill": "zero", "range": [5, 1]},
+        {"distribution": "uniform", "range": [1, 2, 3]},
+    ],
+)
+def test_bounds_upstream_may_use_are_admitted_and_reproduced(spec, seed, monkeypatch):
+    spec = {"type": "random", "shape": [17], "dtype": "float32", **spec}
+    ours = outcome(lambda: generate_inputs(api_case(spec), seed, "cpu"))
+    upstream = outcome(lambda: official(case_for(spec), seed, monkeypatch))
+    if isinstance(upstream, Exception):
+        # Upstream's torch refusal; ours names it as the request's error.
+        assert isinstance(ours, InputGenerationError)
+    else:
+        assert_equal(ours, upstream)
+
+
+@pytest.mark.parametrize(
+    "spec",
+    [
+        {"distribution": "uniform", "high": -6.0},
+        {"distribution": "uniform_signed", "low": 4.0},
+        {"distribution": "normal", "mu_low": 1.0, "mu_high": 0.0},
+        {"distribution": "normal", "sigma_low": 1.0, "sigma_high": 0.5},
+        {"distribution": "normal", "sigma_low": -2.0, "sigma_high": -1.0},
+        {"dtype": "int8", "range": [0, 129]},
+    ],
+)
+def test_bounds_upstream_always_refuses_are_rejected(spec, monkeypatch):
+    from pydantic import ValidationError
+
+    spec = {"type": "random", "shape": [17], "dtype": "float32", **spec}
+    for seed in (0, 1, 2, 3, 200):
+        with pytest.raises(RuntimeError):
+            official(case_for(spec), seed, monkeypatch)
+    with pytest.raises(ValidationError):
+        api_case(spec)

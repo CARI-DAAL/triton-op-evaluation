@@ -5,7 +5,7 @@ from conftest import (
     make_completed_result,
     make_request,
 )
-from test_worker import StubEvaluator, build_worker
+from test_worker import StubEvaluator, _healthy_worker, _ScriptedCanary, build_worker
 
 from triton_evaluation.api.contract import (
     CheckFailed,
@@ -313,3 +313,52 @@ def test_stale_lease_cannot_requeue(
     assert store.requeue_retryable_engine_failure(lease, failed_card=3) is False
     visible = store.get_visible(command.evaluation_id, make_caller())
     assert visible.state == "completed"
+
+
+def _input_generation_result(settings, code="INPUT_GENERATION_FAILED", retryable=False):
+    result = _engine_failure_result(settings)
+    result.correctness = CheckFailed(
+        status="failed",
+        error=ErrorInfo(
+            code=code, phase="execution", check="correctness", retryable=retryable,
+            message="workload bad (case 2) inputs cannot be generated: uniform low > high",
+        ),
+    )
+    return result
+
+
+@pytest.mark.parametrize(
+    ("code", "retryable", "suspected"),
+    [("EVALUATOR_EXECUTION_FAILED", True, True), ("INPUT_GENERATION_FAILED", False, False)],
+)
+def test_refused_workload_never_suspects_the_card(
+    store, make_command, settings, clock, code, retryable, suspected
+):
+    settings = settings.model_copy(update={"card_canary_on_startup": True})
+    canary = _ScriptedCanary([True] * 8)
+    evaluator = StubEvaluator(settings, result=_input_generation_result(settings, code, retryable))
+    worker = _healthy_worker(store, settings, evaluator, clock, canary)
+    checks = make_request(checks=["correctness", "performance"])
+    store.create_or_replay(make_command(request=checks))
+    assert worker.run_once() is True
+    store.create_or_replay(
+        make_command(request=checks, session_id="s-2", idempotency_key="k-2")
+    )
+    assert worker.run_once() is True
+    # Only the startup canary runs unless a failure the card may own re-probes it.
+    assert (canary.calls > 1) is suspected
+
+
+def test_refused_workload_is_terminal_even_with_requeue(store, make_command, settings, clock):
+    settings = settings.model_copy(update={"engine_failure_requeue": True})
+    result = _input_generation_result(settings)
+    assert _retryable_engine_failure(result) is False
+    command = make_command(request=make_request(checks=["correctness", "performance"]))
+    store.create_or_replay(command)
+    evaluator = StubEvaluator(settings, result=result)
+    worker = build_worker(store, settings, evaluator, clock, canary=lambda **kwargs: True)
+    assert worker.run_once() is True
+    visible = store.get_visible(command.evaluation_id, make_caller())
+    assert visible.state == "completed"
+    assert visible.result.correctness.error.code == "INPUT_GENERATION_FAILED"
+    assert len(evaluator.calls) == 1

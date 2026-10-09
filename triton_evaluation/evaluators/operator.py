@@ -12,9 +12,13 @@ _REFERENCE_MODEL = """class Model(_operator_torch.nn.Module):
 
 
 """
+# One stderr line naming the workload the pinned generator refused; evaluators
+# turn it into a non-retryable request error instead of a card fault.
+INPUT_GENERATION_FAILURE_PREFIX = "TRITON_EVAL_INPUT_GENERATION_FAILED "
 _INPUT_SUPPORT = """
 import collections.abc as _operator_collections
 import json as _operator_json
+import sys as _operator_sys
 import torch as _operator_torch
 
 
@@ -31,11 +35,23 @@ class _OperatorInputGroups(_operator_collections.Sequence):
             return [self[i] for i in range(*index.indices(len(self)))]
         if type(index) is not int:
             raise TypeError("case index must be an integer")
-        return _operator_generate_inputs(
-            _operator_cases[index], seed=_operator_seed, device="npu",
-            custom_inputs_code=_operator_custom_code,
-            custom_inputs_entrypoint=_operator_custom_entrypoint,
-        )
+        case = _operator_cases[index]
+        try:
+            return _operator_generate_inputs(
+                case, seed=_operator_seed, device="npu",
+                custom_inputs_code=_operator_custom_code,
+                custom_inputs_entrypoint=_operator_custom_entrypoint,
+            )
+        except _operator_input_error as error:
+            failure = {
+                "case_idx": range(len(self))[index] + 1,
+                "uuid": case["uuid"],
+                "message": str(error),
+            }
+            _operator_sys.stderr.write(""" + repr(INPUT_GENERATION_FAILURE_PREFIX) + """
+                                       + _operator_json.dumps(failure) + "\\n")
+            _operator_sys.stderr.flush()
+            raise
 
     def __iter__(self):
         # Sequence.__iter__ keeps the previous workload bound while generating
@@ -66,9 +82,9 @@ def to_evaluation_request(
     request: OperatorRequest, checks: list[Check] | None = None,
 ) -> EvaluationRequest:
     """Translate operator input to the durable engine contract using only strings."""
+    workloads = normalize_workloads(request)
     cases = json.dumps(
-        normalize_workloads(request),
-        sort_keys=True, separators=(",", ":"), ensure_ascii=True, allow_nan=False,
+        workloads, sort_keys=True, separators=(",", ":"), ensure_ascii=True, allow_nan=False,
     )
     implementation = (
         "triton" if request.definition.reference is None
@@ -78,8 +94,14 @@ def to_evaluation_request(
     generation_source = Path(__file__).parents[1].joinpath(
         "runtime/input_generation.py"
     ).read_text(encoding="utf-8")
+    # Only custom workloads read the callback source; embedding the reference
+    # a second time otherwise halves the usable reference size.
+    uses_custom = any(
+        spec["type"] == "custom" for case in workloads for spec in case["inputs"].values()
+    )
     custom_code = (
-        request.custom_inputs_code if request.custom_inputs_code is not None
+        None if not uses_custom
+        else request.custom_inputs_code if request.custom_inputs_code is not None
         else request.definition.reference
     )
     reference_code = (
@@ -87,6 +109,7 @@ def to_evaluation_request(
         + "_operator_generator_namespace = {'__name__': '_operator_input_generation'}\n"
         + "exec(" + repr(generation_source) + ", _operator_generator_namespace)\n"
         + "_operator_generate_inputs = _operator_generator_namespace['generate_inputs']\n"
+        + "_operator_input_error = _operator_generator_namespace['InputGenerationError']\n"
         + reference_support
         + "\n_operator_cases = _operator_json.loads(" + repr(cases) + ")\n"
         + "_operator_seed = " + repr(request.seed) + "\n"

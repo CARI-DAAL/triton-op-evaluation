@@ -1107,11 +1107,18 @@ def _configure_reference_cache(config, model_spec, input_groups, device, case_in
     indices = (list(case_indices) if case_indices is not None
                else list(range(1, len(input_groups) + 1)))
     manifests = []
-    for case_idx, inputs in zip(indices, input_groups):
+    case_iterator = iter(input_groups)
+    for case_idx in indices:
+        inputs = next(case_iterator)
         try:
-            manifests.append(cache.load_case(source, case_idx, inputs,
-                                            reference_device_policy=policy))
+            manifest = cache.load_case(source, case_idx, inputs,
+                                       reference_device_policy=policy)
         except ReferenceCacheMiss:
+            manifest = None
+        # Drop this workload (and the miss traceback's frames holding it)
+        # before the iterator or the fallback allocates another one.
+        del inputs
+        if manifest is None:
             # Preserve complete execution when an audited task/card pair is
             # absent — unless the validated historical policy covers it.
             if _try_validated_timing_reuse(
@@ -1122,6 +1129,7 @@ def _configure_reference_cache(config, model_spec, input_groups, device, case_in
             if config.reference_cache_trace is None:
                 config.reference_cache_trace = trace
             return
+        manifests.append(manifest)
     if not manifests:
         raise RuntimeError("reference cache cannot benchmark an empty task")
     trace["manifests"] = [sha256(canonical_bytes(manifest.model_dump(mode="json")))

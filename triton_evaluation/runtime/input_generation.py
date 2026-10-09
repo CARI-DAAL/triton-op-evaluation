@@ -11,6 +11,36 @@ import random
 OFFICIAL_GENERATOR_COMMIT = "0607a29d231cde384c9dfdb8a39f54f91837c327"
 
 
+class InputGenerationError(ValueError):
+    """This workload cannot be materialized on any device: a request error.
+
+    Raised only where the cause is certain, so the service never blames or
+    retries the card for it. Torch and device RuntimeErrors are not wrapped.
+    """
+
+
+def _check_bounds(low, high, draw):
+    # torch's uniform_ refuses low > high on every device and seed.
+    if low > high:
+        raise InputGenerationError(f"{draw} needs low <= high, got {low} > {high}")
+
+
+def _run_request_code(action, *args):
+    """Python-level errors in request-supplied code are the request's fault.
+
+    RuntimeError covers torch argument errors and device faults alike, and
+    MemoryError is resource exhaustion, so both keep the engine-failure path.
+    """
+    try:
+        return action(*args)
+    except (RuntimeError, MemoryError):
+        raise
+    except Exception as error:
+        raise InputGenerationError(
+            f"custom input code raised {type(error).__name__}: {error}"
+        ) from error
+
+
 def _rand_tensor(shape, dtype, device, range_spec=None, distribution=None, **dist_kwargs):
     """Generate a random tensor with dtype-aware distribution.
 
@@ -72,6 +102,7 @@ def _rand_tensor(shape, dtype, device, range_spec=None, distribution=None, **dis
         if distribution == "uniform":
             low = float(dist_kwargs.get("low", -5.0))
             high = float(dist_kwargs.get("high", 5.0))
+            _check_bounds(low, high, "uniform")
             return torch.empty(shape, dtype=dtype, device=device).uniform_(low, high)
         if distribution == "zeros":
             return torch.zeros(shape, dtype=dtype, device=device)
@@ -80,6 +111,7 @@ def _rand_tensor(shape, dtype, device, range_spec=None, distribution=None, **dis
         if distribution == "uniform_signed":
             low = float(dist_kwargs.get("low", 0.3))
             high = float(dist_kwargs.get("high", 3.0))
+            _check_bounds(low, high, "uniform_signed")
             g = torch.empty(shape, dtype=dtype, device=device).uniform_(low, high)
             sign = torch.randint(0, 2, shape, device=device).to(dtype) * 2 - 1
             return g * sign
@@ -91,8 +123,13 @@ def _rand_tensor(shape, dtype, device, range_spec=None, distribution=None, **dis
                 mu_high = float(dist_kwargs.get("mu_high", 5.0))
                 sigma_low = float(dist_kwargs.get("sigma_low", 0.1))
                 sigma_high = float(dist_kwargs.get("sigma_high", 2.0))
+                _check_bounds(mu_low, mu_high, "normal mu")
                 mu = float(torch.empty(1, device=device).uniform_(mu_low, mu_high).item())
+                _check_bounds(sigma_low, sigma_high, "normal sigma")
                 sigma = float(torch.empty(1, device=device).uniform_(sigma_low, sigma_high).item())
+                # torch.normal refuses a negative std; this seed drew one.
+                if sigma < 0:
+                    raise InputGenerationError(f"normal sigma draw {sigma} is negative")
                 # NPU does not support torch.normal for bfloat16, so generate in
                 # float32 and cast down to the target dtype.
                 if dtype is torch.bfloat16:
@@ -107,6 +144,7 @@ def _rand_tensor(shape, dtype, device, range_spec=None, distribution=None, **dis
                     return _rand_norm()
                 low = float(dist_kwargs.get("low", -5.0))
                 high = float(dist_kwargs.get("high", 5.0))
+                _check_bounds(low, high, "mixed uniform")
                 return torch.empty(shape, dtype=dtype, device=device).uniform_(low, high)
             return _rand_norm()
 
@@ -167,17 +205,21 @@ def generate_inputs(
             raise ValueError("custom inputs require supplied callback source")
         _seed_rng(torch, seed)
         callback_namespace = {"torch": torch, "__name__": "_operator_custom_inputs"}
-        exec(custom_inputs_code, callback_namespace)
+        _run_request_code(exec, custom_inputs_code, callback_namespace)
         callback_name = (custom_inputs_entrypoint or "get_inputs").split("::")[-1]
         callback = callback_namespace.get(callback_name)
         if not callable(callback):
-            raise ValueError("custom input source must define its declared input callback")
+            raise InputGenerationError(
+                "custom input source must define its declared input callback"
+            )
     _seed_rng(torch, seed)
     family = "normal" if random.random() < 0.5 else "uniform"
     dev = torch.device(device)
-    custom = callback(dict(case["axes"]), dev) if callback is not None else None
+    custom = (
+        _run_request_code(callback, dict(case["axes"]), dev) if callback is not None else None
+    )
     if callback is not None and not isinstance(custom, dict):
-        raise ValueError("custom input callback must return a dictionary")
+        raise InputGenerationError("custom input callback must return a dictionary")
     result = []
     for name in case["input_order"]:
         spec = case["inputs"][name]
@@ -186,7 +228,7 @@ def generate_inputs(
             result.append(spec["value"])
         elif kind == "custom":
             if custom is None or name not in custom:
-                raise RuntimeError(
+                raise InputGenerationError(
                     f"CustomInput for '{name}' requires a matching get_inputs result"
                 )
             value = custom[name]

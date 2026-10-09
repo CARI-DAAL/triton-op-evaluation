@@ -23,9 +23,16 @@ from pathlib import Path
 from typing import Literal, Protocol
 from uuid import uuid4
 
-from ..api.contract import Check, CheckOutcome, ErrorInfo, EvaluationRequest
+from ..api.contract import (
+    MAX_ERROR_MESSAGE_BYTES,
+    Check,
+    CheckOutcome,
+    ErrorInfo,
+    EvaluationRequest,
+)
 from ..runtime.sandbox import isolate_command
 from ..serialization import canonical_json_bytes, sha256_hex
+from .operator import INPUT_GENERATION_FAILURE_PREFIX
 
 logger = logging.getLogger(__name__)
 
@@ -75,6 +82,33 @@ def engine_failure(
             code=code, phase=phase, check=check, retryable=retryable, message=message
         ),
     )
+
+
+def input_generation_failure(check: Check, outcome: "ScriptOutcome") -> EngineCheckResult | None:
+    """A workload the pinned generator refused is the request's error, not the card's.
+
+    Only consulted when the engine produced no usable result, so the marker
+    can explain a missing result but never replace real check evidence.
+    """
+    for line in reversed(outcome.stderr.splitlines()):
+        if not line.startswith(INPUT_GENERATION_FAILURE_PREFIX):
+            continue
+        try:
+            failure = json.loads(line[len(INPUT_GENERATION_FAILURE_PREFIX):])
+            text = (
+                f"workload {failure['uuid']} (case {int(failure['case_idx'])}) "
+                f"inputs cannot be generated: {failure['message']}"
+            )
+        except (ValueError, KeyError, TypeError):
+            continue
+        message = " ".join(text.split()).encode("utf-8")[:MAX_ERROR_MESSAGE_BYTES]
+        return engine_failure(
+            check,
+            message.decode("utf-8", "ignore"),
+            code="INPUT_GENERATION_FAILED",
+            retryable=False,
+        )
+    return None
 
 
 def engine_timeout(check: Check, message: str) -> EngineCheckResult:
