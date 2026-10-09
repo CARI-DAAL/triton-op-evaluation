@@ -63,6 +63,14 @@ if [[ -n "${TRITON_EVAL_ENGINE_DIR:-}" && ! -d "${TRITON_EVAL_ENGINE_DIR}" ]]; t
   exit 2
 fi
 
+# Workers launch from the repository root; resolve their path-based interpreter
+# there before probing from a temporary directory.
+if [[ "${PYTHON_BIN}" == */* && "${PYTHON_BIN}" != /* ]]; then
+  PYTHON_BIN="${ROOT_DIR}/${PYTHON_BIN}"
+fi
+# Host attempts execute from temporary directories. A sandbox owns its import
+# context and may expose the package only inside that sandbox.
+"${PYTHON_BIN}" "${ROOT_DIR}/scripts/deployment_preflight.py" --engine-import-context
 mkdir -p "${LOG_DIR}"
 cd "${ROOT_DIR}"
 

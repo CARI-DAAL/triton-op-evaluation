@@ -199,6 +199,15 @@ def test_actual_profile_entry_holds_alias_until_sync_callback_then_original_csv_
     assert trace["effective_ld_prefix"] == str(model.alias_path.parent)
     assert trace["process_id"] == os.getpid()
     assert trace["callback_scope_completed"] is trace["base_ld_restored"] is True
+    assert trace["base_preload_restored"] is True
+    assert trace["alias_binding"] == {
+        "consumer_path": str(model.consumer_path),
+        "probe_symbol": model.required_sqlite_symbols[0],
+        "provider_path": str(model.alias_path),
+        "alias_path": str(model.alias_path),
+        "verified": True,
+    }
+    assert trace["effective_preload"].split()[0] == str(model.alias_path)
 
 
 def test_sandbox_requires_profile_pair_and_every_pinned_path_readonly_visible(deployed_runtime):
@@ -227,10 +236,12 @@ def test_sandbox_requires_profile_pair_and_every_pinned_path_readonly_visible(de
 
 
 def test_sandbox_actual_command_preserves_runtime_pair_and_readonly_alias(
-    tmp_path, deployed_runtime
+    tmp_path, deployed_runtime, monkeypatch
 ):
+    from triton_evaluation.runtime import sandbox as sandbox_module
     from triton_evaluation.runtime.sandbox import EngineSandbox
 
+    monkeypatch.setattr(sandbox_module, "_environment_reset_option", lambda *_: "--clearenv")
     target, model = deployed_runtime
     env = {runtime.MANIFEST_ENV: str(target), runtime.DIGEST_ENV: runtime.sha(target)}
     required = [
@@ -308,3 +319,239 @@ def test_cache_runtime_files_bind_actual_prepared_manifest_and_elf_bytes(
         )
         with pytest.raises(ReferenceCacheError, match="every configured profiler runtime file"):
             incomplete.check_runtime(engine)
+
+
+@pytest.mark.parametrize("previous_preload", [None, "existing-preload.so"])
+@pytest.mark.parametrize("failure", ["callback", "probe"])
+def test_preload_restored_and_lock_released_on_failure(
+    monkeypatch, deployed_runtime, previous_preload, failure
+):
+    _, model = deployed_runtime
+    if previous_preload is None:
+        monkeypatch.delenv("LD_PRELOAD", raising=False)
+    else:
+        monkeypatch.setenv("LD_PRELOAD", previous_preload)
+
+    def probe(*args):
+        assert os.environ["LD_PRELOAD"].split()[0] == str(model.alias_path)
+        if failure == "probe":
+            raise RuntimeError("probe failed")
+        return str(model.alias_path)
+
+    monkeypatch.setattr(runtime, "probe_alias_binding", probe)
+    with pytest.raises(RuntimeError, match="failed"):
+        with runtime.profiler_export_runtime():
+            raise RuntimeError("callback failed")
+    assert os.environ.get("LD_PRELOAD") == previous_preload
+    assert os.environ["LD_LIBRARY_PATH"] == "/controlled/base"
+    assert runtime._ENV_LOCK.acquire(False)
+    runtime._ENV_LOCK.release()
+
+
+def test_real_legacy_rpath_decoy_requires_preload(tmp_path, elf_binding):  # noqa: F811
+    import shutil
+    import subprocess
+
+    library, _, consumer, _ = elf_binding
+    decoy = tmp_path / "legacy"
+    decoy.mkdir()
+    source = tmp_path / "decoy.c"
+    source.write_text("int sqlite3_compatibility_fixture(void) { return 7; }\n")
+    subprocess.run(
+        [shutil.which("cc"), "-shared", "-fPIC", "-o", str(decoy / "libsqlite3.so"), str(source)],
+        check=True,
+    )
+    subprocess.run(
+        [
+            shutil.which("cc"),
+            "-shared",
+            "-fPIC",
+            "-o",
+            str(consumer),
+            str(tmp_path / "consumer.c"),
+            f"-L{decoy}",
+            "-l:libsqlite3.so",
+            "-Wl,--disable-new-dtags",
+            f"-Wl,-rpath,{decoy}",
+        ],
+        check=True,
+    )
+    alias = tmp_path / "private" / "libsqlite3.so"
+    alias.parent.mkdir()
+    shutil.copy2(library, alias)
+    assert runtime.sha(alias) == runtime.sha(library)
+    assert runtime.sha(alias) != runtime.sha(decoy / "libsqlite3.so")
+    environment = {**os.environ, "LD_LIBRARY_PATH": str(alias.parent)}
+    environment.pop("LD_PRELOAD", None)
+    with pytest.raises(RuntimeError, match="alias bypassed"):
+        runtime.probe_alias_binding(consumer, "sqlite3_compatibility_fixture", alias, environment)
+    environment["LD_PRELOAD"] = str(alias)
+    assert runtime.probe_alias_binding(
+        consumer, "sqlite3_compatibility_fixture", alias, environment
+    ) == str(alias)
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            f"import ctypes; assert ctypes.CDLL({str(consumer)!r}).fixture() == 42",
+        ],
+        env=environment,
+        check=True,
+        capture_output=True,
+    )
+    assert result.returncode == 0
+
+
+@pytest.mark.parametrize(
+    "error", [OSError("launch failed"), __import__("subprocess").TimeoutExpired("probe", 30)]
+)
+def test_binding_probe_wraps_launch_and_timeout_errors(monkeypatch, tmp_path, error):
+    path = tmp_path / "placeholder"
+    path.write_bytes(b"placeholder")
+
+    def fail(*args, **kwargs):
+        assert args[0][0] == sys.executable
+        assert kwargs["start_new_session"] is True
+        raise error
+
+    monkeypatch.setattr(runtime.subprocess, "Popen", fail)
+    with pytest.raises(RuntimeError, match="could not execute|timed out") as caught:
+        runtime.probe_alias_binding(path, "sqlite3_fixture", path)
+    assert "import ctypes" not in str(caught.value)
+
+
+def test_global_preload_lookup_without_consumer_relocation_cannot_pass(tmp_path, elf_binding):  # noqa: F811
+    import shutil
+    import subprocess
+
+    library, _, consumer, _ = elf_binding
+    source = tmp_path / "unrelated.c"
+    source.write_text("int fixture(void) { return 0; }\n")
+    subprocess.run(
+        [shutil.which("cc"), "-shared", "-fPIC", "-o", str(consumer), str(source)], check=True
+    )
+    alias = tmp_path / "alias" / "libsqlite3.so"
+    alias.parent.mkdir()
+    shutil.copy2(library, alias)
+    environment = {**os.environ, "LD_PRELOAD": str(alias)}
+    with pytest.raises(RuntimeError, match="consumer relocation unverified"):
+        runtime.probe_alias_binding(consumer, "sqlite3_compatibility_fixture", alias, environment)
+
+
+@pytest.mark.parametrize("force_global_fallback", [False, True])
+def test_probe_dladdr_explicit_libdl_and_global_fallback(
+    monkeypatch, deployed_runtime, force_global_fallback
+):
+    import subprocess
+
+    _, model = deployed_runtime
+    actual_popen = subprocess.Popen
+
+    def run_with_loader_observation(command, **kwargs):
+        instrument = """
+import ctypes
+original_cdll = ctypes.CDLL
+libdl_attempted = False
+def observed_cdll(name, *args, **kwargs):
+    global libdl_attempted
+    if name == "libdl.so.2":
+        libdl_attempted = True
+        if FORCE_FALLBACK:
+            raise OSError("controlled libdl unavailability")
+    return original_cdll(name, *args, **kwargs)
+ctypes.CDLL = observed_cdll
+""".replace("FORCE_FALLBACK", repr(force_global_fallback))
+        instrument += command[2] + "\nassert libdl_attempted\n"
+        return actual_popen([*command[:2], instrument, *command[3:]], **kwargs)
+
+    monkeypatch.setattr(runtime.subprocess, "Popen", run_with_loader_observation)
+    environment = {
+        **os.environ,
+        "LD_PRELOAD": str(model.alias_path),
+        "LD_LIBRARY_PATH": str(model.alias_path.parent),
+    }
+    assert runtime.probe_alias_binding(
+        model.consumer_path, model.required_sqlite_symbols[0], model.alias_path, environment
+    ) == str(model.alias_path)
+
+
+@pytest.mark.parametrize("outcome", ["timeout", "failure", "success"])
+def test_probe_reaps_owned_forking_constructor_group(tmp_path, monkeypatch, elf_binding, outcome):  # noqa: F811
+    import ctypes
+    import shutil
+    import subprocess
+    import time
+
+    library, _, consumer, _ = elf_binding
+    alias = tmp_path / "alias" / "libsqlite3.so"
+    alias.parent.mkdir()
+    shutil.copy2(library, alias)
+    pid_file = tmp_path / "descendant.pid"
+    source = tmp_path / "forking.c"
+    source.write_text(
+        "#include <unistd.h>\n#include <stdio.h>\n"
+        "extern int sqlite3_compatibility_fixture(void);\n"
+        "int fixture(void) { return sqlite3_compatibility_fixture(); }\n"
+        "__attribute__((constructor)) static void start(void) {\n"
+        "pid_t pid = fork(); if (pid == 0) { for (;;) pause(); }\n"
+        f'FILE *f = fopen("{pid_file}", "w"); fprintf(f, "%ld", (long)pid); fclose(f);\n'
+        + ("for (;;) pause();\n" if outcome == "timeout" else "")
+        + "}\n"
+    )
+    subprocess.run(
+        [
+            shutil.which("cc"),
+            "-shared",
+            "-fPIC",
+            "-o",
+            str(consumer),
+            str(source),
+            f"-L{alias.parent}",
+            "-l:libsqlite3.so",
+        ],
+        check=True,
+    )
+    actual_popen = subprocess.Popen
+
+    def short_probe(command, **kwargs):
+        process = actual_popen(command, **kwargs)
+        actual_wait = process.wait
+
+        def wait(timeout=None):
+            assert timeout in (None, 30)
+            return actual_wait(timeout=0.5 if timeout is not None else None)
+
+        process.wait = wait
+        return process
+
+    monkeypatch.setattr(runtime.subprocess, "Popen", short_probe)
+    environment = {**os.environ, "LD_PRELOAD": str(alias), "LD_LIBRARY_PATH": str(alias.parent)}
+    # Adopt the killed grandchild so this test can reap and prove its exit,
+    # rather than depending on the container's PID 1 zombie handling.
+    libc = ctypes.CDLL(None)
+    old_subreaper = ctypes.c_int()
+    assert libc.prctl(37, ctypes.byref(old_subreaper), 0, 0, 0) == 0
+    assert libc.prctl(36, 1, 0, 0, 0) == 0
+    descendant = None
+    try:
+        symbol = "sqlite3_missing" if outcome == "failure" else "sqlite3_compatibility_fixture"
+        if outcome == "success":
+            assert runtime.probe_alias_binding(consumer, symbol, alias, environment) == str(alias)
+        else:
+            with pytest.raises(RuntimeError, match="timed out|probe failed"):
+                runtime.probe_alias_binding(consumer, symbol, alias, environment)
+        descendant = int(pid_file.read_text())
+        deadline = time.monotonic() + 3
+        while time.monotonic() < deadline:
+            waited, status = os.waitpid(descendant, os.WNOHANG)
+            if waited:
+                assert os.WIFSIGNALED(status) and os.WTERMSIG(status) == 9
+                descendant = None
+                break
+            time.sleep(0.01)
+        assert descendant is None, "probe descendant survived group cleanup"
+    finally:
+        if descendant is not None:
+            os.kill(descendant, 9)
+            os.waitpid(descendant, 0)
+        assert libc.prctl(36, old_subreaper.value, 0, 0, 0) == 0

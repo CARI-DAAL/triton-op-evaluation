@@ -283,7 +283,10 @@ def test_private_exact_elf_alias_changes_only_export_child_loader_and_restores_d
     assert result["state"] == "exported_text_data"
     assert result["sqlite_alias"]["required_sqlite_symbols"] == ["sqlite3_compatibility_fixture"]
     assert result["sqlite_alias"]["target_soname"] == "libsqlite3.so.0"
-    assert set(result["environment_diff"]) == {"LD_LIBRARY_PATH"}
+    assert set(result["environment_diff"]) == {"LD_LIBRARY_PATH", "LD_PRELOAD"}
+    assert result["sqlite_alias"]["verified_provider_path"] == str(
+        output / "private-library-alias/libsqlite3.so"
+    )
     assert replay.os.environ["LD_LIBRARY_PATH"] == "/controlled/original"
     assert replay.os.environ["TRITON_EVAL_LD_LIBRARY_PATH"] == "/immutable/anchor"
     assert result["sqlite_sources_unchanged"] is True
@@ -324,3 +327,45 @@ def test_actual_elf_metadata_refuses_target_without_the_required_sqlite_exports(
     )
     with pytest.raises(ValueError, match="lacks required symbols"):
         replay.inspect_sqlite_binding(library, replay.sha(library), consumer, consumer_sha)
+
+
+@pytest.mark.parametrize("preload", [None, "prior.so"])
+def test_replay_failed_binding_retains_report_without_export_or_parent_env_changes(
+    tmp_path, monkeypatch, capture, elf_binding, preload
+):
+    report, digest, _ = capture
+    library, library_sha, consumer, consumer_sha = elf_binding
+    fake_msprof(tmp_path, monkeypatch, "raise AssertionError('must not export')\n")
+    if preload is None:
+        monkeypatch.delenv("LD_PRELOAD", raising=False)
+    else:
+        monkeypatch.setenv("LD_PRELOAD", preload)
+    monkeypatch.setenv("LD_LIBRARY_PATH", "/original")
+
+    def fail(consumer_path, symbol, alias, environment):
+        assert environment["LD_PRELOAD"] == str(alias) + (" " + preload if preload else "")
+        assert environment["LD_LIBRARY_PATH"].endswith(":/original")
+        raise RuntimeError("binding failed")
+
+    monkeypatch.setattr(replay, "probe_alias_binding", fail)
+    monkeypatch.setattr(replay, "run_export", lambda *a, **kw: pytest.fail("export ran"))
+    output = tmp_path / "replay"
+    assert (
+        replay.replay(
+            report,
+            digest,
+            output,
+            sqlite_library=library,
+            sqlite_library_sha256=library_sha,
+            sqlite_consumer=consumer,
+            sqlite_consumer_sha256=consumer_sha,
+        )
+        == 1
+    )
+    result = evidence(output)
+    assert result["state"] == "error" and result["error"] == "binding failed"
+    assert result["original_artifacts_unchanged"] is True
+    assert result["sqlite_sources_unchanged"] is True
+    assert "pid" not in result
+    assert replay.os.environ.get("LD_PRELOAD") == preload
+    assert replay.os.environ["LD_LIBRARY_PATH"] == "/original"

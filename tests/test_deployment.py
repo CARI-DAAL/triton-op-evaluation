@@ -504,21 +504,30 @@ printf 'args=%s\n' "$*"
 
 
 @pytest.mark.parametrize("cpu_workers", [0, 2])
-def test_host_launcher_adds_cann_arch_library_to_api_and_worker(tmp_path, cpu_workers):
+@pytest.mark.parametrize("relative_interpreter", [False, True])
+def test_host_launcher_adds_cann_arch_library_to_api_and_worker(
+    tmp_path, cpu_workers, relative_interpreter,
+):
     set_env = _create_fake_cann(tmp_path)
     fake_python = tmp_path / "fake-python"
     _write_executable(
         fake_python,
-        """#!/usr/bin/env bash
-printf 'ld=%s\\n' "${LD_LIBRARY_PATH:-}"
+        f"""#!/usr/bin/env bash
+if [[ "$1" == *deployment_preflight.py ]]; then
+  PYTHONPATH={PROJECT_ROOT} exec {sys.executable} "$@"
+fi
+printf 'ld=%s\\n' "${{LD_LIBRARY_PATH:-}}"
 printf 'args=%s\\n' "$*"
 printf 'cwd=%s\\n' "$PWD"
 """,
     )
     log_dir = tmp_path / "logs"
     env_file = tmp_path / "service.env"
+    interpreter = (
+        os.path.relpath(fake_python, PROJECT_ROOT) if relative_interpreter else fake_python
+    )
     env_file.write_text("\n".join([
-        f"PYTHON_BIN={fake_python}",
+        f"PYTHON_BIN={interpreter}",
         f"CANN_SET_ENV_PATH={set_env}",
         "TRITON_EVAL_API_HOST=127.0.0.1",
         "TRITON_EVAL_API_PORT=11907",
@@ -593,3 +602,125 @@ def test_api_entrypoint_loads_via_uvicorn_import_path(tmp_path):
         cwd=PROJECT_ROOT, env=env, capture_output=True, text=True,
     )
     assert result.returncode == 0, result.stderr
+
+
+def test_engine_import_context_uses_explicit_package_visibility():
+    from scripts.deployment_preflight import check_engine_import_context
+
+    check_engine_import_context(sys.executable, os.environ | {"PYTHONPATH": str(PROJECT_ROOT)})
+
+
+def test_engine_import_context_failure_is_redacted(tmp_path):
+    from scripts.deployment_preflight import PreflightError, check_engine_import_context
+
+    package = tmp_path / "triton_evaluation"
+    package.mkdir()
+    (package / "__init__.py").write_text("raise RuntimeError('private-secret-marker')")
+    with pytest.raises(PreflightError, match="pip install -e . --no-deps") as failure:
+        check_engine_import_context(sys.executable, os.environ | {"PYTHONPATH": str(tmp_path)})
+    assert "private-secret-marker" not in str(failure.value)
+
+
+@pytest.mark.parametrize("kind", ["timeout", "unavailable"])
+def test_engine_import_context_subprocess_errors(monkeypatch, kind):
+    from scripts.deployment_preflight import PreflightError, check_engine_import_context
+
+    def fail(argv, **kwargs):
+        assert argv == [sys.executable, "-c", "import triton_evaluation"]
+        assert kwargs["timeout"] == 60
+        assert Path(kwargs["cwd"]) != PROJECT_ROOT
+        if kind == "timeout":
+            raise subprocess.TimeoutExpired(argv, 60)
+        raise OSError("private-secret-marker")
+
+    monkeypatch.setattr(subprocess, "run", fail)
+    with pytest.raises(PreflightError, match="timed out|unavailable") as failure:
+        check_engine_import_context(sys.executable, {})
+    assert "private-secret-marker" not in str(failure.value)
+
+
+def test_engine_import_context_skips_host_probe_for_sandbox(monkeypatch):
+    from scripts.deployment_preflight import check_engine_import_context
+
+    def unexpected(*args, **kwargs):
+        pytest.fail("sandbox package visibility must not depend on the host probe")
+
+    monkeypatch.setattr(subprocess, "run", unexpected)
+    check_engine_import_context(
+        "missing-python", {"TRITON_EVAL_ENGINE_SANDBOX_CONFIG": "/sandbox.json"},
+    )
+
+
+def test_host_launcher_import_failure_precedes_logs_and_processes(tmp_path):
+    package = tmp_path / "triton_evaluation"
+    package.mkdir()
+    (package / "__init__.py").write_text("raise ImportError('private-secret-marker')")
+    log_dir = tmp_path / "logs"
+    env_file = tmp_path / "service.env"
+    env_file.write_text(f"PYTHON_BIN={sys.executable}\nLOG_DIR={log_dir}\n")
+    env = {key: value for key, value in os.environ.items() if not key.startswith("TRITON_EVAL_")}
+    env.update(TRITON_EVAL_ENV_FILE=str(env_file), PYTHONPATH=str(tmp_path))
+    result = subprocess.run(
+        ["bash", str(PROJECT_ROOT / "scripts/start.sh")], cwd=tmp_path,
+        env=env, capture_output=True, text=True,
+    )
+    assert result.returncode != 0
+    assert "pip install -e . --no-deps" in result.stderr
+    assert "private-secret-marker" not in result.stderr
+    assert not log_dir.exists()
+
+
+def test_engine_import_context_cli_json():
+    result = subprocess.run(
+        [sys.executable, str(PROJECT_ROOT / "scripts/deployment_preflight.py"),
+         "--engine-import-context", "--json"], cwd="/tmp",
+        env=os.environ | {"PYTHONPATH": str(PROJECT_ROOT)},
+        capture_output=True, text=True,
+    )
+    assert result.returncode == 0, result.stderr
+    assert json.loads(result.stdout) == {"engine_import_context": "ok"}
+
+
+def test_engine_import_context_rejects_actual_missing_package(tmp_path):
+    from scripts.deployment_preflight import PreflightError, check_engine_import_context
+
+    interpreter = tmp_path / "isolated-python"
+    _write_executable(interpreter, f'#!/bin/sh\nexec "{sys.executable}" -S "$@"\n')
+    env = {key: value for key, value in os.environ.items() if key != "PYTHONPATH"}
+    with pytest.raises(PreflightError, match="cannot import triton_evaluation"):
+        check_engine_import_context(str(interpreter), env)
+
+
+
+@pytest.mark.parametrize("pythonpath", [".", ""])
+def test_engine_import_context_does_not_use_launch_directory(tmp_path, monkeypatch, pythonpath):
+    from scripts.deployment_preflight import PreflightError, check_engine_import_context
+
+    package = tmp_path / "triton_evaluation"
+    package.mkdir()
+    (package / "__init__.py").write_text("")
+    interpreter = tmp_path / "isolated-python"
+    _write_executable(interpreter, f'#!/bin/sh\nexec "{sys.executable}" -S "$@"\n')
+    monkeypatch.chdir(tmp_path)
+    with pytest.raises(PreflightError, match="cannot import triton_evaluation"):
+        check_engine_import_context(str(interpreter), os.environ | {"PYTHONPATH": pythonpath})
+
+
+@pytest.mark.parametrize("sandbox", [False, True])
+@pytest.mark.parametrize("json_output", [False, True])
+def test_engine_import_context_cli_reports_probe_status(sandbox, json_output):
+    env = {key: value for key, value in os.environ.items() if not key.startswith("TRITON_EVAL_")}
+    env["PYTHONPATH"] = str(PROJECT_ROOT)
+    if sandbox:
+        env["TRITON_EVAL_ENGINE_SANDBOX_CONFIG"] = "/sandbox.json"
+    argv = [sys.executable, str(PROJECT_ROOT / "scripts/deployment_preflight.py"),
+            "--engine-import-context"]
+    if json_output:
+        argv.append("--json")
+    result = subprocess.run(argv, cwd="/tmp", env=env, capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr
+    status = "skipped" if sandbox else "ok"
+    if json_output:
+        assert json.loads(result.stdout) == {"engine_import_context": status}
+    else:
+        assert f"engine import context {status}" in result.stdout

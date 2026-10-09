@@ -28,7 +28,10 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from triton_evaluation.runtime.profiler_runtime import inspect_sqlite_binding  # noqa: E402
+from triton_evaluation.runtime.profiler_runtime import (  # noqa: E402
+    inspect_sqlite_binding,
+    probe_alias_binding,
+)
 
 
 def sha(path: Path) -> str:
@@ -188,15 +191,23 @@ def replay(
             raise RuntimeError("Private SQLite alias copy does not match the pinned library")
         old_ld = os.environ.get("LD_LIBRARY_PATH")
         new_ld = str(alias_dir) + (os.pathsep + old_ld if old_ld else "")
-        child_env = {**os.environ, "LD_LIBRARY_PATH": new_ld}
+        old_preload = os.environ.get("LD_PRELOAD")
+        new_preload = str(alias) + (" " + old_preload if old_preload else "")
+        child_env = {**os.environ, "LD_LIBRARY_PATH": new_ld, "LD_PRELOAD": new_preload}
         evidence["sqlite_alias"] = {**sqlite, "private_alias_path": str(alias)}
         evidence["environment_diff"] = {
+            "LD_PRELOAD": {
+                "original_present": old_preload is not None,
+                "original_sha256": hashlib.sha256((old_preload or "").encode()).hexdigest(),
+                "child_sha256": hashlib.sha256(new_preload.encode()).hexdigest(),
+                "child_prefix": str(alias),
+            },
             "LD_LIBRARY_PATH": {
                 "original_present": old_ld is not None,
                 "original_sha256": hashlib.sha256((old_ld or "").encode()).hexdigest(),
                 "child_sha256": hashlib.sha256(new_ld.encode()).hexdigest(),
                 "child_prefix": str(alias_dir),
-            }
+            },
         }
     else:
         evidence["environment_diff"] = {}
@@ -211,6 +222,14 @@ def replay(
 
     persist()
     try:
+        if sqlite is not None:
+            evidence["sqlite_alias"]["verified_provider_path"] = probe_alias_binding(
+                Path(sqlite["consumer_path"]),
+                sqlite["required_sqlite_symbols"][0],
+                alias,
+                child_env,
+            )
+            persist()
         result = run_export(command, timeout_seconds, on_started=started, env=child_env)
         (output / "export.stdout").write_bytes(result.pop("stdout"))
         (output / "export.stderr").write_bytes(result.pop("stderr"))

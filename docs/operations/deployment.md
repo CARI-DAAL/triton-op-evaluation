@@ -68,6 +68,25 @@ as `.env`, then use `bash scripts/start.sh` / `bash scripts/stop.sh`. Supply Red
 with `--appendonly yes --appendfsync always`, as Compose does. The engine is
 bundled and needs no external checkout.
 
+Before creating logs or starting processes, the host launcher checks that the
+configured worker interpreter can import `triton_evaluation` from a temporary
+attempt directory. It inherits the worker environment verbatim: a relative
+`PYTHONPATH` that only works from the repository root is insufficient. Install
+the project into that interpreter (after installing its runtime dependencies):
+
+```bash
+"$PYTHON_BIN" -m pip install -e . --no-deps
+"$PYTHON_BIN" scripts/deployment_preflight.py --engine-import-context
+```
+
+Set `PYTHON_BIN` to the worker interpreter and run these commands from the
+repository root. The probe reports a failure before startup rather than letting
+every correctness task fail to import runtime helpers. It does not install
+anything automatically. For configured sandboxes the host-only probe is skipped;
+package mounts and the declared child `PYTHONPATH` must instead be correct inside
+the sandbox. A sandbox setting alone does not prove that package visibility.
+
+
 The API owns HTTP admission and recovery; workers execute leased attempts with
 separate CPU/NPU assignments and lifecycles. Their entrypoints remain separate
 under `scripts/`. For manual startup, use separate terminals from the repository

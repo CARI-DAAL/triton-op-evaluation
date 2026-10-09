@@ -675,19 +675,21 @@ def delivery(tmp_path, monkeypatch):
     }
 
 
-def test_policy_pair_survives_clearenv_through_the_real_overlay(delivery, monkeypatch):
+@pytest.mark.parametrize("reset", ["--clearenv", "--unsetenv"])
+def test_policy_pair_survives_clearenv_through_the_real_overlay(delivery, monkeypatch, reset):
+    monkeypatch.setattr(sandbox, "_environment_reset_option", lambda *_: reset)
     # a parent env value the overlay never declared must not leak to the child
     monkeypatch.setenv("TRITON_EVAL_API_PORT", "12345")
     wrapped, _outer = sandbox.isolate_command(
         [sys.executable, "-c", "pass"], delivery["work"], None, dict(os.environ)
     )
-    assert "--clearenv" in wrapped
+    assert reset in wrapped
     for key in (POLICY_ENV, POLICY_SHA_ENV):
         position = wrapped.index(key)
         assert wrapped[position + 1] == (
             str(delivery["policy_path"]) if key == POLICY_ENV else delivery["policy_sha"]
         )
-        assert position > wrapped.index("--clearenv")  # set AFTER clearenv
+        assert position > wrapped.index(reset)  # set AFTER clearenv
     assert "TRITON_EVAL_API_PORT" not in wrapped
     # exactly the declared artifacts are mounted read-only, state writable
     ro_pairs = {

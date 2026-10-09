@@ -9,7 +9,9 @@ import hashlib
 import json
 import os
 import re
+import subprocess
 import time
+from functools import lru_cache
 from pathlib import Path
 from typing import Any, Literal
 
@@ -72,6 +74,33 @@ RUNTIME_ENV = frozenset(
         "TRITON_EVAL_REFERENCE_DEVICE_POLICY",
     }
 )
+
+
+def _environment_reset_option(executable: Path) -> str:
+    """Probe a deployment binary once, invalidating cached help on replacement."""
+    metadata = executable.stat()
+    return _probe_environment_reset(
+        str(executable),
+        (metadata.st_dev, metadata.st_ino, metadata.st_size,
+         metadata.st_mtime_ns, metadata.st_ctime_ns),
+    )
+
+
+@lru_cache(maxsize=32)
+def _probe_environment_reset(executable: str, identity: tuple[int, ...]) -> str:
+    try:
+        result = subprocess.run(
+            [executable, "--help"], capture_output=True, text=True,
+            timeout=5, check=True, env={"PATH": "/usr/bin:/bin"},
+        )
+    except (OSError, subprocess.SubprocessError) as error:
+        raise RuntimeError("cannot establish sandbox environment-reset support") from error
+    options = set(re.findall(r"--[a-z][a-z-]+", result.stdout))
+    if "--clearenv" in options:
+        return "--clearenv"
+    if "--unsetenv" in options:
+        return "--unsetenv"
+    raise RuntimeError("sandbox executable has no supported environment-reset option")
 
 
 class EngineSandbox(BaseModel):
@@ -221,7 +250,17 @@ class EngineSandbox(BaseModel):
         home, cache = work / ".engine-home", work / ".engine-cache"
         home.mkdir(exist_ok=True)
         cache.mkdir(exist_ok=True)
-        args += ["--bind", str(work), str(work), "--chdir", str(work), "--clearenv"]
+        args += ["--bind", str(work), str(work), "--chdir", str(work)]
+        # The runner receives this explicit environment, not the service's
+        # ambient credentials. Legacy bwrap need only unset these inherited
+        # names before constructing the exact child allowlist below.
+        outer = {"PATH": "/usr/bin:/bin"}
+        reset = _environment_reset_option(self.executable)
+        if reset == "--clearenv":
+            args.append(reset)
+        else:
+            for key in sorted(outer):
+                args += [reset, key]
         env = {
             "PATH": "/usr/bin:/bin",
             "LANG": "C.UTF-8",
@@ -240,7 +279,7 @@ class EngineSandbox(BaseModel):
         }
         for key, value in sorted(env.items()):
             args += ["--setenv", key, value]
-        return [*args, "--remount-ro", "/", "--", *command], {"PATH": "/usr/bin:/bin"}
+        return [*args, "--remount-ro", "/", "--", *command], outer
 
 
 class EngineRuntimeOverlay(BaseModel):

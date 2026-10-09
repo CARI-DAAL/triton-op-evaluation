@@ -49,12 +49,16 @@ def anchored_overlay(tmp_path, monkeypatch, deployed_runtime):  # noqa: F811
     return base, original_bytes, overlay, work, model
 
 
-def test_unchanged_anchor_uses_overlay_in_actual_clearenv_command(anchored_overlay):
+@pytest.mark.parametrize("reset", ["--clearenv", "--unsetenv"])
+def test_unchanged_anchor_uses_overlay_in_actual_clearenv_command(
+    anchored_overlay, monkeypatch, reset,
+):
+    monkeypatch.setattr(sandbox, "_environment_reset_option", lambda *_: reset)
     base, original, _overlay, work, model = anchored_overlay
     wrapped, _env = sandbox.isolate_command(
         [sys.executable, "-c", "pass"], work, None, dict(os.environ)
     )
-    assert "--clearenv" in wrapped
+    assert reset in wrapped
     position = wrapped.index(sandbox.REFERENCE_POLICY_ENV)
     assert wrapped[position + 1] == "npu-strict"
     for key in profiler_runtime.RUNTIME_ENV_KEYS:
@@ -66,6 +70,17 @@ def test_unchanged_anchor_uses_overlay_in_actual_clearenv_command(anchored_overl
     assert boundary["base_manifest_sha256"] == hashlib.sha256(original).hexdigest()
     assert boundary["state"] == "prepared" and boundary["executed"] is False
     assert boundary["command_sha256"] == hashlib.sha256(json.dumps(wrapped).encode()).hexdigest()
+    child_environment = {
+        wrapped[i + 1]: wrapped[i + 2]
+        for i, arg in enumerate(wrapped) if arg == "--setenv"
+    }
+    effective = {
+        key: child_environment[key] for key in boundary["effective_environment_keys"]
+    }
+    assert boundary["effective_environment_sha256"] == hashlib.sha256(
+        json.dumps(effective, sort_keys=True).encode()
+    ).hexdigest()
+    assert _env == {"PATH": "/usr/bin:/bin"}
 
 
 def test_parent_runtime_is_never_silently_dropped_without_overlay(anchored_overlay, monkeypatch):
@@ -104,6 +119,7 @@ def test_changed_overlay_or_missing_pin_never_prepares_child(anchored_overlay, m
 
 
 def test_old_engine_override_and_host_scripts_are_refused(anchored_overlay, monkeypatch, tmp_path):
+    monkeypatch.setattr(sandbox, "_environment_reset_option", lambda *_: "--clearenv")
     _base, _original, _overlay, work, _model = anchored_overlay
     monkeypatch.setenv("TRITON_EVAL_ENGINE_DIR", str(tmp_path / "old-live/engine"))
     with pytest.raises(ValueError, match="another service source"):
@@ -397,6 +413,7 @@ def test_real_bwrap_child_reads_dev_subtree_ro_bind(tmp_path, monkeypatch):
 def test_supplied_environment_controls_overlay_despite_ambient_changes(
     anchored_overlay, monkeypatch
 ):
+    monkeypatch.setattr(sandbox, "_environment_reset_option", lambda *_: "--clearenv")
     _base, _original, _overlay, work, _model = anchored_overlay
     environment = dict(os.environ)
     monkeypatch.setenv(sandbox.CONFIG_ENV, "/missing/ambient-sandbox.json")
