@@ -8,6 +8,7 @@ import ast
 import math
 import operator
 import re
+from functools import lru_cache
 from typing import Annotated, Any, Literal
 
 from pydantic import Field, model_validator
@@ -168,6 +169,9 @@ class Workload(StrictModel):
     axes: dict[Name, Dim] | None = Field(default=None, max_length=128)
     inputs: dict[Name, InputSpec] = Field(max_length=128)
     tolerance: Tolerance = Field(default_factory=Tolerance)
+    # Official workloads carry measured upstream latencies; like upstream's
+    # generator, input materialization ignores them.
+    perf_baseline: dict[str, Any] | None = None
 
     @model_validator(mode="before")
     @classmethod
@@ -180,6 +184,19 @@ class Workload(StrictModel):
             ):
                 raise ValueError("safetensors inputs are unsupported; local paths are never read")
         return value
+
+
+@lru_cache(maxsize=1024)
+def _parse_axis_expression(expression: str) -> tuple[ast.expr, frozenset[str]]:
+    """Parse and bound one expression once; every workload of a definition reuses it."""
+    try:
+        tree = ast.parse(expression, mode="eval")
+    except SyntaxError as error:
+        raise ValueError("invalid axis expression syntax") from error
+    nodes = list(ast.walk(tree))
+    if len(nodes) > 128:
+        raise ValueError("axis expression is too complex")
+    return tree.body, frozenset(node.id for node in nodes if isinstance(node, ast.Name))
 
 
 def resolve_axes(definition: Definition, values: dict[str, int] | None) -> dict[str, int]:
@@ -217,19 +234,17 @@ def resolve_axes(definition: Definition, values: dict[str, int] | None) -> dict[
             raise ValueError("axis arithmetic exceeds dimension limit")
         return value
 
+    # Evaluate an expression only once its names are resolved: re-parsing every
+    # pending expression on each pass made reverse-ordered axes quadratic.
+    trees = {name: _parse_axis_expression(expression) for name, expression in pending.items()}
     while pending:
         progressed = False
-        for name, expression in list(pending.items()):
-            try:
-                tree = ast.parse(expression, mode="eval")
-            except SyntaxError as error:
-                raise ValueError("invalid axis expression syntax") from error
-            if sum(1 for _ in ast.walk(tree)) > 128:
-                raise ValueError("axis expression is too complex")
-            try:
-                value = evaluate(tree.body)
-            except KeyError:
+        for name in list(pending):
+            body, names = trees[name]
+            if not names <= resolved.keys():
                 continue
+            try:
+                value = evaluate(body)
             except (SyntaxError, ZeroDivisionError, OverflowError) as error:
                 raise ValueError("invalid axis arithmetic") from error
             if int(value) != value:
@@ -246,10 +261,9 @@ def normalize_workloads(request: "OperatorRequest") -> list[dict[str, Any]]:
     cases = []
     for index, workload in enumerate(request.workloads):
         axes = resolve_axes(request.definition, workload.axes)
-        unknown = set(workload.inputs) - set(request.definition.inputs)
-        if unknown:
-            raise ValueError(f"unknown workload inputs: {sorted(unknown)}")
-        custom = [name for name, spec in workload.inputs.items() if isinstance(spec, CustomInput)]
+        # Like upstream gen_inputs, only definition inputs are materialized;
+        # extra workload entries (Gather's sparse_grad) are ignored.
+        custom =[name for name, spec in workload.inputs.items() if isinstance(spec, CustomInput)]
         if custom and len(custom) != len(workload.inputs):
             raise ValueError("cannot mix custom and non-custom inputs")
         if custom and not request.definition.custom_inputs_entrypoint:
@@ -296,11 +310,15 @@ def normalize_workloads(request: "OperatorRequest") -> list[dict[str, Any]]:
                         "int64": (-(2**63), 2**63 - 1),
                     }
                     if dtype not in limits:
-                        raise ValueError("range is supported only for integer random inputs")
-                    low, high = spec.range
-                    minimum, maximum = limits[dtype]
-                    if not minimum <= low < high <= maximum:
-                        raise ValueError("integer range must satisfy dtype bounds and low < high")
+                        # Upstream applies range only to integer dtypes.
+                        data.pop("range")
+                    else:
+                        low, high = spec.range
+                        minimum, maximum = limits[dtype]
+                        if not minimum <= low < high <= maximum:
+                            raise ValueError(
+                                "integer range must satisfy dtype bounds and low < high"
+                            )
                 uniform_defaults = (
                     (0.3, 3.0) if spec.distribution == "uniform_signed" else (-5.0, 5.0)
                 )

@@ -62,7 +62,8 @@ Distributions are `mixed`, `randn`, `uniform`, `normal`, `zeros`, `ones` and
 `uniform_signed`. Optional `low`/`high`, `mu_low`/`mu_high` and
 `sigma_low`/`sigma_high` tune their ranges. `fill` accepts `inf`, `-inf`, `nan`
 and `zero` without putting nonfinite numbers into JSON. Integer `range` uses an
-exclusive upper bound. Device support is still required for the selected dtype;
+exclusive upper bound; as upstream, `range` on float and bool inputs is ignored.
+Device support is still required for the selected dtype;
 the request cannot manufacture unavailable NPU capabilities.
 
 The supported named dtypes are float16, bfloat16, float32, the official FP8/FP4
@@ -86,8 +87,10 @@ The service never interprets a custom entrypoint as a local file path.
 no uploaded-artifact transport. Do not send paths from a client filesystem and
 expect the worker to resolve them.
 
-Non-default per-workload `tolerance` overrides are also rejected. Input generation
-compatibility does not mean the service uses the upstream framework's accuracy
+Non-default per-workload `tolerance` overrides are also rejected; at the pinned
+commit this excludes 5 of the 105 official problems. As upstream, workload
+`perf_baseline` metadata and inputs the definition does not declare are ignored.
+Input generation compatibility does not mean the service uses the upstream framework's accuracy
 policy, scheduler or profiling implementation. This service retains its own
 existing correctness and measurement algorithms.
 

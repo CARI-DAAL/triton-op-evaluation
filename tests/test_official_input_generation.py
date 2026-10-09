@@ -736,6 +736,42 @@ def test_noncustom_workload_ignores_custom_source(monkeypatch):
     )
 
 
+def test_noncustom_request_embeds_reference_once():
+    from triton_evaluation.api.operator import OperatorRequest
+    from triton_evaluation.evaluators.operator import to_evaluation_request
+
+    reference = "def run(x): return x  # embedded-once"
+    request = OperatorRequest.model_validate(
+        {
+            "definition": {
+                "inputs": {"x": {}}, "reference": reference, "custom_inputs_entrypoint": "build",
+            },
+            "workloads": [{"inputs": {"x": {"type": "random", "dtype": "float32", "shape": [2]}}}],
+        }
+    )
+    source = to_evaluation_request(request).reference_code
+    assert source.count("embedded-once") == 1
+    namespace = {}
+    exec(source, namespace)
+    assert namespace["_operator_custom_code"] is None
+
+
+def test_float_range_is_ignored_like_upstream(monkeypatch):
+    # Official Nonzero workloads put range on float32; upstream applies it only to integers.
+    from triton_evaluation.api.operator import OperatorRequest, normalize_workloads
+
+    spec = {"type": "random", "shape": [17], "dtype": "float32", "range": [-10, 10]}
+    request = OperatorRequest.model_validate(
+        {
+            "definition": {"inputs": {"x0": {}}, "reference": "def run(x0): return x0"},
+            "workloads": [{"inputs": {"x0": spec}}],
+        }
+    )
+    [case] = normalize_workloads(request)
+    assert "range" not in case["inputs"]["x0"]
+    assert_equal(generate_inputs(case, 200, "cpu"), official(case_for(spec), 200, monkeypatch))
+
+
 def test_reference_callback_source_used_when_no_override(monkeypatch):
     from triton_evaluation.api.operator import OperatorRequest
     from triton_evaluation.evaluators.operator import to_evaluation_request

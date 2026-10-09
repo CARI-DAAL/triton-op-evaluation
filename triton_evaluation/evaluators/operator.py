@@ -66,9 +66,9 @@ def to_evaluation_request(
     request: OperatorRequest, checks: list[Check] | None = None,
 ) -> EvaluationRequest:
     """Translate operator input to the durable engine contract using only strings."""
+    workloads = normalize_workloads(request)
     cases = json.dumps(
-        normalize_workloads(request),
-        sort_keys=True, separators=(",", ":"), ensure_ascii=True, allow_nan=False,
+        workloads, sort_keys=True, separators=(",", ":"), ensure_ascii=True, allow_nan=False,
     )
     implementation = (
         "triton" if request.definition.reference is None
@@ -78,8 +78,14 @@ def to_evaluation_request(
     generation_source = Path(__file__).parents[1].joinpath(
         "runtime/input_generation.py"
     ).read_text(encoding="utf-8")
+    # Only custom workloads read the callback source; embedding the reference
+    # a second time otherwise halves the usable reference size.
+    uses_custom = any(
+        spec["type"] == "custom" for case in workloads for spec in case["inputs"].values()
+    )
     custom_code = (
-        request.custom_inputs_code if request.custom_inputs_code is not None
+        None if not uses_custom
+        else request.custom_inputs_code if request.custom_inputs_code is not None
         else request.definition.reference
     )
     reference_code = (
