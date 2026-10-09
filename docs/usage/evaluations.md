@@ -99,12 +99,18 @@ The service never interprets a custom entrypoint as a local file path.
 no uploaded-artifact transport. Do not send paths from a client filesystem and
 expect the worker to resolve them.
 
-Non-default per-workload `tolerance` overrides are also rejected; at the pinned
-commit this excludes 5 of the 105 official problems. As upstream, workload
-`perf_baseline` metadata and inputs the definition does not declare are ignored.
-Input generation compatibility does not mean the service uses the upstream framework's accuracy
-policy, scheduler or profiling implementation. This service retains its own
-existing correctness and measurement algorithms.
+A workload that declares `tolerance` is judged by the pinned official check:
+the declared fields, with unset ones taken from its dtype standard (atol/rtol,
+a 0.99 matched ratio and an absolute-error cap widened to 32 ULP), equal output
+dtypes, no NaN/Inf except matching `-inf` under `allow_negative_inf`, and no
+all-zero output. Workloads without a declared tolerance keep this service's own
+accuracy policy, and `non_compute` still requires binary equality. All 105
+official problems at the pinned commit can be submitted unchanged. As upstream,
+workload `perf_baseline` metadata and inputs the definition does not declare are
+ignored. Apart from declared tolerances, input generation compatibility does not
+mean the service uses the upstream framework's accuracy policy, scheduler or
+profiling implementation; this service retains its own correctness and
+measurement algorithms.
 
 ## Submit
 

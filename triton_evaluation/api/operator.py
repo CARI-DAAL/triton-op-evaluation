@@ -145,24 +145,15 @@ InputSpec = Annotated[
 
 
 class Tolerance(StrictModel):
+    """Official per-workload tolerance; a declared workload is judged by the
+    pinned official check (engine/_official_tolerance.py), unset fields by
+    its dtype standard. Like upstream, values are not range-checked."""
+
     max_atol: float | None = None
     max_rtol: float | None = None
     required_matched_ratio: float | None = None
     max_error_cap: float | None = None
     allow_negative_inf: bool = False
-
-    @model_validator(mode="after")
-    def valid(self):
-        if (
-            any(
-                value is not None
-                for key, value in self.model_dump().items()
-                if key != "allow_negative_inf"
-            )
-            or self.allow_negative_inf
-        ):
-            raise ValueError("workload tolerance overrides are not supported")
-        return self
 
 
 class Workload(StrictModel):
@@ -352,14 +343,22 @@ def normalize_workloads(request: "OperatorRequest") -> list[dict[str, Any]]:
             if isinstance(spec, TensorListInput) and spec.dtype == "float64":
                 raise ValueError("official random generation does not support float64")
             inputs[name] = data
-        cases.append(
-            {
-                "uuid": workload.uuid or f"case-{index + 1}",
-                "axes": axes,
-                "input_order": list(inputs),
-                "inputs": inputs,
-            }
-        )
+        case = {
+            "uuid": workload.uuid or f"case-{index + 1}",
+            "axes": axes,
+            "input_order": list(inputs),
+            "inputs": inputs,
+        }
+        # Only a declared override changes the verdict policy; defaults keep
+        # the service's own accuracy check and the existing reference identity.
+        declared = {
+            key: value
+            for key, value in workload.tolerance.model_dump().items()
+            if value is not None and value is not False
+        }
+        if declared:
+            case["tolerance"] = declared
+        cases.append(case)
     return cases
 
 

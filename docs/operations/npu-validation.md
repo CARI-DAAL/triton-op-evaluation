@@ -7,7 +7,7 @@
 | 已有入口 | 实际执行内容 | 能证明什么 / 不能证明什么 |
 | --- | --- | --- |
 | `python -m pytest -m 'not npu' -q`；CI Python 3.10–3.12 | HTTP、Pydantic、输入生成、幂等/状态机、lease/fencing、缓存、worker、结果整形；大量使用 fakeredis、stub runner 或 fake NPU | 覆盖软件协议与编排；不能替代真实 NPU 算子、时延、profiling、故障恢复或压力验证 |
-| [scripts/npu_release_gate.py](../../scripts/npu_release_gate.py) → [tests/test_npu_release_calibration.py](../../tests/test_npu_release_calibration.py) | 真实服务 `/livez`、`/readyz`，两组 float32 add：4096、8192；只执行 correctness，检查执行环境非空；再提交一个上游必然拒绝的 workload，须返回不可重试的 `INPUT_GENERATION_FAILED`，随后正确任务照常通过 | 是 readiness + add correctness + 请求错误归因 smoke；不是完整 release calibration，不能证明性能、缓存、profile、恢复或稳定性 |
+| [scripts/npu_release_gate.py](../../scripts/npu_release_gate.py) → [tests/test_npu_release_calibration.py](../../tests/test_npu_release_calibration.py) | 真实服务 `/livez`、`/readyz`，两组 float32 add：4096、8192；只执行 correctness，检查执行环境非空；再提交一个上游必然拒绝的 workload，须返回不可重试的 `INPUT_GENERATION_FAILED`，随后正确任务照常通过；同一个带 4e-3 偏差的 add 候选，不声明 tolerance 判 wrong、声明 `max_atol=0.01` 判通过 | 是 readiness + add correctness + 请求错误归因 + 声明 tolerance smoke；不是完整 release calibration，不能证明性能、缓存、profile、恢复或稳定性 |
 | [tests/test_event_timing_npu.py](../../tests/test_event_timing_npu.py) | 真实 NPU Event 测量一个 64×64 ReLU；需显式启用 | 验证基础计时机制，不代表完整 HTTP 性能链路或复杂题目覆盖 |
 | [tests/test_profile_npu_integration.py](../../tests/test_profile_npu_integration.py) | 真实 msprof op/deep，直接运行 engine 的 add 测试；需显式启用 | 已有实机 profile 集成测试，但不是 HTTP、admission 和 worker 的端到端验收 |
 | [scripts/npu_batchmatmul_gate.py](../../scripts/npu_batchmatmul_gate.py) | 一题 51 cases，通过 HTTP 运行 correctness、event/profiler 计时、op/deep profile | 新增官方输入协议的实机验收入口；本地 CPU 测试证明编排，硬件结果仍待目标主机执行 |
@@ -72,11 +72,12 @@ python scripts/probe_profiler_latency.py \
 hash 和旧时延不能直接作为当前输入或速度结论。输入生成对齐不更换服务自己的精度
 判定算法，也不把历史候选视为已通过当前构建。
 
-准入以固定版本上游代码为规范：API 只拒绝安全/资源上限、上游对任何 seed 都必然
-失败的参数，以及 per-workload tolerance（服务的正确性判定尚不支持）。其余请求原样
-交给生成器，行为与上游一致，包括取决于 seed 的生成失败。按此规则，固定提交的 105
-个官方题中 100 个可原样提交；DequantSwigluQuant、TopKTopP 和 3 个
-MiniMaxSparseAttention 因 tolerance 被明确拒绝，暂不能做实机验收。
+准入以固定版本上游代码为规范：API 只拒绝安全/资源上限和上游对任何 seed 都必然
+失败的参数。其余请求原样交给生成器，行为与上游一致，包括取决于 seed 的生成失败。
+声明了 per-workload tolerance 的 workload 按固定版本官方判定（声明字段 + dtype 标准、
+0.99 比例、32 ULP 误差上限、`-inf` 选项），未声明的仍用服务自己的精度判定。固定提交
+的 105 个官方题均可原样提交；其中 DequantSwigluQuant、TopKTopP 和 3 个
+MiniMaxSparseAttention 依赖声明的 tolerance，需在实机上单独验收其正确性判定。
 
 先离线验证 fixture，随后对部署的新接口运行完整链路：
 
@@ -125,9 +126,9 @@ TRITON_EVAL_RUN_NPU_PROFILE_TESTS=1 ASCEND_RT_VISIBLE_DEVICES=0 \
 | 接入与契约 | `/evaluations`、`/verify`、`/benchmark`、`/profile`、GET、健康、OpenAPI、metrics；缺失/错误凭证、权限、非法 JSON/字段、体积上限、超限 | 状态码和 typed error 正确；被拒请求不执行代码；observer-only metrics；错误流量不阻塞健康检查 |
 | 生命周期 | wait=0 / bounded wait；客户端断连；相同 key 重放；相同 key 不同内容冲突；跨 caller 读取 | 一个已接受逻辑请求对应一个可恢复 ID；重放不重新执行；权限隔离；客户端 timeout 不取消已接受任务 |
 | 运行模式 | comparison、Torch-only、Triton-only；compile、correctness、performance、profile 及所有合法组合 | comparison 才给正确性和 speedup；单实现结果明确 unverified、无伪造 counterpart；单实现 `/verify` 拒绝；compile 检查实际提供的源码 |
-| 输入生成 | 多 case、seed、shape、dtype、range、标量参数、选择子集、空张量等边界；官方 100 题原样提交（含 `perf_baseline`、未声明输入、浮点 `range`）；上游取决于 seed 的生成失败（如未指定分布、`high` 小于默认 `low`、seed 0 抽到 uniform family） | 正确映射原 case index；相同 seed 可复现；不支持的设备能力给明确失败/未测，不能伪造成功；不要求硬件不支持的 dtype 通过；生成失败须返回不可重试的 `INPUT_GENERATION_FAILED` 并指明 workload，卡不被标为 suspicious、不重排；torch `RuntimeError`/OOM 仍按引擎故障处理，不能被归为请求错误 |
+| 输入生成 | 多 case、seed、shape、dtype、range、标量参数、选择子集、空张量等边界；官方 105 题原样提交（含 `perf_baseline`、未声明输入、浮点 `range`、per-workload tolerance）；上游取决于 seed 的生成失败（如未指定分布、`high` 小于默认 `low`、seed 0 抽到 uniform family） | 正确映射原 case index；相同 seed 可复现；不支持的设备能力给明确失败/未测，不能伪造成功；不要求硬件不支持的 dtype 通过；生成失败须返回不可重试的 `INPUT_GENERATION_FAILED` 并指明 workload，卡不被标为 suspicious、不重排；torch `RuntimeError`/OOM 仍按引擎故障处理，不能被归为请求错误 |
 | 历史官方 reference cache | 启用 reference cache 的 seed 0 归档任务：命中、miss 回退、哨兵重测 | 逐 case 查询、miss 回退与哨兵测量时设备上只持有一组输入；case 编号与缓存 manifest 一致 |
-| 数值正确性 | 已知正确 pointwise/reduction/matmul 语料；错误输出、shape/dtype 不符、NaN/Inf、输入修改；non_compute 分支 | 精度判定与配置一致；错误 candidate 是有效失败 evidence，不能变成基础设施成功或漏跑；正确性失败后的依赖检查按规则 skipped |
+| 数值正确性 | 已知正确 pointwise/reduction/matmul 语料；错误输出、shape/dtype 不符、NaN/Inf、输入修改；non_compute 分支；声明 tolerance 的官方题（DequantSwigluQuant、TopKTopP 的 `-inf`、MiniMaxSparseAttention 的 0.02） | 精度判定与配置一致；错误 candidate 是有效失败 evidence，不能变成基础设施成功或漏跑；正确性失败后的依赖检查按规则 skipped；声明 tolerance 的 case 按固定版本官方判定，未声明的 case 判定不变 |
 | compile / JIT / runtime | Python 语法、import 错误、Triton JIT 错误、执行异常 | 语法/import verdict 与设备编译失败分清；negative verdict 缓存不能错误接管依赖 shape 的 JIT 失败 |
 | 性能 | event、profiler；不同 warmup/repeats；case subset；部分/全部不稳定；单实现与comparison | 正时延、正确 method/coverage；comparison speedup 可从分母重算；没有稳定样本时显式未测/失败；不能只检查 correctness 退出码 |
 | Torch baseline cache | 冷→热→旁路→热；仅换 candidate；改 Torch/cases/seed/method/warmup/repeats；部分覆盖；并发冷 miss；重启worker | 只有 reference 标量入缓存；hit 节省参考计时但仍做正确性及候选计时；旁路不读写/覆盖；不同任务/协议不串用；单实现两种 flag 均不访问 comparison cache |

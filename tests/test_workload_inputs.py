@@ -143,16 +143,31 @@ def test_scalar_list_and_tensor_list_and_custom_axes():
         {"torch_code": "def run(x): return x"},
         {"cases": [{"inputs": []}]},
         {"workloads": [{"inputs": {"x": {"type": "custom"}}}]},
-        {
-            "workloads": [
-                {"inputs": {"x": {"type": "scalar", "value": 1}}, "tolerance": {"max_atol": 0.1}}
-            ]
-        },
     ],
 )
 def test_old_schema_and_unsupported_semantics_rejected(updates):
     with pytest.raises(ValidationError):
         OperatorRequest.model_validate(body(**updates))
+
+
+def test_declared_tolerance_is_carried_and_defaults_are_not():
+    official = {
+        "allow_negative_inf": False, "max_atol": 0.01, "max_error_cap": None,
+        "max_rtol": 0.0, "required_matched_ratio": 0.99,
+    }
+    x = {"type": "random", "dtype": "float32", "shape": [2]}
+    request = OperatorRequest.model_validate(
+        body(workloads=[
+            {"inputs": {"x": x}, "tolerance": official},
+            {"inputs": {"x": x}, "tolerance": {"max_error_cap": None}},
+            {"inputs": {"x": x}},
+        ])
+    )
+    declared, unset, absent = normalize_workloads(request)
+    assert declared["tolerance"] == {
+        "max_atol": 0.01, "max_rtol": 0.0, "required_matched_ratio": 0.99,
+    }
+    assert "tolerance" not in unset and "tolerance" not in absent
 
 
 def test_official_metadata_extra_inputs_and_float_range_are_ignored():
