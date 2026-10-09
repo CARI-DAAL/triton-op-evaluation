@@ -22,6 +22,7 @@ from .base import (
     LeaseLostError,
     engine_failure,
     engine_timeout,
+    input_generation_failure,
     log_engine_crash,
     materialize,
     materialize_reference,
@@ -139,6 +140,9 @@ class BenchmarkEvaluator:
                     "performance", f"invalid benchmark baseline evidence: {error}"
                 )
             return EngineCheckResult(status="succeeded", raw=result, error=None)
+        refused = input_generation_failure("performance", outcome)
+        if refused is not None:
+            return refused
         log_engine_crash("benchmark", outcome, result_file_exists=isinstance(result, dict))
         return engine_failure(
             "performance",

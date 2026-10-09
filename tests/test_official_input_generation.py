@@ -17,7 +17,7 @@ from typing import Any, Optional
 import pytest
 import torch
 
-from triton_evaluation.runtime.input_generation import generate_inputs
+from triton_evaluation.runtime.input_generation import InputGenerationError, generate_inputs
 
 OFFICIAL_SOURCE = (
     "def _rand_tensor(\n"
@@ -932,8 +932,8 @@ def api_case(spec):
 def outcome(generate):
     try:
         return generate()
-    except RuntimeError as error:
-        return type(error)
+    except (RuntimeError, ValueError) as error:
+        return error
 
 
 # Seed 0 draws the uniform case family and seed 200 the normal one.
@@ -955,8 +955,9 @@ def test_bounds_upstream_may_use_are_admitted_and_reproduced(spec, seed, monkeyp
     spec = {"type": "random", "shape": [17], "dtype": "float32", **spec}
     ours = outcome(lambda: generate_inputs(api_case(spec), seed, "cpu"))
     upstream = outcome(lambda: official(case_for(spec), seed, monkeypatch))
-    if isinstance(upstream, type):
-        assert ours is upstream
+    if isinstance(upstream, Exception):
+        # Upstream's torch refusal; ours names it as the request's error.
+        assert isinstance(ours, InputGenerationError)
     else:
         assert_equal(ours, upstream)
 

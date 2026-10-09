@@ -69,7 +69,12 @@ exclusive upper bound; as upstream, `range` on float and bool inputs is ignored.
 Admission rejects only bounds that upstream refuses for every seed: an explicit
 `uniform`, `uniform_signed` or `normal` whose bounds torch cannot sample, or an
 integer `range` torch cannot draw. Every other combination reaches the generator
-and behaves exactly as upstream, including its seed-dependent failures.
+and behaves exactly as upstream, including its seed-dependent failures. Such a
+failure, or a Python-level error, missing callback or non-dictionary result in
+custom input code, ends the check with non-retryable `INPUT_GENERATION_FAILED`
+naming the workload; the card is not suspected and the job is not requeued.
+Torch `RuntimeError`s and memory exhaustion keep the retryable engine-failure
+path, because the device can cause those too.
 Device support is still required for the selected dtype;
 the request cannot manufacture unavailable NPU capabilities.
 

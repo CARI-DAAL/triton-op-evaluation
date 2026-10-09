@@ -19,6 +19,7 @@ from .base import (
     LeaseLostError,
     engine_failure,
     engine_timeout,
+    input_generation_failure,
     log_engine_crash,
     materialize,
     read_json,
@@ -272,6 +273,9 @@ class VerifyEvaluator:
                 "(raise deadline or verify budget cap, or trim cases)",
             )
         if not isinstance(result, dict):
+            refused = input_generation_failure("correctness", outcome)
+            if refused is not None:
+                return refused
             log_engine_crash("verify", outcome, result_file_exists=False)
             return engine_failure(
                 "correctness",

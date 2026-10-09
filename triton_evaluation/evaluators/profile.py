@@ -15,6 +15,7 @@ from .base import (
     LeaseLostError,
     engine_failure,
     engine_timeout,
+    input_generation_failure,
     materialize,
     read_json,
     remaining_seconds,
@@ -121,4 +122,6 @@ class ProfileEvaluator:
         result = read_json(out_path, root=work_dir)
         if outcome.exit_code == 0 and isinstance(result, dict):
             return EngineCheckResult(status="succeeded", raw=result, error=None)
-        return engine_failure("profile", "profile engine produced no usable result")
+        return input_generation_failure("profile", outcome) or engine_failure(
+            "profile", "profile engine produced no usable result"
+        )
