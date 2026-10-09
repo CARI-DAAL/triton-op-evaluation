@@ -119,6 +119,7 @@ def test_changed_overlay_or_missing_pin_never_prepares_child(anchored_overlay, m
 
 
 def test_old_engine_override_and_host_scripts_are_refused(anchored_overlay, monkeypatch, tmp_path):
+    monkeypatch.setattr(sandbox, "_environment_reset_option", lambda *_: "--clearenv")
     _base, _original, _overlay, work, _model = anchored_overlay
     monkeypatch.setenv("TRITON_EVAL_ENGINE_DIR", str(tmp_path / "old-live/engine"))
     with pytest.raises(ValueError, match="another service source"):
@@ -412,6 +413,7 @@ def test_real_bwrap_child_reads_dev_subtree_ro_bind(tmp_path, monkeypatch):
 def test_supplied_environment_controls_overlay_despite_ambient_changes(
     anchored_overlay, monkeypatch
 ):
+    monkeypatch.setattr(sandbox, "_environment_reset_option", lambda *_: "--clearenv")
     _base, _original, _overlay, work, _model = anchored_overlay
     environment = dict(os.environ)
     monkeypatch.setenv(sandbox.CONFIG_ENV, "/missing/ambient-sandbox.json")

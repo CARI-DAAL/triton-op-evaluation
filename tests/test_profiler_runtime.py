@@ -236,10 +236,12 @@ def test_sandbox_requires_profile_pair_and_every_pinned_path_readonly_visible(de
 
 
 def test_sandbox_actual_command_preserves_runtime_pair_and_readonly_alias(
-    tmp_path, deployed_runtime
+    tmp_path, deployed_runtime, monkeypatch
 ):
+    from triton_evaluation.runtime import sandbox as sandbox_module
     from triton_evaluation.runtime.sandbox import EngineSandbox
 
+    monkeypatch.setattr(sandbox_module, "_environment_reset_option", lambda *_: "--clearenv")
     target, model = deployed_runtime
     env = {runtime.MANIFEST_ENV: str(target), runtime.DIGEST_ENV: runtime.sha(target)}
     required = [

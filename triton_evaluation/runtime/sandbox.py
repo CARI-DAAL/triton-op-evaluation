@@ -76,9 +76,18 @@ RUNTIME_ENV = frozenset(
 )
 
 
-@lru_cache(maxsize=32)
-def _environment_reset_option(executable: str, identity: tuple[int, ...]) -> str:
+def _environment_reset_option(executable: Path) -> str:
     """Probe a deployment binary once, invalidating cached help on replacement."""
+    metadata = executable.stat()
+    return _probe_environment_reset(
+        str(executable),
+        (metadata.st_dev, metadata.st_ino, metadata.st_size,
+         metadata.st_mtime_ns, metadata.st_ctime_ns),
+    )
+
+
+@lru_cache(maxsize=32)
+def _probe_environment_reset(executable: str, identity: tuple[int, ...]) -> str:
     try:
         result = subprocess.run(
             [executable, "--help"], capture_output=True, text=True,
@@ -246,12 +255,7 @@ class EngineSandbox(BaseModel):
         # ambient credentials. Legacy bwrap need only unset these inherited
         # names before constructing the exact child allowlist below.
         outer = {"PATH": "/usr/bin:/bin"}
-        metadata = self.executable.stat()
-        reset = _environment_reset_option(
-            str(self.executable),
-            (metadata.st_dev, metadata.st_ino, metadata.st_size,
-             metadata.st_mtime_ns, metadata.st_ctime_ns),
-        )
+        reset = _environment_reset_option(self.executable)
         if reset == "--clearenv":
             args.append(reset)
         else:
