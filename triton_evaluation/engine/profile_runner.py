@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 import sys
 import tempfile
@@ -264,6 +265,40 @@ def _last_json_object(stdout: str) -> dict:
     raise ValueError("runner produced no JSON object")
 
 
+def remaining_discovery_timeout(deadline: float) -> int:
+    """Per-process budget for case discovery.
+
+    Discovery materializes every input group on the host to describe it, so a
+    large official corpus costs minutes of CPU — it is not an msprof capture
+    pass and must not die against MSPROF_TIMEOUT_SEC (300 s default). The
+    engine deadline still binds: the effective timeout is the smaller of the
+    configured discovery budget and the time left on the job.
+    """
+    raw = os.environ.get("MSPROF_DISCOVERY_TIMEOUT_SEC", "900")
+    try:
+        configured = int(raw)
+    except ValueError as exc:
+        raise ValueError("MSPROF_DISCOVERY_TIMEOUT_SEC must be a positive integer") from exc
+    if configured <= 0:
+        raise ValueError("MSPROF_DISCOVERY_TIMEOUT_SEC must be a positive integer")
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        raise TimeoutError("profile job deadline exceeded")
+    return max(1, min(configured, math.ceil(remaining)))
+
+
+def _validated_discovery_payload(payload: object) -> list[dict]:
+    if not isinstance(payload, dict):
+        raise ValueError("discovery payload is not an object")
+    cases = payload.get("cases")
+    if not isinstance(cases, list) or not cases:
+        raise ValueError("discovery payload has no cases")
+    total = payload.get("total_cases")
+    if total != len(cases):
+        raise ValueError("discovery payload case count mismatch")
+    return cases
+
+
 def discover_cases(
     *,
     runner_path: str,
@@ -276,6 +311,17 @@ def discover_cases(
     deadline: float,
     implementation: str = "comparison",
 ) -> list[dict]:
+    # The evaluator starts one engine invocation per profiled case; without a
+    # cache each of them would re-run discovery (minutes of host-side tensor
+    # generation on a 51-case official corpus). op_name embeds the request
+    # digest, so the cache file cannot leak across different requests, and
+    # verify_dir is a fresh per-evaluation work directory.
+    cache_path = Path(verify_dir) / f"{op_name}_cases.json"
+    try:
+        cached = json.loads(cache_path.read_text(encoding="utf-8"))
+        return _validated_discovery_payload(cached)
+    except (OSError, ValueError):
+        pass  # Missing or corrupt cache: fall through and re-discover.
     command = [
         python_bin,
         runner_path,
@@ -295,7 +341,7 @@ def discover_cases(
         command,
         cwd=verify_dir,
         env=env,
-        timeout=remaining_pass_timeout(deadline),
+        timeout=remaining_discovery_timeout(deadline),
     )
     if time.monotonic() >= deadline:
         raise TimeoutError("profile job deadline exceeded")
@@ -304,9 +350,13 @@ def discover_cases(
     if outcome.exit_code != 0:
         raise RuntimeError(f"case discovery failed: {outcome.stderr[-1000:]}")
     payload = _last_json_object(outcome.stdout)
-    cases = payload.get("cases")
-    if not isinstance(cases, list) or not cases:
-        raise RuntimeError("case discovery returned no cases")
+    try:
+        cases = _validated_discovery_payload(payload)
+    except ValueError:
+        raise RuntimeError("case discovery returned no cases") from None
+    temporary = cache_path.with_suffix(cache_path.suffix + ".tmp")
+    temporary.write_text(json.dumps(payload), encoding="utf-8")
+    os.replace(temporary, cache_path)
     return cases
 
 

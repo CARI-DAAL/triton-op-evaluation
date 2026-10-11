@@ -1,3 +1,4 @@
+import json
 import os
 import subprocess
 import sys
@@ -406,3 +407,103 @@ def test_runner_materializes_only_one_lazy_case_at_a_time(tmp_path, monkeypatch)
     assert outcome.exit_code == 0, outcome.stderr
     assert kernel_marker.read_text() == "2"
     assert log.read_text().split() == ["2"]
+
+
+def test_discovery_caches_cases_across_invocations(tmp_path):
+    _write_fake_runtime(tmp_path)
+    _write_task(tmp_path)
+    runner = profile.write_runner(str(tmp_path))
+    first = _discover(tmp_path, runner)
+    # Any fresh subprocess now fails loudly; only a cache hit can succeed.
+    Path(runner).write_text("raise SystemExit(3)\n", encoding="utf-8")
+    (tmp_path / "sample_torch.py").write_text("raise SystemExit(4)\n", encoding="utf-8")
+    assert _discover(tmp_path, runner) == first == [
+        {"case_idx": 0, "input_desc": [{"type": "scalar", "value": 11}]},
+        {"case_idx": 1, "input_desc": [{"type": "scalar", "value": 22}]},
+    ]
+
+
+def test_discovery_cache_holds_the_described_payload(tmp_path):
+    _write_fake_runtime(tmp_path)
+    _write_task(tmp_path)
+    runner = profile.write_runner(str(tmp_path))
+    _discover(tmp_path, runner)
+    payload = json.loads((tmp_path / "sample_cases.json").read_text(encoding="utf-8"))
+    assert payload == {
+        "total_cases": 2,
+        "cases": [
+            {"case_idx": 0, "input_desc": [{"type": "scalar", "value": 11}]},
+            {"case_idx": 1, "input_desc": [{"type": "scalar", "value": 22}]},
+        ],
+    }
+
+
+def test_discovery_reruns_subprocess_when_cache_is_corrupt(tmp_path):
+    _write_fake_runtime(tmp_path)
+    _write_task(tmp_path)
+    runner = profile.write_runner(str(tmp_path))
+    _discover(tmp_path, runner)
+    (tmp_path / "sample_cases.json").write_text("{ not json", encoding="utf-8")
+    Path(runner).write_text("raise SystemExit(3)\n", encoding="utf-8")
+    with pytest.raises(RuntimeError, match="case discovery failed"):
+        _discover(tmp_path, runner)
+
+
+def test_discovery_overwrites_corrupt_cache_with_fresh_result(tmp_path):
+    _write_fake_runtime(tmp_path)
+    _write_task(tmp_path)
+    runner = profile.write_runner(str(tmp_path))
+    _discover(tmp_path, runner)
+    (tmp_path / "sample_cases.json").write_text("{ not json", encoding="utf-8")
+    cases = _discover(tmp_path, runner)
+    assert [case["case_idx"] for case in cases] == [0, 1]
+    payload = json.loads((tmp_path / "sample_cases.json").read_text(encoding="utf-8"))
+    assert payload["total_cases"] == 2
+
+
+def test_discovery_failure_writes_no_cache(tmp_path):
+    _write_fake_runtime(tmp_path)
+    _write_task(tmp_path)
+    (tmp_path / "sample_torch.py").write_text(
+        "def get_init_inputs(): return []\ndef get_input_groups(): return iter(())\n",
+        encoding="utf-8",
+    )
+    runner = profile.write_runner(str(tmp_path))
+    with pytest.raises(RuntimeError, match="case discovery failed"):
+        _discover(tmp_path, runner)
+    assert not (tmp_path / "sample_cases.json").exists()
+
+
+def test_discovery_timeout_defaults_to_900_seconds(monkeypatch):
+    monkeypatch.delenv("MSPROF_DISCOVERY_TIMEOUT_SEC", raising=False)
+    assert profile.remaining_discovery_timeout(profile.time.monotonic() + 10_000) == 900
+
+
+def test_discovery_timeout_env_caps_and_deadline_still_binds(monkeypatch):
+    monkeypatch.setenv("MSPROF_DISCOVERY_TIMEOUT_SEC", "1200")
+    assert profile.remaining_discovery_timeout(profile.time.monotonic() + 10_000) == 1200
+    assert 59 <= profile.remaining_discovery_timeout(profile.time.monotonic() + 60) <= 61
+    for invalid in ("not-a-number", "0", "-5"):
+        monkeypatch.setenv("MSPROF_DISCOVERY_TIMEOUT_SEC", invalid)
+        with pytest.raises(ValueError, match="MSPROF_DISCOVERY_TIMEOUT_SEC"):
+            profile.remaining_discovery_timeout(profile.time.monotonic() + 60)
+
+
+def test_discovery_honors_dedicated_timeout_env(tmp_path, monkeypatch):
+    _write_fake_runtime(tmp_path)
+    _write_task(tmp_path)
+    (tmp_path / "sample_torch.py").write_text(
+        "import time\n"
+        "time.sleep(6)\n"
+        "def get_init_inputs(): return []\n"
+        "def get_input_groups():\n"
+        "    yield [11]\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("MSPROF_DISCOVERY_TIMEOUT_SEC", "1")
+    runner = profile.write_runner(str(tmp_path))
+    with pytest.raises(
+        RuntimeError, match="case discovery exceeded its per-process timeout"
+    ):
+        _discover(tmp_path, runner)
+    assert not (tmp_path / "sample_cases.json").exists()
