@@ -322,6 +322,30 @@ def test_per_core_missing_database_is_none(tmp_path):
     )
 
 
+def test_per_core_reads_pinned_card_device_dir(tmp_path):
+    # Workers pin ASCEND_RT_VISIBLE_DEVICES to a nonzero card and msprof
+    # then writes sqlite data under device_<card>, never device_0.
+    db_dir = tmp_path / "PROF_fake" / "device_7" / "sqlite"
+    db_dir.mkdir(parents=True)
+    connection = sqlite3.connect(db_dir / "aicore.db")
+    connection.execute(
+        "CREATE TABLE AICoreOriginalData(coreid INTEGER, task_cyc INTEGER)"
+    )
+    connection.executemany(
+        "INSERT INTO AICoreOriginalData VALUES (?, ?)",
+        [(0, 1600), (1, 1700)],
+    )
+    connection.commit()
+    connection.close()
+    result = msprof_deep.per_core_balance(
+        {"aicore_time(us)": "20"},
+        str(tmp_path / "PROF_fake"),
+    )
+    assert result is not None
+    assert result["core_ids"] == [0, 1]
+    assert result["active_cores"] == 2
+
+
 def test_per_core_unknown_schema_is_none(tmp_path):
     db_dir = tmp_path / "PROF_fake" / "device_0" / "sqlite"
     db_dir.mkdir(parents=True)

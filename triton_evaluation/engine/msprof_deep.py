@@ -306,12 +306,14 @@ def classify_bound(raw: dict[str, Any]) -> dict[str, Any] | None:
 
 
 def load_per_core_cycles(sample_dir: str) -> list[tuple[int, int]]:
+    # Workers pin ASCEND_RT_VISIBLE_DEVICES to their card, so msprof writes
+    # sqlite data under device_<card>; match any device number.
     candidates = sorted(
         glob.glob(
             os.path.join(
                 sample_dir,
                 "**",
-                "device_0",
+                "device_*",
                 "sqlite",
                 "aicore.db",
             ),
