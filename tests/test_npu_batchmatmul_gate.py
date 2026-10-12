@@ -12,7 +12,7 @@ from triton_evaluation.evaluators.shaping import shape_profile
 FIXTURES = gate.ROOT / "tests/fixtures"
 
 
-def terminal(body, stage):
+def terminal(body, stage, case_indices=None):
     raw = json.loads(
         (
             FIXTURES / "evaluation_api/2.1/fixtures/resource-completed-performance-profile-op.json"
@@ -50,10 +50,18 @@ def terminal(body, stage):
             data = shape_profile(engine).model_dump(mode="json")
         else:
             data = result["profile"]["data"]
+        indices = list(case_indices) if case_indices is not None else list(range(51))
         case = data["cases"][0]
-        data.update(counts={"selected": 51, "complete": 51, "partial": 0, "failed": 0})
+        data.update(
+            counts={
+                "selected": len(indices),
+                "complete": len(indices),
+                "partial": 0,
+                "failed": 0,
+            }
+        )
         data["cases"] = []
-        for i in range(51):
+        for i in indices:
             item = copy.deepcopy(case)
             item["case_idx"] = i
             data["cases"].append(item)
@@ -63,25 +71,161 @@ def terminal(body, stage):
     return raw
 
 
+def _stage_and_indices(url, body):
+    if url.endswith("/verify"):
+        return "correctness", None
+    if url.endswith("/benchmark"):
+        return "performance_" + body["performance"]["method"], None
+    profile = body["profile"]
+    return "profile_" + profile["mode"], profile.get("case_indices")
+
+
+def test_deep_stage_fans_out_case_shards(tmp_path):
+    requests = []
+
+    def transport(method, url, body=None, **kwargs):
+        assert method == "POST"
+        requests.append((url, body))
+        stage, indices = _stage_and_indices(url, body)
+        return terminal(body, stage, case_indices=indices)
+
+    report = gate.run_gate(
+        "http://service", "SECRET", tmp_path / "report.json", transport=transport
+    )
+    assert report["passed"], report.get("error", report["checks"])
+    deep_posts = [
+        body
+        for url, body in requests
+        if url.endswith("/profile") and body["profile"]["mode"] == "deep"
+    ]
+    assert len(deep_posts) == 13
+    covered = [i for body in deep_posts for i in body["profile"]["case_indices"]]
+    assert covered == list(range(51))
+    assert all(len(body["profile"]["case_indices"]) <= 4 for body in deep_posts)
+    entry = report["checks"]["profile_deep"]
+    assert entry["status"] == "complete"
+    assert len(entry["shards"]) == 13
+
+
+def test_deep_shard_partial_case_fails_gate(tmp_path):
+    def transport(method, url, body=None, **kwargs):
+        assert method == "POST"
+        stage, indices = _stage_and_indices(url, body)
+        raw = terminal(body, stage, case_indices=indices)
+        if stage == "profile_deep" and indices and indices[0] == 0:
+            data = raw["result"]["profile"]["data"]
+            data["cases"][0]["status"] = "partial"
+            data["cases"][0]["missing_metrics"] = ["PipeUtilization.Memory"]
+            data["counts"] = {
+                "selected": len(indices),
+                "complete": len(indices) - 1,
+                "partial": 1,
+                "failed": 0,
+            }
+        return raw
+
+    report = gate.run_gate(
+        "http://service", "SECRET", tmp_path / "report.json", transport=transport
+    )
+    assert not report["passed"]
+    entry = report["checks"]["profile_deep"]
+    assert entry["status"] == "partial"
+    assert any(shard["status"] == "partial" for shard in entry["shards"])
+
+
+def test_deep_single_eval_when_sharding_disabled(tmp_path):
+    requests = []
+
+    def transport(method, url, body=None, **kwargs):
+        assert method == "POST"
+        requests.append((url, body))
+        stage, indices = _stage_and_indices(url, body)
+        return terminal(body, stage, case_indices=indices)
+
+    report = gate.run_gate(
+        "http://service",
+        "SECRET",
+        tmp_path / "report.json",
+        transport=transport,
+        deep_shard_size=0,
+    )
+    assert report["passed"], report.get("error", report["checks"])
+    assert len(requests) == 5
+    deep_posts = [
+        body
+        for url, body in requests
+        if url.endswith("/profile") and body["profile"]["mode"] == "deep"
+    ]
+    assert deep_posts[0]["profile"]["case_indices"] == list(range(51))
+
+
+def test_deep_shards_use_distinct_sessions(tmp_path):
+    deep_headers = []
+
+    def transport(method, url, body=None, headers=None, **kwargs):
+        stage, indices = _stage_and_indices(url, body)
+        if stage == "profile_deep":
+            deep_headers.append(dict(headers))
+        return terminal(body, stage, case_indices=indices)
+
+    report = gate.run_gate(
+        "http://service", "SECRET", tmp_path / "report.json", transport=transport
+    )
+    assert report["passed"], report.get("error", report["checks"])
+    session_ids = {headers["X-Session-ID"] for headers in deep_headers}
+    assert len(deep_headers) == 13
+    # The broker caps inflight evaluations per (caller, session); parallel
+    # shards must not share one session or they throttle to that cap.
+    assert len(session_ids) == 13
+
+
+def test_deep_shard_413_inflight_backpressure_is_retried(tmp_path):
+    import urllib.error
+
+    deep_posts = []
+
+    def transport(method, url, body=None, headers=None, **kwargs):
+        stage, indices = _stage_and_indices(url, body)
+        if stage == "profile_deep":
+            deep_posts.append((body, dict(headers)))
+            # the caller inflight limit bounces the third concurrent submit
+            if len(deep_posts) == 3:
+                raise urllib.error.HTTPError(
+                    url, 413, "Request Entity Too Large", {}, None
+                )
+        return terminal(body, stage, case_indices=indices)
+
+    report = gate.run_gate(
+        "http://service",
+        "SECRET",
+        tmp_path / "report.json",
+        transport=transport,
+        sleep=lambda _: None,
+        deep_concurrency=4,
+    )
+    assert report["passed"], report.get("error", report["checks"])
+    bounced = deep_posts[2]
+    retried = [
+        (body, headers)
+        for body, headers in deep_posts[3:]
+        if body is bounced[0] and headers["Idempotency-Key"] == bounced[1]["Idempotency-Key"]
+    ]
+    assert retried, "bounced shard POST must be replayed with the same idempotency key"
+
+
 def test_http_chain_exact_official_inputs(tmp_path):
     requests = []
 
     def transport(method, url, body=None, **kwargs):
         assert method == "POST"
         requests.append((url, body))
-        stage = (
-            "correctness"
-            if url.endswith("/verify")
-            else "performance_" + body["performance"]["method"]
-            if url.endswith("/benchmark")
-            else "profile_" + body["profile"]["mode"]
-        )
-        return terminal(body, stage)
+        stage, indices = _stage_and_indices(url, body)
+        return terminal(body, stage, case_indices=indices)
 
     output = tmp_path / "report.json"
     report = gate.run_gate("http://service", "SECRET", output, transport=transport)
     assert report["passed"], report.get("error", report["checks"])
-    assert len(requests) == 5
+    assert len(requests) == 17  # 4 stages single + profile_deep in 13 shards
     manifest, definition, workloads = gate.fixture_check()
     for _, body in requests:
         assert body["definition"] == definition
@@ -204,19 +348,13 @@ def test_lost_post_response_replays_identical_request(tmp_path):
             raise OSError("response lost")
         if calls == 2:
             assert (url, body, headers) == first
-        stage = (
-            "correctness"
-            if url.endswith("/verify")
-            else "performance_" + body["performance"]["method"]
-            if url.endswith("/benchmark")
-            else "profile_" + body["profile"]["mode"]
-        )
-        return terminal(body, stage)
+        stage, indices = _stage_and_indices(url, body)
+        return terminal(body, stage, case_indices=indices)
 
     report = gate.run_gate(
         "http://service", "TOPSECRET", output, transport=transport, sleep=lambda _: None
     )
-    assert report["passed"] and calls == 6
+    assert report["passed"] and calls == 18  # replay + 3 stages + 13 deep shards
     assert report["checks"]["correctness"]["post_retries"] == 1
 
 

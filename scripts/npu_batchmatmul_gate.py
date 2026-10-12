@@ -48,7 +48,14 @@ def fixture_check(fixture=FIXTURE):
     return manifest, definition, workloads
 
 
-def build_body(definition, workloads, stage, deadline_seconds, fixture=FIXTURE):
+def build_body(
+    definition,
+    workloads,
+    stage,
+    deadline_seconds,
+    fixture=FIXTURE,
+    case_indices=None,
+):
     body = {
         "definition": definition,
         "workloads": workloads,
@@ -68,7 +75,11 @@ def build_body(definition, workloads, stage, deadline_seconds, fixture=FIXTURE):
         }
     else:
         body["checks"] = ["profile"]
-        body["profile"] = {"mode": stage.removeprefix("profile_"), "case_indices": list(range(51))}
+        indices = list(range(51)) if case_indices is None else list(case_indices)
+        body["profile"] = {
+            "mode": stage.removeprefix("profile_"),
+            "case_indices": indices,
+        }
     OperatorRequest.model_validate(body)
     return body
 
@@ -82,7 +93,7 @@ def positive(value):
     return type(value) in (float, int) and math.isfinite(value) and value > 0
 
 
-def validate_result(resource, stage):
+def validate_result(resource, stage, expected_cases=None):
     if resource.state != "completed" or resource.result is None:
         return "failed"
     result = resource.result
@@ -127,16 +138,17 @@ def validate_result(resource, stage):
             return "failed"
         data = outcome.data
         mode = stage.removeprefix("profile_")
+        expected = set(range(51)) if expected_cases is None else set(expected_cases)
         if (
             data.mode != mode
-            or data.counts.selected != 51
+            or data.counts.selected != len(expected)
             or data.counts.failed
-            or {case.case_idx for case in data.cases} != set(range(51))
+            or {case.case_idx for case in data.cases} != expected
         ):
             return "failed"
         if data.counts.partial:
             return "partial"
-        if data.counts.complete != 51:
+        if data.counts.complete != len(expected):
             return "failed"
         for case in data.cases:
             if case.status != "complete" or case.error:
@@ -184,6 +196,192 @@ def save_report(output, report, token=""):
     temporary.replace(output)
 
 
+def run_deep_shards(
+    *,
+    url,
+    headers,
+    definition,
+    workloads,
+    fixture,
+    deadline_seconds,
+    shard_size,
+    report,
+    output,
+    token,
+    transport,
+    sleep,
+    stop,
+    max_concurrent=4,
+):
+    """Submit profile_deep as per-case-shard evaluations and poll them all.
+
+    A single 51-case deep evaluation cannot fit the 3600s contract deadline
+    (each case costs ~480s of msprof task-based capture). Shards run in
+    parallel across the deployed workers, and every shard evaluation stays
+    well inside its own deadline. Submissions keep a sliding window of at
+    most max_concurrent in-flight evaluations; an HTTP 413 means the
+    caller's inflight limit is full and the shard POST is retried later
+    with the same idempotency key. Returns the populated stage entry.
+    """
+    entry = {
+        "status": "submitting",
+        "sharded": True,
+        "shard_size": shard_size,
+        "max_concurrent": max_concurrent,
+        "session_id": headers["X-Session-ID"],
+        "route": "/profile",
+        "deadline_seconds": deadline_seconds,
+        "shards": [],
+    }
+    report["checks"]["profile_deep"] = entry
+    shards = [
+        list(range(start, min(start + shard_size, 51)))
+        for start in range(0, 51, shard_size)
+    ]
+    plans = []
+    for shard_no, indices in enumerate(shards):
+        body = build_body(
+            definition,
+            workloads,
+            "profile_deep",
+            deadline_seconds,
+            fixture,
+            case_indices=indices,
+        )
+        shard_headers = {
+            **headers,
+            # The broker caps in-flight evaluations per (caller, session);
+            # parallel shards need distinct sessions to use the caller's
+            # full inflight allowance instead of one session's cap.
+            "X-Session-ID": f"{headers['X-Session-ID']}-s{shard_no}",
+            "Idempotency-Key": f"profile_deep-s{shard_no}-" + uuid4().hex,
+        }
+        entry["shards"].append(
+            {
+                "status": "submitting",
+                "case_indices": indices,
+                "expected_reference_digest": reference_digest(body),
+                "idempotency_key": shard_headers["Idempotency-Key"],
+            }
+        )
+        plans.append((body, shard_headers, indices))
+    save_report(output, report, token)
+
+    def submit(shard_no):
+        body, shard_headers, _ = plans[shard_no]
+        shard_entry = entry["shards"][shard_no]
+        for attempt in range(2):
+            if time.monotonic() >= stop:
+                raise TimeoutError("gate job timeout expired before POST replay")
+            try:
+                raw = transport(
+                    "POST",
+                    url.rstrip("/") + "/profile",
+                    body=body,
+                    headers=shard_headers,
+                    timeout=min(15, stop - time.monotonic()),
+                )
+                break
+            except urllib.error.HTTPError as exc:
+                if exc.code == 413:
+                    return None  # inflight window full; retry after polling
+                raise  # A server response is not an ambiguous transport loss.
+            except (urllib.error.URLError, OSError):
+                if attempt == 1:
+                    raise
+                shard_entry["post_retries"] = 1
+                save_report(output, report, token)
+                sleep(min(1, max(0, stop - time.monotonic())))
+        shard_entry.update(
+            evaluation_id=raw.get("evaluation_id"), resource=raw, status="accepted"
+        )
+        save_report(output, report, token)
+        return raw
+
+    def finish(shard_no, raw):
+        shard_entry = entry["shards"][shard_no]
+        expected = shard_entry["expected_reference_digest"]
+        indices = shard_entry["case_indices"]
+        resource = EvaluationResource.model_validate_json(json.dumps(raw))
+        if resource.reference_digest != expected:
+            raise ValueError(
+                "deployed service reference/input protocol digest differs"
+            )
+        if resource.evaluation_id != shard_entry["evaluation_id"]:
+            raise ValueError("poll returned a different evaluation identity")
+        provenance = resource.result.provenance
+        if provenance.execution_environment is None:
+            raise ValueError("server omitted execution environment evidence")
+        if ":npu-strict-v1" not in provenance.correctness_algorithm:
+            raise ValueError(
+                "server does not declare the required npu-strict reference policy"
+            )
+        if (
+            report.get("evaluator_build", provenance.evaluator_build)
+            != provenance.evaluator_build
+        ):
+            raise ValueError("evaluator build changed across gate stages")
+        report["evaluator_build"] = provenance.evaluator_build
+        report["execution_environment"] = (
+            provenance.execution_environment.model_dump(mode="json")
+        )
+        report["declared_reference_policy"] = "npu-strict-v1"
+        shard_entry["status"] = validate_result(
+            resource, "profile_deep", expected_cases=indices
+        )
+        shard_entry["evaluator_build"] = provenance.evaluator_build
+        save_report(output, report, token)
+        return resource.state
+
+    inflight = {}  # shard_no -> last raw resource
+    next_submit = 0
+    while next_submit < len(plans) or inflight:
+        while next_submit < len(plans) and len(inflight) < max_concurrent:
+            if time.monotonic() >= stop:
+                raise TimeoutError("gate job timeout expired")
+            raw = submit(next_submit)
+            if raw is None:
+                break  # inflight limit reached; poll until a slot frees
+            inflight[next_submit] = raw
+            next_submit += 1
+        if not inflight:
+            if time.monotonic() >= stop:
+                raise TimeoutError("gate job timeout expired")
+            sleep(min(1, max(0, stop - time.monotonic())))
+            continue
+        for shard_no in sorted(inflight):
+            raw = inflight[shard_no]
+            resource = EvaluationResource.model_validate_json(json.dumps(raw))
+            if resource.state not in ("completed", "failed", "timed_out"):
+                if time.monotonic() >= stop:
+                    raise TimeoutError(
+                        "gate job timeout expired; admitted handle saved"
+                    )
+                sleep(min(1, max(0, stop - time.monotonic())))
+                raw = transport(
+                    "GET",
+                    url.rstrip("/") + "/evaluations/" + resource.evaluation_id,
+                    headers=headers,
+                    timeout=max(0.01, min(15, stop - time.monotonic())),
+                )
+                entry["shards"][shard_no]["resource"] = raw
+                save_report(output, report, token)
+                resource = EvaluationResource.model_validate_json(json.dumps(raw))
+                if resource.state not in ("completed", "failed", "timed_out"):
+                    inflight[shard_no] = raw
+                    continue
+            finish(shard_no, raw)
+            del inflight[shard_no]
+    statuses = [shard["status"] for shard in entry["shards"]]
+    if "failed" in statuses:
+        entry["status"] = "failed"
+    elif "partial" in statuses:
+        entry["status"] = "partial"
+    else:
+        entry["status"] = "complete"
+    return entry
+
+
 def run_gate(
     url,
     token,
@@ -195,6 +393,8 @@ def run_gate(
     sleep=time.sleep,
     fixture=FIXTURE,
     check_only=False,
+    deep_shard_size=4,
+    deep_concurrency=4,
 ):
     report = {
         "passed": False,
@@ -233,6 +433,26 @@ def run_gate(
         ):
             if time.monotonic() >= stop:
                 raise TimeoutError("gate job timeout expired")
+            if stage == "profile_deep" and deep_shard_size:
+                entry = run_deep_shards(
+                    url=url,
+                    headers=headers,
+                    definition=definition,
+                    workloads=workloads,
+                    fixture=fixture,
+                    deadline_seconds=deadline_seconds,
+                    shard_size=deep_shard_size,
+                    report=report,
+                    output=output,
+                    token=token,
+                    transport=transport,
+                    sleep=sleep,
+                    stop=stop,
+                    max_concurrent=deep_concurrency,
+                )
+                if entry["status"] != "complete":
+                    break
+                continue
             body = build_body(definition, workloads, stage, deadline_seconds, fixture)
             expected = reference_digest(body)
             route = (
@@ -335,6 +555,18 @@ def main():
     parser.add_argument("--check-only", action="store_true")
     parser.add_argument("--deadline-seconds", type=int, default=3600)
     parser.add_argument("--job-timeout", type=int, default=19000)
+    parser.add_argument(
+        "--deep-shard-size",
+        type=int,
+        default=4,
+        help="cases per profile_deep shard evaluation (0 disables sharding)",
+    )
+    parser.add_argument(
+        "--deep-concurrency",
+        type=int,
+        default=4,
+        help="max concurrent profile_deep shard evaluations in flight",
+    )
     args = parser.parse_args()
     if not 10 <= args.deadline_seconds <= 3600 or args.job_timeout <= 0:
         parser.error("deadline-seconds must be 10..3600 and job-timeout positive")
@@ -350,6 +582,8 @@ def main():
         deadline_seconds=args.deadline_seconds,
         job_timeout=args.job_timeout,
         check_only=args.check_only,
+        deep_shard_size=args.deep_shard_size,
+        deep_concurrency=args.deep_concurrency,
     )
     return 0 if report["passed"] else 1
 
