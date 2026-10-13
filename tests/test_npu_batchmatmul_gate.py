@@ -2,6 +2,7 @@
 
 import copy
 import json
+import sys
 
 import pytest
 
@@ -211,6 +212,22 @@ def test_deep_shard_413_inflight_backpressure_is_retried(tmp_path):
         if body is bounced[0] and headers["Idempotency-Key"] == bounced[1]["Idempotency-Key"]
     ]
     assert retried, "bounced shard POST must be replayed with the same idempotency key"
+
+
+@pytest.mark.parametrize(
+    "flag", [["--deep-shard-size", "-1"], ["--deep-concurrency", "0"]]
+)
+def test_cli_rejects_shard_settings_that_skip_or_stall_deep(tmp_path, monkeypatch, flag):
+    # A negative shard size yields zero shards, so profile_deep would report
+    # complete without profiling a case; zero concurrency never submits.
+    output = tmp_path / "report.json"
+    monkeypatch.setattr(
+        sys, "argv", ["npu_batchmatmul_gate.py", "--check-only", "--output", str(output), *flag]
+    )
+    with pytest.raises(SystemExit) as exited:
+        gate.main()
+    assert exited.value.code == 2
+    assert not output.exists()
 
 
 def test_http_chain_exact_official_inputs(tmp_path):

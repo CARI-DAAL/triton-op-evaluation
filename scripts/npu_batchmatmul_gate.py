@@ -570,6 +570,8 @@ def main():
     args = parser.parse_args()
     if not 10 <= args.deadline_seconds <= 3600 or args.job_timeout <= 0:
         parser.error("deadline-seconds must be 10..3600 and job-timeout positive")
+    if args.deep_shard_size < 0 or args.deep_concurrency < 1:
+        parser.error("deep-shard-size must be >= 0 and deep-concurrency >= 1")
     if not args.check_only and not args.capability_file:
         parser.error("--capability-file is required for HTTP execution")
     token = args.capability_file.read_text().strip() if args.capability_file else ""
