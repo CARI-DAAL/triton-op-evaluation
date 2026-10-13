@@ -38,6 +38,7 @@ from pydantic import (
 )
 
 from ..api.contract import (
+    BenchmarkKernelMetrics,
     CaseFailure,
     CaseMetrics,
     CorrectnessResult,
@@ -437,6 +438,7 @@ class _ShapeMeasurement(StrictModel):
     # original_measurements); not part of the public contract.
     reference_path: str | None = None
     baseline_cache_hit: bool | None = None
+    kernel_metrics: dict[str, BenchmarkKernelMetrics] | None = None
 
 
 class _AggregateMeasurement(StrictModel):
@@ -458,6 +460,10 @@ class _PerShapeResult(StrictModel):
 
     @model_validator(mode="after")
     def _speedup_is_null_or_positive(self):
+        if (self.implementation is not None
+                and self.implementation.kernel_metrics is not None
+                and self.measurement_method != "profiler_kernel_sum_v1"):
+            raise ValueError("kernel metrics require profiler timing")
         if self.speedup_vs_torch is not None and self.speedup_vs_torch <= 0:
             raise ValueError("abnormal speedups must be normalized to null")
         if self.status == "fail" and (
@@ -560,6 +566,7 @@ def shape_performance(raw: dict[str, object]) -> PerformanceResult:
                 baseline_cache_hit=case.framework.baseline_cache_hit,
                 speedup_vs_reference=reference / implementation,
                 measurement_method=case.measurement_method,
+                kernel_metrics=case.implementation.kernel_metrics,
                 reference_latency_samples_ms=case.framework.latency_samples_ms,
                 reference_latency_samples_source=case.framework.latency_samples_source,
                 reference_timing_policy_sha256=case.framework.latency_samples_proof_sha256,

@@ -151,6 +151,45 @@ they do not generate inputs or establish device correctness.
 retries on the same instance; without a key each submission is new work. A session
 groups quotas and is not an authorization credential.
 
+## Profiler benchmark feedback
+
+Set `performance.method="profiler"` to receive the implementation's kernel latency
+and pipe-utilization counters from the existing benchmark capture. The client
+supports `benchmark --method profiler`; Event timing remains the default.
+
+Each measured `result.performance.data.per_case` item can contain `kernel_metrics`,
+keyed by the kernel names observed in that implementation's capture:
+
+```json
+{
+  "kernel_metrics": {
+    "_bmm_kernel": {
+      "latency_ms": 0.02,
+      "aic_cube_ratio": 0.42,
+      "aiv_vec_ratio": null
+    }
+  }
+}
+```
+
+Each entry includes mean kernel latency in milliseconds and available AIC/AIV
+Cube/MAC, vector, scalar, MTE and Fixpipe ratios. Ratios are fractions in `[0, 1]`;
+explicit percentage columns are normalized. `cube_utilization` is separate from
+Cube/MAC pipe ratios. Missing, nonnumeric, nonfinite or out-of-range counters stay
+`null`. Cube and MAC vendor columns retain distinct names.
+
+Counters use the same final active-repeat rows as the existing kernel-duration
+calculation. They describe individual kernels in this case, without averaging
+across cases or making a whole-device utilization claim. All implementation
+kernels are retained, including native kernels called by candidate code.
+
+Event responses and older persisted results omit `kernel_metrics`. Single-source
+profiler benchmarks return counters for the selected Torch or Triton implementation.
+Comparison benchmarks return fresh candidate counters even when Torch timing
+comes from the baseline cache. No additional profiling pass is launched. This
+feedback does not establish the broader evidence returned by `profile_op` or
+`profile_deep`.
+
 ## Reuse Torch baseline timings
 
 Comparison performance defaults to `performance.use_baseline_cache=true`.

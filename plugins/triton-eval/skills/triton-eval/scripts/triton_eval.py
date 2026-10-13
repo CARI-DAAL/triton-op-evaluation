@@ -79,6 +79,11 @@ def arguments(argv):
             command.add_argument("--idempotency-key")
             command.add_argument("--session-id")
         if action == "benchmark":
+            command.add_argument(
+                "--method", choices=("event", "profiler"),
+                help=("timing backend (service default: event); "
+                      "profiler returns available pipe counters"),
+            )
             cache = command.add_mutually_exclusive_group()
             cache.add_argument(
                 "--use-baseline-cache", dest="use_baseline_cache", action="store_true",
@@ -369,8 +374,14 @@ class Client:
                     raise ClientError(
                         "INVALID_INPUT", "custom inputs require reference or --custom-inputs source"
                     )
-            if self.args.command == "benchmark" and not self.args.use_baseline_cache:
-                payload["performance"] = {"use_baseline_cache": False}
+            if self.args.command == "benchmark":
+                performance = {}
+                if self.args.method is not None:
+                    performance["method"] = self.args.method
+                if not self.args.use_baseline_cache:
+                    performance["use_baseline_cache"] = False
+                if performance:
+                    payload["performance"] = performance
             if self.key is None:
                 self.key = uuid.uuid4().hex
             if not re.fullmatch(r"[!-~]{1,128}", self.key):

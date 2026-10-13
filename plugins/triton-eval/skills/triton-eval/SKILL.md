@@ -63,7 +63,16 @@ the cache. Candidate timing is always measured. Preserve per-case
 always measure fresh and never read or write this cache; accepting the flag does
 not establish a cache hit.
 
-Use subcommand `--help` for the available options. The client normally
+Use subcommand `--help` for the available options. Benchmarks default to Event
+timing. For per-kernel latency and pipe-utilization
+feedback, choose `benchmark --method profiler`. Inspect
+`result.performance.data.per_case[].kernel_metrics`, keyed by implementation
+kernel name. Ratios are fractions in `[0, 1]`; missing counters are `null`. These
+counters come from the benchmark capture without an extra `profile` request;
+they do not establish op/deep profiling coverage. Event and older results omit
+the field. Candidate counters remain fresh when Torch baseline timing is cached.
+
+The client normally
 polls for up to 960 seconds with a 1-second interval; `--timeout`,
 `--poll-interval` and `--no-wait` control that client behavior. An elapsed client
 wait does not cancel accepted work.

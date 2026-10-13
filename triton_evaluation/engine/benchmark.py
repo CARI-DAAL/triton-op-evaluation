@@ -126,9 +126,22 @@ class MeasureContext:
 @dataclass
 class Measurement:
     """单次 profiling 测量结果三元组：算子分项耗时 / 平均时延 / 峰值显存。"""
-    operators: Dict[str, float]
+    operators: Optional[Dict[str, float]]
     latency_ms: Optional[float]
     peak_memory: float
+    kernel_metrics: Optional[Dict[str, Dict[str, Any]]] = None
+
+    def __iter__(self):
+        # Preserve the existing three-value unpacking used by probes and callers.
+        yield self.operators
+        yield self.latency_ms
+        yield self.peak_memory
+
+    def __len__(self):
+        return 3
+
+    def __getitem__(self, index):
+        return tuple(self)[index]
 
 
 @dataclass
@@ -189,6 +202,8 @@ class PerformanceResult:
     # (the production e4a36f7 single-measurement path). None on the
     # implementation side and for preset skip-framework reference values.
     reference_path: Optional[str] = None
+    # Fresh implementation capture only; never synthesized from cached timings.
+    kernel_metrics: Optional[Dict[str, Dict[str, Any]]] = None
 
 
 @dataclass
@@ -350,8 +365,37 @@ def cleanup_profile_path(profile_path: str) -> None:
 # 性能分析逻辑
 # ============================================================================
 
+_PIPE_RATIO_COLUMNS = (
+    "aic_cube_ratio", "aic_mac_ratio", "aic_scalar_ratio", "aic_mte1_ratio",
+    "aic_mte2_ratio", "aic_fixpipe_ratio", "aiv_vec_ratio", "aiv_scalar_ratio",
+    "aiv_mte2_ratio", "aiv_mte3_ratio",
+)
+
+
+def _pipe_utilization(active_rows, avg_us):
+    """Read emitted counters only; unknown/invalid values remain unavailable."""
+    import pandas as pd
+
+    metrics = {"latency_ms": float(avg_us) / 1000}
+    columns = {name: ((name, 1.0), (name + "(%)", 0.01),
+                      (name + " (%)", 0.01)) for name in _PIPE_RATIO_COLUMNS}
+    columns["cube_utilization"] = (("cube_utilization(%)", 0.01),)
+    for name, alternatives in columns.items():
+        metrics[name] = None
+        for column, scale in alternatives:
+            if column not in active_rows or pd.api.types.is_bool_dtype(active_rows[column]):
+                continue
+            values = pd.to_numeric(active_rows[column], errors="coerce") * scale
+            values = values[values.between(0, 1)]  # excludes NaN, Inf and invalid ratios
+            if not values.empty:
+                metrics[name] = float(values.mean())
+                break
+    return metrics
+
+
 def parse_operator_latency(
     profile_path: str, warmup: int, active_count: int, keep_res: bool = False,
+    *, kernel_metrics: Optional[Dict[str, Dict[str, Any]]] = None,
 ) -> Tuple[Optional[Dict[str, float]], Optional[float]]:
     """从 kernel_details.csv 提取算子时延数据，计算平均执行时间（毫秒）。
 
@@ -360,6 +404,9 @@ def parse_operator_latency(
     - 通过 Name groupby 统计每个 kernel 的耗时，再汇总得到总时延
     """
     import pandas as pd
+
+    if kernel_metrics is not None:
+        kernel_metrics.clear()
 
     # 在 profile_path 目录下递归查找 kernel_details.csv
     kernel_details_file = None
@@ -392,6 +439,8 @@ def parse_operator_latency(
         total_us = active_rows["Duration(us)"].sum()
         avg_us = total_us / active_count
         operator_avg_times[name] = avg_us
+        if kernel_metrics is not None:
+            kernel_metrics[str(name)] = _pipe_utilization(active_rows, avg_us)
 
     # 总时延 = 所有 kernel 在单次 test_fn() 调用中的耗时之和
     total_avg_us = sum(operator_avg_times.values())
@@ -526,7 +575,7 @@ def measure_single(
         ctx: MeasureContext,
         clear_l2_cache: bool = False,
         keep_res: bool = False,
-) -> Tuple[Optional[Dict[str, float]], Optional[float], float]:
+) -> Measurement:
     """测量单次性能（warmup + profiling）"""
     import torch
     import torch_npu  # noqa: F401
@@ -537,15 +586,20 @@ def measure_single(
     if ctx.method == "event":
         latency_ms = _measure_event(test_fn, ctx.warmup, ctx.repeats, ctx.cv_threshold)
         operators = None
+        kernel_metrics = None
     else:
         profile_path = run_profiler_with_config(
             test_fn, ctx.warmup, ctx.repeats, ctx.profile_name,
             clear_l2_cache=clear_l2_cache,
         )
-        operators, latency_ms = parse_operator_latency(profile_path, ctx.warmup, ctx.repeats, keep_res=keep_res)
+        kernel_metrics = {}
+        operators, latency_ms = parse_operator_latency(
+            profile_path, ctx.warmup, ctx.repeats, keep_res=keep_res,
+            kernel_metrics=kernel_metrics,
+        )
 
     peak_memory = torch.npu.max_memory_allocated() / (1024 * 1024)
-    return operators, latency_ms, round(peak_memory, 2)
+    return Measurement(operators, latency_ms, round(peak_memory, 2), kernel_metrics)
 
 
 # ============================================================================
@@ -627,10 +681,10 @@ def _measure_impl(
     config: BenchmarkConfig,
     device: Any,
     case_idx: int,
-) -> Tuple[Dict[str, float], Optional[float], float]:
+) -> Measurement:
     """测量 impl 端时延 / 显存 / 算子分项。"""
     logger.info("    测试 Implementation (warmup=%d, active=%d)...", config.warmup, config.repeats)
-    operators, latency_ms, peak_memory = measure_single(
+    measurement = measure_single(
         MeasureContext(
             model=impl_model,
             inputs=inputs_impl,
@@ -644,7 +698,9 @@ def _measure_impl(
         clear_l2_cache=config.clear_l2_cache,
         keep_res=config.keep_res,
     )
-    return operators or {}, latency_ms, peak_memory
+    operators, latency_ms, peak_memory = measurement
+    return Measurement(operators or {}, latency_ms, peak_memory,
+                       getattr(measurement, "kernel_metrics", None))
 
 
 def _compute_speedup(framework_latency_ms: float, impl_latency_ms: float) -> float:
@@ -687,6 +743,7 @@ def _build_perf_pair(
             avg_latency_ms=round(impl.latency_ms, 4),
             peak_memory_mb=round(impl.peak_memory, 2),
             operators=impl.operators,
+            kernel_metrics=impl.kernel_metrics,
         ),
     )
 
@@ -715,9 +772,10 @@ def run_single_benchmark(
     framework_operators, framework_latency_ms, framework_peak_memory, reference_evidence = _measure_framework(
         models.framework, inputs, config, device, case_idx,
     )
-    impl_operators, impl_latency_ms, impl_peak_memory = _measure_impl(
+    impl_measurement = _measure_impl(
         models.impl, inputs_impl, config, device, case_idx,
     )
+    impl_operators, impl_latency_ms, impl_peak_memory = impl_measurement
 
     if (not config.skip_framework and framework_latency_ms is None) or impl_latency_ms is None:
         raise RuntimeError(
@@ -727,7 +785,8 @@ def run_single_benchmark(
     speedup = _compute_speedup(framework_latency_ms, impl_latency_ms)
     fw_perf, impl_perf = _build_perf_pair(
         Measurement(framework_operators, framework_latency_ms, framework_peak_memory),
-        Measurement(impl_operators, impl_latency_ms, impl_peak_memory),
+        Measurement(impl_operators, impl_latency_ms, impl_peak_memory,
+                    getattr(impl_measurement, "kernel_metrics", None)),
         reference_evidence,
         reference_path=_reference_path_label(config),
     )
@@ -1405,6 +1464,8 @@ def result_to_dict(result: BenchmarkResult) -> Dict[str, Any]:
                 {
                     "avg_latency_ms": r.implementation.avg_latency_ms,
                     "peak_memory_mb": r.implementation.peak_memory_mb,
+                    **({"kernel_metrics": r.implementation.kernel_metrics}
+                       if r.implementation.kernel_metrics is not None else {}),
                 } if r.implementation else None
             ),
             "speedup_vs_torch": _normalize_shape_speedup(r.speedup_vs_torch),
