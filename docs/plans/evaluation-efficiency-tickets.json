@@ -1,0 +1,129 @@
+{
+  "baseline_commit": "312bbc7275f2b74707ed234fba031f78e165392f",
+  "principle": "The caller selects checks, cases and budgets. The service executes explicit requests and returns reusable, scoped evidence without inferring intent.",
+  "tickets": [
+    {
+      "id": "EVF-01",
+      "title": "Linear correctness diagnostics and import failure short circuit",
+      "owner": "verify_efficiency",
+      "status": "cpu_accepted",
+      "acceptance": [
+        "Diagnostic outputs and threshold boundaries match the previous implementation",
+        "Known import failures do not materialize normal workload tensors"
+      ]
+    },
+    {
+      "id": "EVF-02",
+      "title": "Batch profile cases and share metadata discovery",
+      "owner": "profile_preparation",
+      "status": "cpu_accepted",
+      "acceptance": [
+        "One outer engine invocation covers an explicit case selection",
+        "Built-in workload descriptions require no tensor allocation",
+        "Only requested deep metric groups and per-core sampling execute"
+      ]
+    },
+    {
+      "id": "EVF-03",
+      "title": "Joint timing and trace execution",
+      "owner": "joint_measurement",
+      "status": "cpu_accepted",
+      "acceptance": [
+        "Event timing completes before trace capture",
+        "Profiler timing reuses its capture for trace output",
+        "One candidate subprocess serves the combined request",
+        "Valid timing survives later trace failure",
+        "Single-source measurements remain explicitly unverified"
+      ]
+    },
+    {
+      "id": "EVF-04",
+      "title": "Expose fenced stage evidence through a progress endpoint",
+      "owner": "root",
+      "status": "cpu_accepted",
+      "acceptance": [
+        "Correctness and timing can be retrieved before the whole evaluation terminates",
+        "Progress obeys read authorization and attempt fencing",
+        "Replacement attempts cannot inherit earlier attempt progress"
+      ]
+    },
+    {
+      "id": "EVF-05",
+      "title": "Expose explicit controls and combined requests in the portable CLI",
+      "owner": "root",
+      "status": "cpu_accepted",
+      "acceptance": [
+        "CLI supports combined checks, case selection, timing protocol and profile modes",
+        "Chosen options reach the service without altering unrelated request defaults",
+        "A progress command recovers stage evidence"
+      ]
+    },
+    {
+      "id": "EVF-06",
+      "title": "Explicit correctness selection and failure stopping",
+      "owner": "verify_efficiency",
+      "status": "cpu_accepted",
+      "acceptance": [
+        "Caller can select cases and stop after a proven mismatch",
+        "Results distinguish selected, executed and not-run cases",
+        "Partial coverage never establishes whole-task correctness"
+      ]
+    },
+    {
+      "id": "EVF-07",
+      "title": "Reuse explicitly referenced correctness evidence",
+      "owner": "profile_preparation",
+      "status": "cpu_accepted",
+      "acceptance": [
+        "An unchanged candidate can be timed using a caller-visible completed correctness evaluation",
+        "Source, inputs, environment, algorithms and freshness are checked",
+        "Invalid or inaccessible evidence never silently authorizes a benchmark"
+      ]
+    },
+    {
+      "id": "EVF-08",
+      "title": "CPU integration acceptance and NPU comparison harness",
+      "owner": "root",
+      "status": "cpu_accepted",
+      "acceptance": [
+        "Focused and full CPU checks pass",
+        "NPU script compares separate and combined execution with identical inputs and methods",
+        "Reports separate functional acceptance from measured device speedups",
+        "The user performs the final NPU measurements"
+      ]
+    }
+  ],
+  "review_findings_fixed": [
+    "Progress revisions advance atomically when attempts are invalidated, replaced or terminalized.",
+    "Comparison timing is bound to the requested method and verified case inventory.",
+    "Explicit correctness reuse materializes frozen sources and uses the real bound handoff gate.",
+    "Reuse requires complete environment identity; absent versions do not count as a match.",
+    "Card-affinity queue scans page past ineligible entries while preserving eligible FIFO and queue priority.",
+    "Joint input replay supports nonleaf tensor views and preserves storage aliases.",
+    "NPU comparison uses complete matched pairs, preserves non_compute and reports timing drift separately."
+  ],
+  "npu_measurement_guide": "docs/operations/feedback-performance.md",
+  "implementation_limits": [
+    "Combined execution applies to timing plus the explicit trace mode; op/deep native captures remain separate.",
+    "Correctness still has its own engine process unless explicitly reused from a valid original observation.",
+    "Fresh reference-only baseline production remains isolated from candidate execution.",
+    "CPU tests do not establish actual NPU speedups; the user runs the final measurement."
+  ],
+  "cpu_acceptance": {
+    "pytest": "2217 passed, 22 skipped, 7 deselected in 330.41s",
+    "command": "python -m pytest -m 'not npu' -q",
+    "ruff": "passed",
+    "compileall": "passed",
+    "diff_check": "passed",
+    "independent_review": "completed; concrete findings fixed and regression-tested"
+  },
+  "device_acceptance": {
+    "status": "pending_user_measurement",
+    "guide": "docs/operations/feedback-performance.md",
+    "script": "scripts/npu_feedback_comparison.py",
+    "methods": [
+      "event",
+      "profiler"
+    ]
+  }
+}

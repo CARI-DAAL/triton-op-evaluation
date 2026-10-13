@@ -92,7 +92,7 @@ def test_deep_capture_runs_three_warmups_then_seven_plus_sample(
     monkeypatch.setattr(
         msprof_deep,
         "select_and_merge_metrics",
-        lambda dirs, names: {
+        lambda dirs, names, groups: {
             "target_kernel": "kernel_a_hash",
             "target_selection_metric": "PipeUtilization",
             "raw_metrics": {},
@@ -138,7 +138,7 @@ def test_deep_metric_pass_timeout_is_partial_not_job_timeout(tmp_path, monkeypat
     monkeypatch.setattr(
         msprof_deep,
         "select_and_merge_metrics",
-        lambda dirs, names: {
+        lambda dirs, names, groups: {
             "target_kernel": "kernel_a_hash",
             "target_selection_metric": "ArithmeticUtilization",
             "raw_metrics": {},
@@ -159,6 +159,41 @@ def test_deep_metric_pass_timeout_is_partial_not_job_timeout(tmp_path, monkeypat
     assert calls == 11
     assert result["status"] == "partial"
     assert "per-process timeout" in " ".join(result["warnings"])
+
+
+@pytest.mark.parametrize("groups", [[], ["Unknown"], ["Memory", "Memory"]])
+def test_invalid_metric_groups_fail_before_starting_processes(tmp_path, monkeypatch, groups):
+    monkeypatch.setattr(
+        msprof_deep, "run_command", lambda *args, **kwargs: pytest.fail("unexpected process"),
+    )
+    with pytest.raises(ValueError, match="metric_groups"):
+        msprof_deep.profile_deep_case(
+            app_cmd=["python", "runner.py"], kernel_names=["kernel_a"],
+            output_dir=str(tmp_path), cwd=str(tmp_path), env={},
+            deadline=msprof_deep.time.monotonic() + 60, metric_groups=groups,
+        )
+
+
+def test_selected_deep_capture_warmup_failure_only_marks_requested_metrics(tmp_path, monkeypatch):
+    calls = []
+
+    def failed_warmup(cmd, **kwargs):
+        calls.append(cmd)
+        return msprof_deep.CommandOutcome(9, "", "failed")
+
+    monkeypatch.setattr(msprof_deep, "run_command", failed_warmup)
+    result = msprof_deep.profile_deep_case(
+        app_cmd=["python", "runner.py"], kernel_names=["kernel_a"],
+        output_dir=str(tmp_path), cwd=str(tmp_path), env={},
+        deadline=msprof_deep.time.monotonic() + 60,
+        metric_groups=["Memory"], include_per_core=False,
+    )
+    assert len(calls) == 1
+    assert result["status"] == "failed"
+    assert result["missing_metrics"] == ["Memory"]
+    assert result["raw_metrics"]["_capture_requested"] == {
+        "metric_groups": ["Memory"], "include_per_core": False,
+    }
 
 
 def _base_ratios():

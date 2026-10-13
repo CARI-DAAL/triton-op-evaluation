@@ -27,6 +27,15 @@ def get_init_inputs():
 
 
 class _OperatorInputGroups(_operator_collections.Sequence):
+    @property
+    def _inputs_are_fresh(self):
+        # Built-in generation reseeds and allocates tensors on each access.
+        # A custom callback can retain storage in imported module state.
+        return all(
+            spec["type"] != "custom"
+            for case in _operator_cases for spec in case["inputs"].values()
+        )
+
     def __len__(self):
         return len(_operator_cases)
 
@@ -135,6 +144,10 @@ def to_evaluation_request(
         reference_code=reference_code, kernel_code=kernel_code,
         triton_impl_name="triton_ascend_impl", checks=selected,
         deadline_seconds=request.deadline_seconds, non_compute=request.non_compute,
+        correctness_from=request.correctness_from,
+        correctness=(
+            request.correctness if checks is None or "correctness" in selected else None
+        ),
         performance=(
             request.performance if checks is None or "performance" in selected else None
         ),

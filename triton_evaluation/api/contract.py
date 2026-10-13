@@ -37,7 +37,7 @@ Digest = Annotated[str, Field(pattern=r"^[0-9a-f]{64}$")]
 FiniteOrSentinel = float | Literal["inf", "-inf", "nan"]
 DivergenceKind = Literal["shape_mismatch", "value_mismatch", "non_finite_mismatch"]
 CorrectnessDomainOutcome = Literal[
-    "correct", "wrong", "compile_error", "runtime_error", "execution_timeout"
+    "correct", "wrong", "incomplete", "compile_error", "runtime_error", "execution_timeout"
 ]
 ProfileCaseStatus = Literal["complete", "partial", "failed"]
 
@@ -92,6 +92,21 @@ def redacted_text(max_bytes: int) -> Callable[[str], str]:
 # ---------------------------------------------------------------------------
 
 
+class CorrectnessParams(StrictModel):
+    case_indices: list[Annotated[int, Field(ge=0)]] | None = Field(
+        default=None, min_length=1, max_length=128,
+    )
+    stop_on: Literal["complete", "first_failure"] = "complete"
+
+    @model_validator(mode="after")
+    def _case_indices_unique_then_sorted(self):
+        if self.case_indices is not None:
+            if len(set(self.case_indices)) != len(self.case_indices):
+                raise ValueError("case_indices must not contain duplicates")
+            self.case_indices = sorted(self.case_indices)
+        return self
+
+
 class PerformanceParams(StrictModel):
     use_baseline_cache: bool = Field(
         default=True, exclude_if=lambda value: value is True,
@@ -118,13 +133,30 @@ class PerformanceParams(StrictModel):
         return self
 
 
+ProfileMetricGroup = Literal[
+    "PipeUtilization", "ArithmeticUtilization", "Memory", "MemoryL0",
+    "MemoryUB", "L2Cache", "ResourceConflictRatio",
+]
+
+
 class ProfileParams(StrictModel):
-    mode: Literal["op", "deep"] = "op"
+    mode: Literal["op", "deep", "trace"] = "op"
     case_indices: list[Annotated[int, Field(ge=0)]] | None = Field(
         default=None, max_length=128
     )
-    max_kernels_per_case: int = Field(default=200, ge=1, le=1000)
+    max_kernels_per_case: int = Field(
+        default=200, ge=1, le=1000,
+        description="Maximum returned kernels per case; this is not a capture launch limit.",
+    )
     include_recommendations: bool = True
+    metric_groups: list[ProfileMetricGroup] | None = Field(
+        default=None, min_length=1, max_length=7, exclude_if=lambda value: value is None,
+        description="Explicit deep-profile counter groups; omitted selects all groups.",
+    )
+    include_per_core: bool = Field(
+        default=True, exclude_if=lambda value: value is True,
+        description="Whether deep profiling also captures per-core sampling evidence.",
+    )
 
     @model_validator(mode="after")
     def _case_indices_unique_then_sorted(self):
@@ -132,6 +164,11 @@ class ProfileParams(StrictModel):
             if len(set(self.case_indices)) != len(self.case_indices):
                 raise ValueError("case_indices must not contain duplicates")
             self.case_indices = sorted(self.case_indices)
+        if self.mode != "deep" and (self.metric_groups is not None or not self.include_per_core):
+            raise ValueError("metric_groups and include_per_core apply only to deep profiling")
+        if (self.metric_groups is not None
+                and len(set(self.metric_groups)) != len(self.metric_groups)):
+            raise ValueError("metric_groups must not contain duplicates")
         return self
 
 
@@ -168,6 +205,12 @@ class EvaluationRequest(StrictModel):
     checks: list[Check] = Field(min_length=1, max_length=4)
     non_compute: bool = False
     deadline_seconds: int = Field(default=900, ge=10, le=3600)
+    correctness: CorrectnessParams | None = Field(
+        default=None, exclude_if=lambda value: value is None,
+    )
+    correctness_from: str | None = Field(
+        default=None, pattern=r"^ev_[0-9a-f]{32}$", exclude_if=lambda value: value is None,
+    )
     performance: PerformanceParams | None = None
     profile: ProfileParams | None = None
     grade_context: GradeContext | None = None
@@ -177,6 +220,19 @@ class EvaluationRequest(StrictModel):
         if len(set(self.checks)) != len(self.checks):
             raise ValueError("checks must not contain duplicates")
         self.checks = sorted(self.checks, key=_CHECK_ORDER.index)
+        if self.correctness_from is not None:
+            if "correctness" not in self.checks or self.purpose == "grade":
+                raise ValueError("correctness_from requires a non-grade correctness check")
+            if self.correctness is not None and self.correctness.case_indices is not None:
+                raise ValueError("correctness_from requires whole-task correctness")
+        if self.correctness is not None:
+            if "correctness" not in self.checks:
+                raise ValueError("correctness params require the correctness check")
+            if self.purpose == "grade" and (
+                self.correctness.case_indices is not None
+                or self.correctness.stop_on != "complete"
+            ):
+                raise ValueError("grade correctness requires all cases without early stopping")
         if self.implementation != "comparison":
             if "correctness" in self.checks:
                 raise ValueError("the correctness check requires both implementations")
@@ -345,6 +401,34 @@ _OUTCOME_TO_DOMAIN_CODE = {
 }
 
 
+class CorrectnessCoverage(StrictModel):
+    """Case evidence identities, not a claim that every case launched on the device."""
+
+    selected_case_indices: list[Annotated[int, Field(ge=0)]] = Field(min_length=1)
+    evaluated_case_indices: list[Annotated[int, Field(ge=0)]]
+    stop_reason: Literal[
+        "complete", "first_failure", "candidate_error", "input_exhausted", "decoy",
+    ]
+
+    @model_validator(mode="after")
+    def _coverage_rules(self):
+        selected = self.selected_case_indices
+        evaluated = self.evaluated_case_indices
+        if selected != sorted(set(selected)):
+            raise ValueError("selected case indices must be unique and sorted")
+        if evaluated != selected[:len(evaluated)]:
+            raise ValueError("evaluated cases must be a prefix of selected cases")
+        if self.stop_reason == "complete" and evaluated != selected:
+            raise ValueError("complete coverage must account for every selected case")
+        if self.stop_reason in {"first_failure", "candidate_error"} and not evaluated:
+            raise ValueError("failure stopping requires evaluated case evidence")
+        if self.stop_reason == "input_exhausted" and evaluated == selected:
+            raise ValueError("input_exhausted requires missing selected cases")
+        if self.stop_reason == "decoy" and evaluated:
+            raise ValueError("decoy precheck does not evaluate workload cases")
+        return self
+
+
 class CorrectnessResult(StrictModel):
     outcome: CorrectnessDomainOutcome
     passed: bool
@@ -353,6 +437,18 @@ class CorrectnessResult(StrictModel):
     total_cases: Annotated[int, Field(ge=1)]
     failures: list[CaseFailure]
     domain_failure: DomainFailure | None = None
+    coverage: CorrectnessCoverage | None = Field(
+        default=None, exclude_if=lambda value: value is None,
+    )
+    reused_from: str | None = Field(
+        default=None, pattern=r"^ev_[0-9a-f]{32}$", exclude_if=lambda value: value is None,
+    )
+
+    @model_validator(mode="after")
+    def _reuse_requires_full_pass(self):
+        if self.reused_from is not None and self.outcome != "correct":
+            raise ValueError("reused correctness evidence must be a complete pass")
+        return self
 
     @model_validator(mode="after")
     def _domain_rules(self):
@@ -365,10 +461,32 @@ class CorrectnessResult(StrictModel):
             raise ValueError("failure case_idx out of range")
         if self.passed_cases + len(self.failures) > self.total_cases:
             raise ValueError("passed_cases plus failures must not exceed total_cases")
+        accounted = self.total_cases
+        if self.coverage is not None:
+            coverage = self.coverage
+            evaluated = coverage.evaluated_case_indices
+            if any(index >= self.total_cases for index in coverage.selected_case_indices):
+                raise ValueError("selected case index out of range")
+            if not set(indices).issubset(evaluated):
+                raise ValueError("failure requires evaluated case evidence")
+            accounted = len(evaluated)
+            if self.passed_cases + len(self.failures) > accounted:
+                raise ValueError("passed cases plus failures exceed evaluated coverage")
+            if coverage.stop_reason == "first_failure" and (
+                self.outcome != "wrong" or evaluated[-1] not in indices
+            ):
+                raise ValueError("first_failure requires a final mismatch")
+            if (coverage.stop_reason == "candidate_error") != (
+                self.outcome in _OUTCOME_TO_DOMAIN_CODE
+            ):
+                raise ValueError("candidate_error coverage requires a subject failure")
+            if (coverage.stop_reason == "decoy") != self.decoy:
+                raise ValueError("decoy coverage must match the decoy verdict")
         if self.passed != (self.outcome == "correct"):
             raise ValueError("passed is true iff outcome is correct")
         if self.outcome == "correct":
-            if self.passed_cases != self.total_cases or self.failures:
+            if (self.passed_cases != self.total_cases or self.failures
+                    or accounted != self.total_cases):
                 raise ValueError("correct requires every case passing")
             if self.domain_failure is not None or self.decoy:
                 raise ValueError("correct forbids domain_failure and decoy")
@@ -377,8 +495,13 @@ class CorrectnessResult(StrictModel):
                 raise ValueError("wrong forbids domain_failure")
             if not self.failures and not self.decoy:
                 raise ValueError("wrong requires a mismatch failure or decoy")
-            if self.passed_cases + len(self.failures) != self.total_cases:
+            if self.passed_cases + len(self.failures) != accounted:
                 raise ValueError("wrong requires every case accounted for")
+        elif self.outcome == "incomplete":
+            if self.coverage is None or self.passed_cases != accounted:
+                raise ValueError("incomplete requires explicit coverage of passing cases")
+            if accounted == self.total_cases or self.failures or self.domain_failure or self.decoy:
+                raise ValueError("incomplete requires missing coverage without a proven failure")
         else:
             failure = self.domain_failure
             if failure is None or failure.code != _OUTCOME_TO_DOMAIN_CODE[self.outcome]:
@@ -394,6 +517,17 @@ class CorrectnessResult(StrictModel):
                     raise ValueError("compile/initialize failures have no case_idx")
             elif failure.case_idx is None or failure.case_idx >= self.total_cases:
                 raise ValueError("execute failures require an in-range case_idx")
+            if self.coverage is not None:
+                if self.passed_cases + len(self.failures) >= accounted:
+                    raise ValueError("subject failure requires failed case evidence")
+                if self.outcome != "compile_error" and (
+                    self.passed_cases + len(self.failures) + 1 != accounted
+                ):
+                    raise ValueError("runtime failure must terminate evaluated case evidence")
+                if failure.case_idx is not None and (
+                    failure.case_idx != self.coverage.evaluated_case_indices[-1]
+                ):
+                    raise ValueError("runtime failure must match the final evaluated case")
         return self
 
 
@@ -643,6 +777,11 @@ class DeepRatios(StrictModel):
     scalar: float | None = Field(default=None, ge=0, le=1)
 
 
+class DeepCaptureRequest(StrictModel):
+    metric_groups: list[ProfileMetricGroup]
+    include_per_core: bool
+
+
 class DeepProfileCase(StrictModel):
     case_idx: Annotated[int, Field(ge=0)]
     status: ProfileCaseStatus
@@ -654,6 +793,12 @@ class DeepProfileCase(StrictModel):
     missing_metrics: list[str]
     warnings: list[str]
     error: ErrorInfo | None = None
+    raw_metrics: dict[str, object] | None = Field(
+        default=None, exclude_if=lambda value: value is None,
+    )
+    capture_requested: DeepCaptureRequest | None = Field(
+        default=None, exclude_if=lambda value: value is None,
+    )
 
     @model_validator(mode="after")
     def _status_rules(self):
@@ -717,8 +862,72 @@ class DeepProfileResult(StrictModel):
         return self
 
 
+class TraceKernel(StrictModel):
+    op_name: str = Field(min_length=1)
+    time_ms: Annotated[float, Field(ge=0)]
+    percentage: Annotated[float, Field(ge=0, le=100)]
+
+
+class TraceProfileCase(StrictModel):
+    case_idx: Annotated[int, Field(ge=0)]
+    status: ProfileCaseStatus
+    kernels: list[TraceKernel]
+    error: ErrorInfo | None = None
+
+    @model_validator(mode="after")
+    def _status_rules(self):
+        if self.status == "complete" and (self.error is not None or not self.kernels):
+            raise ValueError("complete trace cases require kernels and no error")
+        if self.status in {"partial", "failed"} and self.error is None:
+            raise ValueError("incomplete trace cases must explain the gap")
+        if self.status == "partial" and not self.kernels:
+            raise ValueError("partial trace cases require available evidence")
+        names = [kernel.op_name for kernel in self.kernels]
+        if len(names) != len(set(names)):
+            raise ValueError("trace kernel groups must have unique names")
+        duration = sum(kernel.time_ms for kernel in self.kernels)
+        if self.kernels and (not math.isfinite(duration) or duration <= 0):
+            raise ValueError("trace kernel durations must have a positive finite sum")
+        total = sum(k.percentage for k in self.kernels)
+        if self.status == "complete" and not 99.0 <= total <= 101.0:
+            raise ValueError("trace kernel percentages must sum within [99.0, 101.0]")
+        if self.status != "complete" and total > 101.0:
+            raise ValueError("partial trace kernel percentages exceed the captured total")
+        if self.status == "complete" and any(
+            not math.isclose(kernel.percentage, 100 * kernel.time_ms / duration, abs_tol=1e-6)
+            for kernel in self.kernels
+        ):
+            raise ValueError("trace kernel percentages differ from their measured durations")
+        return self
+
+
+class TraceProfileResult(StrictModel):
+    """Kernel durations from torch_npu profiler, without msprof op/deep counters."""
+
+    implementation: Literal["torch", "triton"] | None = Field(
+        default=None, exclude_if=lambda value: value is None,
+    )
+    correctness_verified: _Unverified | None = Field(
+        default=None, exclude_if=lambda value: value is None,
+    )
+    mode: Literal["trace"]
+    measurement_method: Literal["profiler_kernel_sum_v1"]
+    total_cases: Annotated[int, Field(ge=1)]
+    counts: ProfileCounts
+    cases: list[TraceProfileCase]
+
+    @model_validator(mode="after")
+    def _tallies(self):
+        if (self.implementation is None) != (self.correctness_verified is None):
+            raise ValueError("implementation and correctness_verified must appear together")
+        _check_profile_tallies(self.counts, self.cases)
+        if any(case.case_idx >= self.total_cases for case in self.cases):
+            raise ValueError("trace case index outside the reference inventory")
+        return self
+
+
 ProfileResult = Annotated[
-    OpProfileResult | DeepProfileResult, Field(discriminator="mode")
+    OpProfileResult | DeepProfileResult | TraceProfileResult, Field(discriminator="mode")
 ]
 
 
@@ -797,6 +1006,26 @@ class EvaluationResult(StrictModel):
                 if check not in requested and value is not None:
                     raise ValueError(f"unrequested check {check} must be null")
         return self
+
+
+class CheckEvidence(StrictModel):
+    """Validated check results available before the whole evaluation completes."""
+
+    correctness: CorrectnessOutcome | None = None
+    performance: PerformanceOutcome | None = None
+    profile: ProfileOutcome | None = None
+    compile: CompileCheckOutcome | None = None
+
+
+class EvaluationProgress(StrictModel):
+    schema_version: SchemaVersion
+    evaluation_id: str = Field(min_length=1)
+    resource_revision: Annotated[int, Field(ge=1)]
+    progress_revision: Annotated[int, Field(ge=0)]
+    state: ResourceState
+    attempt_id: str | None
+    active_check: Check | None
+    completed_checks: CheckEvidence
 
 
 def dump_contract(model: StrictModel) -> bytes:

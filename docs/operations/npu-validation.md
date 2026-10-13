@@ -4,6 +4,10 @@
 
 ## 1. 当前测试实际上覆盖到哪里
 
+本轮反馈提速改动的部署核对、逐项功能验收、separate/combined 对照命令和结果模板见
+[NPU 验证与反馈提速测试指南](feedback-performance.md)。该增量指南对应 EVF 01 至 08；
+本页保留更广的设备恢复、容量与稳定性验收范围。
+
 | 已有入口 | 实际执行内容 | 能证明什么 / 不能证明什么 |
 | --- | --- | --- |
 | `python -m pytest -m 'not npu' -q`；CI Python 3.10–3.12 | HTTP、Pydantic、输入生成、幂等/状态机、lease/fencing、缓存、worker、结果整形；大量使用 fakeredis、stub runner 或 fake NPU | 覆盖软件协议与编排；不能替代真实 NPU 算子、时延、profiling、故障恢复或压力验证 |
@@ -105,9 +109,10 @@ profile_deep 默认按每 4 个 case 拆成 13 个评测并发提交（`--deep-s
 `0` 恢复单个评测；`--deep-concurrency` 默认 4）。每个分片使用独立的
 `X-Session-ID`，避免被单 session 的 2 个在途上限卡住；caller 在途上限满时服务返回
 413，脚本用同一 idempotency key 稍后重投。任一分片失败或 partial，阶段即不通过。
-profile 引擎的 case discovery 会在主机上物化全部输入，用独立的
-`MSPROF_DISCOVERY_TIMEOUT_SEC`（默认 900 s，仍受评测 deadline 约束），结果缓存在本次
-评测的工作目录，逐 case 的引擎调用不再重复 discovery。
+新版 profile 引擎优先从普通 workload 元数据生成 case 描述，只有无法直接描述的输入
+（例如 custom 生成器）才实际物化。Discovery 使用独立的 `MSPROF_DISCOVERY_TIMEOUT_SEC`
+（默认 900 s，仍受评测 deadline 约束），结果缓存在本次评测工作目录。
+显式多 case 选择由一次外层引擎调用处理，原生 msprof 仍按 case 和所请求指标执行。
 
 已有底层 Event/profile 测试也可单独执行：
 

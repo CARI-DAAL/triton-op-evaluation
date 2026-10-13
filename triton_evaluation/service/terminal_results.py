@@ -28,6 +28,7 @@ from triton_evaluation.api.contract import (
     Provenance,
     SkipInfo,
 )
+from triton_evaluation.runtime.execution_environment import is_complete_execution_environment
 from triton_evaluation.service.models import PinnedProvenance
 
 _CHECK_ORDER = ("compile", "correctness", "performance", "profile")
@@ -148,16 +149,19 @@ def complete_evaluation(
 
 
 def _complete_environment(environment: ExecutionEnvironment | None) -> bool:
-    if environment is None or environment.hardware_count <= 0:
-        return False
-    return all(
-        isinstance(value, str) and bool(value.strip())
-        for field, value in environment.model_dump().items()
-        if field != "hardware_count"
-    )
+    return is_complete_execution_environment(environment)
 
 
 def _grade_evidence(outcomes: Mapping[str, object]) -> bool:
+    correctness = outcomes.get("correctness")
+    if correctness is not None and correctness.status == "succeeded":
+        data = correctness.data
+        coverage = getattr(data, "coverage", None)
+        if getattr(data, "reused_from", None) is not None or data.outcome == "incomplete" or (
+            coverage is not None
+            and set(coverage.evaluated_case_indices) != set(range(data.total_cases))
+        ):
+            return False
     for check, outcome in outcomes.items():
         if outcome.status == "succeeded":
             if check == "performance":

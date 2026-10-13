@@ -14,13 +14,14 @@ from fastapi import APIRouter, Depends, Header, Query, Request
 from fastapi.responses import Response
 
 from ..evaluators.operator import to_evaluation_request
+from ..runtime.correctness_evidence import CorrectnessEvidenceError
 from ..service.admission import ForbiddenError
 from ..service.broker import StorageError
 from ..service.instance import EvaluationInstance, InstanceNotReadyError, QueueUnavailableError
 from ..service.security import Caller
 from . import errors
 from .auth import require_observer, require_read_caller, require_submit_caller
-from .contract import EvaluationResource
+from .contract import EvaluationProgress, EvaluationResource
 from .dependencies import AppContext, get_context, get_instance
 from .errors import error_responses
 from .operator import OperatorRequest
@@ -111,6 +112,8 @@ async def submit_evaluation(
         )
     except ForbiddenError:
         raise errors.forbidden() from None
+    except CorrectnessEvidenceError as error:
+        raise errors.invalid_request_schema(str(error)) from None
     except InstanceNotReadyError:
         raise errors.not_ready() from None
     except QueueUnavailableError:
@@ -175,6 +178,24 @@ async def get_evaluation(
     if resource.state not in TERMINAL_STATES:
         response.headers.update(errors.RETRY_AFTER_ONE)
     return resource
+
+
+@router.get(
+    "/evaluations/{evaluation_id}/progress", response_model=EvaluationProgress,
+    responses=error_responses(401, 403, 404, 413, 422, 500),
+)
+async def get_evaluation_progress(
+    evaluation_id: str,
+    response: Response,
+    caller: Annotated[Caller, Depends(require_read_caller)],
+    instance: Annotated[EvaluationInstance, Depends(get_instance)],
+) -> EvaluationProgress:
+    progress = await asyncio.to_thread(instance.get_progress, evaluation_id, caller)
+    if progress is None:
+        raise errors.not_found()
+    if progress.state not in TERMINAL_STATES:
+        response.headers.update(errors.RETRY_AFTER_ONE)
+    return progress
 
 
 @router.get("/livez", response_model=Liveness, responses=error_responses(413, 500))

@@ -31,7 +31,7 @@ from pathlib import Path
 from typing import Any
 
 try:
-    from .msprof_deep import profile_deep_case
+    from .msprof_deep import METRIC_GROUPS, profile_deep_case, selected_metric_groups
     from .msprof_op import (
         extract_triton_kernel_names,
         profile_op_case,
@@ -40,7 +40,7 @@ try:
     )
     from ._common_utils import set_process_title as _set_process_title
 except ImportError:  # direct execution: python engine/profile_runner.py
-    from msprof_deep import profile_deep_case
+    from msprof_deep import METRIC_GROUPS, profile_deep_case, selected_metric_groups
     from msprof_op import (
         extract_triton_kernel_names,
         profile_op_case,
@@ -171,6 +171,56 @@ def build_runner_source() -> str:
             return value
 
 
+        def describe_operator_case(reference, index, describe_input):
+            """Use normalized workload metadata when no callback defines the inputs.
+
+            Custom generators may return different shapes or objects, so those
+            cases must still be materialized in the assigned device context.
+            """
+            cases = getattr(reference, "_operator_cases", None)
+            if not isinstance(cases, list) or not 0 <= index < len(cases):
+                return None
+            case = cases[index]
+            inputs = case.get("inputs", {})
+            order = case.get("input_order")
+            if not isinstance(order, list):
+                return None
+            descriptions = []
+            for name in order:
+                spec = inputs[name]
+                kind = spec.get("type")
+                if kind == "random" and spec.get("shape") is not None:
+                    descriptions.append({
+                        "type": "tensor", "shape": spec["shape"],
+                        "dtype": "torch." + spec["dtype"],
+                    })
+                elif kind == "scalar":
+                    descriptions.extend(describe_input([spec["value"]]))
+                elif kind == "tensor_list":
+                    descriptions.append({
+                        "type": "tensor_list",
+                        "tensors": [
+                            {"type": "tensor", "shape": shape,
+                             "dtype": "torch." + spec["dtype"]}
+                            for shape in spec["shapes"]
+                        ],
+                    })
+                else:
+                    return None
+            return descriptions
+
+
+        def describe_cases(reference, groups, describe_input):
+            cases = []
+            for index in range(len(groups)):
+                description = describe_operator_case(reference, index, describe_input)
+                if description is None:
+                    # Do not retain the previous case during the next materialization.
+                    description = describe_input(groups[index])
+                cases.append({"case_idx": index, "input_desc": description})
+            return cases
+
+
         def main():
             parser = argparse.ArgumentParser()
             parser.add_argument("--engine-dir", required=True)
@@ -200,12 +250,7 @@ def build_runner_source() -> str:
             if args.describe_cases:
                 print(json.dumps({
                     "total_cases": len(groups),
-                    "cases": [
-                        # Index access: enumerate would keep the previous case
-                        # alive while the next one is materialized.
-                        {"case_idx": index, "input_desc": describe_input(groups[index])}
-                        for index in range(len(groups))
-                    ],
+                    "cases": describe_cases(reference, groups, describe_input),
                 }))
                 return
 
@@ -268,11 +313,11 @@ def _last_json_object(stdout: str) -> dict:
 def remaining_discovery_timeout(deadline: float) -> int:
     """Per-process budget for case discovery.
 
-    Discovery materializes every input group on the host to describe it, so a
-    large official corpus costs minutes of CPU — it is not an msprof capture
-    pass and must not die against MSPROF_TIMEOUT_SEC (300 s default). The
-    engine deadline still binds: the effective timeout is the smaller of the
-    configured discovery budget and the time left on the job.
+    Metadata describes built-in operator inputs without materialization.
+    Legacy/custom input factories may still generate every input group to
+    discover their shapes, costing minutes for a large corpus. Discovery is
+    not an msprof capture pass and has its own budget, bounded by the engine
+    deadline.
     """
     raw = os.environ.get("MSPROF_DISCOVERY_TIMEOUT_SEC", "900")
     try:
@@ -294,8 +339,12 @@ def _validated_discovery_payload(payload: object) -> list[dict]:
     if not isinstance(cases, list) or not cases:
         raise ValueError("discovery payload has no cases")
     total = payload.get("total_cases")
-    if total != len(cases):
+    if type(total) is not int or total != len(cases):
         raise ValueError("discovery payload case count mismatch")
+    for index, case in enumerate(cases):
+        if (not isinstance(case, dict) or type(case.get("case_idx")) is not int
+                or case["case_idx"] != index or not isinstance(case.get("input_desc"), list)):
+            raise ValueError("discovery payload has invalid case identities")
     return cases
 
 
@@ -311,11 +360,9 @@ def discover_cases(
     deadline: float,
     implementation: str = "comparison",
 ) -> list[dict]:
-    # The evaluator starts one engine invocation per profiled case; without a
-    # cache each of them would re-run discovery (minutes of host-side tensor
-    # generation on a 51-case official corpus). op_name embeds the request
-    # digest, so the cache file cannot leak across different requests, and
-    # verify_dir is a fresh per-evaluation work directory.
+    # Retain discovery across profile invocations within an evaluation. op_name
+    # embeds the request digest, and verify_dir is fresh per evaluation, so
+    # cached descriptions cannot leak across different submitted workloads.
     cache_path = Path(verify_dir) / f"{op_name}_cases.json"
     try:
         cached = json.loads(cache_path.read_text(encoding="utf-8"))
@@ -373,6 +420,9 @@ class ProfileConfig:
     engine_dir: str
     python_bin: str
     implementation: str = "comparison"
+    case_indices: list[int] | None = None
+    metric_groups: list[str] | None = None
+    include_per_core: bool = True
 
 
 def validate_profile_config(config: ProfileConfig) -> None:
@@ -380,8 +430,23 @@ def validate_profile_config(config: ProfileConfig) -> None:
         raise ValueError("invalid implementation")
     if config.profile_mode not in {"op", "deep"}:
         raise ValueError("profile_mode must be 'op' or 'deep'")
-    if config.case_idx is not None and config.case_idx < 0:
+    if config.case_idx is not None and (type(config.case_idx) is not int or config.case_idx < 0):
         raise ValueError("case_idx must be non-negative")
+    if config.case_indices is not None:
+        if config.case_idx is not None:
+            raise ValueError("case_idx and case_indices are mutually exclusive")
+        if (not isinstance(config.case_indices, list) or not 1 <= len(config.case_indices) <= 128
+                or any(type(index) is not int or index < 0 for index in config.case_indices)):
+            raise ValueError("case_indices must contain 1 to 128 non-negative integers")
+        if len(set(config.case_indices)) != len(config.case_indices):
+            raise ValueError("case_indices must not contain duplicates")
+    if config.profile_mode != "deep" and (
+        config.metric_groups is not None or not config.include_per_core
+    ):
+        raise ValueError("metric_groups and include_per_core selection require deep mode")
+    selected_metric_groups(config.metric_groups)
+    if type(config.include_per_core) is not bool:
+        raise ValueError("include_per_core must be a boolean")
     if config.launch_count is not None and not 1 <= config.launch_count <= 100:
         raise ValueError("launch_count must be between 1 and 100")
     if config.profile_mode == "deep" and config.launch_count is not None:
@@ -400,7 +465,14 @@ def atomic_write_json(path: str, payload: dict[str, Any]) -> None:
     os.replace(temporary, target)
 
 
-def select_case_indices(cases: list[dict], requested: int | None) -> list[int]:
+def select_case_indices(
+    cases: list[dict], requested: int | None, requested_indices: list[int] | None = None,
+) -> list[int]:
+    if requested_indices is not None:
+        for index in requested_indices:
+            if index < 0 or index >= len(cases):
+                raise IndexError(f"case_idx {index} out of range for {len(cases)} cases")
+        return sorted(requested_indices)
     if requested is None:
         return [int(case["case_idx"]) for case in cases]
     if requested < 0 or requested >= len(cases):
@@ -411,7 +483,7 @@ def select_case_indices(cases: list[dict], requested: int | None) -> list[int]:
 def _empty_result(
     config: ProfileConfig, total_cases: int, selected: list[int]
 ) -> dict[str, Any]:
-    return {
+    result = {
         "profile_mode": config.profile_mode,
         "requested_case_idx": config.case_idx,
         "total_cases": total_cases,
@@ -426,6 +498,9 @@ def _empty_result(
         "wallclock_sec": 0.0,
         "per_case_results": [],
     }
+    if config.case_indices is not None:
+        result["requested_case_indices"] = list(selected)
+    return result
 
 
 def _refresh_counts(result: dict[str, Any]) -> None:
@@ -472,7 +547,8 @@ def run_profile(
         deadline=deadline,
         implementation=config.implementation,
     )
-    selected = select_case_indices(cases, config.case_idx)
+    _validated_discovery_payload({"total_cases": len(cases), "cases": cases})
+    selected = select_case_indices(cases, config.case_idx, config.case_indices)
     result = _empty_result(config, len(cases), selected)
     snapshot(config.output, result)
 
@@ -527,6 +603,8 @@ def run_profile(
                         cwd=config.verify_dir,
                         env=env,
                         deadline=deadline,
+                        metric_groups=config.metric_groups,
+                        include_per_core=config.include_per_core,
                     )
             if time.monotonic() >= deadline:
                 raise TimeoutError("profile job deadline exceeded")
@@ -538,16 +616,22 @@ def run_profile(
             snapshot(config.output, result)
             return result, 124
         except Exception as exc:
+            requested_metrics = selected_metric_groups(config.metric_groups)
             case_result = {
                 "status": "failed",
                 "target_kernel": None,
                 "target_selection_metric": None,
                 "kernels": [],
-                "raw_metrics": {},
+                "raw_metrics": ({"_capture_requested": {
+                    "metric_groups": list(requested_metrics),
+                    "include_per_core": config.include_per_core,
+                }} if config.profile_mode == "deep" else {}),
                 "bound": None,
                 "per_core": None,
                 "recommendations": [],
-                "missing_metrics": [],
+                "missing_metrics": (
+                    list(requested_metrics) if config.profile_mode == "deep" else []
+                ),
                 "warnings": [],
                 "error": f"{type(exc).__name__}: {exc}",
             }
@@ -572,7 +656,11 @@ def _config_from_args() -> ProfileConfig:
     parser.add_argument("--triton_impl_name", required=True)
     parser.add_argument("--implementation", choices=("comparison", "torch", "triton"), default="comparison")
     parser.add_argument("--profile-mode", choices=("op", "deep"), required=True)
-    parser.add_argument("--case-idx", type=int)
+    selection = parser.add_mutually_exclusive_group()
+    selection.add_argument("--case-idx", type=int)
+    selection.add_argument("--case-indices", type=int, nargs="+")
+    parser.add_argument("--metric-groups", choices=METRIC_GROUPS, nargs="+")
+    parser.add_argument("--no-per-core", action="store_true")
     parser.add_argument("--launch-count", type=int)
     parser.add_argument("--timeout", type=int, required=True)
     parser.add_argument("--output", required=True)
@@ -584,6 +672,9 @@ def _config_from_args() -> ProfileConfig:
         profile_mode=args.profile_mode,
         implementation=args.implementation,
         case_idx=args.case_idx,
+        case_indices=args.case_indices,
+        metric_groups=args.metric_groups,
+        include_per_core=not args.no_per_core,
         launch_count=args.launch_count,
         timeout=args.timeout,
         output=os.path.abspath(args.output),
@@ -604,6 +695,8 @@ def main() -> int:
             {
                 "profile_mode": config.profile_mode,
                 "requested_case_idx": config.case_idx,
+                **({"requested_case_indices": config.case_indices}
+                   if config.case_indices is not None else {}),
                 "timed_out": False,
                 "error_type": type(exc).__name__,
                 "error": str(exc),

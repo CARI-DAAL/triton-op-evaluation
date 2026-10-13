@@ -151,11 +151,82 @@ they do not generate inputs or establish device correctness.
 retries on the same instance; without a key each submission is new work. A session
 groups quotas and is not an authorization credential.
 
+## Select checks and retrieve evidence early
+
+The caller selects checks, cases, stopping rules and budgets. The service does
+not decide whether to keep or optimize a candidate. Existing shortcuts remain
+available; `POST /evaluations` combines requested capabilities.
+
+For correctness, optional `correctness.case_indices` selects original zero-based
+cases and `correctness.stop_on` is `complete` (default) or `first_failure`.
+Selected runs return `coverage.selected_case_indices`, `evaluated_case_indices`
+and `stop_reason`. Unexecuted cases are not failures. Passing a subset yields
+`outcome: incomplete`, `passed: false`; only a complete task pass yields `correct`.
+A proven mismatch can yield `wrong` before other selected cases run. Partial
+correctness cannot authorize comparative performance or grade eligibility.
+
+`GET /evaluations/{evaluation_id}/progress` uses the same read authorization as
+resource recovery. It returns `attempt_id`, `active_check`, `progress_revision`
+and validated `completed_checks`, including results obtained while later checks
+are still running. Replacement attempts invalidate earlier progress and advance
+the progress revision. The existing resource endpoint keeps its terminal-only
+`result` contract. Clients should retain the evaluation ID and poll either
+endpoint; observing partial evidence does not cancel accepted work.
+
+For timing plus a kernel-duration trace, request:
+
+```json
+{
+  "checks": ["correctness", "performance", "profile"],
+  "performance": {"method": "event", "warmup": 5, "repeats": 20},
+  "profile": {"mode": "trace", "case_indices": [0]}
+}
+```
+
+Add the ordinary definition, workloads and source fields. One candidate engine
+process handles timing and trace. Event timing finishes before profiling starts,
+and its checkpoint becomes visible through progress. Profiler timing reuses its
+existing captures for overlapping trace cases. Other trace cases are collected
+explicitly; neither selection silently widens the other. Later trace failure
+does not discard already valid timing. Reference-only baseline production keeps
+its isolated process. Standalone trace uses warmup 5/repeats 20; combined trace
+uses the requested timing warmup/repeats.
+
+`trace` reports kernel durations from `torch_npu.profiler`, labeled
+`profiler_kernel_sum_v1`. It does not supply `msprof op` or deep hardware counters.
+`op` and `deep` retain their collection methods. Explicit multi-case profiling
+uses one outer engine invocation; native msprof capture processes remain separate.
+For deep profiling, `metric_groups` selects any nonempty subset of
+`PipeUtilization`, `ArithmeticUtilization`, `Memory`, `MemoryL0`, `MemoryUB`,
+`L2Cache`, and `ResourceConflictRatio`; `include_per_core: false` omits the
+sampling pass. Results expose the requested scope and collected raw metrics.
+`max_kernels_per_case` bounds returned kernel groups, not collection launches;
+truncation produces partial evidence with an explanatory error.
+
+## Reuse a completed correctness observation
+
+Set `correctness_from` to a completed evaluation ID while requesting correctness
+and performance for the same unchanged candidate. Reuse is explicit and
+same-owner: the source must be an original complete `correct` observation, with
+the same candidate, reference/input-generation bytes, seed, tolerances,
+`non_compute`, evaluator build and correctness/decoy algorithms. The worker
+rechecks environment, recorded physical card and freshness inside its lease.
+Freshness is bounded by `max_recovery_age_seconds`, measured conservatively from
+the source execution start; a later profile cannot refresh the observation.
+
+The destination may wait for the source's recorded card under its ordinary
+deadline. Missing or expired evidence becomes a nonretryable error instead of
+silently triggering a fresh verification. Already admitted idempotent replays
+remain recoverable. The returned correctness result identifies `reused_from`;
+chains of reused evidence and grade reuse are rejected. The engine receives a
+bound evidence artifact, not a synthetic fresh `verify_result.json`.
+
 ## Reuse Torch baseline timings
 
 Comparison performance defaults to `performance.use_baseline_cache=true`.
-A hit reuses Torch latency; a miss measures and stores it. Correctness and candidate
-timing still execute. Only latency scalars are retained, not reference outputs.
+A hit reuses Torch latency; a miss measures and stores it. Candidate timing
+executes; correctness executes unless an explicit validated `correctness_from`
+is supplied. Only latency scalars are retained, not reference outputs.
 
 Set `performance.use_baseline_cache=false` for a fresh baseline used only by this
 evaluation, leaving existing cache entries untouched. Use a new idempotency key

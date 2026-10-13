@@ -26,7 +26,7 @@ Shaping rules enforced here (design sections 4.2-4.5 and 5):
 
 import math
 import re
-from typing import Annotated, Literal
+from typing import Annotated, Literal, get_args
 
 from pydantic import (
     AfterValidator,
@@ -40,7 +40,9 @@ from pydantic import (
 from ..api.contract import (
     CaseFailure,
     CaseMetrics,
+    CorrectnessCoverage,
     CorrectnessResult,
+    DeepCaptureRequest,
     DeepProfileCase,
     DeepProfileResult,
     DeepRatios,
@@ -56,10 +58,12 @@ from ..api.contract import (
     PerformanceCase,
     PerformanceResult,
     ProfileCounts,
+    ProfileMetricGroup,
     ProfileParams,
     ProfileResult,
     SampleElement,
     StrictModel,
+    TraceProfileResult,
     UnmeasuredPerformanceCase,
 )
 
@@ -175,7 +179,12 @@ class _ScalarDesc(StrictModel):
     value: bool | int | float | str
 
 
-_InputDesc = Annotated[_TensorDesc | _ScalarDesc, Field(discriminator="type")]
+class _TensorListDesc(StrictModel):
+    type: Literal["tensor_list"]
+    tensors: list[_TensorDesc]
+
+
+_InputDesc = Annotated[_TensorDesc | _ScalarDesc | _TensorListDesc, Field(discriminator="type")]
 
 
 def _input_shapes(desc: list[_InputDesc]) -> list[InputShape]:
@@ -255,16 +264,35 @@ class _VerifyFailure(StrictModel):
         return self
 
 
+class _VerifyCoverage(CorrectnessCoverage):
+    selected_case_indices: list[Annotated[int, Field(ge=1)]] = Field(min_length=1)
+    evaluated_case_indices: list[Annotated[int, Field(ge=1)]]
+
+
+def _public_correctness_coverage(coverage: _VerifyCoverage | None):
+    if coverage is None:
+        return None
+    return CorrectnessCoverage(
+        selected_case_indices=[index - 1 for index in coverage.selected_case_indices],
+        evaluated_case_indices=[index - 1 for index in coverage.evaluated_case_indices],
+        stop_reason=coverage.stop_reason,
+    )
+
+
 class _VerifyResult(StrictModel):
     op_name: str
     total_cases: Annotated[int, Field(ge=1)]
     passed_cases: Annotated[int, Field(ge=0)]
     failed_cases: Annotated[int, Field(ge=0)]
     failures: list[_VerifyFailure]
+    coverage: _VerifyCoverage | None = None
 
     @model_validator(mode="after")
     def _counts_and_identity(self):
-        if self.passed_cases + self.failed_cases != self.total_cases:
+        accounted = (
+            len(self.coverage.evaluated_case_indices) if self.coverage else self.total_cases
+        )
+        if self.passed_cases + self.failed_cases != accounted:
             raise ValueError("passed/failed counts contradict total_cases")
         indices = [failure.case_idx for failure in self.failures]
         if len(set(indices)) != len(indices):
@@ -273,12 +301,20 @@ class _VerifyResult(StrictModel):
             raise ValueError("failure case_idx out of range")
         if len(self.failures) > self.failed_cases:
             raise ValueError("more failure entries than failed cases")
+        if self.coverage is not None:
+            if any(index > self.total_cases for index in self.coverage.selected_case_indices):
+                raise ValueError("selected case index out of range")
+            if not set(indices).issubset(self.coverage.evaluated_case_indices):
+                raise ValueError("failure has no evaluated case evidence")
+            if len(self.failures) != self.failed_cases:
+                raise ValueError("explicit coverage requires every failed case accounted for")
         return self
 
 
 class _DecoyResult(StrictModel):
     decoy: Literal[True]
     total_cases: Annotated[int, Field(ge=1)]
+    coverage: _VerifyCoverage | None = None
 
 
 def _coarse_kind(failure: _VerifyFailure) -> str:
@@ -370,9 +406,10 @@ def shape_correctness(raw: dict[str, object], decoy: bool) -> CorrectnessResult:
                 outcome="wrong",
                 passed=False,
                 decoy=True,
-                passed_cases=payload.total_cases,
+                passed_cases=payload.total_cases if payload.coverage is None else 0,
                 total_cases=payload.total_cases,
                 failures=[],
+                coverage=_public_correctness_coverage(payload.coverage),
             ),
             "correctness",
         )
@@ -406,7 +443,11 @@ def shape_correctness(raw: dict[str, object], decoy: bool) -> CorrectnessResult:
         lambda: [_case_failure(failure) for failure in mismatches], "correctness"
     )
     if outcome is None:
-        outcome = "wrong" if case_failures else "correct"
+        outcome = (
+            "wrong" if case_failures else
+            "incomplete" if result.coverage and result.passed_cases < result.total_cases else
+            "correct"
+        )
     return _checked(
         lambda: CorrectnessResult(
             outcome=outcome,
@@ -416,6 +457,7 @@ def shape_correctness(raw: dict[str, object], decoy: bool) -> CorrectnessResult:
             total_cases=result.total_cases,
             failures=case_failures,
             domain_failure=domain_failure,
+            coverage=_public_correctness_coverage(result.coverage),
         ),
         "correctness",
     )
@@ -643,6 +685,7 @@ class _ProfileCase(StrictModel):
 class _ProfileEnvelope(StrictModel):
     profile_mode: Literal["op", "deep"]
     requested_case_idx: int | None
+    requested_case_indices: list[Annotated[int, Field(ge=0)]] | None = None
     total_cases: Annotated[int, Field(ge=1)]
     selected_cases: Annotated[int, Field(ge=0)]
     completed_cases: Annotated[int, Field(ge=0)]
@@ -679,6 +722,11 @@ class _ProfileEnvelope(StrictModel):
             raise ValueError("duplicate case_idx")
         if any(index >= self.total_cases for index in indices):
             raise ValueError("case_idx out of range")
+        if self.requested_case_indices is not None:
+            selected = self.requested_case_indices
+            if (self.requested_case_idx is not None or not selected
+                    or len(set(selected)) != len(selected) or set(indices) != set(selected)):
+                raise ValueError("batch profile selection differs from the observed cases")
         return self
 
 
@@ -842,6 +890,11 @@ def _deep_case(case: _ProfileCase) -> DeepProfileCase:
         missing_metrics=list(case.missing_metrics),
         warnings=list(case.warnings),
         error=error,
+        capture_requested=case.raw_metrics.get("_capture_requested"),
+        raw_metrics=(
+            {key: value for key, value in case.raw_metrics.items() if not key.startswith("_")}
+            if "_capture_requested" in case.raw_metrics else None
+        ),
     )
 
 
@@ -863,12 +916,26 @@ def shape_profile_runs(raw: dict[str, object], params: ProfileParams) -> Profile
     Presentation options are applied after validation, so hiding recommendations
     cannot repair malformed engine output.
     """
+    if params.mode == "trace":
+        result = _parse(TraceProfileResult, raw, "profile")
+        expected = set(
+            range(result.total_cases) if params.case_indices is None else params.case_indices
+        )
+        if {case.case_idx for case in result.cases} != expected:
+            raise ShapingError("trace coverage differs from the requested selection")
+        return result
     if params.case_indices is None:
         envelopes = [_parse(_ProfileEnvelope, raw, "profile")]
-        if envelopes[0].requested_case_idx is not None:
+        if (envelopes[0].requested_case_idx is not None
+                or envelopes[0].requested_case_indices is not None):
             raise ShapingError("all-case profile reported a selected-case invocation")
         if envelopes[0].selected_cases != envelopes[0].total_cases:
             raise ShapingError("all-case profile does not cover the reference cases")
+    elif isinstance(raw, dict) and "profile_runs" not in raw:
+        batch = _parse(_ProfileEnvelope, raw, "profile")
+        if batch.requested_case_indices != params.case_indices:
+            raise ShapingError("profile batch differs from requested selection")
+        envelopes = [batch]
     else:
         envelopes = _parse(_ProfileRuns, raw, "profile runs").profile_runs
         if not params.case_indices or len(envelopes) != len(params.case_indices):
@@ -882,7 +949,45 @@ def shape_profile_runs(raw: dict[str, object], params: ProfileParams) -> Profile
         raise ShapingError("profile evidence differs from the requested mode")
     if len({envelope.total_cases for envelope in envelopes}) != 1:
         raise ShapingError("profile invocations disagree on reference case count")
+    if params.mode == "deep":
+        expected_groups = set(params.metric_groups or get_args(ProfileMetricGroup))
+        for envelope in envelopes:
+            for case in envelope.per_case_results:
+                marker = case.raw_metrics.get("_capture_requested")
+                if marker is None:
+                    if params.metric_groups is not None or not params.include_per_core:
+                        raise ShapingError("selected deep capture has no scope evidence")
+                    continue
+                capture = _parse(DeepCaptureRequest, marker, "profile")
+                if (set(capture.metric_groups) != expected_groups
+                        or len(set(capture.metric_groups)) != len(capture.metric_groups)
+                        or capture.include_per_core != params.include_per_core):
+                    raise ShapingError("deep capture evidence differs from requested metrics")
     result = _shape_profile_envelopes(envelopes)
+    if result.mode == "op":
+        for case in result.cases:
+            if len(case.kernels) <= params.max_kernels_per_case:
+                continue
+            count = len(case.kernels)
+            case.kernels = case.kernels[:params.max_kernels_per_case]
+            total = sum(kernel.time_ms for kernel in case.kernels)
+            if total <= 0:
+                raise ShapingError("returned profile kernels have no positive duration")
+            for kernel in case.kernels:
+                kernel.percentage = 100 * kernel.time_ms / total
+            case.status = "partial"
+            detail = case.error.message + "; " if case.error is not None else ""
+            case.error = _case_error(
+                "PROFILE_KERNEL_LIMIT",
+                detail + f"Returned {len(case.kernels)} of {count} kernel groups; "
+                "percentages are normalized to the returned groups",
+            )
+        result.counts = ProfileCounts(
+            selected=len(result.cases),
+            complete=sum(case.status == "complete" for case in result.cases),
+            partial=sum(case.status == "partial" for case in result.cases),
+            failed=sum(case.status == "failed" for case in result.cases),
+        )
     if not params.include_recommendations and result.mode == "deep":
         for case in result.cases:
             case.recommendations = []

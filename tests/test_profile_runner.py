@@ -101,6 +101,63 @@ def test_runner_discovers_generator_cases_without_running_kernel(tmp_path):
     assert cases[1]["input_desc"][0]["value"] == 22
 
 
+def test_generated_operator_discovery_uses_metadata_without_tensor_draws(tmp_path):
+    _write_fake_runtime(tmp_path)
+    normalized = [{
+        "input_order": ["x", "scale", "tensors", "optional", "axes"],
+        "inputs": {
+            "x": {"type": "random", "shape": [1024, 4096], "dtype": "float32"},
+            "scale": {"type": "scalar", "value": 3},
+            "tensors": {"type": "tensor_list", "shapes": [[2, 3], []], "dtype": "float16"},
+            "optional": {"type": "scalar", "value": None},
+            "axes": {"type": "scalar", "value": [1, 2]},
+        },
+    }]
+    (tmp_path / "sample_torch.py").write_text(
+        f"_operator_cases = {normalized!r}\n"
+        "class Groups:\n"
+        "    def __len__(self): return len(_operator_cases)\n"
+        "    def __getitem__(self, index):\n"
+        "        raise AssertionError('metadata discovery must not materialize input tensors')\n"
+        "def get_input_groups(): return Groups()\n"
+    )
+    cases = _discover(tmp_path, profile.write_runner(str(tmp_path)))
+    assert cases == [{"case_idx": 0, "input_desc": [
+        {"type": "tensor", "shape": [1024, 4096], "dtype": "torch.float32"},
+        {"type": "scalar", "value": 3},
+        {"type": "tensor_list", "tensors": [
+            {"type": "tensor", "shape": [2, 3], "dtype": "torch.float16"},
+            {"type": "tensor", "shape": [], "dtype": "torch.float16"},
+        ]},
+        {"type": "scalar", "value": "None"},
+        {"type": "scalar", "value": "[1, 2]"},
+    ]}]
+
+
+def test_custom_metadata_falls_back_only_for_custom_case(tmp_path):
+    _write_fake_runtime(tmp_path)
+    cases = [
+        {"input_order": ["x"], "inputs": {
+            "x": {"type": "random", "shape": [100], "dtype": "float32"},
+        }},
+        {"input_order": ["x"], "inputs": {"x": {"type": "custom"}}},
+    ]
+    marker = tmp_path / "materialized"
+    (tmp_path / "sample_torch.py").write_text(
+        f"_operator_cases = {cases!r}\n"
+        "class Groups:\n"
+        "    def __len__(self): return len(_operator_cases)\n"
+        "    def __getitem__(self, index):\n"
+        "        assert index == 1, 'built-in case should not be materialized'\n"
+        f"        open({str(marker)!r}, 'a').write(str(index))\n"
+        "        return [47]\n"
+        "def get_input_groups(): return Groups()\n"
+    )
+    described = _discover(tmp_path, profile.write_runner(str(tmp_path)))
+    assert marker.read_text() == "1"
+    assert described[1] == {"case_idx": 1, "input_desc": [{"type": "scalar", "value": 47}]}
+
+
 def test_runner_falls_back_to_single_get_inputs_case(tmp_path):
     _write_fake_runtime(tmp_path)
     _write_task(tmp_path)

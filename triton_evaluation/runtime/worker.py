@@ -22,7 +22,9 @@ from triton_evaluation.api.contract import (
     Check,
     CheckFailed,
     CheckOutcome,
+    CheckSucceeded,
     CheckTimedOut,
+    CorrectnessResult,
     ErrorInfo,
     EvaluationRequest,
     EvaluationResult,
@@ -31,6 +33,7 @@ from triton_evaluation.config import Settings
 from triton_evaluation.evaluators.base import LeaseLostError
 from triton_evaluation.evaluators.evaluation import EvaluationEvaluator
 from triton_evaluation.runtime import health
+from triton_evaluation.runtime.correctness_evidence import write_handoff
 from triton_evaluation.runtime.execution_environment import build_execution_environment
 from triton_evaluation.runtime.precheck import run_precheck
 from triton_evaluation.runtime.verdict_cache import VerdictCache
@@ -313,6 +316,19 @@ class Worker:
                         if self.device_id is not None else None
                     )
                     pinned = lease.pinned
+                    reuse_kwargs = {}
+                    if request.correctness_from is not None:
+                        def reuse_correctness():
+                            evidence = self.store.correctness_for_attempt(
+                                request, lease, execution_environment=environment,
+                                card=self.device_id,
+                            )
+                            write_handoff(Path(work_dir), evidence)
+                            return CheckSucceeded[CorrectnessResult](
+                                status="succeeded", data=evidence.correctness,
+                            )
+
+                        reuse_kwargs["reuse_correctness"] = reuse_correctness
                     result = self.evaluator.run(
                         request,
                         work_dir,
@@ -330,6 +346,7 @@ class Worker:
                             deadline_at=deadline_at, lease_valid=keeper.is_valid,
                             device_id=self.device_id, runner=self.script_runner,
                         ),
+                        **reuse_kwargs,
                     )
                     validated = EvaluationResult.model_validate(
                         result.model_dump(mode="json", exclude_none=False),

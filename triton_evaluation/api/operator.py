@@ -13,7 +13,14 @@ from typing import Annotated, Any, Literal
 
 from pydantic import Field, model_validator
 
-from .contract import Check, PerformanceParams, ProfileParams, SourceCode, StrictModel
+from .contract import (
+    Check,
+    CorrectnessParams,
+    PerformanceParams,
+    ProfileParams,
+    SourceCode,
+    StrictModel,
+)
 
 Dtypes = Literal[
     "float16",
@@ -380,6 +387,12 @@ class OperatorRequest(StrictModel):
         max_length=4,
     )
     deadline_seconds: int = Field(default=900, ge=10, le=3600)
+    correctness: CorrectnessParams | None = Field(
+        default=None, exclude_if=lambda value: value is None,
+    )
+    correctness_from: str | None = Field(
+        default=None, pattern=r"^ev_[0-9a-f]{32}$", exclude_if=lambda value: value is None,
+    )
     performance: PerformanceParams | None = None
     profile: ProfileParams | None = None
     non_compute: bool = False
@@ -399,6 +412,17 @@ class OperatorRequest(StrictModel):
         if len(set(self.checks)) != len(self.checks):
             raise ValueError("checks must not contain duplicates")
         self.checks.sort(key=("compile", "correctness", "performance", "profile").index)
+        if self.correctness_from is not None:
+            if "correctness" not in self.checks:
+                raise ValueError("correctness_from requires the correctness check")
+            if self.correctness is not None and self.correctness.case_indices is not None:
+                raise ValueError("correctness_from requires whole-task correctness")
+        if self.correctness is not None:
+            if "correctness" not in self.checks:
+                raise ValueError("correctness params require the correctness check")
+            indices = self.correctness.case_indices
+            if indices is not None and any(index >= len(self.workloads) for index in indices):
+                raise ValueError("correctness case index out of range")
         if self.custom_inputs_code is not None and not any(
             isinstance(spec, CustomInput)
             for workload in self.workloads

@@ -392,6 +392,23 @@ def test_declared_tolerance_rejects_dtype_mismatch_and_non_finite():
         verify.compare(with_nan, with_nan.clone(), reference.dtype, tolerance={"max_atol": 1.0})
 
 
+def test_declared_failure_converts_each_output_to_a_list_only_once(monkeypatch):
+    reference = torch.linspace(-3, 3, 1024)
+    candidate = reference + 0.5
+    original = torch.Tensor.tolist
+    conversions = []
+
+    def tolist(tensor):
+        conversions.append(tensor.numel())
+        return original(tensor)
+
+    monkeypatch.setattr(torch.Tensor, "tolist", tolist)
+    with pytest.raises(verify.AccuracyError) as caught:
+        verify.compare(reference, candidate, reference.dtype, tolerance={"max_atol": 0.01})
+    assert caught.value.metrics["divergence"]["kind"] == "constant_offset"
+    assert conversions == [1024, 1024]
+
+
 def test_declared_failure_shapes_as_a_candidate_value_mismatch():
     reference = torch.linspace(-3, 3, 256)
     with pytest.raises(verify.AccuracyError) as caught:

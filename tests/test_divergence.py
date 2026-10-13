@@ -1,6 +1,13 @@
 import math
+import random
 
-from triton_evaluation.engine._divergence import classify_divergence, worst_sample
+import pytest
+
+from triton_evaluation.engine._divergence import (
+    _finite_upper_median_below,
+    classify_divergence,
+    worst_sample,
+)
 
 TOLS = dict(
     atol=1e-3,
@@ -124,3 +131,67 @@ def test_matching_non_finite_pairs_do_not_poison_structural_features():
     out = _result(reference, candidate, (6,))
 
     assert out["kind"] == "constant_offset"
+
+
+@pytest.mark.parametrize(
+    ("values", "threshold", "expected"),
+    [
+        ([0.0, 1.0], 1.0, False),  # upper median, not the average of middle values
+        ([0.0, 0.0, 1.0, 1.0], 1.0, False),
+        ([0.0, 0.0, 0.0, 1.0], 1.0, True),
+        ([0.0, 1.0, 2.0], 1.0, False),  # equality is outside the strict band
+        ([0.0, 1.0, 2.0], math.nextafter(1.0, math.inf), True),
+        ([math.nan, math.inf, -math.inf, 0.0], 1.0, True),
+        ([math.nan, math.inf, -math.inf], 1.0, True),  # historical empty median = 0
+        ([], 0.0, False),
+        ([], math.nan, False),
+    ],
+)
+def test_finite_upper_median_threshold_boundaries(values, threshold, expected):
+    assert _finite_upper_median_below(values, threshold) is expected
+
+
+def test_finite_upper_median_threshold_matches_sorted_oracle():
+    rng = random.Random(31415)
+    values = [-1.0, 0.0, 1.0, math.nextafter(1.0, math.inf), math.inf, -math.inf, math.nan]
+    for length in (0, 1, 2, 3, 8, 99, 100, 257):
+        for _ in range(20):
+            diffs = rng.choices(values, k=length)
+            ordered = sorted(value for value in diffs if math.isfinite(value))
+            median = ordered[len(ordered) // 2] if ordered else 0.0
+            for threshold in (-math.inf, -1.0, 0.0, 1.0, 2.0, math.inf, math.nan):
+                assert _finite_upper_median_below(diffs, threshold) == (median < threshold)
+
+
+@pytest.mark.parametrize("shape", [(0,), (1,), (7,), (3, 4), ()])
+@pytest.mark.parametrize("k", [-1, 0, 1, 3, 8, 20])
+def test_streamed_worst_sample_matches_stable_sorted_oracle(shape, k):
+    n = math.prod(shape)
+    # Repeated errors and mixed non-finite values exercise stable row-major ties.
+    reference = ([1.0, math.inf, 0.0, 2.0] * 3)[:n]
+    candidate = ([math.nan, -math.inf, 3.0, -1.0] * 3)[:n]
+    diffs = [abs(c - r) for r, c in zip(reference, candidate, strict=True)]
+    order = sorted(
+        range(n), key=lambda i: diffs[i] if math.isfinite(diffs[i]) else math.inf,
+        reverse=True,
+    )[:max(k, 0)]
+
+    def token(value):
+        return float(value) if math.isfinite(value) else str(value)
+
+    expected = []
+    for i in order:
+        indices = [(i // math.prod(shape[d + 1:])) % dim for d, dim in enumerate(shape)]
+        expected.append({
+            "idx": indices,
+            "candidate": token(candidate[i]),
+            "reference": token(reference[i]),
+            "diff": token(candidate[i] - reference[i]),
+        })
+    assert worst_sample(reference, candidate, diffs, shape, k=k) == expected
+
+
+def test_streamed_worst_sample_respects_shortest_input():
+    assert worst_sample([0.0, 0.0], [1.0, 99.0, 100.0], [1.0], (3,), k=8) == [
+        {"idx": [0], "candidate": 1.0, "reference": 0.0, "diff": 1.0},
+    ]

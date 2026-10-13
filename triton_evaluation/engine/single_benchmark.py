@@ -31,47 +31,54 @@ def load_module(name, path):
 
 
 def measure_implementation(*, op_name, verify_dir, triton_impl_name, implementation,
-                           warmup, repeats, method, case_indices=None, device="npu:0"):
+                           warmup, repeats, method, case_indices=None, device="npu:0",
+                           prepared=None, operators_by_case=None):
     import torch
 
     if implementation not in {"torch", "triton"}:
         raise ValueError("a single implementation is required")
-    root = Path(verify_dir)
-    reference = load_module(f"{op_name}_torch", root / f"{op_name}_torch.py")
-    if implementation == "torch":
-        model_type = reference.Model
+    if prepared is not None:
+        reference, model_type, groups = prepared
     else:
-        candidate = load_module(
-            f"{op_name}_{triton_impl_name}", root / f"{op_name}_{triton_impl_name}.py"
-        )
-        model_type = candidate.ModelNew
-    torch.manual_seed(0)
-    groups = reference.get_input_groups() if hasattr(reference, "get_input_groups") else [
-        reference.get_inputs()
-    ]
-    if not hasattr(groups, "__len__") or not hasattr(groups, "__getitem__"):
-        groups = list(groups)
+        root = Path(verify_dir)
+        reference = load_module(f"{op_name}_torch", root / f"{op_name}_torch.py")
+        if implementation == "torch":
+            model_type = reference.Model
+        else:
+            candidate = load_module(
+                f"{op_name}_{triton_impl_name}", root / f"{op_name}_{triton_impl_name}.py"
+            )
+            model_type = candidate.ModelNew
+        torch.manual_seed(0)
+        groups = reference.get_input_groups() if hasattr(reference, "get_input_groups") else [
+            reference.get_inputs()
+        ]
+        if not hasattr(groups, "__len__") or not hasattr(groups, "__getitem__"):
+            groups = list(groups)
     selected = list(range(len(groups))) if case_indices is None else list(case_indices)
     if not selected or len(set(selected)) != len(selected) or any(
         type(index) is not int or index < 0 or index >= len(groups) for index in selected
     ):
         raise ValueError("invalid performance case selection")
     measured, unmeasured = [], []
+    selected_iterator = iter(benchmark._SelectedInputGroups(groups, [index + 1 for index in selected]))
     for index in selected:
         shapes = []
         model = inputs = raw = None
         try:
-            raw = groups[index]
+            raw = next(selected_iterator)
             shapes = [
                 {"input_index": i, "dimensions": list(value.shape), "dtype": str(value.dtype)}
                 for i, value in enumerate(raw) if isinstance(value, torch.Tensor)
             ]
             inputs = benchmark._move_inputs_to_device(raw, device)
             model = model_type(*reference.get_init_inputs()).to(device)
-            _, latency, peak = benchmark.measure_single(benchmark.MeasureContext(
+            operators, latency, peak = benchmark.measure_single(benchmark.MeasureContext(
                 model=model, inputs=inputs, warmup=warmup, repeats=repeats,
                 profile_name=f"single_{implementation}_{index}", device=device, method=method,
             ))
+            if operators_by_case is not None:
+                operators_by_case[index] = operators
             if latency is None or not math.isfinite(latency) or latency <= 0:
                 unmeasured.append({"case_idx": index, "input_shapes": shapes,
                                    "reason_code": "NO_STABLE_MEASUREMENT"})

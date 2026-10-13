@@ -21,7 +21,7 @@ def test_plugin_archive_discovers_skill_and_runs_isolated_client(tmp_path):
 
     manifest = json.loads((isolated / "plugin.json").read_text())
     assert manifest["$schema"] == "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json"
-    assert manifest["version"] == "0.3.0"
+    assert manifest["version"] == "0.4.0"
     skills = set((isolated / "skills").glob("*/SKILL.md"))
     assert skills
     for directory in (".codex-plugin", ".claude-plugin"):
@@ -45,7 +45,9 @@ def test_plugin_archive_discovers_skill_and_runs_isolated_client(tmp_path):
 
     scripts = list((isolated / "skills").glob("*/scripts/*.py"))
     assert len(scripts) == 1
-    for arguments in [[], ["verify"], ["benchmark"], ["profile"], ["get"]]:
+    for arguments in [
+        [], ["verify"], ["benchmark"], ["profile"], ["evaluate"], ["get"], ["progress"],
+    ]:
         result = subprocess.run(
             [sys.executable, "-I", "-S", str(scripts[0]), *arguments, "--help"],
             cwd=tmp_path, capture_output=True, text=True, timeout=10,

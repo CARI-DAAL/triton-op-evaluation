@@ -4,7 +4,7 @@ Submission resolves authority and request identity before reserving durable
 work. Candidate code belongs exclusively to a leased worker attempt; neither
 new admissions, replays nor rejected requests execute it here.
 """
-from triton_evaluation.api.contract import EvaluationRequest, EvaluationResource
+from triton_evaluation.api.contract import EvaluationProgress, EvaluationRequest, EvaluationResource
 from triton_evaluation.config import Settings
 from triton_evaluation.service.admission import admit
 from triton_evaluation.service.broker import EvaluationStore
@@ -14,6 +14,7 @@ from triton_evaluation.service.models import (
     CreateResourceCommand,
     CreateResourceResult,
     ExecutionClass,
+    PinnedProvenance,
     WorkerCompatibility,
     new_evaluation_id,
 )
@@ -70,6 +71,13 @@ class EvaluationInstance:
         # owns the final byte-exact replay/conflict decision.
         replay = self.store.lookup_idempotent(caller.caller_id, idempotency_key)
         if replay is None:
+            if request.correctness_from is not None:
+                self.store.validate_correctness_source(
+                    request, caller, PinnedProvenance.for_request(
+                        request, evaluator_build=self.settings.evaluator_build,
+                        algorithms=self._algorithms,
+                    ),
+                )
             self._require_ready(command.execution_class)
         outcome = self.store.create_or_replay(command)
         self._bump(
@@ -82,6 +90,9 @@ class EvaluationInstance:
 
     def get(self, evaluation_id: str, caller: Caller) -> EvaluationResource | None:
         return self.store.get_visible(evaluation_id, caller)
+
+    def get_progress(self, evaluation_id: str, caller: Caller) -> EvaluationProgress | None:
+        return self.store.get_progress_visible(evaluation_id, caller)
 
     def is_ready(self) -> bool:
         """Whole-instance readiness requires capacity for both execution classes."""

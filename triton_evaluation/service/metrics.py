@@ -36,7 +36,7 @@ LABEL_VALUES = {
     "skip_code": ("DEPENDENCY_NOT_PASSED", "PRIOR_CHECK_FAILED", "RESOURCE_DEADLINE"),
     "code": _ERROR_CODES,
     "domain_outcome": (
-        "correct", "wrong", "compile_error", "runtime_error", "execution_timeout",
+        "correct", "wrong", "incomplete", "compile_error", "runtime_error", "execution_timeout",
     ),
     "reason": ("UNSUPPORTED_CASE", "NO_STABLE_MEASUREMENT"),
     "outcome": (

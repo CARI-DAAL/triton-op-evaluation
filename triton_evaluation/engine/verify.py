@@ -173,6 +173,7 @@ from _common_utils import prepare_candidate_inputs as _prepare_candidate_inputs_
 from _common_utils import invoke_model as _invoke_model_shared  # noqa: E402
 from _common_utils import set_process_title as _set_process_title  # noqa: E402
 from _divergence import classify_divergence as _classify_divergence  # noqa: E402
+from _divergence import DIVERGENCE_KINDS as _DIVERGENCE_KINDS  # noqa: E402
 from _official_tolerance import compute_error_stats as _official_error_stats  # noqa: E402
 from _official_tolerance import resolve_tolerance as _official_tolerance  # noqa: E402
 
@@ -471,6 +472,26 @@ def resolve_input_provider(torch_module):
         raise AttributeError(
             "模块必须提供 get_inputs() 或 get_input_groups() 方法"
         )
+
+
+def _metadata_case_count(torch_module):
+    """Count known lazy workloads without executing their input generator.
+
+    Ordinary legacy providers may construct tensors in get_input_groups(), so
+    only the generated operator metadata and the official adapter's explicit
+    count contract are safe before device/RNG initialization.
+    """
+    cases = getattr(torch_module, "_operator_cases", None)
+    if isinstance(cases, list) and cases:
+        return len(cases)
+    count = getattr(torch_module, "get_case_count", None)
+    if (getattr(torch_module, "_ADAPTER_VERSION", None) == "official-task-v1"
+            and callable(count)):
+        total = count()
+        if type(total) is not int or total < 1:
+            raise ValueError("official task must declare a positive case count")
+        return total
+    return None
 
 
 def _view_as_int_dtype(dt):
@@ -912,13 +933,16 @@ def compare(fw_out, impl_out, data_type, input_spec=None, non_compute=False,
         # 输出浮点：按浮点精度标准执行（dtype-aware 三项判定）
         _compare_float_output(fw_finite, impl_finite, ctx)
     except AccuracyError as e:
-        _attach_failure_divergence(
-            e,
-            fw_flat.tolist(),
-            impl_flat.tolist(),
-            tuple(fw_out.shape),
-            data_type,
-        )
+        # Declared tolerance already attaches its diagnostics. Check before
+        # converting either full output to a Python list again.
+        if e.metrics.get("divergence") is None:
+            _attach_failure_divergence(
+                e,
+                fw_flat.tolist(),
+                impl_flat.tolist(),
+                tuple(fw_out.shape),
+                data_type,
+            )
         raise
 
 
@@ -1433,6 +1457,7 @@ def verify_implementations(
     op_name, verify_dir, triton_impl_name="triton_ascend_impl",
     output_path=None, non_compute=False, subject_budget_seconds=None,
     reference_device_policy="cpu-first",
+    case_indices=None, stop_on="complete",
 ):
     """验证框架实现和生成实现的结果一致性。
 
@@ -1444,12 +1469,23 @@ def verify_implementations(
             以 candidate execution timeout 归因并停止后续 case。None 表示不启用。
         reference_device_policy: 固定 cpu-first 或 npu-strict；与 candidate 结果无关。
             实际 reference 输出设备保存在独立的 verify_reference.json 私有诊断记录中。
+        case_indices: 要检查的原始 1-based case 编号；None 检查全部。
+        stop_on: complete 保留全量行为；first_failure 在首个可证明 mismatch 后停止。
 
     Returns:
         (passed_cases, total_cases)
     """
     if reference_device_policy not in {"cpu-first", "npu-strict"}:
         raise ValueError("unsupported reference_device_policy")
+    if stop_on not in {"complete", "first_failure"}:
+        raise ValueError("unsupported correctness stop_on")
+    if case_indices is not None:
+        if (not isinstance(case_indices, list) or not case_indices
+                or any(type(index) is not int or index < 1 for index in case_indices)
+                or len(set(case_indices)) != len(case_indices)):
+            raise ValueError("case_indices must contain unique positive integers")
+        case_indices = sorted(case_indices)
+    explicit_coverage = case_indices is not None or stop_on != "complete"
     import torch
     import torch_npu  # noqa: F401
 
@@ -1471,45 +1507,78 @@ def verify_implementations(
         candidate_import_error = exc
         modules = {"torch_module": exc.torch_module}
 
-    # 在获取输入之前设置种子，确保随机生成的输入可复现
-    torch.manual_seed(0)
-    torch.npu.manual_seed(0)
+    known_total = (
+        _metadata_case_count(modules["torch_module"])
+        if candidate_import_error is not None else None
+    )
+    if known_total is not None:
+        # Compilation cannot depend on these inputs: preserve one failure per
+        # declared workload without allocating tensors or probing the device.
+        total_cases = known_total
+        input_groups = None
+    else:
+        # 在获取输入之前设置种子，确保随机生成的输入可复现
+        torch.manual_seed(0)
+        torch.npu.manual_seed(0)
 
-    # 执行环境不变量：与沙箱一致以 NPU 为环境设备（见 _common_utils）。
-    # npu-strict 下先有界等待驱动瞬态恢复（drvGetDevNum 短暂 rc!=0，
-    # 2026-10-06T18:45–18:48Z 生产窗口：同一沙箱/请求字节在窗口内两次失败、
-    # 窗口前后全部成功）；等待由整次运行预算封顶，耗尽仍不可用则立刻失败。
-    ambient_wait = 0.0
-    if reference_device_policy == "npu-strict":
-        ambient_wait = _AMBIENT_WAIT_CAP_SECONDS
-        if subject_budget_seconds:
-            ambient_wait = min(ambient_wait, float(subject_budget_seconds))
-    if (
-        not _ensure_npu_ambient_shared(torch, wait_seconds=ambient_wait)
-        and reference_device_policy == "npu-strict"
-    ):
-        # npu-strict 的 reference 必须在 NPU 上执行；环境设备未切换成功时
-        # 继续运行只会把输入物化静默落到单线程 CPU 路径（观测到的 900s
-        # 停滞形态），最终同样在首个 reference 处失败 —— 在这里立刻以
-        # 明确错误终止，让归因在秒级可读而不是烧完整整一个预算。
-        raise RuntimeError(
-            "npu-strict reference requires the ambient NPU device; "
-            "torch.npu is unavailable in this engine context"
+        # 执行环境不变量：与沙箱一致以 NPU 为环境设备（见 _common_utils）。
+        # npu-strict 下先有界等待驱动瞬态恢复（drvGetDevNum 短暂 rc!=0，
+        # 2026-10-06T18:45–18:48Z 生产窗口：同一沙箱/请求字节在窗口内两次失败、
+        # 窗口前后全部成功）；等待由整次运行预算封顶，耗尽仍不可用则立刻失败。
+        ambient_wait = 0.0
+        if reference_device_policy == "npu-strict":
+            ambient_wait = _AMBIENT_WAIT_CAP_SECONDS
+            if subject_budget_seconds:
+                ambient_wait = min(ambient_wait, float(subject_budget_seconds))
+        if (
+            not _ensure_npu_ambient_shared(torch, wait_seconds=ambient_wait)
+            and reference_device_policy == "npu-strict"
+        ):
+            # npu-strict 的 reference 必须在 NPU 上执行；环境设备未切换成功时
+            # 继续运行只会把输入物化静默落到单线程 CPU 路径（观测到的 900s
+            # 停滞形态），最终同样在首个 reference 处失败 —— 在这里立刻以
+            # 明确错误终止，让归因在秒级可读而不是烧完整整一个预算。
+            raise RuntimeError(
+                "npu-strict reference requires the ambient NPU device; "
+                "torch.npu is unavailable in this engine context"
+            )
+
+        input_groups, total_cases = resolve_input_provider(modules["torch_module"])
+    selected = list(range(1, total_cases + 1)) if case_indices is None else case_indices
+    if any(index > total_cases for index in selected):
+        raise ValueError("correctness case index out of range")
+    if known_total is not None:
+        selected_inputs = ((index, None) for index in selected)
+    elif case_indices is None:
+        selected_inputs = enumerate(input_groups, start=1)
+    elif hasattr(input_groups, "__getitem__"):
+        # Generated operator groups materialize only the requested workloads.
+        # Full runs retain the official adapter's efficient ordered RNG path.
+        selected_inputs = ((index, input_groups[index - 1]) for index in selected)
+    else:
+        selected_set = set(selected)
+        selected_inputs = (
+            (index, inputs) for index, inputs in enumerate(input_groups, start=1)
+            if index in selected_set
         )
-
-    input_groups, total_cases = resolve_input_provider(modules["torch_module"])
     device = None if candidate_import_error is not None else torch.device("npu")
 
     failures = []
     reference_trace = []
     passed_cases = 0
-    declared = getattr(modules["torch_module"], "get_case_tolerances", None)
+    evaluated = []
+    stop_reason = "candidate_error" if candidate_import_error is not None else "complete"
+    declared = (
+        getattr(modules["torch_module"], "get_case_tolerances", None)
+        if candidate_import_error is None else None
+    )
     declared_tolerances = declared() if declared is not None else None
-    for case_idx, inputs in enumerate(input_groups, start=1):
+    for case_idx, inputs in selected_inputs:
         if candidate_import_error is not None:
+            evaluated.append(case_idx)
             failures.append({
                 "case_idx": case_idx,
-                "input_desc": describe_input(inputs),
+                "input_desc": None if known_total is not None else describe_input(inputs),
                 "error_type": "CompilationError",
                 "error_msg": candidate_import_error.error_msg,
                 "candidate_error": _candidate_error(
@@ -1545,15 +1614,23 @@ def verify_implementations(
             inputs, device, non_compute=non_compute,
             reference_device_policy=reference_device_policy,
         )
+        evaluated.append(case_idx)
         if ok:
             passed_cases += 1
         else:
             failures.append(failure)
             if failure.get("candidate_error") is not None:
                 # 候选归因失败后继续跑剩余 case 不会改变 subject outcome。
+                stop_reason = "candidate_error"
+                break
+            if (stop_on == "first_failure"
+                    and failure.get("kind") in (*_DIVERGENCE_KINDS, "shape_mismatch")):
+                stop_reason = "first_failure"
                 break
 
-    failed_cases = total_cases - passed_cases
+    if stop_reason == "complete" and evaluated != selected:
+        stop_reason = "input_exhausted"
+    failed_cases = len(failures) if explicit_coverage else total_cases - passed_cases
 
     if output_path is None:
         output_path = os.path.join(verify_dir, "verify_result.json")
@@ -1564,14 +1641,22 @@ def verify_implementations(
         "failed_cases": failed_cases,
         "failures": failures,
     }
+    if explicit_coverage:
+        result["coverage"] = {
+            "selected_case_indices": selected,
+            "evaluated_case_indices": evaluated,
+            "stop_reason": stop_reason,
+        }
     _write_verify_result(output_path, result)
     _write_verify_result(os.path.join(verify_dir, "verify_reference.json"), {
         "reference_device_policy": reference_device_policy,
         "cases": reference_trace,
     })
 
-    if failed_cases == 0:
+    if passed_cases == total_cases:
         logger.info("验证成功：共 %d 组测试用例全部通过", total_cases)
+    elif failed_cases == 0:
+        logger.info("所选用例通过：%d/%d 组任务用例已验证", passed_cases, total_cases)
     else:
         logger.error(
             "验证失败：%d/%d 组通过，%d 组失败（详见 %s）",
@@ -1631,6 +1716,8 @@ if __name__ == "__main__":
         "--subprocess", action="store_true",
         help=argparse.SUPPRESS,  # 内部参数：子进程模式，直接执行验证
     )
+    parser.add_argument("--case-indices", default=None, help="逗号分隔的原始 1-based case 编号")
+    parser.add_argument("--stop-on", choices=("complete", "first_failure"), default="complete")
     args = parser.parse_args()
 
     verify_dir = os.path.abspath(args.verify_dir)
@@ -1649,6 +1736,11 @@ if __name__ == "__main__":
                 non_compute=args.non_compute,
                 subject_budget_seconds=args.timeout,
                 reference_device_policy=args.reference_device_policy,
+                case_indices=(
+                    [int(index) for index in args.case_indices.split(",")]
+                    if args.case_indices is not None else None
+                ),
+                stop_on=args.stop_on,
             )
         except Exception as e:
             logger.error("%s", e)
@@ -1671,6 +1763,10 @@ if __name__ == "__main__":
             cmd.extend(["--output", args.output])
         if args.non_compute:
             cmd.append("--non-compute")
+        if args.case_indices is not None:
+            cmd.extend(["--case-indices", args.case_indices])
+        if args.stop_on != "complete":
+            cmd.extend(["--stop-on", args.stop_on])
         try:
             proc = subprocess.Popen(
                 cmd,

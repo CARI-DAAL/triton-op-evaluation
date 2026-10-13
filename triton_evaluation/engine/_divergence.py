@@ -76,6 +76,22 @@ def _axis_peak_ratios(abs_diff, shape):
     return peaks
 
 
+def _finite_upper_median_below(values, threshold):
+    """Test the finite upper median without sorting or retaining a second list.
+
+    The element at sorted index ``n // 2`` is strictly below the threshold
+    exactly when more than ``n // 2`` values are strictly below it. Keep the
+    historical empty-finite-set median of zero, including NaN thresholds.
+    """
+    finite_count = 0
+    below_count = 0
+    for value in values:
+        if math.isfinite(value):
+            finite_count += 1
+            below_count += value < threshold
+    return below_count > finite_count // 2 if finite_count else 0.0 < threshold
+
+
 def extract_features(reference, candidate, shape, *, atol, rtol,
                      small_value_threshold, small_value_error, rel_threshold,
                      small_count, normal_count):
@@ -103,8 +119,9 @@ def extract_features(reference, candidate, shape, *, atol, rtol,
     ref_range = (max(finite_reference) - min(finite_reference)) or 1e-30
     cand_range = cand_max - cand_min
 
-    finite_diffs = sorted(d for d in abs_diff if math.isfinite(d))
-    median_abs_diff = finite_diffs[len(finite_diffs) // 2] if finite_diffs else 0.0
+    median_within_band = _finite_upper_median_below(
+        abs_diff, PRECISION_LOSS_DIFF_BAND * small_value_error,
+    )
 
     total = (small_count + normal_count) or 1
     features = {
@@ -115,7 +132,7 @@ def extract_features(reference, candidate, shape, *, atol, rtol,
         "corr": corr,
         "clamp_saturation_ratio": sat / n,
         "clamp_range_ratio": cand_range / ref_range,
-        "median_abs_diff": median_abs_diff,
+        "median_within_band": median_within_band,
         "small_count": small_count,
         "normal_count": normal_count,
         "small_ratio": small_count / total,
@@ -161,7 +178,7 @@ def classify(features):
 
     # 5. precision_loss — small ULP-band errors dominated by small-magnitude values.
     if (features["small_ratio"] > PRECISION_LOSS_SMALL_RATIO
-            and features["median_abs_diff"] < PRECISION_LOSS_DIFF_BAND * features["small_value_error"]):
+            and features["median_within_band"]):
         return "precision_loss"
 
     # 6. scattered — none of the structural patterns matched.
@@ -183,15 +200,19 @@ def worst_sample(reference, candidate, abs_diff, shape, *, k=SAMPLE_DEFAULT_K):
     # top-k by |diff|; heapq.nlargest is O(n log k). Non-finite |diff| (inf/nan) is the
     # WORST kind of divergence, so rank it largest by mapping it to +inf — otherwise it
     # would compare as 0.0 and be hidden when k < n.
-    triples = [((float("inf") if not math.isfinite(abs_diff[i]) else abs_diff[i]), i)
-               for i in range(n)]
-    top = heapq.nlargest(min(k, n), triples, key=lambda t: t[0])
+    # Stream indices: only the k selected entries need to be retained, without
+    # allocating a (score, index) tuple for every element.
+    # nlargest with a key preserves input order for ties (row-major index).
+    top = heapq.nlargest(
+        min(k, n), range(n),
+        key=lambda i: math.inf if not math.isfinite(abs_diff[i]) else abs_diff[i],
+    )
     # row-major flat index -> multi-index
     strides = [1] * len(shape)
     for d in range(len(shape) - 2, -1, -1):
         strides[d] = strides[d + 1] * shape[d + 1]
     out = []
-    for _, i in sorted(top, key=lambda t: t[0], reverse=True):  # descending |diff|
+    for i in top:  # already descending |diff|, with stable ties
         idx = [(i // strides[d]) % shape[d] for d in range(len(shape))]
         out.append({
             "idx": idx,

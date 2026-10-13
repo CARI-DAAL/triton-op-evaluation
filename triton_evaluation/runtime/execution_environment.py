@@ -14,6 +14,17 @@ from triton_evaluation.api.contract import ExecutionEnvironment
 from triton_evaluation.config import Settings
 
 
+def is_complete_execution_environment(environment: ExecutionEnvironment | None) -> bool:
+    """Unknown hardware/software identity cannot authorize trusted evidence reuse."""
+    if environment is None or environment.hardware_count <= 0:
+        return False
+    return all(
+        isinstance(value, str) and bool(value.strip())
+        for field, value in environment.model_dump().items()
+        if field != "hardware_count"
+    )
+
+
 def _optional_version(distribution: str) -> str | None:
     try:
         return importlib.metadata.version(distribution)

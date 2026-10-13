@@ -214,8 +214,27 @@ class VerifyEvaluator:
         count = self._reference_case_count(request, work_dir, device_id, deadline_at, lease_valid)
         if isinstance(count, EngineCheckResult):
             return count
+        raw = {"decoy": True, "total_cases": count}
+        params = request.correctness
+        if params is not None and (
+            params.case_indices is not None or params.stop_on != "complete"
+        ):
+            selected = (
+                list(range(1, count + 1)) if params.case_indices is None
+                else [index + 1 for index in params.case_indices]
+            )
+            if any(index > count for index in selected):
+                return engine_failure(
+                    "correctness", "correctness case index out of range",
+                    code="INVALID_REQUEST", phase="request", retryable=False,
+                )
+            raw["coverage"] = {
+                "selected_case_indices": selected,
+                "evaluated_case_indices": [],
+                "stop_reason": "decoy",
+            }
         return EngineCheckResult(
-            status="succeeded", raw={"decoy": True, "total_cases": count}, error=None
+            status="succeeded", raw=raw, error=None
         )
 
     def _run_verify(
@@ -249,6 +268,12 @@ class VerifyEvaluator:
         ]
         if request.non_compute:
             cmd.append("--non-compute")
+        if request.correctness is not None:
+            params = request.correctness
+            if params.case_indices is not None:
+                cmd.extend(["--case-indices", ",".join(str(i + 1) for i in params.case_indices)])
+            if params.stop_on != "complete":
+                cmd.extend(["--stop-on", params.stop_on])
         outcome = (self.runner or run_script)(
             cmd,
             str(work_dir),
@@ -281,4 +306,24 @@ class VerifyEvaluator:
                 "correctness",
                 f"verify engine produced no usable result (engine exit={outcome.exit_code})",
             )
+        params = request.correctness
+        if params is not None and (
+            params.case_indices is not None or params.stop_on != "complete"
+        ):
+            coverage = result.get("coverage")
+            total = result.get("total_cases")
+            selected = (
+                [index + 1 for index in params.case_indices]
+                if params.case_indices is not None else
+                list(range(1, total + 1)) if type(total) is int and total > 0 else None
+            )
+            if (
+                not isinstance(coverage, dict)
+                or coverage.get("selected_case_indices") != selected
+                or (params.stop_on == "complete" and coverage.get("stop_reason") == "first_failure")
+            ):
+                return engine_failure(
+                    "correctness", "correctness coverage does not match the requested checks",
+                    code="INVALID_ENGINE_OUTPUT", phase="shaping", retryable=False,
+                )
         return EngineCheckResult(status="succeeded", raw=result, error=None)
