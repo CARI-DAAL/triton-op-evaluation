@@ -241,6 +241,52 @@ def test_seventy_percent_is_not_above_largest_threshold(field):
     assert msprof_deep.classify_bound(raw)["name"] == "NO BOUND"
 
 
+def test_v200_row_classifies_without_pushq_or_scalarldst():
+    # 910B (V200 vector core) op_summary never exports pushq/scalarldst
+    # columns; the vector signal arrives as aiv_vec_ratio and scalar loads
+    # are folded into aiv_scalar_ratio.
+    raw = {
+        "aiv_mte2_ratio": "0.10",
+        "aic_mac_ratio": "0.10",
+        "aic_fixpipe_ratio": "0.10",
+        "aiv_mte3_ratio": "0.10",
+        "aiv_scalar_ratio": "0.10",
+        "aiv_vec_ratio": "0.85",
+    }
+    bound = msprof_deep.classify_bound(raw)
+    assert bound is not None
+    assert bound["name"] == "VEC BOUND"
+    assert msprof_deep.missing_canonical_pipe_fields(raw) == []
+
+
+def test_scalar_bound_tolerates_missing_scalarldst():
+    raw = _base_ratios()
+    raw.pop("scalarldst_ratio")
+    raw["aiv_scalar_ratio"] = "0.81"
+    assert msprof_deep.classify_bound(raw)["name"] == "SCALAR BOUND"
+
+
+def test_scalar_and_scalarldst_both_missing_still_blocks():
+    raw = _base_ratios()
+    raw.pop("scalarldst_ratio")
+    raw.pop("aiv_scalar_ratio")
+    assert msprof_deep.classify_bound(raw) is None
+    missing = msprof_deep.missing_canonical_pipe_fields(raw)
+    assert any("SCALAR" in field for field in missing)
+
+
+def test_missing_vector_signal_on_v200_still_blocks():
+    raw = {
+        "aiv_mte2_ratio": "0.10",
+        "aic_mac_ratio": "0.95",
+        "aic_fixpipe_ratio": "0.10",
+        "aiv_mte3_ratio": "0.10",
+        "aiv_scalar_ratio": "0.10",
+    }
+    assert msprof_deep.classify_bound(raw) is None
+    assert "PipeUtilization.PUSHQ" in msprof_deep.missing_canonical_pipe_fields(raw)
+
+
 def test_per_core_reports_observed_ids_and_profile_run_scope(tmp_path):
     db_dir = tmp_path / "PROF_fake" / "device_0" / "sqlite"
     db_dir.mkdir(parents=True)
@@ -274,6 +320,30 @@ def test_per_core_missing_database_is_none(tmp_path):
         )
         is None
     )
+
+
+def test_per_core_reads_pinned_card_device_dir(tmp_path):
+    # Workers pin ASCEND_RT_VISIBLE_DEVICES to a nonzero card and msprof
+    # then writes sqlite data under device_<card>, never device_0.
+    db_dir = tmp_path / "PROF_fake" / "device_7" / "sqlite"
+    db_dir.mkdir(parents=True)
+    connection = sqlite3.connect(db_dir / "aicore.db")
+    connection.execute(
+        "CREATE TABLE AICoreOriginalData(coreid INTEGER, task_cyc INTEGER)"
+    )
+    connection.executemany(
+        "INSERT INTO AICoreOriginalData VALUES (?, ?)",
+        [(0, 1600), (1, 1700)],
+    )
+    connection.commit()
+    connection.close()
+    result = msprof_deep.per_core_balance(
+        {"aicore_time(us)": "20"},
+        str(tmp_path / "PROF_fake"),
+    )
+    assert result is not None
+    assert result["core_ids"] == [0, 1]
+    assert result["active_cores"] == 2
 
 
 def test_per_core_unknown_schema_is_none(tmp_path):

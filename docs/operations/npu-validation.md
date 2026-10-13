@@ -100,6 +100,15 @@ verify 最多同时持有相邻两组，不会一次物化全部 51 组。客户
 失败或 profile partial 都不会标记全量通过。`--check-only` 只检查文件一致性，
 `hardware_verified` 明确为 false。
 
+deep profile 每个 case 约 480 s，51 个 case 串行放不进 3600 s deadline，因此
+profile_deep 默认按每 4 个 case 拆成 13 个评测并发提交（`--deep-shard-size`，
+`0` 恢复单个评测；`--deep-concurrency` 默认 4）。每个分片使用独立的
+`X-Session-ID`，避免被单 session 的 2 个在途上限卡住；caller 在途上限满时服务返回
+413，脚本用同一 idempotency key 稍后重投。任一分片失败或 partial，阶段即不通过。
+profile 引擎的 case discovery 会在主机上物化全部输入，用独立的
+`MSPROF_DISCOVERY_TIMEOUT_SEC`（默认 900 s，仍受评测 deadline 约束），结果缓存在本次
+评测的工作目录，逐 case 的引擎调用不再重复 discovery。
+
 已有底层 Event/profile 测试也可单独执行：
 
 ```bash

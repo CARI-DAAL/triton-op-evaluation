@@ -57,6 +57,17 @@ PIPE_ALIASES = {
     ),
 }
 
+# V200 vector cores (Ascend 910B) never export pushq/scalarldst columns: the
+# vector-pipe signal arrives as aiv_vec_ratio and scalar load/store activity
+# is folded into aiv_scalar_ratio. Fallback aliases apply only when every
+# primary alias is absent, so chips that export both keep primary semantics.
+PIPE_ALIAS_FALLBACKS = {
+    "PUSHQ": ("aiv_vec_ratio", "vec_ratio"),
+}
+
+# The scalar signal is known when either canonical scalar field resolves.
+SCALAR_CANONICAL_FIELDS = ("SCALAR", "SCALARLDST")
+
 
 def _read_rows(path: str) -> list[dict[str, str]]:
     with open(path, newline="", encoding="utf-8") as handle:
@@ -192,26 +203,45 @@ def _max_alias(raw: dict[str, Any], aliases: tuple[str, ...]) -> float | None:
 
 
 def canonical_pipe_ratios(raw: dict[str, Any]) -> dict[str, float | None]:
-    return {
-        name: _max_alias(raw, aliases)
-        for name, aliases in PIPE_ALIASES.items()
-    }
+    ratios: dict[str, float | None] = {}
+    for name, aliases in PIPE_ALIASES.items():
+        value = _max_alias(raw, aliases)
+        if value is None:
+            fallback = PIPE_ALIAS_FALLBACKS.get(name)
+            if fallback is not None:
+                value = _max_alias(raw, fallback)
+        ratios[name] = value
+    return ratios
 
 
 def missing_canonical_pipe_fields(raw: dict[str, Any]) -> list[str]:
+    ratios = canonical_pipe_ratios(raw)
+    scalar_known = any(ratios[name] is not None for name in SCALAR_CANONICAL_FIELDS)
     return [
         f"PipeUtilization.{name}"
-        for name, value in canonical_pipe_ratios(raw).items()
-        if value is None
+        for name, value in ratios.items()
+        if value is None and (name not in SCALAR_CANONICAL_FIELDS or not scalar_known)
     ]
 
 
 def classify_bound(raw: dict[str, Any]) -> dict[str, Any] | None:
     ratios = canonical_pipe_ratios(raw)
-    comparison = [ratios[name] for name in PIPE_ALIASES]
+    comparison = [
+        value for value in ratios.values() if value is not None
+    ]
+    scalar_known = any(ratios[name] is not None for name in SCALAR_CANONICAL_FIELDS)
+    decidable = (
+        bool(comparison)
+        and scalar_known
+        and all(
+            ratios[name] is not None
+            for name in PIPE_ALIASES
+            if name not in SCALAR_CANONICAL_FIELDS
+        )
+    )
 
     def largest(name: str) -> bool | None:
-        if any(value is None for value in comparison):
+        if not decidable:
             return None
         value = ratios[name]
         return value == max(comparison) and value > 0.70
@@ -249,10 +279,10 @@ def classify_bound(raw: dict[str, Any]) -> dict[str, Any] | None:
             "SCALAR > 0.80 or SCALARLDST > 0.80",
             (
                 None
-                if ratios["SCALAR"] is None or ratios["SCALARLDST"] is None
+                if ratios["SCALAR"] is None and ratios["SCALARLDST"] is None
                 else (
-                    ratios["SCALAR"] > 0.80
-                    or ratios["SCALARLDST"] > 0.80
+                    (ratios["SCALAR"] or 0.0) > 0.80
+                    or (ratios["SCALARLDST"] or 0.0) > 0.80
                 )
             ),
         ),
@@ -276,12 +306,14 @@ def classify_bound(raw: dict[str, Any]) -> dict[str, Any] | None:
 
 
 def load_per_core_cycles(sample_dir: str) -> list[tuple[int, int]]:
+    # Workers pin ASCEND_RT_VISIBLE_DEVICES to their card, so msprof writes
+    # sqlite data under device_<card>; match any device number.
     candidates = sorted(
         glob.glob(
             os.path.join(
                 sample_dir,
                 "**",
-                "device_0",
+                "device_*",
                 "sqlite",
                 "aicore.db",
             ),
