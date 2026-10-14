@@ -2,7 +2,8 @@
 
 本指南验收 [EVF 01 至 08](../plans/evaluation-efficiency-tickets.json) 的设备行为和实际收益。
 代码基线为 `312bbc7`；新版以实际部署的 commit、镜像 digest 和 evaluator build 为准。
-CPU 验收记录为 **2217 passed、22 skipped、7 deselected**，NPU 实测结果待填写。
+CPU 验收记录为 **2217 passed、22 skipped、7 deselected**；测试机提供的首轮 NPU 实测
+见[第 9 节](#9-npu-实测记录2026-10-14分析机-atlas-800t-a3)。完整设备验收仍有待办。
 
 测试按“部署核对 → 小算子功能验收 → 联合执行对照 → 代表性工作量 → 复用与恢复”推进。
 先取得完整、口径一致的证据，再判断提速。一次请求返回 `completed` 不代表候选正确，
@@ -278,4 +279,70 @@ python3 "$TRITON_EVAL_CLI" benchmark \
 | 产物 | JSON 报告、handles、必要的 worker 日志、测试配置 |
 
 验收结论分为“功能证据通过”“测量等价性通过”“达到预定提速目标”三项。
-提速目标在测量前约定；本草案不填写未取得的 NPU 数字。
+提速目标在测量前约定；下节按测试范围记录已取得的首轮数据。
+
+## 9 NPU 实测记录（2026-10-14，分析机 Atlas 800T A3）
+
+本节来自测试机执行者提供的汇总记录；原始 JSON 与 handles 仍在测试机，尚未归档到
+本仓库。测量版本为 `analysis/eval-feedback` @ `f54b9a0`，evaluator build 为
+`git:f54b9a0…`。环境为 openEuler 22.03 SP4 aarch64、kernelgym Python 3.11、
+CANN 9.0.0.0430、driver/npu-smi 25.5.0。
+
+服务采用 host 部署，16 个 NPU worker 加 1 个 CPU worker。执行者报告设备拓扑为
+8 NPU × 2 die，即 16 个运行时设备，对照期间无其他负载。本轮未提供逐 attempt 的
+实际设备号，是否满足第 2 节固定同一物理设备的条件仍待核对。
+
+测试机 CPU 回归为 **2226 passed / 13 skipped / 7 deselected**；
+`npu_release_gate.py` smoke **passed**。此前 `312bbc7` 的完整五阶段 gate 通过，
+属于基线版本记录，不能代替 `f54b9a0` 尚未完成的设备验收项目。
+
+### 联合执行对照
+
+语料为 add smoke 两个 case；`--pairs 5 --warmup-pairs 1`，warmup 5 / repeats 20。
+两组报告均为 `passed=true`，本轮未冻结 `--max-relative-drift`。
+
+| 方法 | separate 墙钟中位数 | combined 墙钟中位数 | 报告中的流程加速比 | 首份 performance 中位数 |
+| --- | --- | --- | --- | --- |
+| event | 45.9 s | 32.9 s | **1.39×** | 24.4 s → 20.0 s |
+| profiler | 65.1 s | 43.4 s | **1.50×** | 43.7 s → 38.7 s |
+
+按展示的中位数计算，墙钟分别减少约 **28.3% / 33.3%**，首份 performance 提前
+约 **18.0% / 11.4%**。加速比沿用原报告，展示的耗时已经过四舍五入。
+这些是服务流程收益，不是候选 kernel 相对 Torch 的加速比。
+
+### 测量漂移与统计口径
+
+执行者汇总的 combined/separate 逐 case 耗时比：
+
+- profiler：**0.933–1.071**，观察范围约为 **−6.7% 至 +7.1%**。
+- event：**0.773–1.21**，观察范围约为 **−22.7% 至 +21.0%**。
+
+未预先冻结漂移阈值，因此当前只能报告观察范围，不能据此宣称测量等价性正式通过。
+Event 波动可能涉及微秒级计时噪声；需要结合原始样本、预热分组和设备归属进一步核对，
+本记录不将波动原因直接归为固有噪声。
+
+原汇总标记 `n=54`，其计数单位、包含哪些指标/方法、是否纳入 warmup 尚待确认。
+脚本对每个配对的每个 case 产生 candidate、reference、trace 三种比值；按所述
+5 个正式配对 × 2 case × 3 指标，应为每方法 30 个正式比值，含 1 个 warmup 配对则
+为 36 个。待核对前，不把 `n=54` 当作 54 次独立重复实验。
+
+原始报告与 handles 路径（位于测试机）：
+
+```text
+/tmp/triton-eval-npu-20261014/feedback-event.json
+/tmp/triton-eval-npu-20261014/feedback-profiler.json
+```
+
+### 当前结论与剩余验收
+
+**首轮 add smoke 的功能证据通过；在所报告部署条件下，combined 流程加速为
+1.39–1.50×，首份 performance 提前约 11–18%。** 结论限定于本轮两 case 小算子语料。
+PR #61 保持草稿，完整验收还需：
+
+1. 归档原始 JSON、实际运行命令和 `n=54` 的生成脚本；区分 warmup 与正式配对，
+   分别统计 candidate/reference/trace 比值。
+2. 导出逐 evaluation/attempt 的运行时设备号；核对是否同 die 对照，必要时补固定单卡
+   或按设备分层的对照。
+3. 补计算密集和带宽主导 workload，并在正式比较前标定噪声、冻结漂移阈值。
+4. 完成第 7 节定向 profile 与显式复用的拒绝路径。
+5. 完成第 8 节恢复及多卡调度项目。

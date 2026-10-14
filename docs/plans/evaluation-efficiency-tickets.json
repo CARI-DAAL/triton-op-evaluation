@@ -118,12 +118,66 @@
     "independent_review": "completed; concrete findings fixed and regression-tested"
   },
   "device_acceptance": {
-    "status": "pending_user_measurement",
+    "status": "partial_npu_validation_reported",
     "guide": "docs/operations/feedback-performance.md",
     "script": "scripts/npu_feedback_comparison.py",
     "methods": [
       "event",
       "profiler"
+    ],
+    "report_date": "2026-10-14",
+    "measured_commit": "f54b9a00940a9aa52f426b08d424aafbf35b11c5",
+    "evidence_source": "User-provided summary from the NPU test host; raw JSON not archived in this checkout",
+    "hardware": "Atlas 800T A3; reported 8 NPUs x 2 dies, 16 runtime devices",
+    "deployment": "16 NPU workers and 1 CPU worker; host mode; no other load reported",
+    "reported_cpu_regression": "2226 passed, 13 skipped, 7 deselected",
+    "reported_smoke": "passed",
+    "tested_scope": {
+      "workload": "two-case add smoke",
+      "pairs_per_method": 5,
+      "warmup_pairs": 1,
+      "warmup": 5,
+      "repeats": 20
+    },
+    "reported_measurements": {
+      "event": {
+        "separate_wall_seconds": 45.9,
+        "combined_wall_seconds": 32.9,
+        "reported_wall_ratio": 1.39,
+        "separate_first_performance_seconds": 24.4,
+        "combined_first_performance_seconds": 20.0,
+        "reported_ratio_range": [
+          0.773,
+          1.21
+        ]
+      },
+      "profiler": {
+        "separate_wall_seconds": 65.1,
+        "combined_wall_seconds": 43.4,
+        "reported_wall_ratio": 1.5,
+        "separate_first_performance_seconds": 43.7,
+        "combined_first_performance_seconds": 38.7,
+        "reported_ratio_range": [
+          0.933,
+          1.071
+        ]
+      }
+    },
+    "measurement_equivalence": "not_accepted_no_preregistered_drift_threshold",
+    "reported_drift_count": 54,
+    "drift_count_definition": "unconfirmed; not treated as independent repetitions",
+    "raw_report_paths_on_test_host": [
+      "/tmp/triton-eval-npu-20261014/feedback-event.json",
+      "/tmp/triton-eval-npu-20261014/feedback-profiler.json"
+    ],
+    "pending": [
+      "raw reports and drift aggregation definition",
+      "per-attempt device attribution / fixed-device comparison",
+      "compute-intensive workload comparison",
+      "bandwidth-bound workload comparison",
+      "noise calibration and frozen drift threshold",
+      "selected profile and reuse refusal paths",
+      "recovery and multi-card validation"
     ]
   }
 }
