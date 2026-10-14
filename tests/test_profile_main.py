@@ -102,6 +102,108 @@ def test_single_case_selection_is_zero_based(tmp_path, monkeypatch):
     assert seen[0][-2:] == ["--case-idx", "1"]
 
 
+def test_case_batch_discovers_once_and_retains_original_identities(tmp_path, monkeypatch):
+    monkeypatch.setattr(profile, "write_runner", lambda directory: "runner.py")
+    calls = []
+    captures = []
+
+    def discover(**kwargs):
+        calls.append(kwargs)
+        return [{"case_idx": index, "input_desc": []} for index in range(5)]
+
+    def capture(**kwargs):
+        index = int(kwargs["app_cmd"][-1])
+        captures.append(index)
+        return _complete(index)
+
+    result, status = profile.run_profile(
+        _config(tmp_path, case_indices=[4, 1]), discover=discover,
+        op_backend=capture, snapshot=lambda path, payload: None,
+    )
+    assert status == 0
+    assert len(calls) == 1
+    assert captures == [1, 4]
+    assert result["requested_case_idx"] is None
+    assert result["requested_case_indices"] == [1, 4]
+    assert result["total_cases"] == 5
+    assert result["selected_cases"] == result["completed_cases"] == 2
+    assert [item["case_idx"] for item in result["per_case_results"]] == [1, 4]
+
+
+@pytest.mark.parametrize("selection", [[], [-1], [True], [1, 1], list(range(129))])
+def test_batch_selection_is_bounded_before_discovery(tmp_path, selection):
+    with pytest.raises(ValueError, match="case_indices"):
+        profile.run_profile(
+            _config(tmp_path, case_indices=selection),
+            discover=lambda **kwargs: pytest.fail("invalid selection must not discover"),
+        )
+
+
+def test_single_and_batch_selection_are_mutually_exclusive(tmp_path):
+    with pytest.raises(ValueError, match="mutually exclusive"):
+        profile.validate_profile_config(_config(tmp_path, case_idx=0, case_indices=[0]))
+
+
+def test_batch_rejects_out_of_range_before_any_capture(tmp_path):
+    with pytest.raises(IndexError, match="out of range"):
+        profile.run_profile(
+            _config(tmp_path, case_indices=[0, 2]),
+            discover=lambda **kwargs: [{"case_idx": 0, "input_desc": []}],
+            op_backend=lambda **kwargs: pytest.fail("selection must validate before captures"),
+        )
+
+
+def test_deep_capture_selection_reaches_backend(tmp_path):
+    seen = []
+
+    def capture(**kwargs):
+        seen.append(kwargs)
+        return _complete(0)
+
+    _, status = profile.run_profile(
+        _config(tmp_path, profile_mode="deep", metric_groups=["Memory"], include_per_core=False),
+        discover=lambda **kwargs: [{"case_idx": 0, "input_desc": []}],
+        deep_backend=capture,
+    )
+    assert status == 0
+    assert len(seen) == 1
+    assert seen[0]["metric_groups"] == ["Memory"]
+    assert seen[0]["include_per_core"] is False
+
+
+def test_failed_deep_capture_preserves_requested_scope(tmp_path):
+    def capture(**kwargs):
+        raise FileNotFoundError("msprof not installed")
+
+    result, status = profile.run_profile(
+        _config(tmp_path, profile_mode="deep", metric_groups=["Memory"], include_per_core=False),
+        discover=lambda **kwargs: [{"case_idx": 0, "input_desc": []}],
+        deep_backend=capture,
+    )
+    assert status == 0
+    case = result["per_case_results"][0]
+    assert case["status"] == "failed"
+    assert case["missing_metrics"] == ["Memory"]
+    assert case["raw_metrics"]["_capture_requested"] == {
+        "metric_groups": ["Memory"], "include_per_core": False,
+    }
+
+
+def test_cli_parses_batch_and_deep_controls(tmp_path, monkeypatch):
+    monkeypatch.setattr(sys, "argv", [
+        "profile_runner.py", "--op_name", "sample", "--verify_dir", str(tmp_path),
+        "--triton_impl_name", "candidate", "--profile-mode", "deep", "--timeout", "60",
+        "--output", str(tmp_path / "result.json"), "--case-indices", "0", "7",
+        "--metric-groups", "Memory", "L2Cache", "--no-per-core",
+    ])
+    config = profile._config_from_args()
+    profile.validate_profile_config(config)
+    assert config.case_indices == [0, 7]
+    assert config.metric_groups == ["Memory", "L2Cache"]
+    assert config.include_per_core is False
+    assert config.case_idx is None
+
+
 def test_case_failure_does_not_stop_full_profile(tmp_path, monkeypatch):
     monkeypatch.setattr(profile, "write_runner", lambda directory: "runner.py")
     discovered = [

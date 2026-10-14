@@ -1,9 +1,9 @@
 """Profile check runner: engine profile_runner for op/deep case profiles.
 
-Profile is independent of the correctness verdict. The engine profiles one
-explicit ``--case-idx`` per run, so a multi-index selection is executed as
-sequential engine runs in case order. Raw envelopes are collected unchanged;
-the shaping boundary validates their identities before combining evidence.
+Profile is independent of the correctness verdict. A single engine invocation
+accepts the full selected case set, sharing discovery and orchestration setup.
+Raw envelopes are returned unchanged; the shaping boundary validates their
+identities and counts before publishing evidence.
 Any timeout or failure aborts the whole check as an infrastructure outcome.
 """
 import sys
@@ -41,30 +41,20 @@ class ProfileEvaluator:
         deadline_at,
         lease_valid=None,
     ) -> EngineCheckResult:
-        materialize(request, work_dir)
         params = request.profile or ProfileParams()
+        if params.mode == "trace":
+            from .benchmark import BenchmarkEvaluator
+
+            return BenchmarkEvaluator(self.engine_dir, runner=self.runner).run_trace(
+                request, work_dir, device_id, deadline_at, lease_valid
+            )
+        materialize(request, work_dir)
         indices = params.case_indices
         if indices is not None and not indices:
             return engine_failure("profile", "profile case selection is empty")
-        if indices is None:
-            result = self._run_once(
-                request, params, work_dir, device_id, deadline_at, None, lease_valid
-            )
-            if result.status != "succeeded":
-                return result
-            raw = result.raw
-        else:
-            envelopes = []
-            for index in indices:
-                result = self._run_once(
-                    request, params, work_dir, device_id, deadline_at, index,
-                    lease_valid,
-                )
-                if result.status != "succeeded":
-                    return result
-                envelopes.append(result.raw)
-            raw = {"profile_runs": envelopes}
-        return EngineCheckResult(status="succeeded", raw=raw, error=None)
+        return self._run_once(
+            request, params, work_dir, device_id, deadline_at, indices, lease_valid
+        )
 
     def _run_once(
         self,
@@ -73,7 +63,7 @@ class ProfileEvaluator:
         work_dir: Path,
         device_id: int,
         deadline_at,
-        case_idx: int | None,
+        case_indices: list[int] | None,
         lease_valid=None,
     ) -> EngineCheckResult:
         remaining = remaining_seconds(deadline_at)
@@ -85,10 +75,7 @@ class ProfileEvaluator:
             _MIN_ENGINE_TIMEOUT_SECONDS,
             min(int(remaining), _MAX_ENGINE_TIMEOUT_SECONDS),
         )
-        suffix = "profile_result.json" if case_idx is None else (
-            f"profile_result_{case_idx}.json"
-        )
-        out_path = Path(work_dir) / suffix
+        out_path = Path(work_dir) / "profile_result.json"
         cmd = [
             sys.executable,
             str(Path(self.engine_dir) / "profile_runner.py"),
@@ -107,8 +94,12 @@ class ProfileEvaluator:
             "--output",
             str(out_path),
         ]
-        if case_idx is not None:
-            cmd.extend(["--case-idx", str(case_idx)])
+        if case_indices is not None:
+            cmd.extend(["--case-indices", *(str(index) for index in case_indices)])
+        if params.metric_groups is not None:
+            cmd.extend(["--metric-groups", *params.metric_groups])
+        if not params.include_per_core:
+            cmd.append("--no-per-core")
         outcome = (self.runner or run_script)(
             cmd, str(work_dir), device_id, deadline_at, lease_valid,
             budget_seconds=budget + 60,

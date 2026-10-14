@@ -54,10 +54,20 @@ def positive(value: str) -> float:
     return result
 
 
+def case_indices(value: str) -> list[int]:
+    try:
+        values = [int(item) for item in value.split(",")]
+    except ValueError:
+        raise argparse.ArgumentTypeError("expected comma-separated case indices") from None
+    if not values or len(values) > 128 or min(values) < 0 or len(values) != len(set(values)):
+        raise argparse.ArgumentTypeError("case indices must be unique nonnegative integers")
+    return sorted(values)
+
+
 def arguments(argv):
     parser = Parser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
-    for action in ("verify", "benchmark", "profile", "get"):
+    for action in ("verify", "benchmark", "profile", "evaluate", "get", "progress"):
         command = commands.add_parser(action)
         command.add_argument("--url", default=os.environ.get("EVALUATION_URL"))
         command.add_argument(
@@ -66,8 +76,12 @@ def arguments(argv):
         command.add_argument("--timeout", type=positive, default=960.0)
         command.add_argument("--poll-interval", type=positive, default=1.0)
         command.add_argument("--no-wait", action="store_true")
+        command.add_argument(
+            "--wait-for", choices=("compile", "correctness", "performance", "profile"),
+            help="return the progress snapshot once this check has evidence",
+        )
         command.add_argument("--save-handle", type=Path)
-        if action == "get":
+        if action in {"get", "progress"}:
             command.add_argument("evaluation_id")
         else:
             command.add_argument("--definition", type=Path, required=True)
@@ -78,7 +92,30 @@ def arguments(argv):
             command.add_argument("--workloads", type=Path, required=True)
             command.add_argument("--idempotency-key")
             command.add_argument("--session-id")
-        if action == "benchmark":
+            command.add_argument("--deadline-seconds", type=int)
+        if action in {"verify", "benchmark", "profile"}:
+            command.add_argument("--case-indices", type=case_indices)
+        if action == "evaluate":
+            command.add_argument(
+                "--checks", nargs="+", choices=("compile", "correctness", "performance", "profile"),
+            )
+            for check_name in ("correctness", "performance", "profile"):
+                command.add_argument("--" + check_name + "-cases", type=case_indices)
+        if action in {"verify", "benchmark", "evaluate"}:
+            command.add_argument("--stop-on", choices=("complete", "first_failure"))
+            command.add_argument("--correctness-from")
+        if action in {"profile", "evaluate"}:
+            command.add_argument("--profile-mode", choices=("op", "deep", "trace"))
+            command.add_argument("--metric-groups", nargs="+", choices=(
+                "PipeUtilization", "ArithmeticUtilization", "Memory", "MemoryL0",
+                "MemoryUB", "L2Cache", "ResourceConflictRatio",
+            ))
+            command.add_argument("--no-per-core", action="store_true")
+            command.add_argument("--max-kernels-per-case", type=int)
+        if action in {"benchmark", "evaluate"}:
+            command.add_argument("--warmup", type=int)
+            command.add_argument("--repeats", type=int)
+            command.add_argument("--measurement-method", choices=("event", "profiler"))
             cache = command.add_mutually_exclusive_group()
             cache.add_argument(
                 "--use-baseline-cache", dest="use_baseline_cache", action="store_true",
@@ -91,9 +128,51 @@ def arguments(argv):
             )
             command.set_defaults(use_baseline_cache=True)
     args = parser.parse_args(argv)
-    if args.command != "get" and args.triton_only and args.triton is None:
+    if args.command not in {"get", "progress"} and args.triton_only and args.triton is None:
         raise ClientError("INVALID_ARGUMENT", "--triton-only requires --triton")
+    if args.wait_for and (args.no_wait or args.command == "progress"):
+        raise ClientError("INVALID_ARGUMENT", "--wait-for requires a waiting evaluation or get")
     return args
+
+
+def apply_controls(payload, args):
+    """Forward explicit capability controls; omitted options keep service defaults."""
+    if args.command == "evaluate" and args.checks is not None:
+        payload["checks"] = args.checks
+    if args.deadline_seconds is not None:
+        if not 10 <= args.deadline_seconds <= 3600:
+            raise ClientError("INVALID_ARGUMENT", "deadline must be between 10 and 3600 seconds")
+        payload["deadline_seconds"] = args.deadline_seconds
+    maps = {
+        "correctness": {"stop_on": "stop_on", "correctness_cases": "case_indices"},
+        "performance": {
+            "performance_cases": "case_indices", "warmup": "warmup", "repeats": "repeats",
+            "measurement_method": "method",
+        },
+        "profile": {
+            "profile_cases": "case_indices", "profile_mode": "mode",
+            "metric_groups": "metric_groups",
+            "max_kernels_per_case": "max_kernels_per_case",
+        },
+    }
+    shortcut = {"verify": "correctness", "benchmark": "performance", "profile": "profile"}
+    for check_name, fields in maps.items():
+        params = {
+            field: getattr(args, option)
+            for option, field in fields.items() if getattr(args, option, None) is not None
+        }
+        if shortcut.get(args.command) == check_name and args.case_indices is not None:
+            params["case_indices"] = args.case_indices
+        if check_name == "performance" and getattr(args, "use_baseline_cache", True) is False:
+            params["use_baseline_cache"] = False
+        if check_name == "profile" and getattr(args, "no_per_core", False):
+            params["include_per_core"] = False
+        if params:
+            payload[check_name] = params
+    if getattr(args, "correctness_from", None) is not None:
+        if not ID.fullmatch(args.correctness_from):
+            raise ClientError("INVALID_ARGUMENT", "correctness evidence ID has an invalid format")
+        payload["correctness_from"] = args.correctness_from
 
 
 def base_url(value):
@@ -147,6 +226,16 @@ def validate_resource(value):
     return value
 
 
+def validate_progress(value):
+    if not isinstance(value, dict) or not isinstance(value.get("completed_checks"), dict):
+        raise ClientError("INVALID_RESPONSE", "progress lacks check evidence")
+    for name in ("resource_revision", "progress_revision"):
+        if type(value.get(name)) is not int or value[name] < 0:
+            raise ClientError("INVALID_RESPONSE", "progress lacks a valid revision")
+    validate_resource({**value, "result": value["completed_checks"]})
+    return value
+
+
 def exit_status(resource):
     if resource["state"] not in TERMINAL:
         return 0  # Accepted work is not an assertion that any check passed.
@@ -175,6 +264,8 @@ def exit_status(resource):
     if correctness and correctness["status"] == "succeeded":
         if not isinstance(correctness["data"].get("passed"), bool):
             raise ClientError("INVALID_RESPONSE", "correctness result lacks a boolean verdict")
+        if correctness["data"].get("outcome") == "incomplete":
+            return 2
     compile_check = result.get("compile")
     if compile_check and compile_check["status"] == "succeeded":
         if compile_check["data"].get("outcome") not in ("compiled", "compile_error"):
@@ -297,7 +388,10 @@ class Client:
                 with self.opener.open(request, timeout=min(30.0, self.remaining())) as response:
                     if response.status not in {200, 202}:
                         raise ClientError("INVALID_RESPONSE", "unexpected service response status")
-                    value = validate_resource(json_value(response.read()))
+                    validate = (
+                        validate_progress if path.endswith("/progress") else validate_resource
+                    )
+                    value = validate(json_value(response.read()))
                 completed.put((value, None))
             except Exception as error:
                 completed.put((None, error))
@@ -318,10 +412,16 @@ class Client:
         self.token = read_text(self.args.capability_file, "capability file").strip()
         if not self.token or any(not 33 <= ord(char) <= 126 for char in self.token):
             raise ClientError("INVALID_INPUT", "capability file must contain one ASCII token")
-        if self.args.command == "get":
+        if self.args.command in {"get", "progress"}:
             if not ID.fullmatch(self.evaluation_id):
                 raise ClientError("INVALID_ARGUMENT", "evaluation ID has an invalid format")
-            resource = self.request("GET", "/evaluations/" + self.evaluation_id)
+            suffix = "/progress" if self.args.command == "progress" else ""
+            resource = self.request("GET", "/evaluations/" + self.evaluation_id + suffix)
+            if suffix:
+                if resource["evaluation_id"] != self.evaluation_id:
+                    raise ClientError("INVALID_RESPONSE", "service changed the evaluation ID")
+                self.save_handle()
+                return resource, 0
         else:
             definition = json_value(read_text(self.args.definition, "definition file"))
             if not isinstance(definition, dict):
@@ -369,8 +469,20 @@ class Client:
                     raise ClientError(
                         "INVALID_INPUT", "custom inputs require reference or --custom-inputs source"
                     )
-            if self.args.command == "benchmark" and not self.args.use_baseline_cache:
-                payload["performance"] = {"use_baseline_cache": False}
+            apply_controls(payload, self.args)
+            expected_checks = {
+                "verify": ["correctness"],
+                "benchmark": (
+                    ["correctness", "performance"] if reference and self.args.triton
+                    else ["performance"]
+                ),
+                "profile": ["profile"],
+            }.get(self.args.command, payload.get("checks") or (
+                ["correctness", "performance"] if reference and self.args.triton
+                else ["performance"]
+            ))
+            if self.args.wait_for is not None and self.args.wait_for not in expected_checks:
+                raise ClientError("INVALID_ARGUMENT", "--wait-for must name a requested check")
             if self.key is None:
                 self.key = uuid.uuid4().hex
             if not re.fullmatch(r"[!-~]{1,128}", self.key):
@@ -382,13 +494,24 @@ class Client:
             self.progress("Idempotency-Key: " + self.key)
             self.save_handle()
             body = json.dumps(payload, ensure_ascii=False, allow_nan=False).encode("utf-8")
-            resource = self.request("POST", "/" + self.args.command, body)
+            endpoint = "evaluations" if self.args.command == "evaluate" else self.args.command
+            resource = self.request("POST", "/" + endpoint, body)
         while True:
             if self.evaluation_id is not None and resource["evaluation_id"] != self.evaluation_id:
                 raise ClientError("INVALID_RESPONSE", "service changed the evaluation ID")
             self.evaluation_id = resource["evaluation_id"]
             self.save_handle()
             self.progress("Evaluation " + self.evaluation_id + ": " + resource["state"])
+            if self.args.wait_for is not None and resource["state"] not in TERMINAL:
+                snapshot = self.request("GET", "/evaluations/" + self.evaluation_id + "/progress")
+                if snapshot["evaluation_id"] != self.evaluation_id:
+                    raise ClientError("INVALID_RESPONSE", "service changed the evaluation ID")
+                evidence = snapshot["completed_checks"].get(self.args.wait_for)
+                if evidence is not None:
+                    status = exit_status({
+                        "state": "completed", "result": {self.args.wait_for: evidence},
+                    })
+                    return snapshot, status
             if resource["state"] in TERMINAL or self.args.no_wait:
                 status = exit_status(resource)
                 single_input = self.args.command != "get" and (

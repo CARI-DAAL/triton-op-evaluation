@@ -133,9 +133,13 @@ def run_evaluation(harness, checks, sink, tmp_path, *, pinned=None, lease=lambda
 
 
 def full_harness(verify_fixture="verify-correct.json"):
+    verify = succeeded(verify_fixture)
+    if verify_fixture == "verify-correct.json":
+        # The benchmark fixture has three original cases (one unmeasured).
+        verify.result.raw.update(total_cases=3, passed_cases=3)
     return Harness(
-        verify=succeeded(verify_fixture),
-        bench=succeeded("benchmark-mixed-coverage.json"),
+        verify=verify,
+        bench=succeeded("benchmark-event-timing.json"),
         profile=succeeded("profile-op-complete.json"),
     )
 

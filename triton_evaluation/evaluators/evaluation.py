@@ -45,6 +45,7 @@ from ..api.contract import (
     SinglePerformanceResult,
     SkipInfo,
 )
+from ..runtime.correctness_evidence import CorrectnessEvidenceError
 from ..service.models import PinnedProvenance
 from ..service.terminal_results import compile_outcome_from_precheck, complete_evaluation
 from .base import (
@@ -172,11 +173,14 @@ class EvaluationEvaluator:
         progress: ProgressSink,
         *,
         precheck: Callable[[], str | None] | None = None,
+        reuse_correctness: Callable[[], CheckSucceeded[CorrectnessResult]] | None = None,
     ) -> EvaluationResult:
         """Run correctness, conditional performance, then independent profile."""
         requested = list(request.checks)
         outcomes: dict[str, object] = {}
         infra_broken = False
+        trace_engine = None
+        trace_started = False
 
         if device_id is None and requested != ["compile"]:
             raise ValueError("CPU attempts can only execute the compile check")
@@ -186,9 +190,52 @@ class EvaluationEvaluator:
             verdict = precheck() if precheck is not None else None
             return compile_outcome_from_precheck(verdict, (monotonic() - started) * 1000)
 
+        def correctness_check():
+            if request.correctness_from is not None:
+                try:
+                    if reuse_correctness is None:
+                        raise CorrectnessEvidenceError()
+                    reused = reuse_correctness()
+                    try:
+                        reused = CheckSucceeded[CorrectnessResult].model_validate(reused)
+                    except ValueError as error:
+                        raise CorrectnessEvidenceError() from error
+                    if (reused.data.outcome != "correct"
+                            or reused.data.reused_from != request.correctness_from):
+                        raise CorrectnessEvidenceError()
+                    return reused
+                except CorrectnessEvidenceError as error:
+                    return CheckFailed(status="failed", error=ErrorInfo(
+                        code=error.code, phase=error.phase, check="correctness",
+                        retryable=False, message=str(error),
+                    ))
+            return _engine_outcome(
+                "correctness",
+                self.verify.run(request, work_dir, device_id, deadline_at, lease_valid),
+                lambda raw: shape_correctness(raw, decoy=_is_decoy(raw)),
+            )
+
         def performance_evidence(raw):
             if request.implementation == "comparison":
-                return shape_performance(raw)
+                result = shape_performance(raw)
+                expected_method = (
+                    "npu_event_v1" if request.performance.method == "event"
+                    else "profiler_kernel_sum_v1"
+                )
+                if result.measurement_method != expected_method:
+                    raise ShapingError("comparison timing has a different measurement method")
+                correctness = outcomes.get("correctness")
+                selection = request.performance.case_indices
+                if selection is None and correctness is not None:
+                    selection = list(range(correctness.data.total_cases))
+                observed = {case.case_idx for case in result.per_case + result.unmeasured_cases}
+                if selection is not None and observed != set(selection):
+                    raise ShapingError("comparison timing has a different case selection")
+                if correctness is not None and any(
+                    index >= correctness.data.total_cases for index in observed
+                ):
+                    raise ShapingError("comparison timing exceeds the reference inventory")
+                return result
             try:
                 result = SinglePerformanceResult.model_validate(raw)
             except ValueError as error:
@@ -210,6 +257,16 @@ class EvaluationEvaluator:
 
         def profile_evidence(raw):
             result = shape_profile_runs(raw, request.profile or ProfileParams())
+            if result.mode == "trace":
+                expected = (
+                    None if request.implementation == "comparison" else request.implementation
+                )
+                if result.implementation != expected:
+                    raise ShapingError("trace evidence has a different implementation")
+                correctness = outcomes.get("correctness")
+                if (correctness is not None and correctness.status == "succeeded"
+                        and result.total_cases != correctness.data.total_cases):
+                    raise ShapingError("trace inventory differs from correctness evidence")
             if request.implementation != "comparison":
                 result = type(result).model_validate({
                     **result.model_dump(mode="json"),
@@ -231,13 +288,7 @@ class EvaluationEvaluator:
         if "correctness" in requested:
             correctness = self._slot(
                 "correctness",
-                lambda: _engine_outcome(
-                    "correctness",
-                    self.verify.run(
-                        request, work_dir, device_id, deadline_at, lease_valid
-                    ),
-                    lambda raw: shape_correctness(raw, decoy=_is_decoy(raw)),
-                ),
+                correctness_check,
                 lease_valid,
                 progress,
             )
@@ -256,22 +307,43 @@ class EvaluationEvaluator:
                     )
                 )
             ):
-                performance = self._slot(
-                    "performance",
-                    lambda: _engine_outcome(
+                if "profile" in requested and request.profile.mode == "trace":
+                    if not progress.begin("performance") or not lease_valid():
+                        raise LeaseLostError("lease lost before joint measurement")
+
+                    def publish_performance(engine):
+                        nonlocal trace_started
+                        if "performance" in outcomes:
+                            return outcomes["performance"].status == "succeeded"
+                        outcome = _engine_outcome("performance", engine, performance_evidence)
+                        if not lease_valid() or not progress.save("performance", outcome):
+                            raise LeaseLostError("joint timing checkpoint was fenced out")
+                        outcomes["performance"] = outcome
+                        if outcome.status == "succeeded":
+                            if not progress.begin("profile"):
+                                raise LeaseLostError("joint trace begin was fenced out")
+                            trace_started = True
+                        return outcome.status == "succeeded"
+
+                    performance_engine, trace_engine = self.benchmark.run_with_trace(
+                        request, work_dir, device_id, deadline_at, lease_valid,
+                        on_performance=publish_performance,
+                    )
+                    publish_performance(performance_engine)
+                    performance = outcomes["performance"]
+                else:
+                    performance = self._slot(
                         "performance",
-                        self.benchmark.run(
-                            request,
-                            work_dir,
-                            device_id,
-                            deadline_at,
-                            lease_valid,
+                        lambda: _engine_outcome(
+                            "performance",
+                            self.benchmark.run(
+                                request, work_dir, device_id, deadline_at, lease_valid,
+                            ),
+                            performance_evidence,
                         ),
-                        performance_evidence,
-                    ),
-                    lease_valid,
-                    progress,
-                )
+                        lease_valid,
+                        progress,
+                    )
                 infra_broken = performance.status in ("failed", "timeout")
             else:
                 performance = self._slot(
@@ -295,6 +367,14 @@ class EvaluationEvaluator:
                     lease_valid,
                     progress,
                 )
+            elif trace_engine is not None:
+                if not trace_started and not progress.begin("profile"):
+                    raise LeaseLostError("joint trace begin was fenced out")
+                if not lease_valid():
+                    raise LeaseLostError("lease lost after joint trace")
+                profile = _engine_outcome("profile", trace_engine, profile_evidence)
+                if not progress.save("profile", profile):
+                    raise LeaseLostError("joint trace save was fenced out")
             else:
                 profile = self._slot(
                     "profile",

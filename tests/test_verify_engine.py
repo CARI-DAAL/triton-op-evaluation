@@ -159,6 +159,111 @@ def test_candidate_missing_model_new_writes_compilation_failure(tmp_path, monkey
     assert "ModelNew" in failure["error_msg"]
 
 
+@pytest.mark.parametrize("policy", ["cpu-first", "npu-strict"])
+def test_candidate_import_error_uses_workload_metadata_without_inputs(
+    tmp_path, monkeypatch, policy,
+):
+    from triton_evaluation.api.operator import OperatorRequest
+    from triton_evaluation.evaluators.operator import to_evaluation_request
+    from triton_evaluation.evaluators.shaping import shape_correctness
+
+    request = OperatorRequest.model_validate({
+        "definition": {"inputs": {"x": {}}, "reference": "def run(x): return x"},
+        "workloads": [
+            {"inputs": {"x": {"type": "random", "dtype": "float32", "shape": [i + 1]}}}
+            for i in range(32)
+        ],
+        "triton_code": "raise TypeError('broken candidate import')",
+    })
+    calls = {"inputs": 0, "seed": 0, "ambient": 0}
+
+    def generate(*args, **kwargs):
+        calls["inputs"] += 1
+        return [17]
+
+    def seed(*args, **kwargs):
+        calls["seed"] += 1
+
+    def ambient(*args, **kwargs):
+        calls["ambient"] += 1
+        return False
+
+    torch = _fake_torch_module()
+    torch.nn = SimpleNamespace(Module=object)
+    torch.manual_seed = seed
+    torch.npu.manual_seed = seed
+    monkeypatch.setitem(sys.modules, "torch", torch)
+    monkeypatch.setitem(sys.modules, "torch_npu", ModuleType("torch_npu"))
+    reference = ModuleType("operator_torch")
+    # Exercise the real generated lazy module: its iteration would allocate all
+    # 32 inputs, whereas reading its workload metadata must allocate none.
+    exec(to_evaluation_request(request).reference_code, reference.__dict__)
+    reference._operator_generate_inputs = generate
+
+    def load(*args):
+        raise verify._CandidateImportError(reference, "TypeError: broken import", "TypeError")
+
+    monkeypatch.setattr(verify, "_load_verify_modules", load)
+    monkeypatch.setattr(verify, "_ensure_npu_ambient_shared", ambient)
+    output = tmp_path / "verify_result.json"
+    assert verify.verify_implementations(
+        "operator", str(tmp_path), output_path=str(output), reference_device_policy=policy,
+    ) == (0, 32)
+    assert calls == {"inputs": 0, "seed": 0, "ambient": 0}
+    raw = json.loads(output.read_text())
+    assert [failure["case_idx"] for failure in raw["failures"]] == list(range(1, 33))
+    assert all(failure["input_desc"] is None for failure in raw["failures"])
+    assert all(failure["candidate_error"]["phase"] == "compile" for failure in raw["failures"])
+    result = shape_correctness(raw, decoy=False)
+    assert result.outcome == "compile_error" and result.total_cases == 32
+    assert json.loads((tmp_path / "verify_reference.json").read_text()) == {
+        "reference_device_policy": policy, "cases": [],
+    }
+
+
+def test_candidate_import_error_uses_official_case_count_without_inputs(tmp_path, monkeypatch):
+    reference = SimpleNamespace(
+        _ADAPTER_VERSION="official-task-v1",
+        get_case_count=lambda: 3,
+        get_input_groups=lambda: pytest.fail("must not generate inputs"),
+    )
+
+    def load(*args):
+        raise verify._CandidateImportError(reference, "SyntaxError: invalid syntax", "SyntaxError")
+
+    monkeypatch.setitem(sys.modules, "torch", _fake_torch_module())
+    monkeypatch.setitem(sys.modules, "torch_npu", ModuleType("torch_npu"))
+    monkeypatch.setattr(verify, "_load_verify_modules", load)
+    monkeypatch.setattr(
+        verify, "_ensure_npu_ambient_shared", lambda **kwargs: pytest.fail("must not probe device"),
+    )
+    output = tmp_path / "verify_result.json"
+    assert verify.verify_implementations("op", str(tmp_path), output_path=str(output)) == (0, 3)
+    assert len(json.loads(output.read_text())["failures"]) == 3
+
+
+def test_candidate_import_error_keeps_legacy_input_provider_fallback(tmp_path, monkeypatch):
+    calls = []
+
+    def inputs():
+        calls.append("inputs")
+        return [[17], [23]]
+
+    reference = SimpleNamespace(get_input_groups=inputs)
+
+    def load(*args):
+        raise verify._CandidateImportError(reference, "SyntaxError: invalid syntax", "SyntaxError")
+
+    monkeypatch.setitem(sys.modules, "torch", _fake_torch_module())
+    monkeypatch.setitem(sys.modules, "torch_npu", ModuleType("torch_npu"))
+    monkeypatch.setattr(verify, "_load_verify_modules", load)
+    output = tmp_path / "verify_result.json"
+    assert verify.verify_implementations("op", str(tmp_path), output_path=str(output)) == (0, 2)
+    assert calls == ["inputs"]
+    raw = json.loads(output.read_text())
+    assert all(failure["input_desc"] for failure in raw["failures"])
+
+
 def test_reference_import_error_is_not_reclassified(tmp_path, monkeypatch):
     def fake_import_module(name):
         assert name == "histc_torch"

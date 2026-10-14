@@ -95,7 +95,7 @@ def run_cli(
 ):
     cwd, torch, triton, cases, token = inputs
     args = [sys.executable, "-I", "-S", str(script), action]
-    if action == "get":
+    if action in {"get", "progress"}:
         args += [EID]
     else:
         args += ["--definition", str(torch), "--workloads", str(cases)]

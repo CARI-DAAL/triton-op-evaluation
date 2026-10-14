@@ -43,6 +43,19 @@ METRIC_GROUPS = (
     "ResourceConflictRatio",
 )
 
+
+def selected_metric_groups(groups: list[str] | tuple[str, ...] | None) -> tuple[str, ...]:
+    """Validate explicit collection scope, retaining the stable backend order."""
+    if groups is None:
+        return METRIC_GROUPS
+    if (not isinstance(groups, (list, tuple)) or not 1 <= len(groups) <= len(METRIC_GROUPS)
+            or any(group not in METRIC_GROUPS for group in groups)):
+        raise ValueError("metric_groups must contain 1 to 7 supported metric names")
+    if len(set(groups)) != len(groups):
+        raise ValueError("metric_groups must not contain duplicates")
+    return tuple(group for group in METRIC_GROUPS if group in groups)
+
+
 PIPE_ALIASES = {
     "MTE2": ("aic_mte2_ratio", "aiv_mte2_ratio", "mte2_ratio"),
     "CUBE": ("aic_cube_ratio", "aic_mac_ratio", "cube_ratio"),
@@ -123,11 +136,15 @@ def _pick_longest(rows: list[dict[str, str]]) -> dict[str, str] | None:
 def select_and_merge_metrics(
     metric_dirs: dict[str, str],
     kernel_names: list[str] | None,
+    metric_groups: list[str] | tuple[str, ...] | None = None,
 ) -> dict[str, Any]:
+    requested = selected_metric_groups(metric_groups)
     rows_by_metric: dict[str, list[dict[str, str]]] = {}
-    missing = [metric for metric in METRIC_GROUPS if metric not in metric_dirs]
+    missing = [metric for metric in requested if metric not in metric_dirs]
     parse_warnings: list[str] = []
     for metric, directory in metric_dirs.items():
+        if metric not in requested:
+            continue
         summary = _summary_file(directory)
         if summary is None:
             missing.append(metric)
@@ -142,7 +159,7 @@ def select_and_merge_metrics(
 
     target_metric = None
     target_row = None
-    for metric in METRIC_GROUPS:
+    for metric in requested:
         candidates = [
             row
             for row in rows_by_metric.get(metric, [])
@@ -167,7 +184,7 @@ def select_and_merge_metrics(
     target_name = (target_row.get("Op Name") or "").strip()
     merged: dict[str, str] = {}
     evidence: dict[str, dict[str, Any]] = {}
-    for metric in METRIC_GROUPS:
+    for metric in requested:
         rows = [
             row
             for row in rows_by_metric.get(metric, [])
@@ -443,17 +460,21 @@ def _task_command(
     ]
 
 
-def _failed_capture(error: str, warnings: list[str]) -> dict[str, Any]:
+def _failed_capture(
+    error: str, warnings: list[str], metric_groups: tuple[str, ...], include_per_core: bool,
+) -> dict[str, Any]:
     return {
         "status": "failed",
         "target_kernel": None,
         "target_selection_metric": None,
         "kernels": [],
-        "raw_metrics": {},
+        "raw_metrics": {"_capture_requested": {
+            "metric_groups": list(metric_groups), "include_per_core": include_per_core,
+        }},
         "bound": None,
         "per_core": None,
         "recommendations": [],
-        "missing_metrics": list(METRIC_GROUPS),
+        "missing_metrics": list(metric_groups),
         "warnings": warnings,
         "error": error,
     }
@@ -467,7 +488,12 @@ def profile_deep_case(
     cwd: str,
     env: dict[str, str],
     deadline: float,
+    metric_groups: list[str] | None = None,
+    include_per_core: bool = True,
 ) -> dict[str, Any]:
+    requested = selected_metric_groups(metric_groups)
+    if type(include_per_core) is not bool:
+        raise ValueError("include_per_core must be a boolean")
     msprof_bin = os.environ.get("MSPROF_BIN", "msprof")
     warnings: list[str] = []
     for warmup_index in range(3):
@@ -486,16 +512,20 @@ def profile_deep_case(
                     "its per-process timeout"
                 ),
                 warnings,
+                requested,
+                include_per_core,
             )
         if outcome.exit_code != 0:
             return _failed_capture(
                 f"warmup exit={outcome.exit_code}; "
                 f"stderr-tail={outcome.stderr[-1000:]}",
                 warnings,
+                requested,
+                include_per_core,
             )
 
     metric_dirs: dict[str, str] = {}
-    for metric in METRIC_GROUPS:
+    for metric in requested:
         metric_dir = os.path.join(output_dir, f"PROF_{metric}")
         os.makedirs(metric_dir, exist_ok=True)
         outcome = run_command(
@@ -517,52 +547,54 @@ def profile_deep_case(
             )
 
     sample_dir = os.path.join(output_dir, "PROF_Sample")
-    os.makedirs(sample_dir, exist_ok=True)
-    sample_command = [
-        msprof_bin,
-        f"--output={sample_dir}",
-        "--ai-core=on",
-        "--aic-metrics=PipeUtilization",
-        "--aic-mode=sample-based",
-        "--aic-freq=100",
-        "--task-time=on",
-        "--ascendcl=on",
-        *app_cmd,
-    ]
-    sample = run_command(
-        sample_command,
-        cwd=cwd,
-        env=env,
-        timeout=remaining_pass_timeout(deadline),
-    )
-    if time.monotonic() >= deadline:
-        raise TimeoutError("profile job deadline exceeded")
     sample_ok = False
-    if sample.timed_out:
-        warnings.append("sample-based: exceeded its per-process timeout")
-    elif sample.exit_code == 0:
-        sample_ok = True
-    else:
-        warnings.append(
-            f"sample-based: exit={sample.exit_code}; "
-            f"stderr-tail={sample.stderr[-1000:]}"
+    if include_per_core:
+        os.makedirs(sample_dir, exist_ok=True)
+        sample_command = [
+            msprof_bin,
+            f"--output={sample_dir}",
+            "--ai-core=on",
+            "--aic-metrics=PipeUtilization",
+            "--aic-mode=sample-based",
+            "--aic-freq=100",
+            "--task-time=on",
+            "--ascendcl=on",
+            *app_cmd,
+        ]
+        sample = run_command(
+            sample_command,
+            cwd=cwd,
+            env=env,
+            timeout=remaining_pass_timeout(deadline),
         )
+        if time.monotonic() >= deadline:
+            raise TimeoutError("profile job deadline exceeded")
+        if sample.timed_out:
+            warnings.append("sample-based: exceeded its per-process timeout")
+        elif sample.exit_code == 0:
+            sample_ok = True
+        else:
+            warnings.append(
+                f"sample-based: exit={sample.exit_code}; "
+                f"stderr-tail={sample.stderr[-1000:]}"
+            )
 
-    merged = select_and_merge_metrics(metric_dirs, kernel_names)
+    merged = select_and_merge_metrics(metric_dirs, kernel_names, requested)
     warnings.extend(merged["warnings"])
+    pipe_requested = "PipeUtilization" in requested
     missing_metrics = sorted(
         set(
             merged["missing_metrics"]
-            + missing_canonical_pipe_fields(merged["raw_metrics"])
+            + (missing_canonical_pipe_fields(merged["raw_metrics"]) if pipe_requested else [])
         )
     )
-    bound = classify_bound(merged["raw_metrics"])
+    bound = classify_bound(merged["raw_metrics"]) if pipe_requested else None
     per_core = (
         per_core_balance(merged["raw_metrics"], sample_dir)
         if sample_ok
         else None
     )
-    if bound is None and merged["target_kernel"] is not None:
+    if pipe_requested and bound is None and merged["target_kernel"] is not None:
         warnings.append(
             "insufficient canonical pipe fields for Bound classification"
         )
@@ -579,6 +611,9 @@ def profile_deep_case(
     partial = bool(warnings or missing_metrics)
     raw_metrics = dict(merged["raw_metrics"])
     raw_metrics["_merge_evidence"] = merged["evidence"]
+    raw_metrics["_capture_requested"] = {
+        "metric_groups": list(requested), "include_per_core": include_per_core,
+    }
     return {
         "status": "failed" if failed else ("partial" if partial else "complete"),
         "target_kernel": merged["target_kernel"],

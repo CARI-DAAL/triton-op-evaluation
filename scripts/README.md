@@ -10,6 +10,7 @@ the checkout. The API entrypoint starts the configured listeners.
 | Manual API/worker startup | `python -m scripts.run_api`, `python -m scripts.run_worker --cpu`, `python -m scripts.run_worker --card 0` | [Deployment](../docs/operations/deployment.md) |
 | Host workers and API | `start.sh`, `stop.sh`, `dl_wheels.sh` | [Deployment](../docs/operations/deployment.md) |
 | Host smoke and limited NPU checks | `test_eval_service.py`, `npu_release_gate.py` | [Tests](../tests/README.md) |
+| Separate versus combined timing and trace | `npu_feedback_comparison.py` | [Feedback measurements](../docs/operations/feedback-performance.md) |
 | Profiler and sandbox preparation | `prepare_profiler_runtime.py`, `prepare_engine_runtime_overlay.py` | [Profiler runtime](../docs/operations/profiler-runtime.md) |
 | Profiler diagnostics | `probe_profiler_latency.py`, `replay_profiler_export.py` | [Profiler runtime](../docs/operations/profiler-runtime.md) |
 | Reference-cache index | `reference_cache_index.py` | [Reference cache](../docs/operations/reference-cache.md) |

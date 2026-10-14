@@ -1254,12 +1254,15 @@ class _SelectedInputGroups(Sequence):
                 yield self.groups[index]
 
 
-def benchmark_implementations(config: BenchmarkConfig) -> BenchmarkResult:
+def benchmark_implementations(
+    config: BenchmarkConfig, *, input_groups=None, model_spec=None, device=None,
+) -> BenchmarkResult:
     """执行完整的性能测试，支持多组输入。每个 shape 独立 try/except。"""
     import torch
     import torch_npu  # noqa: F401
 
-    device = torch.device("npu")
+    prepared = device is not None
+    device = torch.device("npu") if device is None else device
 
     # 执行环境不变量：与沙箱一致以 NPU 为环境设备（见 _common_utils）。
     # npu-strict 下设备初始化探测允许有界等待驱动瞬态恢复（仅在此处、
@@ -1269,7 +1272,7 @@ def benchmark_implementations(config: BenchmarkConfig) -> BenchmarkResult:
     # 使该 policy 在本运行时不再授权复用（回退 fresh 测量，miss 非失败）。
     _reference_policy = os.environ.get("TRITON_EVAL_REFERENCE_DEVICE_POLICY", "cpu-first")
     _ambient_wait = _AMBIENT_WAIT_CAP_SECONDS if _reference_policy == "npu-strict" else 0.0
-    if not _ensure_npu_ambient_shared(torch, wait_seconds=_ambient_wait):
+    if not prepared and not _ensure_npu_ambient_shared(torch, wait_seconds=_ambient_wait):
         if _reference_policy == "npu-strict":
             raise RuntimeError(
                 "npu-strict benchmark requires the ambient NPU device; "
@@ -1279,7 +1282,8 @@ def benchmark_implementations(config: BenchmarkConfig) -> BenchmarkResult:
     # Correctness and performance use identical seed-zero input bytes.
     torch.manual_seed(0)
     torch.npu.manual_seed(0)
-    input_groups = resolve_inputs(config.op_name, config.verify_dir)
+    if input_groups is None:
+        input_groups = resolve_inputs(config.op_name, config.verify_dir)
     total_cases = len(input_groups)
     # Selection preserves original 1-based case identities; it only chooses
     # which groups this performance run measures.
@@ -1291,8 +1295,9 @@ def benchmark_implementations(config: BenchmarkConfig) -> BenchmarkResult:
         config.reference_latencies_ms = _validate_baseline_timings(config.baseline_timings, selected_indices)
         config.reference_evidence_source = "read_through_baseline"
 
-    framework_cls, impl_cls, get_init_inputs = _load_benchmark_modules(config)
-    model_spec = BenchmarkModelSpec(framework_cls, impl_cls, get_init_inputs)
+    if model_spec is None:
+        framework_cls, impl_cls, get_init_inputs = _load_benchmark_modules(config)
+        model_spec = BenchmarkModelSpec(framework_cls, impl_cls, get_init_inputs)
     if config.baseline_timings is None and not config.disable_reference_cache:
         _configure_reference_cache(config, model_spec, selected_groups, device,
                                    case_indices=selected_indices)
@@ -1537,6 +1542,25 @@ def check_verify_gate(verify_dir: str, triton_impl_name: str) -> None:
         raise VerifyGateError("verify_result 未全部通过")
 
 
+def check_correctness_gate(args):
+    """Validate explicit durable evidence, or the original local verify gate."""
+    if args.correctness_evidence is None:
+        return check_verify_gate(args.verify_dir, args.triton_impl_name)
+    from triton_evaluation.runtime.correctness_evidence import validate_handoff
+
+    root = Path(args.verify_dir)
+    try:
+        return validate_handoff(
+            args.correctness_evidence,
+            reference_path=root / f"{args.op_name}_torch.py",
+            candidate_path=root / f"{args.op_name}_{args.triton_impl_name}.py",
+            triton_impl_name=args.triton_impl_name,
+            non_compute=args.correctness_non_compute,
+        )
+    except (ValueError, TypeError, OSError) as error:
+        raise VerifyGateError("reused correctness evidence is invalid") from error
+
+
 def _build_argparser():
     parser = argparse.ArgumentParser(description="性能测试脚本")
     parser.add_argument("--op_name", required=True, help="算子名称")
@@ -1570,6 +1594,10 @@ def _build_argparser():
                         help="Internal host-supplied per-case baseline timings")
     parser.add_argument("--disable-reference-cache", action="store_true",
                         help="Bypass legacy reference timing caches")
+    parser.add_argument("--correctness-evidence", default=None,
+                        help="Internal host-validated durable correctness handoff")
+    parser.add_argument("--correctness-non-compute", action="store_true",
+                        help="Bind a durable correctness handoff to non-compute semantics")
     return parser
 
 
@@ -1658,7 +1686,7 @@ def main():
 
     if not args.reference_only:
         try:
-            check_verify_gate(verify_dir, args.triton_impl_name)
+            check_correctness_gate(args)
         except VerifyGateError as e:
             sys.exit(e.exit_code)
 

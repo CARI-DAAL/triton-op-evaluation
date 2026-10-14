@@ -83,6 +83,45 @@ def test_deep_backend_with_fake_executable(tmp_path, monkeypatch):
     assert result["per_core"]["core_ids"] == [0, 1]
 
 
+def test_deep_capture_only_selected_groups_and_skips_per_core(tmp_path, monkeypatch):
+    env, log = _environment(tmp_path, monkeypatch)
+    result = msprof_deep.profile_deep_case(
+        app_cmd=[sys.executable, "-c", "pass"],
+        kernel_names=["add_kernel"], output_dir=str(tmp_path / "deep"),
+        cwd=str(tmp_path), env=env, deadline=time.monotonic() + 60,
+        metric_groups=["Memory", "L2Cache"], include_per_core=False,
+    )
+    commands = log.read_text().splitlines()
+    assert len(commands) == 2
+    assert "--aic-metrics=Memory" in commands[0]
+    assert "--aic-metrics=L2Cache" in commands[1]
+    assert all("--aic-mode=task-based" in command for command in commands)
+    assert result["status"] == "complete"
+    assert result["bound"] is None
+    assert result["per_core"] is None
+    assert result["missing_metrics"] == []
+    assert result["warnings"] == []
+    assert result["raw_metrics"]["_capture_requested"] == {
+        "metric_groups": ["Memory", "L2Cache"], "include_per_core": False,
+    }
+    assert set(result["raw_metrics"]["_merge_evidence"]) == {"Memory", "L2Cache"}
+
+
+def test_missing_deep_metric_reports_only_requested_group(tmp_path, monkeypatch):
+    env, log = _environment(tmp_path, monkeypatch)
+    env["FAKE_MSPROF_FAIL_METRIC"] = "Memory"
+    result = msprof_deep.profile_deep_case(
+        app_cmd=[sys.executable, "-c", "pass"],
+        kernel_names=["add_kernel"], output_dir=str(tmp_path / "deep"),
+        cwd=str(tmp_path), env=env, deadline=time.monotonic() + 60,
+        metric_groups=["Memory", "L2Cache"], include_per_core=False,
+    )
+    assert len(log.read_text().splitlines()) == 2
+    assert result["status"] == "partial"
+    assert result["missing_metrics"] == ["Memory"]
+    assert result["bound"] is None
+
+
 def test_deep_metric_failure_continues_as_partial(tmp_path, monkeypatch):
     env, log = _environment(tmp_path, monkeypatch)
     monkeypatch.setenv("FAKE_MSPROF_FAIL_METRIC", "Memory")

@@ -1,7 +1,7 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "triton-eval",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Measure PyTorch or Triton operators, compare correctness and speedup, and recover evaluations.",
   "repository": "https://github.com/CARI-DAAL/triton-op-evaluation"
 }

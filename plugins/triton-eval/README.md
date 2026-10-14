@@ -49,7 +49,7 @@ python3 plugins/triton-eval/skills/triton-eval/scripts/triton_eval.py verify \
   --triton /path/to/triton_impl.py --save-handle evaluation-handle.json
 ```
 
-Version 0.3.0 accepts the official definition and workload files directly.
+The client accepts the official definition and workload files directly.
 Workloads can be JSONL or a JSON array. The definition contains `axes`, ordered
 named `inputs`, `outputs`, optional `name`, and optional Python `reference`.
 A workload has `uuid`, `axes`, and named input specifications, for example:
@@ -78,8 +78,27 @@ options, session and idempotency key. Client timeout does not cancel accepted wo
 
 Comparison benchmarks cache Torch baseline timing by default. Pass
 `--no-baseline-cache` to measure a fresh reference baseline. Single implementation
-benchmarks measure fresh. Cache switches apply only to `benchmark`.
+benchmarks measure fresh. Cache switches apply to comparative timing.
 
 A successful single implementation measurement reports `correctness_verified:
 false`; preserve that limitation when interpreting its timing or profile result.
 See the [skill](skills/triton-eval/SKILL.md) for recovery and result interpretation.
+
+`evaluate --checks correctness performance profile --profile-mode trace` submits
+a combined request. Timing and kernel-duration trace share candidate preparation;
+profiler timing can reuse its capture. Add `--wait-for performance` to return
+the first timing snapshot while trace continues, or use `progress EVALUATION_ID`
+to retrieve completed check evidence. Existing `get` returns the final resource.
+
+Use explicit `--correctness-cases`, `--performance-cases`, and `--profile-cases`
+for combined requests. Shortcut commands accept `--case-indices`. Correctness
+supports `--stop-on first_failure`; subset passes are labeled `incomplete`.
+`--correctness-from EVALUATION_ID` explicitly requests validated reuse of an
+unchanged candidate's original complete correctness observation. The service
+refuses mismatched, stale or inaccessible evidence without silently rechecking.
+
+Timing controls (`--warmup`, `--repeats`, `--measurement-method`, baseline-cache
+flags) also apply to `evaluate`. Deep profile controls include `--metric-groups`
+and `--no-per-core`; inspect subcommand help for the exact accepted values.
+These controls require a matching updated service; operator source and input
+formats are unchanged.

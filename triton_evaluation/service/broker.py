@@ -47,15 +47,23 @@ import redis
 
 from triton_evaluation.api.contract import (
     Check,
+    CheckEvidence,
     CheckFailed,
     CheckOutcome,
     CheckTimedOut,
     ErrorInfo,
+    EvaluationProgress,
+    EvaluationRequest,
     EvaluationResource,
     EvaluationResult,
     dump_contract,
 )
 from triton_evaluation.config import Settings
+from triton_evaluation.runtime.correctness_evidence import (
+    CorrectnessEvidence,
+    CorrectnessEvidenceError,
+    resolve_source,
+)
 from triton_evaluation.serialization import (
     canonical_json_bytes,
     load_canonical,
@@ -322,12 +330,15 @@ class EvaluationStore:
             "fencing_token": "0",
             "active_check": "",
             "check_outcomes": canonical_json_bytes({}),
+            "progress_revision": "0",
             "lease_deadline_ms": "0",
             "replacement_pending": "0",
             "created_at_ms": str(accepted_ms),
             "updated_at_ms": str(accepted_ms),
             "deadline_ms": str(deadline_ms),
         }
+        if payload.get("correctness_from") is not None:
+            mapping["correctness_from"] = payload["correctness_from"]
         return resource, mapping, deadline_ms
 
     def get_visible(self, evaluation_id: str, caller: Caller) -> EvaluationResource | None:
@@ -341,15 +352,171 @@ class EvaluationStore:
         stored = self._r.hgetall(self._key(f"resource:{evaluation_id}"))
         if not stored:
             return None
+        if not self._visible_to(stored, caller):
+            return None
+        return EvaluationResource.model_validate_json(stored[b"resource"])
+
+    def validate_correctness_source(
+        self, request: EvaluationRequest, caller: Caller, pinned: PinnedProvenance,
+    ) -> CorrectnessEvidence:
+        """Owner-only evidence authorization; observer reads cannot borrow source."""
+        stored = self._r.hgetall(self._key(f"resource:{request.correctness_from}"))
+        if (not stored or stored.get(b"owner") != caller.caller_id.encode("utf-8")
+                or not self._visible_to(stored, caller)):
+            raise CorrectnessEvidenceError()
+        return self._resolve_correctness_record(request, stored, pinned=pinned)
+
+    def correctness_for_attempt(
+        self, request: EvaluationRequest, lease: AttemptLease, *,
+        execution_environment, card: int | None,
+    ) -> CorrectnessEvidence:
+        """Repeat authority/freshness checks under the destination attempt's fence."""
+        destination = self._r.hgetall(self._key(f"resource:{lease.evaluation_id}"))
+        if (not destination
+                or not self._fence_conditions_met(destination, lease, self._clock())):
+            from triton_evaluation.evaluators.base import LeaseLostError
+
+            raise LeaseLostError("correctness evidence resolution lost its attempt lease")
+        source = self._r.hgetall(self._key(f"resource:{request.correctness_from}"))
+        if not source or source.get(b"owner") != destination.get(b"owner"):
+            raise CorrectnessEvidenceError()
+        evidence = self._resolve_correctness_record(
+            request, source, pinned=lease.pinned,
+            execution_environment=execution_environment, check_environment=True,
+        )
+        # Terminalization clears attempt_id but retains the last attempt's
+        # optional card binding. A terminal resource can never acquire a new
+        # attempt, so this immutable binding belongs to the source observation.
+        raw_card = source.get(b"attempt_card")
+        if raw_card:
+            try:
+                binding = load_canonical(raw_card)
+                source_card = binding["card"]
+                if type(source_card) is not int or source_card < 0:
+                    raise ValueError("invalid card binding")
+            except (TypeError, ValueError, KeyError) as error:
+                raise CorrectnessEvidenceError() from error
+            if source_card != card:
+                raise CorrectnessEvidenceError("correctness evidence uses a different device")
+        return evidence
+
+    def _correctness_affinity_card(self, stored: dict, client, now_ms: int) -> int | None:
+        """Place explicit fresh reuse on its source card without executing code.
+
+        Missing/expired/invalid sources do not strand queued work: let a worker
+        claim it and publish the typed refusal. Normal requests do no extra read.
+        The worker repeats full subject/authority checks after the claim.
+        """
+        source_id = stored.get(b"correctness_from")
+        if not source_id:
+            return None
+        try:
+            owner, raw_resource, raw_card = client.hmget(
+                self._key(f"resource:{source_id.decode('utf-8')}"),
+                "owner", "resource", "attempt_card",
+            )
+            if owner != stored.get(b"owner") or not raw_resource or not raw_card:
+                return None
+            source = EvaluationResource.model_validate_json(raw_resource)
+            if (source.state != "completed" or source.result is None
+                    or source.started_at is None or source.finished_at is None):
+                return None
+            now = datetime.fromtimestamp(now_ms / 1000, tz=timezone.utc)
+            expires = source.started_at + timedelta(seconds=self._s.max_recovery_age_seconds)
+            correctness = source.result.correctness
+            if (not source.started_at <= source.finished_at <= now < expires
+                    or correctness is None or correctness.status != "succeeded"
+                    or correctness.data.outcome != "correct"
+                    or correctness.data.reused_from is not None):
+                return None
+            card = load_canonical(raw_card)["card"]
+            return card if type(card) is int and card >= 0 else None
+        except (ValueError, TypeError, KeyError):
+            return None
+
+    def _resolve_correctness_record(
+        self, request: EvaluationRequest, stored: dict, *, pinned: PinnedProvenance,
+        execution_environment=None, check_environment=False,
+    ) -> CorrectnessEvidence:
+        try:
+            canonical = stored[b"canonical_request"]
+            source_request = EvaluationRequest.model_validate_json(canonical)
+            resource = EvaluationResource.model_validate_json(stored[b"resource"])
+            canonical_again = canonical_json_bytes(
+                source_request.model_dump(mode="json", exclude_none=False)
+            )
+            digest = sha256_hex(canonical)
+            if (canonical != canonical_again
+                    or digest != stored[b"request_digest"].decode("utf-8")
+                    or digest != resource.request_digest
+                    or sha256_hex(source_request.reference_code.encode("utf-8"))
+                    != resource.reference_digest):
+                raise ValueError("source canonical identity mismatch")
+            if resource.result is not None:
+                provenance = resource.result.provenance
+                source_pin = self._stored_pinned(stored)
+                if (provenance.evaluator_build != source_pin.evaluator_build
+                        or provenance.correctness_algorithm != source_pin.algorithms.correctness
+                        or provenance.decoy_algorithm != source_pin.algorithms.decoy):
+                    raise ValueError("source provenance mismatch")
+            return resolve_source(
+                request, source_request, resource, pinned=pinned,
+                now=datetime.fromtimestamp(self._clock() / 1000, tz=timezone.utc),
+                max_age_seconds=self._s.max_recovery_age_seconds,
+                execution_environment=execution_environment,
+                check_environment=check_environment,
+            )
+        except CorrectnessEvidenceError:
+            raise
+        except (KeyError, TypeError, ValueError) as error:
+            raise CorrectnessEvidenceError() from error
+
+    @staticmethod
+    def _visible_to(stored: dict, caller: Caller) -> bool:
         owner = stored[b"owner"].decode("utf-8")
         purpose = stored[b"purpose"].decode("utf-8")
         if caller.caller_id == owner:
             required = "trial:read" if purpose in ("trial", "rollout") else "grade:read"
             if required not in caller.scopes:
-                return None
+                return False
         elif "observer:read" not in caller.scopes:
+            return False
+        return True
+
+    def get_progress_visible(self, evaluation_id: str, caller: Caller) -> EvaluationProgress | None:
+        """Read one atomic snapshot of fenced evidence without changing resource semantics."""
+        stored = self._r.hgetall(self._key(f"resource:{evaluation_id}"))
+        if not stored or not self._visible_to(stored, caller):
             return None
-        return EvaluationResource.model_validate_json(stored[b"resource"])
+        resource = EvaluationResource.model_validate_json(stored[b"resource"])
+        attempt = stored.get(b"attempt_id", b"").decode("utf-8") or None
+        active = stored.get(b"active_check", b"").decode("utf-8") or None
+        if resource.result is not None:
+            attempt = stored.get(b"completed_attempt_id", b"").decode("utf-8") or attempt
+            outcomes = {
+                check: getattr(resource.result, check)
+                for check in ("correctness", "performance", "profile", "compile")
+            }
+            active = None
+        elif attempt is None or stored.get(b"replacement_pending") == b"1":
+            # A lease replacement invalidates every observation of its predecessor.
+            outcomes, active = {}, None
+        else:
+            valid = persisted_check_outcomes(stored.get(b"check_outcomes", b"{}"))
+            requested = json.loads(stored[b"requested_checks"])
+            outcomes = {check: value for check, value in valid.items() if check in requested}
+            if active in outcomes:
+                active = None
+        return EvaluationProgress(
+            schema_version=resource.schema_version,
+            evaluation_id=evaluation_id,
+            resource_revision=resource.revision,
+            progress_revision=int(stored.get(b"progress_revision", b"0")),
+            state=resource.state,
+            attempt_id=attempt,
+            active_check=active,
+            completed_checks=CheckEvidence.model_validate(outcomes),
+        )
 
     def lookup_idempotent(
         self, caller_id: str, idempotency_key: str
@@ -417,7 +584,7 @@ class EvaluationStore:
             self._ready_key("trial", worker.execution_class),
             self._ready_key("rollout", worker.execution_class),
         ):
-            lease = self._claim_from_queue(worker, ready_key, leases_key, avoid_card)
+            lease = self._claim_from_queue(worker, ready_key, leases_key, avoid_card, card=card)
             if lease is not None:
                 if card is not None:
                     self._record_attempt_card(lease, card)
@@ -430,19 +597,23 @@ class EvaluationStore:
         ready_key: str,
         leases_key: str,
         avoid_card: int | None = None,
+        *,
+        card: int | None = None,
     ) -> AttemptLease | None:
-        """Single-queue claim scan; fencing and replacement semantics unchanged."""
+        """Scan FIFO pages until an eligible member is found or the queue ends.
+
+        Incompatible workers and card-bound reuse leave live members queued;
+        a full page of those members must not hide runnable work behind it.
+        WATCH rejects the final claim if queue order changes during paging.
+        """
         while True:
             now_ms = self._clock()
             pipeline = self._r.pipeline()
             try:
                 pipeline.watch(ready_key)
-                members = pipeline.zrange(ready_key, 0, _CLAIM_SCAN_BATCH - 1)
-                if not members:
-                    return None
                 stale: list[bytes] = []
                 claim = None
-                for member in members:
+                for member in self._ready_members(pipeline, ready_key):
                     evaluation_id = member.decode("utf-8")
                     resource_key = self._key(f"resource:{evaluation_id}")
                     pipeline.watch(resource_key)
@@ -451,6 +622,9 @@ class EvaluationStore:
                         stale.append(member)
                         continue
                     if not self._worker_matches_resource(worker, stored):
+                        continue
+                    correctness_card = self._correctness_affinity_card(stored, pipeline, now_ms)
+                    if correctness_card is not None and correctness_card != card:
                         continue
                     if (
                         avoid_card is not None
@@ -482,7 +656,14 @@ class EvaluationStore:
                     pipeline.execute()
                     continue
                 member, stored, resource, replacement = claim
+                # A large scan may cross a deadline. Never install an attempt
+                # using the clock sampled before paging through the backlog.
+                now_ms = self._clock()
+                if now_ms >= int(stored[b"deadline_ms"]):
+                    continue
                 pipeline.multi()
+                for stale_member in stale:
+                    pipeline.zrem(ready_key, stale_member)
                 lease = self._install_claim(
                     pipeline,
                     member=member,
@@ -499,6 +680,16 @@ class EvaluationStore:
                 continue
             finally:
                 pipeline.reset()
+
+    @staticmethod
+    def _ready_members(client, ready_key: str):
+        offset = 0
+        while True:
+            members = client.zrange(ready_key, offset, offset + _CLAIM_SCAN_BATCH - 1)
+            yield from members
+            if len(members) < _CLAIM_SCAN_BATCH:
+                return
+            offset += len(members)
 
     def _install_claim(
         self,
@@ -557,6 +748,7 @@ class EvaluationStore:
                 "attempt_card": "",
             },
         )
+        pipeline.hincrby(resource_key, "progress_revision", 1)
         # The bounded avoidance belongs to the previous engine-failure retry,
         # never to a later lease loss or another attempt's failure.
         pipeline.hdel(resource_key, "engine_retry_avoid_until_ms")
@@ -664,15 +856,20 @@ class EvaluationStore:
         resource_key = self._key(f"resource:{lease.evaluation_id}")
 
         def mutate(pipeline, stored, now_ms):
+            if check not in lease.requested_checks:
+                raise ValueError("cannot publish progress for an unrequested check")
             pipeline.hset(resource_key, "active_check", check)
+            pipeline.hincrby(resource_key, "progress_revision", 1)
 
         return self._fenced_write(lease, mutate)
 
     def save_check_outcome(self, lease: AttemptLease, check: Check, outcome: CheckOutcome) -> bool:
-        """Persist a partial outcome privately; it never appears nonterminal."""
+        """Persist fenced evidence for progress; the resource result stays terminal-only."""
         resource_key = self._key(f"resource:{lease.evaluation_id}")
 
         def mutate(pipeline, stored, now_ms):
+            if check not in lease.requested_checks:
+                raise ValueError("cannot publish evidence for an unrequested check")
             # Reload with the canonical number domain: digit-form doubles
             # (values beyond 2^53) would otherwise come back as ints and the
             # re-serialization below raises IntegerDomainError, failing the
@@ -680,6 +877,7 @@ class EvaluationStore:
             outcomes = load_canonical(stored[b"check_outcomes"])
             outcomes[check] = outcome.model_dump(mode="json", exclude_none=False)
             pipeline.hset(resource_key, "check_outcomes", canonical_json_bytes(outcomes))
+            pipeline.hincrby(resource_key, "progress_revision", 1)
 
         return self._fenced_write(lease, mutate)
 
@@ -758,6 +956,7 @@ class EvaluationStore:
                 **metadata,
             },
         )
+        pipeline.hincrby(self._key(f"resource:{evaluation_id}"), "progress_revision", 1)
         pipeline.zrem(self._key("running-leases"), evaluation_id)
         pipeline.zadd(ready_key, {evaluation_id: successor})
         pipeline.execute()
@@ -847,12 +1046,14 @@ class EvaluationStore:
             "resource": dump_contract(updated),
             "updated_at_ms": str(now_ms),
             "attempt_id": "",
+            "completed_attempt_id": stored.get(b"attempt_id", b"").decode("utf-8"),
             "replacement_pending": "0",
         }
         if bump_fence:
             hash_updates["fencing_token"] = str(int(stored[b"fencing_token"]) + 1)
         pipeline.multi()
         pipeline.hset(resource_key, mapping=hash_updates)
+        pipeline.hincrby(resource_key, "progress_revision", 1)
         pipeline.expire(resource_key, self._s.retention_seconds)
         pipeline.expire(
             stored[b"idempotency_key"].decode("utf-8"), self._s.retention_seconds

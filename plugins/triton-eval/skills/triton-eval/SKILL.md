@@ -68,6 +68,43 @@ polls for up to 960 seconds with a 1-second interval; `--timeout`,
 `--poll-interval` and `--no-wait` control that client behavior. An elapsed client
 wait does not cancel accepted work.
 
+## Combine checks and control coverage
+
+Use `evaluate` for explicit combinations. For correctness, event speedup and a
+kernel-duration trace in one request:
+
+```bash
+python3 "$TRITON_EVAL_CLI" evaluate \
+  --definition definition.json --workloads workloads.jsonl --triton triton_impl.py \
+  --checks correctness performance profile --profile-mode trace --profile-cases 0 \
+  --warmup 5 --repeats 20 --measurement-method event \
+  --wait-for performance --save-handle evaluation-handle.json
+```
+
+`--wait-for performance` returns its progress snapshot as soon as timing evidence
+is available; recover the later trace with `get` using the saved handle.
+Timing is published before later trace capture. `trace` supplies kernel durations;
+use `op` or `deep` for hardware counters. For a deep capture, select cases and
+`--metric-groups`, optionally `--no-per-core`, according to the evidence needed.
+`--max-kernels-per-case` limits returned groups, not capture work.
+
+`verify --case-indices 0,3 --stop-on first_failure` requests bounded correctness
+coverage. Read `coverage` and `outcome`: `incomplete` is a subset observation,
+not a whole-task pass. The CLI returns status 2 for incomplete correctness.
+For `evaluate`, use `--correctness-cases`, `--performance-cases`, and
+`--profile-cases` to express independent selections.
+
+An unchanged candidate can use `benchmark --correctness-from EVALUATION_ID` to
+reference its original complete correctness observation. The service validates
+owner, sources, environment, coverage and freshness; results mark `reused_from`.
+An explicit refusal requires the caller to choose a fresh verification. Reused
+evidence cannot be chained or used for a grade.
+
+Use `progress EVALUATION_ID` to retrieve completed checks while other checks are
+running. Track `attempt_id` and `progress_revision`; an attempt replacement
+invalidates its predecessor's partial observations. A progress command is a
+snapshot and does not cancel or wait for the remaining work.
+
 ## Recover and interpret results
 
 Once an `evaluation_id` is known, use `get` on its original service URL:
