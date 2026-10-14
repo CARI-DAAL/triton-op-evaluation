@@ -178,6 +178,14 @@
       "noise calibration and frozen drift threshold",
       "selected profile and reuse refusal paths",
       "recovery and multi-card validation"
-    ]
+    ],
+    "current_review_basis": "Use the supplied test-host summary for this follow-up; no further raw-report collection requested. Untested scopes remain future validation items.",
+    "follow_up_fix": {
+      "issue": "Missing Triton distribution metadata leaves execution identity incomplete and prevents explicit correctness reuse.",
+      "change": "Prefer installed distribution metadata, then read the actual runtime module __version__; unknown or invalid versions remain unavailable.",
+      "verification": "206 focused CPU tests passed, 1 skipped; source-only installation regression reproduced before the fix.",
+      "measurement_changes": "none",
+      "historical_evidence": "No version backfill; reported NPU measurements remain bound to f54b9a0."
+    }
   }
 }
