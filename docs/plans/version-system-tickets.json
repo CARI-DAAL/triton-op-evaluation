@@ -115,8 +115,8 @@
       "evidence": {
         "implementation": {
           "baseline_commit": "989be9f6177dec159170dbf4bea122f099f87b22",
-          "commit": null,
-          "state": "main 工作区改动，尚未提交；下一个 agent 以实际文件为准",
+          "commit": "2cd61075395f3d78565d9a4a3964764c389748e8",
+          "state": "已提交到分支 feat/release-identity（实现提交 2cd6107，evidence 中的 commit 字段由紧随其后的一次 docs 提交回填）；下一个 agent 以实际文件为准",
           "new_files": [
             "triton_evaluation/versioning.py",
             "scripts/release_manifest.py",
@@ -145,7 +145,8 @@
             "scripts/README.md",
             "tests/test_deployment.py",
             "tests/test_deployment_preflight.py"
-          ]
+          ],
+          "branch": "feat/release-identity"
         },
         "summary": [
           "triton_evaluation/versioning.py 为统一版本模块：service_version（安装包元数据，未安装时显式为 0+uninstalled）、source_digest（安装包 Python 源码摘要）、declared/installed dependencies、api_versions=('legacy',)、storage read/write=('legacy',)/'legacy'、DEFAULT_PROTOCOL=None、CAPABILITIES 仅列已实现能力，并提供发布清单 schema、canonicalization、load/validate、manifest_mismatches、release_identity、unverified_identity、startup_identity。",
