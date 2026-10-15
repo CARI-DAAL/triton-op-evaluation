@@ -18,6 +18,7 @@ from triton_evaluation.api.contract import (
     DeepProfileResult,
     OpProfileResult,
 )
+from triton_evaluation.engine._divergence import classify_divergence
 from triton_evaluation.evaluators.shaping import (
     ShapingError,
     UnattributedFailure,
@@ -99,6 +100,22 @@ def test_wrong_value_fixture_maps_experimental_kind_to_coarse_value_mismatch():
     assert [point.diff for point in failure.sample] == [2.5, 0.25]
     dumped = result.model_dump()
     assert "mean_abs_err" not in dumped["failures"][0]["metrics"]
+
+
+def test_engine_sample_with_matched_non_finite_pairs_shapes_as_wrong():
+    # Producer to reader: the engine's own sample for a wrong candidate whose
+    # NaN/inf positions match the reference must not become INVALID_ENGINE_OUTPUT.
+    sample = classify_divergence(
+        [math.nan, 1.0, math.inf, 3.0], [math.nan, 1.0, math.inf, 7.0], (2, 2),
+        atol=1e-3, rtol=2**-13, small_value_threshold=2**-14,
+        small_value_error=2**-30, rel_threshold=2**-13, small_count=0, normal_count=4,
+    )["sample"]
+    raw = mutated("verify-wrong-value.json", "failures", 0, "sample", value=sample)
+
+    result = shape_correctness(raw, decoy=False)
+
+    assert result.outcome == "wrong"
+    assert [point.diff for point in result.failures[0].sample] == [4.0, 0.0, 0.0, 0.0]
 
 
 def test_shape_mismatch_fixture_has_empty_sample():

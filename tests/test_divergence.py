@@ -124,6 +124,20 @@ def test_worst_sample_ranks_non_finite_above_finite():
     assert sample[0]["diff"] == "inf"
 
 
+def test_matching_non_finite_pairs_report_the_zero_diff_they_rank_by():
+    # A matched NaN or same-sign inf pair is equal, ranked as |diff| 0; its
+    # reported diff must agree, not read NaN from inf - inf or nan - nan.
+    reference = [math.nan, 1.0, math.inf, 3.0]
+    candidate = [math.nan, 1.0, math.inf, 7.0]
+
+    sample = _result(reference, candidate, (4,))["sample"]
+
+    assert [point["diff"] for point in sample] == [4.0, 0.0, 0.0, 0.0]
+    assert [point["idx"] for point in sample] == [[3], [0], [1], [2]]
+    assert sample[1]["candidate"] == sample[1]["reference"] == "nan"
+    assert sample[3]["candidate"] == sample[3]["reference"] == "inf"
+
+
 def test_matching_non_finite_pairs_do_not_poison_structural_features():
     reference = [math.inf, math.nan, 1.0, 2.0, 3.0, 4.0]
     candidate = [math.inf, math.nan, 6.0, 7.0, 8.0, 9.0]

@@ -218,7 +218,8 @@ def worst_sample(reference, candidate, abs_diff, shape, *, k=SAMPLE_DEFAULT_K):
             "idx": idx,
             "candidate": _finite_token(candidate[i]),
             "reference": _finite_token(reference[i]),
-            "diff": _finite_token(candidate[i] - reference[i]),
+            # A matched NaN/inf pair ranks as |diff| 0; report that, not inf - inf.
+            "diff": _finite_token(candidate[i] - reference[i]) if abs_diff[i] else 0.0,
         })
     return out
 
