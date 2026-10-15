@@ -163,9 +163,8 @@ def test_candidate_missing_model_new_writes_compilation_failure(tmp_path, monkey
 def test_candidate_import_error_uses_workload_metadata_without_inputs(
     tmp_path, monkeypatch, policy,
 ):
-    from triton_evaluation.api.operator import OperatorRequest
-    from triton_evaluation.evaluators.operator import to_evaluation_request
     from triton_evaluation.evaluators.shaping import shape_correctness
+    from triton_evaluation.operator_input import OperatorRequest, to_evaluation_request
 
     request = OperatorRequest.model_validate({
         "definition": {"inputs": {"x": {}}, "reference": "def run(x): return x"},

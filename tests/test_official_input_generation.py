@@ -627,8 +627,7 @@ def test_custom_module_rng_is_before_seed_and_callback_after_family(monkeypatch)
 
 
 def test_adapter_order_identity_and_deferred_custom_execution():
-    from triton_evaluation.api.operator import OperatorRequest
-    from triton_evaluation.evaluators.operator import to_evaluation_request
+    from triton_evaluation.operator_input import OperatorRequest, to_evaluation_request
 
     payload = {
         "definition": {
@@ -675,8 +674,7 @@ def test_adapter_order_identity_and_deferred_custom_execution():
 
 @pytest.mark.parametrize("mode", ["torch", "triton", "comparison"])
 def test_adapter_model_contracts(mode):
-    from triton_evaluation.api.operator import OperatorRequest
-    from triton_evaluation.evaluators.operator import to_evaluation_request
+    from triton_evaluation.operator_input import OperatorRequest, to_evaluation_request
 
     payload = {
         "definition": {"inputs": {"x": {"dtype": "float32", "shape": ["2"]}}},
@@ -743,8 +741,7 @@ def test_global_family_draw_even_for_explicit_distribution(monkeypatch):
 
 
 def test_embedded_generator_preserves_reference_globals():
-    from triton_evaluation.api.operator import OperatorRequest
-    from triton_evaluation.evaluators.operator import to_evaluation_request
+    from triton_evaluation.operator_input import OperatorRequest, to_evaluation_request
 
     request = OperatorRequest.model_validate(
         {
@@ -802,8 +799,7 @@ def test_noncustom_workload_ignores_custom_source(monkeypatch):
 
 
 def test_noncustom_request_embeds_reference_once():
-    from triton_evaluation.api.operator import OperatorRequest
-    from triton_evaluation.evaluators.operator import to_evaluation_request
+    from triton_evaluation.operator_input import OperatorRequest, to_evaluation_request
 
     reference = "def run(x): return x  # embedded-once"
     request = OperatorRequest.model_validate(
@@ -823,7 +819,7 @@ def test_noncustom_request_embeds_reference_once():
 
 def test_float_range_is_ignored_like_upstream(monkeypatch):
     # Official Nonzero workloads put range on float32; upstream applies it only to integers.
-    from triton_evaluation.api.operator import OperatorRequest, normalize_workloads
+    from triton_evaluation.operator_input import OperatorRequest, normalize_workloads
 
     spec = {"type": "random", "shape": [17], "dtype": "float32", "range": [-10, 10]}
     request = OperatorRequest.model_validate(
@@ -838,8 +834,7 @@ def test_float_range_is_ignored_like_upstream(monkeypatch):
 
 
 def test_reference_callback_source_used_when_no_override(monkeypatch):
-    from triton_evaluation.api.operator import OperatorRequest
-    from triton_evaluation.evaluators.operator import to_evaluation_request
+    from triton_evaluation.operator_input import OperatorRequest, to_evaluation_request
 
     reference = (
         "import torch\ndef build(axes, device): "
@@ -877,7 +872,7 @@ def official_axes(axes, values):
 
 
 def api_axes(axes, values):
-    from triton_evaluation.api.operator import Definition, resolve_axes
+    from triton_evaluation.operator_input import Definition, resolve_axes
 
     return resolve_axes(Definition.model_validate({"axes": axes, "inputs": {}}), values)
 
@@ -918,7 +913,7 @@ def test_axis_expressions_rejected_where_upstream_fails(axes):
 
 
 def api_case(spec):
-    from triton_evaluation.api.operator import OperatorRequest, normalize_workloads
+    from triton_evaluation.operator_input import OperatorRequest, normalize_workloads
 
     request = OperatorRequest.model_validate(
         {
@@ -974,11 +969,9 @@ def test_bounds_upstream_may_use_are_admitted_and_reproduced(spec, seed, monkeyp
     ],
 )
 def test_bounds_upstream_always_refuses_are_rejected(spec, monkeypatch):
-    from pydantic import ValidationError
-
     spec = {"type": "random", "shape": [17], "dtype": "float32", **spec}
     for seed in (0, 1, 2, 3, 200):
         with pytest.raises(RuntimeError):
             official(case_for(spec), seed, monkeypatch)
-    with pytest.raises(ValidationError):
+    with pytest.raises(ValueError):
         api_case(spec)

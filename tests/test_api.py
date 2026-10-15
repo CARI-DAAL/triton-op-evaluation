@@ -164,8 +164,7 @@ def request_payload(**overrides):
 
 
 def internal_request(**overrides):
-    from triton_evaluation.api.operator import OperatorRequest
-    from triton_evaluation.evaluators.operator import to_evaluation_request
+    from triton_evaluation.operator_input import OperatorRequest, to_evaluation_request
 
     return to_evaluation_request(OperatorRequest.model_validate(request_payload(**overrides)))
 

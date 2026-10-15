@@ -18,13 +18,12 @@ from test_api import (
 from test_evaluation_evaluator import ENVIRONMENT, Harness, RecordingSink, succeeded, trial_pinned
 from test_worker import build_worker
 
-from triton_evaluation.api.operator import OperatorRequest
 from triton_evaluation.evaluators.base import engine_failure
 from triton_evaluation.evaluators.benchmark import BenchmarkEvaluator
 from triton_evaluation.evaluators.evaluation import EvaluationEvaluator
-from triton_evaluation.evaluators.operator import to_evaluation_request
 from triton_evaluation.evaluators.profile import ProfileEvaluator
 from triton_evaluation.evaluators.verify import VerifyEvaluator
+from triton_evaluation.operator_input import OperatorRequest, to_evaluation_request
 from triton_evaluation.runtime.verdict_cache import VerdictCache
 from triton_evaluation.runtime.worker import FencedProgress
 from triton_evaluation.service.models import AlgorithmVersions, WorkerIdentity, new_worker_id

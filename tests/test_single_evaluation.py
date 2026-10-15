@@ -17,9 +17,8 @@ from test_evaluation_evaluator import (
 from test_worker import build_worker
 
 from triton_evaluation.api.contract import CheckTimedOut, ErrorInfo
-from triton_evaluation.api.operator import OperatorRequest
 from triton_evaluation.evaluators.base import EngineCheckResult, LeaseLostError, materialize
-from triton_evaluation.evaluators.operator import to_evaluation_request
+from triton_evaluation.operator_input import OperatorRequest, to_evaluation_request
 from triton_evaluation.service.terminal_results import complete_evaluation
 
 

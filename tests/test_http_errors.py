@@ -1,7 +1,7 @@
 """Every non-2xx path returns a schema 2.1 ErrorEnvelope with stable mappings."""
 
 import pytest
-from test_api import build_app, post, request_payload, trial_headers
+from test_api import build_app, post, raw_json, request_payload, trial_headers
 
 from triton_evaluation.api.contract import ErrorEnvelope
 
@@ -78,6 +78,24 @@ async def test_non_2xx_paths_return_stable_error_envelopes(app, case):
     assert envelope.request_id
     assert ("WWW-Authenticate" in response.headers) is www_auth
     assert ("Retry-After" in response.headers) is retry_after
+
+
+@pytest.mark.parametrize(("path", "overrides", "reason"), [
+    ("/evaluations", {"checks": ["performance"]},
+     "the performance check requires the correctness check"),
+    # The /verify intent replaces the body's checks; the rules judge the result.
+    ("/verify", {"triton_code": None, "checks": ["performance"]},
+     "the correctness check requires both implementations"),
+])
+async def test_rejected_combination_reports_its_rule(app, path, overrides, reason):
+    async with app.http as client:
+        response = await client.post(
+            path, content=raw_json(request_payload(**overrides)), headers=trial_headers(),
+        )
+    assert response.status_code == 422, response.text
+    envelope = ErrorEnvelope.model_validate_json(response.content)
+    assert envelope.error.code == "INVALID_REQUEST"
+    assert envelope.error.message == reason
 
 
 async def test_no_submitted_source_or_token_appears_in_any_error(app):

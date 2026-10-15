@@ -7,10 +7,10 @@ from types import SimpleNamespace
 
 import pytest
 
+from triton_evaluation import operator_input as operator_source
 from triton_evaluation.api.contract import TraceProfileResult
 from triton_evaluation.engine import benchmark
 from triton_evaluation.engine import joint_measurement as joint
-from triton_evaluation.evaluators import operator as operator_source
 
 
 @pytest.fixture

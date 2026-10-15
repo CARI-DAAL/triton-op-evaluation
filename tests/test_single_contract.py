@@ -13,8 +13,7 @@ from triton_evaluation.api.contract import (
     PerformanceOutcome,
     SinglePerformanceResult,
 )
-from triton_evaluation.api.operator import OperatorRequest
-from triton_evaluation.evaluators.operator import to_evaluation_request
+from triton_evaluation.operator_input import OperatorRequest, to_evaluation_request
 from triton_evaluation.serialization import canonical_json_bytes, sha256_hex
 
 SOURCE = "def run(x):\n    return x + 1\n"
@@ -58,10 +57,10 @@ def test_single_checks_do_not_require_comparison(implementation, checks):
 
 @pytest.mark.parametrize("implementation", ["torch", "triton"])
 def test_single_implementation_cannot_request_correctness(implementation):
-    with pytest.raises(ValidationError, match="both implementations"):
-        operator(**source_kwargs(implementation), checks=["correctness"])
+    with pytest.raises(ValueError, match="both implementations"):
+        to_evaluation_request(operator(**source_kwargs(implementation), checks=["correctness"]))
     body = operator(**source_kwargs(implementation))
-    with pytest.raises(ValidationError, match="both implementations"):
+    with pytest.raises(ValueError, match="both implementations"):
         to_evaluation_request(body, checks=["correctness"])
 
 
@@ -70,8 +69,8 @@ def test_single_implementation_cannot_request_correctness(implementation):
     {"triton_code": " \n\t"}, {"reference": SOURCE, "triton_code": " "},
 ])
 def test_at_least_one_real_source_is_required_and_supplied_blanks_are_rejected(values):
-    with pytest.raises(ValidationError):
-        operator(**values)
+    with pytest.raises(ValueError):
+        to_evaluation_request(operator(**values))
 
 
 @pytest.mark.parametrize("implementation", ["torch", "triton"])

@@ -17,8 +17,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from scripts.test_eval_service import http_json
 from triton_evaluation.api.contract import EvaluationResource
-from triton_evaluation.api.operator import OperatorRequest
-from triton_evaluation.evaluators.operator import to_evaluation_request
+from triton_evaluation.operator_input import OperatorRequest, to_evaluation_request
 
 FIXTURE = ROOT / "tests/fixtures/npu_kernelbench/batchmatmul"
 OFFICIAL_DIGEST = "57e902365bd9b2fa437cc500cf0d862989b5881f439b2157de7341b127126c73"
@@ -80,7 +79,7 @@ def build_body(
             "mode": stage.removeprefix("profile_"),
             "case_indices": indices,
         }
-    OperatorRequest.model_validate(body)
+    to_evaluation_request(OperatorRequest.model_validate(body))
     return body
 
 

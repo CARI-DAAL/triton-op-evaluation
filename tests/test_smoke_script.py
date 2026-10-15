@@ -2,7 +2,7 @@
 import pytest
 
 from scripts import test_eval_service as smoke
-from triton_evaluation.api.operator import OperatorRequest
+from triton_evaluation.operator_input import OperatorRequest
 
 QUEUED_RESOURCE = {
     "schema_version": "2.1",

@@ -14,7 +14,7 @@ from fastapi import APIRouter, Depends, Header, Query, Request
 from fastapi.responses import Response
 
 from .. import versioning
-from ..evaluators.operator import to_evaluation_request
+from ..operator_input import OperatorRequest, to_evaluation_request
 from ..runtime.correctness_evidence import CorrectnessEvidenceError
 from ..service.admission import ForbiddenError
 from ..service.broker import StorageError
@@ -36,7 +36,6 @@ from .contract import (
 )
 from .dependencies import AppContext, get_context, get_instance
 from .errors import error_responses
-from .operator import OperatorRequest
 from .schemas import IdempotencyKey, Liveness, Readiness, SessionId
 
 router = APIRouter()
@@ -113,8 +112,8 @@ async def submit_evaluation(
     }.get(request.scope["route"].path.rsplit("/", 1)[-1])
     try:
         internal_request = to_evaluation_request(evaluation_request, checks=checks)
-    except ValueError:
-        raise errors.invalid_request_schema("request failed schema validation") from None
+    except ValueError as error:
+        raise errors.invalid_request_schema(str(error)) from None
     session_id = session_id or ("default" if idempotency_key else uuid4().hex)
     idempotency_key = idempotency_key or uuid4().hex
     try:

@@ -14,10 +14,9 @@ from typing import Optional
 import pytest
 import torch
 
-from triton_evaluation.api.operator import OperatorRequest
 from triton_evaluation.engine import _official_tolerance, verify
-from triton_evaluation.evaluators.operator import to_evaluation_request
 from triton_evaluation.evaluators.shaping import shape_correctness
+from triton_evaluation.operator_input import OperatorRequest, to_evaluation_request
 
 OFFICIAL_TOLERANCE_SOURCE = (
     '# ---------------------------------------------------------------------------\n'

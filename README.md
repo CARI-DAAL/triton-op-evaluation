@@ -176,6 +176,7 @@ Key directories and configuration files:
 │   ├── runtime/                # Workers, isolation, profiling and caches
 │   ├── evaluators/             # Check orchestration and result shaping
 │   ├── engine/                 # Bundled evaluation engine
+│   ├── operator_input.py       # Operator request, cases and translation
 │   ├── config.py               # Shared configuration
 │   └── serialization.py        # Canonical serialization
 ├── plugins/
@@ -283,8 +284,10 @@ measurement and profiling; supplying PyTorch and Triton supports correctness
 checks and comparative performance.
 
 **Case**:
-One ordered list of positional inputs and a deterministic seed. Tensor inputs
-are generated from their shape, dtype and optional range; scalars pass through.
+One workload resolved for execution: concrete axes and every definition input
+in declared order. Tensor inputs are generated from their spec and the request
+seed; scalars pass through.
+_Avoid_: test case, shape
 
 **Operation shortcut**:
 An HTTP endpoint that selects correctness, performance or profiling while using

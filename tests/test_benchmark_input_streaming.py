@@ -7,8 +7,8 @@ from types import SimpleNamespace
 
 import pytest
 
+from triton_evaluation import operator_input as operator_source
 from triton_evaluation.engine import benchmark
-from triton_evaluation.evaluators import operator as operator_source
 
 
 class Payload:
