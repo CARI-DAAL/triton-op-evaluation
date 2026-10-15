@@ -105,6 +105,19 @@ running. Track `attempt_id` and `progress_revision`; an attempt replacement
 invalidates its predecessor's partial observations. A progress command is a
 snapshot and does not cancel or wait for the remaining work.
 
+## Identify the service and this client
+
+`--version` reports this client's own version offline. `version` asks a
+deployment for its service version, the API contracts it implements, its build
+and whether it verified its own release:
+
+```bash
+python3 "$TRITON_EVAL_CLI" version --url SERVICE_URL --capability-file "$EVALUATION_CAPABILITY_FILE"
+```
+
+Report both versions when an evaluation outcome depends on the deployment, and
+report `release.verified: false` as an unverified deployment identity.
+
 ## Recover and interpret results
 
 Once an `evaluation_id` is known, use `get` on its original service URL:

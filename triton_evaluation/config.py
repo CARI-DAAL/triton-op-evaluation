@@ -6,6 +6,8 @@ from typing import Literal
 from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from .versioning import BUILD_PATTERN, ZERO_BUILD
+
 # The evaluation engine (verify / internal benchmark / profile / validate) is
 # vendored inside the package: this service is self-contained. `engine_dir`
 # defaults to the bundled engine; the env override exists only to point at a
@@ -19,7 +21,6 @@ _DEFAULT_ENGINE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "
 VERIFY_BUDGET_CAP_SECONDS = 1500
 BENCHMARK_TIMEOUT_SECONDS = 600
 
-_EVALUATOR_BUILD_PATTERN = r"^(sha256:[0-9a-f]{64}|git:[0-9a-f]{40})$"
 _ALGORITHM_VERSION_PATTERN = r"^[A-Za-z0-9._:-]{1,128}$"
 
 
@@ -133,7 +134,8 @@ class Settings(BaseSettings):
     )
 
     # --- evaluator provenance pinned at admission ---
-    evaluator_build: str = Field(default="git:" + "0" * 40, pattern=_EVALUATOR_BUILD_PATTERN)
+    # The build-identity format is defined once, by the version module.
+    evaluator_build: str = Field(default=ZERO_BUILD, pattern=BUILD_PATTERN.pattern)
     correctness_algorithm_version: str = Field(
         default="correctness-v1", pattern=_ALGORITHM_VERSION_PATTERN
     )
@@ -149,6 +151,14 @@ class Settings(BaseSettings):
 
     # Mounted caller capability registry.
     capability_secret_path: Path | None = None
+
+    # --- release identity verification ---
+    # release: formal startup verifies the running artifacts against the
+    # external manifest and refuses to serve otherwise. dev: startup serves and
+    # reports its identity as unverified. Reaching dev mode requires choosing
+    # it; a release-mode failure never degrades into it.
+    release_mode: Literal["dev", "release"] = "dev"
+    release_manifest: Path | None = None
 
     @property
     def effective_correctness_algorithm_version(self) -> str:
@@ -192,6 +202,12 @@ class Settings(BaseSettings):
             and not self.profiler_runtime_manifest.is_absolute()
         ):
             raise ValueError("profiler runtime manifest must be absolute")
+        if self.release_manifest is not None and (
+            not self.release_manifest.is_absolute() or ".." in self.release_manifest.parts
+        ):
+            raise ValueError("release manifest path must be absolute without traversal")
+        if self.release_mode == "release" and self.release_manifest is None:
+            raise ValueError("release mode requires a release manifest path")
         tls = (self.api_tls_port, self.api_tls_certfile, self.api_tls_keyfile)
         if any(value is not None for value in tls) and not all(value is not None for value in tls):
             raise ValueError("native HTTPS requires port, certfile and keyfile together")

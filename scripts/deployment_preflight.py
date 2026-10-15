@@ -37,8 +37,11 @@ REDIS_PREFIX = "triton-eval:v2.1"
 _REQUIRED_ENV = (
     "TRITON_EVAL_API_HOST", "TRITON_EVAL_API_PORT",
     "TRITON_EVAL_CAPABILITY_SECRET_PATH", "TRITON_EVAL_IMAGE",
-    "TRITON_EVAL_EVALUATOR_BUILD",
+    "TRITON_EVAL_EVALUATOR_BUILD", "TRITON_EVAL_RELEASE_MANIFEST_HOST",
 )
+# The manifest describes the image being deployed, so it is mounted into the
+# container instead of being built into it.
+CONTAINER_MANIFEST = "/opt/triton-eval/release-manifest.json"
 
 
 CommandRunner = Callable[[list[str]], tuple[int, str, str]]
@@ -204,7 +207,44 @@ def _validate_eval_service(rendered: dict, env: Mapping[str, str], api_host) -> 
         raise PreflightError("rendered API port must be the production port")
     _validate_instance_settings(settings_env, env)
     _validate_mounts(service.get("volumes") or [], settings_env, env)
+    _validate_release_identity(settings_env, service.get("volumes") or [], env)
     _validate_runtime_settings(settings_env)
+
+
+def _validate_release_identity(
+    settings_env: Mapping[str, str], volumes: list[dict], env: Mapping[str, str]
+) -> None:
+    """Require release-mode startup bound to a manifest for this exact image."""
+    if settings_env.get("TRITON_EVAL_RELEASE_MODE") != "release":
+        raise PreflightError("deployed service must start in release mode")
+    if settings_env.get("TRITON_EVAL_RELEASE_MANIFEST") != CONTAINER_MANIFEST:
+        raise PreflightError("rendered release manifest path must match the validated mount")
+    host_path = Path(env["TRITON_EVAL_RELEASE_MANIFEST_HOST"])
+    mount = {volume.get("target"): volume for volume in volumes}.get(CONTAINER_MANIFEST)
+    if mount is None:
+        raise PreflightError(f"required read-only mount missing: {CONTAINER_MANIFEST}")
+    source = mount.get("source")
+    if (mount.get("read_only") is not True or mount.get("type") != "bind"
+            or not isinstance(source, str) or Path(source).resolve() != host_path.resolve()):
+        raise PreflightError(
+            f"release manifest mount must be the validated read-only host path: "
+            f"{CONTAINER_MANIFEST}"
+        )
+
+    try:
+        from triton_evaluation.versioning import ManifestError, load_manifest
+    except ImportError:
+        sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+        from triton_evaluation.versioning import ManifestError, load_manifest
+
+    try:
+        manifest = load_manifest(host_path)
+    except ManifestError as error:
+        raise PreflightError(f"release manifest failed validation: {error.reason}") from None
+    if manifest["evaluator_build"] != env["TRITON_EVAL_EVALUATOR_BUILD"]:
+        raise PreflightError("release manifest must bind the deployed evaluator build")
+    if manifest["image_reference"] != env["TRITON_EVAL_IMAGE"]:
+        raise PreflightError("release manifest must bind the deployed image reference")
 
 
 def _validate_runtime_settings(settings_env: Mapping[str, str]) -> None:

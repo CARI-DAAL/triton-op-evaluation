@@ -15,10 +15,14 @@ from triton_evaluation.service.broker import EvaluationStore
 from triton_evaluation.service.instance import EvaluationInstance
 from triton_evaluation.service.metrics import RedisMetrics
 from triton_evaluation.service.security import CapabilityRegistry
+from triton_evaluation.versioning import startup_identity
 
 
 def build_app() -> "FastAPI":  # noqa: F821 — FastAPI imported via api
     settings = Settings.from_env()
+    # uvicorn imports this module's `app`, so this is the API's formal startup
+    # path: verify the release before any listener exists.
+    release = startup_identity(settings)
     client = redis.Redis.from_url(settings.redis_url, decode_responses=False)
     metrics_client = redis.Redis.from_url(
         settings.redis_url, decode_responses=False,
@@ -32,6 +36,7 @@ def build_app() -> "FastAPI":  # noqa: F821 — FastAPI imported via api
     context = AppContext(
         instance=instance,
         registry=registry,
+        release=release,
     )
     return create_app(context)
 

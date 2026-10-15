@@ -28,6 +28,7 @@ location; point `TRITON_EVAL_ENV_FILE` at that absolute path:
 | --- | --- |
 | `TRITON_EVAL_API_HOST` | This host's private IPv4 address; API port is `11907` |
 | `TRITON_EVAL_IMAGE`, `TRITON_EVAL_EVALUATOR_BUILD` | Immutable image reference and its matching `sha256:…` digest |
+| `TRITON_EVAL_RELEASE_MANIFEST_HOST` | Manifest generated and bound for that exact image, mounted read-only |
 | `CANN_HOST`, `TRITON_EVAL_WORKER_*` | Host toolkit path and actual hardware/toolchain inventory |
 | `TRITON_EVAL_CARDS` | Unique physical card IDs, e.g. `0` or `0,1,3` |
 | `TRITON_EVAL_CAPABILITY_SECRET_PATH` | Caller registry JSON, permissions no broader than `0600` |
@@ -46,7 +47,9 @@ scripts/compose.sh logs -f
 ```
 
 Preflight validates the exact configuration being launched, locally available
-pinned images, private bind, mounted capability registry and Redis AOF settings.
+pinned images, private bind, mounted capability registry, release-mode startup
+bound to the deployed image's [release manifest](versioning.md), and Redis AOF
+settings.
 Export the env file before invoking the wrapper, as above. Use `up` to apply
 configuration changes; `start` and `restart` reuse existing containers.
 `TRITON_EVAL_CARDS` selects worker processes; the privileged Ascend container

@@ -70,6 +70,11 @@ With `--triton-only`, the client preserves the original reference source as
 `custom_inputs_code` for that factory; the submitted definition omits its
 mathematical reference. An explicit `--custom-inputs` file takes precedence.
 
+`triton_eval.py --version` reports this client's version with no service, token
+or service package involved; the three plugin manifests declare the same
+version. `version --url ... --capability-file ...` reports the deployment's
+service version, implemented API contracts and build.
+
 The client prints one JSON resource to stdout and progress to stderr. It retains
 HTTP admission, polling and recovery behavior: `--save-handle` records the URL,
 evaluation ID, idempotency key and session ID; use `get EVALUATION_ID` against the

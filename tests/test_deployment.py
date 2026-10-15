@@ -28,7 +28,9 @@ COMPOSE_RENDER_ENV = {
     "TRITON_EVAL_API_PORT": "11907",
     "TRITON_EVAL_IMAGE": EVAL_IMAGE,
     "TRITON_EVAL_EVALUATOR_BUILD": EVALUATOR_BUILD,
+    "TRITON_EVAL_RELEASE_MANIFEST_HOST": "/srv/triton-eval/release-manifest.json",
 }
+CONTAINER_MANIFEST = "/opt/triton-eval/release-manifest.json"
 
 
 def _render_compose(filename: str, extra_env=None) -> dict:
@@ -80,10 +82,13 @@ def _complete_deployment_env(tmp_path):
         }],
     }))
     secret.chmod(0o600)
+    from test_deployment_preflight import write_manifest
+
     return COMPOSE_RENDER_ENV | {
         "TRITON_EVAL_REDIS_URL": "redis://127.0.0.1:6379/7",
         "TRITON_EVAL_CARDS": "0",
         "TRITON_EVAL_CAPABILITY_SECRET_PATH": str(secret),
+        "TRITON_EVAL_RELEASE_MANIFEST_HOST": str(write_manifest(tmp_path)),
     }
 
 
@@ -175,7 +180,7 @@ def test_production_compose_mounts_secret_read_only_without_catalog(tmp_path):
     config = _render_compose("docker/compose.yaml")
     service = config["services"]["triton-eval"]
     targets = {v["target"]: v for v in service["volumes"]}
-    for target in ("/run/secrets/triton-eval",):
+    for target in ("/run/secrets/triton-eval", CONTAINER_MANIFEST):
         assert target in targets, target
         assert targets[target].get("read_only") is True
     assert "/srv/triton-eval-release" not in targets

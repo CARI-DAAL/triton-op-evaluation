@@ -1082,3 +1082,43 @@ class EvaluationResource(StrictModel):
         except TypeError as exc:
             raise ValueError("timestamps must share timezone awareness") from exc
         return self
+
+
+# ---------------------------------------------------------------------------
+# Release identity discovery
+# ---------------------------------------------------------------------------
+
+
+class StorageVersions(StrictModel):
+    """Persisted-format compatibility this release actually implements."""
+
+    read_versions: list[str]
+    write_version: str
+
+
+class ReleaseVerification(StrictModel):
+    """Whether the serving process verified its own artifacts, and what failed.
+
+    Reasons are stable codes, never configuration values or paths.
+    """
+
+    mode: Literal["dev", "release"]
+    verified: bool
+    unverified_reasons: list[str]
+    manifest_digest: Digest | None
+    source_revision: str | None
+    source_digest: Digest
+
+
+class VersionInfo(StrictModel):
+    """The running release: versions, supported contracts, build, capabilities."""
+
+    schema_version: SchemaVersion
+    service_version: str
+    api_versions: list[str]
+    default_api_version: str
+    evaluator_build: str
+    storage: StorageVersions
+    default_protocol: Digest | None
+    capabilities: list[str]
+    release: ReleaseVerification

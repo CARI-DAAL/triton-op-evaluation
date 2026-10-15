@@ -10,6 +10,7 @@ from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from ..service.metrics import increment
+from ..versioning import service_version
 from . import errors
 from .contract import ErrorEnvelope
 from .dependencies import AppContext
@@ -61,7 +62,8 @@ def create_app(context: AppContext) -> FastAPI:
             stop.set()
             await task
 
-    app = FastAPI(title="triton-evaluation", lifespan=lifespan)
+    # OpenAPI's info.version is the service release number, not a schema version.
+    app = FastAPI(title="triton-evaluation", version=service_version(), lifespan=lifespan)
     app.state.context = context
     app.add_middleware(RequestIdBodyLimitMiddleware)
     app.include_router(router)

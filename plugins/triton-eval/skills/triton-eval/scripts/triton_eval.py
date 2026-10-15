@@ -20,6 +20,10 @@ import urllib.request
 import uuid
 from pathlib import Path
 
+# This client's own release number, independent of the service release and
+# equal to the version declared by the plugin manifests shipping it.
+__version__ = "0.4.0"
+
 TERMINAL = {"completed", "failed", "timed_out"}
 STATES = TERMINAL | {"queued", "running"}
 ID = re.compile(r"ev_[0-9a-f]{32}\Z")
@@ -127,7 +131,15 @@ def arguments(argv):
                       "single-source measurements are always fresh"),
             )
             command.set_defaults(use_baseline_cache=True)
+    discovery = commands.add_parser("version")
+    discovery.add_argument("--url", default=os.environ.get("EVALUATION_URL"))
+    discovery.add_argument(
+        "--capability-file", type=Path, default=os.environ.get("EVALUATION_CAPABILITY_FILE")
+    )
+    discovery.add_argument("--timeout", type=positive, default=30.0)
     args = parser.parse_args(argv)
+    if args.command == "version":
+        return args
     if args.command not in {"get", "progress"} and args.triton_only and args.triton is None:
         raise ClientError("INVALID_ARGUMENT", "--triton-only requires --triton")
     if args.wait_for and (args.no_wait or args.command == "progress"):
@@ -233,6 +245,20 @@ def validate_progress(value):
         if type(value.get(name)) is not int or value[name] < 0:
             raise ClientError("INVALID_RESPONSE", "progress lacks a valid revision")
     validate_resource({**value, "result": value["completed_checks"]})
+    return value
+
+
+def validate_version(value):
+    """Accept a version document, tolerating fields this client does not read."""
+    if (
+        not isinstance(value, dict)
+        or not isinstance(value.get("service_version"), str)
+        or not isinstance(value.get("default_api_version"), str)
+        or not isinstance(value.get("api_versions"), list)
+        or not value["api_versions"]
+        or any(not isinstance(item, str) for item in value["api_versions"])
+    ):
+        raise ClientError("INVALID_RESPONSE", "service returned an invalid version document")
     return value
 
 
@@ -389,7 +415,9 @@ class Client:
                     if response.status not in {200, 202}:
                         raise ClientError("INVALID_RESPONSE", "unexpected service response status")
                     validate = (
-                        validate_progress if path.endswith("/progress") else validate_resource
+                        validate_version if path == "/version"
+                        else validate_progress if path.endswith("/progress")
+                        else validate_resource
                     )
                     value = validate(json_value(response.read()))
                 completed.put((value, None))
@@ -412,6 +440,11 @@ class Client:
         self.token = read_text(self.args.capability_file, "capability file").strip()
         if not self.token or any(not 33 <= ord(char) <= 126 for char in self.token):
             raise ClientError("INVALID_INPUT", "capability file must contain one ASCII token")
+        if self.args.command == "version":
+            # Identity discovery: the service answers even with no worker able
+            # to serve, so this never waits or polls.
+            return {"client_version": __version__,
+                    "service": self.request("GET", "/version")}, 0
         if self.args.command in {"get", "progress"}:
             if not ID.fullmatch(self.evaluation_id):
                 raise ClientError("INVALID_ARGUMENT", "evaluation ID has an invalid format")
@@ -532,6 +565,12 @@ class Client:
 
 
 def main(argv=None):
+    argv = sys.argv[1:] if argv is None else list(argv)
+    if argv in (["--version"], ["-V"]):
+        # Offline identity: a copied or packaged CLI reports its own version
+        # without a service, a capability token or the service package.
+        print(json.dumps({"client_version": __version__}))
+        return 0
     client = None
     try:
         client = Client(arguments(argv))
