@@ -13,6 +13,7 @@ from uuid import uuid4
 from fastapi import APIRouter, Depends, Header, Query, Request
 from fastapi.responses import Response
 
+from .. import versioning
 from ..evaluators.operator import to_evaluation_request
 from ..runtime.correctness_evidence import CorrectnessEvidenceError
 from ..service.admission import ForbiddenError
@@ -20,8 +21,19 @@ from ..service.broker import StorageError
 from ..service.instance import EvaluationInstance, InstanceNotReadyError, QueueUnavailableError
 from ..service.security import Caller
 from . import errors
-from .auth import require_observer, require_read_caller, require_submit_caller
-from .contract import EvaluationProgress, EvaluationResource
+from .auth import (
+    require_caller,
+    require_observer,
+    require_read_caller,
+    require_submit_caller,
+)
+from .contract import (
+    EvaluationProgress,
+    EvaluationResource,
+    ReleaseVerification,
+    StorageVersions,
+    VersionInfo,
+)
 from .dependencies import AppContext, get_context, get_instance
 from .errors import error_responses
 from .operator import OperatorRequest
@@ -196,6 +208,44 @@ async def get_evaluation_progress(
     if progress.state not in TERMINAL_STATES:
         response.headers.update(errors.RETRY_AFTER_ONE)
     return progress
+
+
+@router.get(
+    "/version", response_model=VersionInfo,
+    responses=error_responses(401, 403, 413, 500),
+)
+def get_version(
+    context: Annotated[AppContext, Depends(get_context)],
+    caller: Annotated[Caller, Depends(require_caller)],
+) -> VersionInfo:
+    """Report the running release to any authenticated caller.
+
+    Identity is process-local: discovery answers while no worker can serve, and
+    reports only what the release declares -- never deployment configuration.
+    """
+    settings = context.instance.settings
+    identity = context.release
+    return VersionInfo(
+        schema_version="2.1",
+        service_version=identity.service_version,
+        api_versions=list(versioning.API_VERSIONS),
+        default_api_version=versioning.DEFAULT_API_VERSION,
+        evaluator_build=settings.evaluator_build,
+        storage=StorageVersions(
+            read_versions=list(versioning.STORAGE_READ_VERSIONS),
+            write_version=versioning.STORAGE_WRITE_VERSION,
+        ),
+        default_protocol=versioning.DEFAULT_PROTOCOL,
+        capabilities=list(versioning.CAPABILITIES),
+        release=ReleaseVerification(
+            mode=identity.mode,
+            verified=identity.verified,
+            unverified_reasons=list(identity.reasons),
+            manifest_digest=identity.manifest_digest,
+            source_revision=identity.source_revision,
+            source_digest=identity.source_digest,
+        ),
+    )
 
 
 @router.get("/livez", response_model=Liveness, responses=error_responses(413, 500))

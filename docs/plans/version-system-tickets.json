@@ -1,0 +1,375 @@
+{
+  "plan_version": 1,
+  "title": "Eval service 版本系统",
+  "baseline_commit": "989be9f6177dec159170dbf4bea122f099f87b22",
+  "status": "planned",
+  "objective": "统一管理服务发布、客户端兼容、评测规则、运行身份和持久化兼容性，使每次评测可追溯，升级与缓存复用可验证。",
+  "execution": {
+    "order": [
+      "EVV-01",
+      "EVV-02",
+      "EVV-03"
+    ],
+    "assignment": "每个 ticket 可交给一个 agent。依赖 ticket 验收后，后续 agent 从其合入后的代码开始；这些任务修改共享模型和部署入口，应顺序集成。",
+    "entrypoint": "执行指定 ticket 时，先读本文件的 shared_design、该 ticket 和列出的 context，再核对当前代码与 baseline_commit 的变化。",
+    "status_values": [
+      "todo",
+      "in_progress",
+      "cpu_accepted",
+      "blocked",
+      "done"
+    ],
+    "completion_rule": "每个 ticket 按自己的 completion 标准更新状态。需要设备验证时，CPU 通过只标 cpu_accepted；在 evidence 中记录设备验证的实际结果或阻塞原因。",
+    "handoff": "完成后填写 evidence：实现 commit、变更摘要、实际测试命令和结果、兼容性或迁移说明、未完成项；后续 agent 以实际实现为准，不把示例版本号当作已支持能力。",
+    "scope": "本清单授权范围为实现和验证；实际生产切流、发布及破坏性数据迁移不属于 ticket 的默认执行步骤。"
+  },
+  "shared_design": {
+    "identities": {
+      "service_version": "服务发布号，来源为 pyproject.toml。major 表示破坏兼容，minor 表示兼容功能，patch 表示修复；影响评测规则的修复仍需更新对应协议身份。",
+      "client_version": "CLI/plugin 独立发布号，两份插件 manifest 使用同一来源；兼容性由支持的 api_versions 决定。",
+      "api_version": "完整 HTTP 请求、响应、错误和行为契约，通过 X-Eval-API-Version 显式选择。当前行为冻结为 legacy，新契约计划为 3.0。",
+      "storage_version": "内部持久化格式和状态机兼容版本，独立于 HTTP schema 与发布号。历史无标识记录有明确的 legacy 解码路径。",
+      "evaluation_protocol": "不可变评测规则描述的 canonical JSON SHA256，包含算法、实现指纹、输入生成、默认值和判定/计时规则，并提供按 check 划分的子指纹。",
+      "evaluator_build": "保留现有构建身份字段。容器使用镜像 digest；宿主机使用可校验的安装产物及依赖身份，Git commit 作为源码身份另行记录。",
+      "environment_digest": "基于真实执行软件栈、相关硬件和测量条件生成的环境指纹；未知值保持未知，不把配置标签当作实测证据。",
+      "resource_revisions": "revision 与 progress_revision 继续表示资源更新次数，不参与软件版本兼容判断。"
+    },
+    "invariants": [
+      "用统一版本模块集中构建身份、清单解析和兼容性判断，API、worker、发布脚本共用相同规则。",
+      "受理时固定请求、有效参数、协议和构建身份；重试沿用固定身份，每个 attempt 单独记录实际环境。",
+      "当前 StrictModel 拒绝未知字段；legacy 响应保持原格式，新增 provenance 通过新契约暴露。",
+      "同一幂等键的合法重放返回原 evaluation；服务器默认版本或协议升级不得导致重复任务。显式约束与原任务矛盾时返回冲突。",
+      "原实例保留历史记录的恢复能力；读取或序列化旧结果不改写原始执行身份。",
+      "缓存按证据的相关身份复用；接口或服务版本接近不构成环境、测量或正确性兼容证明。",
+      "发布清单、协议清单及被引用 artifacts 不可变；明确存放位置和保留窗口，只有 digest 而没有原材料不构成可重放能力。",
+      "CPU 检查不能建立 NPU 正确性、性能等价或跨环境缓存有效性。"
+    ],
+    "validation_commands": [
+      "python -m ruff check .",
+      "python -m pytest -m 'not npu' -q",
+      "python -m compileall -q triton_evaluation scripts plugins",
+      "git diff --check"
+    ]
+  },
+  "tickets": [
+    {
+      "id": "EVV-01",
+      "title": "发布可识别：发布清单、统一版本模块与版本发现",
+      "owner": null,
+      "status": "cpu_accepted",
+      "depends_on": [],
+      "goal": "调用方和运维可以准确识别正在运行的服务、客户端及构建，正式启动可校验构建身份。",
+      "context": [
+        "pyproject.toml",
+        "triton_evaluation/config.py",
+        "triton_evaluation/api/app.py",
+        "triton_evaluation/api/routes.py",
+        "triton_evaluation/api/auth.py",
+        "plugins/triton-eval/plugin.json",
+        "plugins/triton-eval/.claude-plugin/plugin.json",
+        "plugins/triton-eval/skills/triton-eval/scripts/triton_eval.py",
+        "docker/Dockerfile",
+        "docker/compose.yaml",
+        "scripts/deployment_preflight.py",
+        "scripts/run_api.py",
+        "scripts/run_worker.py",
+        "scripts/start.sh",
+        ".github/workflows/evaluation-api-v2.yml"
+      ],
+      "steps": [
+        "建立统一版本模块和发布清单 schema；定义 service_version、source_revision、evaluator_build、api_versions、storage read/write versions，以及可选的默认协议身份。EVV-02 实现协议前，未知身份显式为空，能力列表仅宣告真实实现。",
+        "实现确定性的清单生成与校验命令。服务发布号来自 pyproject.toml，Git 发布 tag、安装包元数据和发布清单保持一致；插件两份 manifest 与 CLI 版本保持一致。保留服务与插件独立发布能力，记录下一次版本提升的理由。",
+        "区分嵌入产物的源码/版本元数据和构建完成后生成的外部 release-manifest.json；外部清单绑定最终镜像 digest，避免自引用。宿主机路径验证安装产物及依赖身份，并检测源码或安装内容漂移。",
+        "把清单校验接入 API 与 worker 的正式启动路径，以及部署 preflight。明确 dev 与 release 模式；release 模式拒绝全零 build、清单不匹配或无法验证的产物，dev 模式明确暴露未验证身份。",
+        "新增使用现有调用方鉴权的 GET /version，返回版本、支持的接口契约、构建、验证状态和已实现功能；该接口在没有可用 worker 时仍可查询，不暴露敏感配置。让 FastAPI/OpenAPI 的 info.version 使用服务发布号。",
+        "为独立标准库 CLI 添加离线 --version 和查询服务版本的命令，确保复制/打包后的 CLI 无需导入服务包也能识别自身版本。更新部署、客户端文档和 CI 一致性检查。"
+      ],
+      "acceptance": [
+        "安装包、服务 /version、OpenAPI 和发布清单报告同一 service_version；插件两个 manifest 与离线 CLI 报告同一 client_version。",
+        "GET /version 有鉴权、类型化响应和 OpenAPI 定义；无 worker 可用不影响身份查询。",
+        "Docker 和宿主机两条正式启动路径都校验实际产物与清单；篡改清单、依赖或受检源码、使用全零 build 均产生可定位失败。",
+        "同一输入生成同一规范化清单；镜像 digest 在构建完成后绑定，不要求镜像包含自身 digest。",
+        "legacy 提交、响应及恢复行为保持原样；不提前宣告 3.0、协议锁定或尚未实现的存储兼容能力。",
+        "开发启动和测试夹具有明确、受测的未验证模式；正式启动不会静默降级到该模式。"
+      ],
+      "validation": {
+        "focus": [
+          "版本及发布清单的新单元测试",
+          "tests/test_config.py",
+          "tests/test_openapi.py",
+          "tests/test_cli_plugin.py",
+          "tests/test_plugin_package.py",
+          "tests/test_deployment_preflight.py",
+          "tests/test_run_api.py",
+          "tests/test_run_worker.py"
+        ],
+        "integration": "运行 shared_design.validation_commands，并以临时安装产物演练清单生成、正式启动校验和漂移拒绝；若 Docker 不可用，明确记录实际验证范围。"
+      },
+      "handoff_artifacts": [
+        "版本模块及公开接口",
+        "发布清单 schema、生成/校验命令和示例",
+        "/version 响应 schema 及 CLI 命令",
+        "已支持能力与下一阶段需要填充的字段说明"
+      ],
+      "completion": "实现和 CPU 门禁通过；两种部署方式的校验路径有测试覆盖，实际构建演练结果写入 evidence。纯发布身份功能无需用 NPU 性能数据验收。",
+      "evidence": {
+        "implementation": {
+          "baseline_commit": "989be9f6177dec159170dbf4bea122f099f87b22",
+          "commit": "2cd61075395f3d78565d9a4a3964764c389748e8",
+          "state": "已提交到分支 feat/release-identity（实现提交 2cd6107，evidence 中的 commit 字段由紧随其后的一次 docs 提交回填）；下一个 agent 以实际文件为准",
+          "new_files": [
+            "triton_evaluation/versioning.py",
+            "scripts/release_manifest.py",
+            "docs/operations/versioning.md",
+            "tests/test_versioning.py",
+            "tests/test_version_discovery.py"
+          ],
+          "changed_files": [
+            "triton_evaluation/config.py",
+            "triton_evaluation/api/app.py",
+            "triton_evaluation/api/contract.py",
+            "triton_evaluation/api/dependencies.py",
+            "triton_evaluation/api/routes.py",
+            "scripts/run_api.py",
+            "scripts/run_worker.py",
+            "scripts/deployment_preflight.py",
+            "docker/compose.yaml",
+            ".env.example",
+            "docker/.env.example",
+            ".github/workflows/evaluation-api-v2.yml",
+            "plugins/triton-eval/skills/triton-eval/scripts/triton_eval.py",
+            "plugins/triton-eval/skills/triton-eval/SKILL.md",
+            "plugins/triton-eval/README.md",
+            "docs/README.md",
+            "docs/operations/deployment.md",
+            "scripts/README.md",
+            "tests/test_deployment.py",
+            "tests/test_deployment_preflight.py"
+          ],
+          "branch": "feat/release-identity"
+        },
+        "summary": [
+          "triton_evaluation/versioning.py 为统一版本模块：service_version（安装包元数据，未安装时显式为 0+uninstalled）、source_digest（安装包 Python 源码摘要）、declared/installed dependencies、api_versions=('legacy',)、storage read/write=('legacy',)/'legacy'、DEFAULT_PROTOCOL=None、CAPABILITIES 仅列已实现能力，并提供发布清单 schema、canonicalization、load/validate、manifest_mismatches、release_identity、unverified_identity、startup_identity。",
+          "发布清单 schema 1.0 字段：schema_version、service_version、client_version、source_revision、source_digest、dependencies、evaluator_build、image_reference、api_versions、default_api_version、storage{read_versions,write_version}、default_protocol、capabilities。校验按精确键集合与模式进行，未知字段拒绝。canonical 字节用现有 rfc8785 序列化器，键顺序不影响结果。",
+          "scripts/release_manifest.py 提供 generate / bind / verify / consistency。generate 的服务版本与依赖 pin 来自 pyproject.toml，client_version 来自三份插件 manifest 与 CLI __version__（不一致即失败），并与安装包元数据交叉核对；build 身份由 bind 在构建后绑定（--image 取 sha256 digest，--build 用于宿主机 reviewed git 构建），清单不需要包含自身 digest。",
+          "config 新增 release_mode（dev|release，默认 dev）与 release_manifest（绝对路径，不允许 ..）；release 模式必须配置清单路径。startup_identity 在 release 模式下任何不匹配都拒绝启动并列出原因码，dev 模式启动并显式记录未验证身份，不存在从 release 静默降级的路径。",
+          "校验接入两条正式启动路径：scripts/run_api.py 的 build_app（uvicorn 导入的模块对象）与 scripts/run_worker.py 的 main；AppContext.release 默认为 unverified_identity()，使测试夹具与进程内装配明确处于未验证模式。",
+          "GET /version 使用现有 capability 鉴权（任一有效调用方），返回类型化 VersionInfo（service_version、api_versions、default_api_version、evaluator_build、storage、default_protocol、capabilities、release{mode,verified,unverified_reasons,manifest_digest,source_revision,source_digest}），出现在 OpenAPI 中，不含 redis_url、capability 路径或 worker toolchain 等部署配置；无可用 worker 时仍返回 200。FastAPI info.version 改为服务发布号。",
+          "Compose 部署增加 TRITON_EVAL_RELEASE_MODE=release、TRITON_EVAL_RELEASE_MANIFEST=/opt/triton-eval/release-manifest.json，以及由 TRITON_EVAL_RELEASE_MANIFEST_HOST 提供的只读挂载；deployment_preflight 新增该必需输入，校验渲染出的 release 模式、清单路径、只读挂载来源，以及清单绑定的 evaluator_build 与镜像引用是否就是本次部署的产物。",
+          "独立 CLI 增加 __version__ = 0.4.0、离线 --version（无服务、无 token、无服务包依赖）与 version 子命令（GET /version，容忍新增响应字段，缺少契约字段则报 INVALID_RESPONSE）。",
+          "CI 增加 `python -m scripts.release_manifest consistency` 作为发布声明一致性门禁；新增 docs/operations/versioning.md 并在 docs/README、scripts/README、deployment.md、插件 README/SKILL 中引用。"
+        ],
+        "commands": [
+          {
+            "command": "python3 -m ruff check .",
+            "result": "All checks passed"
+          },
+          {
+            "command": "python3 -m pytest -m 'not npu' -q --ignore=tests/test_official_input_generation.py --ignore=tests/test_official_tolerance.py",
+            "result": "26 failed, 1927 passed, 54 skipped, 7 deselected。失败集合与 baseline 989be9f 干净 worktree 上同一批模块的失败完全一致（26 failed, 83 passed），原因为本机环境缺少 torch、缺少 pinned jsonschema 4.26 带来的 referencing，以及隔离子进程看不到 pydantic；与本 ticket 改动无关。"
+          },
+          {
+            "command": "python3 -m pytest -q tests/test_versioning.py tests/test_version_discovery.py",
+            "result": "67 passed"
+          },
+          {
+            "command": "python3 -m pytest -q tests/test_deployment.py tests/test_deployment_preflight.py",
+            "result": "155 passed（test_deployment 使用本机真实 docker compose config 渲染）"
+          },
+          {
+            "command": "python3 -m compileall -q triton_evaluation scripts plugins",
+            "result": "无输出（通过）"
+          },
+          {
+            "command": "git diff --check",
+            "result": "无输出（通过）"
+          },
+          {
+            "command": "python -m scripts.release_manifest generate（连续两次）",
+            "result": "两次 canonical 字节完全一致；service_version=0.1.0，client_version=0.4.0，source_revision=989be9f…，evaluator_build/image_reference 为 null"
+          },
+          {
+            "command": "python -m scripts.release_manifest bind --build git:<HEAD> && verify",
+            "result": "TRITON_EVAL_EVALUATOR_BUILD 与清单一致时 verified=true 退出 0；未设置（全零 build）时报 evaluator-build-mismatch、zero-evaluator-build 退出 1"
+          },
+          {
+            "command": "python -m scripts.release_manifest consistency",
+            "result": "{\"consistent\": true, \"mismatches\": []} 退出 0"
+          },
+          {
+            "command": "git worktree add <tmp>/baseline 989be9f && pytest <上述 8 个失败模块>",
+            "result": "26 failed, 83 passed —— 与改动后完全相同的失败集合，确认为环境缺口而非回归"
+          }
+        ],
+        "artifact_drill": {
+          "host_path": "在本机安装产物（editable 安装，jsonschema/torch 之外依赖与 pyproject pin 一致）上完成 generate → bind(git build) → verify 全流程；并验证篡改清单 service_version/source_digest/dependencies/api_versions/storage/capabilities/build、未绑定 build、全零 build 均产生带原因码的拒绝。",
+          "container_path": "未执行真实镜像构建（需要 Ascend wheel index 与 aarch64 基础镜像，本机不具备）。已验证的范围：docker compose config 真实渲染包含 release 模式环境与只读清单挂载，preflight 对 release 模式、挂载来源、清单与镜像/构建绑定的拒绝路径有测试覆盖，容器内校验与宿主机共用同一 startup_identity 代码路径。",
+          "unverified": "镜像内 site-packages 的 source_digest 与仓库 generate 结果是否逐位一致，尚未在真实构建上验证（设计上两者都来自同一份 .py 源码，digest 排除 __pycache__）。"
+        },
+        "compatibility": [
+          "legacy 提交、响应、恢复与错误行为未改动：既有 HTTP/契约/幂等/恢复用例全部保持原样通过，新增字段只出现在新的 /version 响应里。",
+          "未宣告 3.0、协议锁定或任何尚未实现的存储兼容能力：api_versions 与 storage 只声明 'legacy'，default_protocol 为 null，并有用例断言清单中不出现 '3.0'。",
+          "config 默认 release_mode=dev，既有部署与测试夹具无需改动即可启动；只有 Compose 部署路径新增必需输入 TRITON_EVAL_RELEASE_MANIFEST_HOST（preflight 会明确报缺失）。",
+          "无持久化格式、Redis namespace 或序列化变更，不需要数据迁移。"
+        ],
+        "handoff": {
+          "version_module": "triton_evaluation.versioning：常量 API_VERSIONS / DEFAULT_API_VERSION / STORAGE_READ_VERSIONS / STORAGE_WRITE_VERSION / DEFAULT_PROTOCOL / CAPABILITIES / ZERO_BUILD；函数 service_version、source_digest、digest_sources、declared_dependencies、installed_dependencies、build_manifest、bind_build、validate_manifest、load_manifest、canonical_manifest、manifest_digest、manifest_mismatches、release_identity、unverified_identity、startup_identity；类型 ReleaseIdentity、ManifestError、ReleaseVerificationError。",
+          "next_ticket_fields": "EVV-02 需要填充：api_versions 增加 3.0 与协商规则、default_api_version 的选择语义、default_protocol（评测协议 canonical digest，发布清单应指向默认协议 artifact）、storage read/write 版本改为真实内部格式标识。改动这些常量会同时改变 /version、发布清单与启动校验，请一并更新 tests/test_versioning.py 中“仅声明已实现身份”的断言。",
+          "api_surface": "GET /version → VersionInfo（triton_evaluation/api/contract.py）；CLI：triton_eval.py --version（离线）与 triton_eval.py version --url --capability-file。"
+        },
+        "remaining": [
+          "容器镜像构建演练：在 aarch64 + Ascend wheel index 环境执行 docker build → push → release_manifest bind --image <digest> → 容器内 run_api/run_worker release 模式启动，确认 source_digest 与依赖身份在镜像内通过。完成后方可将本 ticket 置为 done。",
+          "本机环境缺少 torch 与 pinned jsonschema(4.26)/referencing：tests/test_official_input_generation.py、tests/test_official_tolerance.py 无法导入，另有 26 个用例失败且在 baseline 同样失败（已用 git worktree 核对）。CI 的 cpu-gate 安装完整依赖后覆盖这些用例。",
+          "Git 发布 tag 一致性检查已实现（consistency 会比对 HEAD 上形如 v<version> 的 tag），但当前 HEAD 无 release tag，未在真实打 tag 的提交上演练。"
+        ]
+      }
+    },
+    {
+      "id": "EVV-02",
+      "title": "契约与结果可追溯：接口版本、评测协议和固定 provenance",
+      "owner": null,
+      "status": "todo",
+      "depends_on": [
+        "EVV-01"
+      ],
+      "goal": "客户端显式选择兼容契约，每个 evaluation 和 attempt 都保留准确身份，升级后仍能恢复原任务。",
+      "context": [
+        "triton_evaluation/api/contract.py",
+        "triton_evaluation/api/operator.py",
+        "triton_evaluation/api/routes.py",
+        "triton_evaluation/api/errors.py",
+        "triton_evaluation/api/middleware.py",
+        "triton_evaluation/service/admission.py",
+        "triton_evaluation/service/instance.py",
+        "triton_evaluation/service/models.py",
+        "triton_evaluation/service/broker.py",
+        "triton_evaluation/service/terminal_results.py",
+        "triton_evaluation/runtime/worker.py",
+        "triton_evaluation/runtime/execution_environment.py",
+        "triton_evaluation/runtime/input_generation.py",
+        "triton_evaluation/serialization.py",
+        "plugins/triton-eval/skills/triton-eval/scripts/triton_eval.py",
+        "docs/operations/recovery.md"
+      ],
+      "steps": [
+        "冻结当前实际 HTTP 行为为 legacy 契约和黄金 fixtures；新建 3.0 契约，通过 X-Eval-API-Version 显式选择。缺少版本头固定走 legacy，不恢复早已退役的 torch_code/cases 提交格式。",
+        "提交、查询、进度和错误统一处理版本选择，并返回所选版本头。不支持的版本在入队前以稳定的 UNSUPPORTED_API_VERSION 错误拒绝，列出支持版本；定义未知版本也可解析的最小错误契约，并更新 OpenAPI。",
+        "把公共 schema_version 与所选 API 契约对齐，保持 legacy 序列化不变。3.0 客户端容忍新增响应字段，服务端请求仍严格校验；新结果变体及默认行为改变按破坏兼容处理。",
+        "构建可读、不可变且带自身 schema 的评测协议清单，记录算法与实现指纹、输入生成、默认 seed、容差、reference device policy、计时与聚合规则；生成总指纹及按 check 的子指纹。请求覆盖参数展开后单独固定，参与运行身份。发布清单指向默认协议 artifact。",
+        "扩展受理记录和内部模型，固定接口版本、原始调用身份、规范化请求、有效参数、协议和构建。同步引入内部 storage_version、legacy 读取路径及混合版本写入保护，使本 ticket 自身即可安全部署；EVV-03 扩展迁移和回滚工具。",
+        "引入 expected_protocol_digest 可选提交约束，先处理已有幂等记录，再为新任务解析当前默认协议。跨升级重放必须按原契约和固定参数判断，避免重新生成的 wrapper、默认值或新 digest 导致重复任务或误冲突；矛盾的显式约束返回冲突。",
+        "worker 匹配加入固定协议和所需存储版本，保留 build 与 execution_class 精确匹配。实际执行环境按 attempt 记录，失败/超时终态复用固定 provenance；未启动任务的执行环境为空，重试不得继承旧 attempt 的环境。",
+        "明确新旧 API 读取历史及新结果的投影规则。不能无损表达的结果返回明确错误，不伪造字段或历史身份；兼容读取不修改持久化事实。所有受支持路径遵守原有鉴权和 lease fencing。",
+        "CLI 通过 /version 选择双方支持的契约，在提交、轮询和进度查询中固定所选版本。handle 保存原实例、evaluation_id、api_version 及已知协议身份；旧 handle 按 legacy 恢复。旧服务器缺少发现接口时仅使用有测试保障的显式 legacy 路径。",
+        "文档说明结果可比较条件、源码/协议/输入 artifact 的存放与保留策略，以及未知历史身份的限制；追溯身份完整不等于耗时可逐位复现。"
+      ],
+      "acceptance": [
+        "无版本头及显式 legacy 请求保持旧 fixtures；3.0 请求、结果、进度、错误均符合对应契约。",
+        "不支持的版本或新任务的协议约束不匹配在入队和候选代码执行前被拒绝。",
+        "服务默认协议、输入 wrapper 实现或默认参数升级后，原请求与原幂等键重放仍返回同一任务；明确更改请求或版本约束返回冲突，不新建任务。",
+        "候选代码及显式 seed 等输入变化记录在请求身份中；规则变化改变对应协议指纹，JSON 键顺序变化不改变协议指纹。",
+        "queued、running、completed、failed、timed_out 及 replacement attempt 都保持固定 build/protocol，实际环境与当前 attempt 绑定。",
+        "不同 build/protocol 或不支持存储格式的 worker 无法领取任务；旧 worker 不会把新增身份字段忽略后领取新任务。",
+        "旧记录在原实例可读取，不为未知历史事实回填当前值；legacy 响应不会泄漏新增字段触发严格客户端失败。",
+        "CLI 保存的 handle 可在客户端升级后恢复原任务；新旧客户端与受支持服务契约有明确、自动化覆盖的兼容矩阵。"
+      ],
+      "validation": {
+        "focus": [
+          "接口协商、协议身份和跨升级幂等重放的新回归测试",
+          "tests/test_api.py",
+          "tests/test_operator_api.py",
+          "tests/test_openapi.py",
+          "tests/test_durable_http.py",
+          "tests/test_progress_api.py",
+          "tests/test_terminal_evidence.py",
+          "tests/test_worker_crash_recovery.py",
+          "tests/test_execution_environment.py",
+          "tests/test_cli_service_integration.py"
+        ],
+        "integration": "运行 shared_design.validation_commands；用持久化 fixtures 演练旧记录恢复、升级后幂等重放、重试与不兼容 worker 拒绝。",
+        "device": "在目标 NPU 上以明确 build 验证 3.0 的 verify/benchmark/profile，以及实际环境记录和受控失败路径；输入相同的 legacy/3.0 请求应保持相同评测语义。保存设备、协议、环境和原始报告身份。"
+      },
+      "handoff_artifacts": [
+        "legacy/3.0 契约与兼容矩阵",
+        "协议清单 schema、canonicalization 规则及子指纹接口",
+        "已落地的存储版本与历史读取规则",
+        "包含历史记录的升级/重放 fixtures 和 CLI handle 格式",
+        "CPU 与设备验收证据"
+      ],
+      "completion": "全部 CPU 验收通过可标 cpu_accepted；目标 NPU 的接口、执行身份和失败路径验证通过后标 done。缺少设备时明确记录剩余验收，不宣称协议或测量等价已获设备验证。",
+      "evidence": null
+    },
+    {
+      "id": "EVV-03",
+      "title": "升级与复用可验证：存储兼容、缓存身份和升级回滚演练",
+      "owner": null,
+      "status": "todo",
+      "depends_on": [
+        "EVV-01",
+        "EVV-02"
+      ],
+      "goal": "部署前能够判断升级和回滚的可行性，缓存只复用身份匹配的证据，历史任务和幂等记录持续可恢复。",
+      "context": [
+        "triton_evaluation/service/broker.py",
+        "triton_evaluation/service/instance.py",
+        "triton_evaluation/runtime/baseline_cache.py",
+        "triton_evaluation/runtime/verdict_cache.py",
+        "triton_evaluation/runtime/correctness_evidence.py",
+        "triton_evaluation/runtime/reference_cache.py",
+        "triton_evaluation/runtime/reference_timing_reuse.py",
+        "triton_evaluation/runtime/execution_environment.py",
+        "triton_evaluation/evaluators/benchmark.py",
+        "scripts/deployment_preflight.py",
+        "scripts/npu_release_gate.py",
+        "docs/operations/recovery.md",
+        "docs/operations/reference-cache.md",
+        "docs/operations/npu-validation.md"
+      ],
+      "steps": [
+        "扩展前一 ticket 的 storage_version 检查，定义发布支持的 read_versions/write_version、Redis 元数据和不兼容写入拒绝。历史 namespace 保持稳定，不随服务 minor 自动变化；选择新 namespace 时必须保留原实例恢复路径。",
+        "实现可审查的升级 preflight：检查目标发布清单、持久化记录版本、活动任务、旧结果保留窗口、worker 兼容性和运行 artifact pins；输出具体阻塞原因及迁移计划。",
+        "按当前存储变化实现必要的幂等迁移及 dry-run；没有迁移需要时输出明确 no-op。迁移保留原始身份、幂等关系、状态和 fencing，不使用当前构建冒充历史 provenance。",
+        "建立排空升级流程：停止新受理，保留查询/进度/幂等恢复，排空旧 worker，备份持久化数据，验证目标读取能力和 artifact pins，启动验证后恢复受理。脚本具备可测试的状态检查与失败恢复步骤。",
+        "建立回滚可行性检查：旧程序必须能读取新版本已写入的记录才允许原地回滚；否则报告保留新读取服务或显式迁移的路径。备份恢复不是无损回滚，不丢弃升级后接受的任务。",
+        "将普通 Torch baseline 的缓存 namespace 从手工约定升级为相关协议、有效测量参数、reference/input 身份和环境指纹派生。检查输入生成和 workload/seed 是否已包含于生成的 reference，避免漏项或改变候选无关的复用语义。",
+        "统一审计预检查、显式 correctness reuse、普通 baseline 和 pinned reference cache 的身份覆盖。预检查绑定源码/规则/工具链；正确性证据绑定双方源码/输入/seed/容差/协议/环境；baseline 绑定 reference/输入/计时规则/硬件运行环境。未知环境不作为成功匹配。",
+        "保留现有 reference cache 与历史 timing reuse 的 artifact 校验和显式授权范围；miss、环境漂移、损坏 artifact 的处理遵循各证据类型规则。跨环境 timing reuse 仅由原有验证策略允许，不因版本相近而自动通过。",
+        "建立服务/客户端/API/storage/worker 兼容矩阵及发布检查；文档给出变更类型到版本提升、缓存失效和重新验证要求的映射。"
+      ],
+      "acceptance": [
+        "不兼容存储版本在受理和写入前被拒绝；read/write 支持声明与真实解码、编码及状态机能力一致。",
+        "旧记录及幂等键在升级演练后仍可恢复；排空期间重复提交已有键只返回原任务，新任务不能绕过排空状态入队。",
+        "迁移 dry-run 不写数据；实际迁移可重复执行且不改变原始执行身份或重复创建任务。",
+        "兼容回滚能恢复旧程序；不兼容回滚明确拒绝并给出已验证的恢复路径，不依赖删除 Redis 或恢复丢失新任务的快照。",
+        "相同 reference/input/protocol/environment 的不同候选可以复用 baseline；输入、seed、计时参数、相关规则或环境变化会 miss。",
+        "与计时无关且已确认相关指纹不变的服务修复不会无故使 baseline 失效；缓存证据绑定仍保留原始来源 build 和环境。",
+        "未知环境不能命中缓存；普通 advisory cache 故障走 fresh 路径，损坏 pinned evidence 维持现有基础设施错误语义，不能转为成功 verdict。",
+        "跨环境历史 timing reuse 仍需匹配显式策略及验证范围；保留 sentinel 漂移和 invalidation 行为。",
+        "升级、回滚、缓存命中与拒绝路径有可重复执行的验证报告，CPU 与真实设备结论分别标注。"
+      ],
+      "validation": {
+        "focus": [
+          "存储版本、排空、迁移及升级/回滚演练的新测试",
+          "tests/test_deployment_preflight.py",
+          "tests/test_worker.py",
+          "tests/test_worker_crash_recovery.py",
+          "tests/test_durable_http.py",
+          "tests/test_baseline_cache.py",
+          "tests/test_baseline_evaluator.py",
+          "tests/test_correctness_evidence.py",
+          "tests/test_reference_cache.py"
+        ],
+        "integration": "运行 shared_design.validation_commands；在隔离 Redis 中载入旧/新记录，演练排空、兼容升级、兼容回滚、不兼容拒绝与幂等恢复。保留实际命令及报告。",
+        "device": "在隔离的目标 NPU 部署上验证 fresh/hit/miss、规则与环境变化拒绝、显式 timing reuse 和漂移失效。固定 workload、seed、设备和测量参数；测量等价结论必须有预先确定的阈值及重复样本。"
+      },
+      "handoff_artifacts": [
+        "存储兼容矩阵、preflight、必要的迁移工具",
+        "排空升级与回滚 runbook 和演练报告",
+        "缓存身份规则及变更/失效矩阵",
+        "CPU 与设备发布验收记录"
+      ],
+      "completion": "CPU 门禁和隔离 Redis 升级/回滚演练通过可标 cpu_accepted；设备缓存与运行兼容验收通过后标 done。缺少设备或发布 artifacts 时记录具体未验证项，不把机制测试当作设备等价证明。",
+      "evidence": null
+    }
+  ]
+}

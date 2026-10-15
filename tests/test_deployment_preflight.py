@@ -5,11 +5,13 @@ import json
 import pytest
 
 from scripts.deployment_preflight import (
+    CONTAINER_MANIFEST,
     PROJECT_ROOT,
     DeploymentConfig,
     PreflightError,
     inspect_deployment,
 )
+from triton_evaluation import versioning
 
 INSTANCE_HOST = "172.18.0.1"
 REDIS_IMAGE = (
@@ -84,10 +86,15 @@ class FakeDocker:
                     "TRITON_EVAL_CARDS": "0",
                     "TRITON_EVAL_EVALUATOR_BUILD": EVALUATOR_BUILD,
                     "TRITON_EVAL_CAPABILITY_SECRET_PATH": "/run/secrets/triton-eval",
+                    "TRITON_EVAL_RELEASE_MODE": "release",
+                    "TRITON_EVAL_RELEASE_MANIFEST": CONTAINER_MANIFEST,
                 },
                 "volumes": [
                     {"type": "bind", "source": str(self.secret),
                      "target": "/run/secrets/triton-eval",
+                     "read_only": True},
+                    {"type": "bind", "source": str(self.manifest),
+                     "target": CONTAINER_MANIFEST,
                      "read_only": True},
                 ],
             },
@@ -115,6 +122,7 @@ class FakeDocker:
         return rendered
 
     secret = "/run/secrets/source"
+    manifest = "/srv/release-manifest.json"
 
 
 def base_env(tmp_path, **overrides):
@@ -130,7 +138,39 @@ def base_env(tmp_path, **overrides):
     }
     env.update(overrides)
     env = {k: v for k, v in env.items() if v is not None}
+    if "TRITON_EVAL_RELEASE_MANIFEST_HOST" not in overrides:
+        env["TRITON_EVAL_RELEASE_MANIFEST_HOST"] = str(
+            write_manifest(tmp_path, **_binding(env))
+        )
     return env
+
+
+def _binding(env):
+    """Bind the manifest to this deployment's build; unbindable inputs keep the
+    defaults, since preflight rejects them before reaching the manifest."""
+    build = env.get("TRITON_EVAL_EVALUATOR_BUILD", EVALUATOR_BUILD)
+    image = env.get("TRITON_EVAL_IMAGE", EVAL_IMAGE)
+    if versioning.BUILD_PATTERN.fullmatch(build) is None or "@sha256:" not in image:
+        return {}
+    return {"build": build, "image": image}
+
+
+def write_manifest(tmp_path, *, build=EVALUATOR_BUILD, image=EVAL_IMAGE, payload=None):
+    """A release manifest bound to the image this deployment claims to run."""
+    path = tmp_path / "release-manifest.json"
+    if payload is not None:
+        path.write_bytes(payload)
+        return path
+    manifest = versioning.build_manifest(
+        service_version=versioning.service_version(),
+        client_version="0.4.0",
+        source_digest=versioning.source_digest(),
+        dependencies=versioning.declared_dependencies(),
+        evaluator_build=build,
+        image_reference=image,
+    )
+    path.write_bytes(versioning.canonical_manifest(manifest) + b"\n")
+    return path
 
 
 def _write_secret(tmp_path):
@@ -148,6 +188,7 @@ def _write_secret(tmp_path):
 def make_runner(tmp_path, **kwargs):
     runner = FakeDocker(**kwargs)
     runner.secret = tmp_path / "capability.json"
+    runner.manifest = tmp_path / "release-manifest.json"
     return runner
 
 
@@ -464,6 +505,74 @@ def test_docker_socket_mount_is_fatal(tmp_path):
     )
     with pytest.raises(PreflightError):
         inspect_deployment(base_env(tmp_path), runner)
+
+
+def _without_manifest_mount(tmp_path, **overrides):
+    """Render the eval service with its release manifest mount replaced."""
+    good = make_runner(tmp_path)._rendered()
+    service = good["services"]["triton-eval"]
+    volumes = [v for v in service["volumes"] if v["target"] != CONTAINER_MANIFEST]
+    if overrides:
+        volumes.append({"type": "bind", "source": str(tmp_path / "release-manifest.json"),
+                        "target": CONTAINER_MANIFEST, "read_only": True} | overrides)
+    return {
+        "services": good["services"] | {"triton-eval": service | {"volumes": volumes}}
+    }
+
+
+@pytest.mark.parametrize("rendered_env", [
+    {"TRITON_EVAL_RELEASE_MODE": "dev"},
+    {"TRITON_EVAL_RELEASE_MANIFEST": "/opt/triton-eval/other.json"},
+])
+def test_deployed_service_must_verify_the_release_at_startup(tmp_path, rendered_env):
+    runner = make_runner(tmp_path, rendered_env=rendered_env)
+    with pytest.raises(PreflightError):
+        inspect_deployment(base_env(tmp_path), runner)
+
+
+@pytest.mark.parametrize("overrides", [
+    {},
+    {"read_only": False},
+    {"source": "/elsewhere/release-manifest.json"},
+])
+def test_release_manifest_must_be_the_validated_read_only_mount(tmp_path, overrides):
+    runner = make_runner(
+        tmp_path, rendered_overrides=_without_manifest_mount(tmp_path, **overrides)
+    )
+    with pytest.raises(PreflightError):
+        inspect_deployment(base_env(tmp_path), runner)
+
+
+@pytest.mark.parametrize("manifest_build, manifest_image", [
+    ("sha256:" + "b" * 64, EVAL_IMAGE),
+    (EVALUATOR_BUILD, "registry.example.com/triton-eval@sha256:" + "b" * 64),
+])
+def test_release_manifest_must_bind_the_deployed_artifact(
+    tmp_path, manifest_build, manifest_image,
+):
+    manifest = write_manifest(tmp_path, build=manifest_build, image=manifest_image)
+    with pytest.raises(PreflightError, match="must bind the deployed"):
+        inspect_deployment(
+            base_env(tmp_path, TRITON_EVAL_RELEASE_MANIFEST_HOST=str(manifest)),
+            make_runner(tmp_path),
+        )
+
+
+@pytest.mark.parametrize("payload", [b"", b"{}", b'{"schema_version": "1.0"}'])
+def test_unusable_release_manifest_is_fatal(tmp_path, payload):
+    manifest = write_manifest(tmp_path, payload=payload)
+    with pytest.raises(PreflightError, match="release manifest failed validation"):
+        inspect_deployment(
+            base_env(tmp_path, TRITON_EVAL_RELEASE_MANIFEST_HOST=str(manifest)),
+            make_runner(tmp_path),
+        )
+
+
+def test_missing_release_manifest_input_is_fatal(tmp_path):
+    with pytest.raises(PreflightError, match="missing deployment inputs"):
+        inspect_deployment(
+            base_env(tmp_path, TRITON_EVAL_RELEASE_MANIFEST_HOST=None), make_runner(tmp_path)
+        )
 
 
 def test_preflight_subprocess_failure_is_fatal(tmp_path):

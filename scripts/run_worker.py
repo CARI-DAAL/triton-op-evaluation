@@ -20,6 +20,7 @@ from triton_evaluation.runtime.verdict_cache import VerdictCache
 from triton_evaluation.runtime.worker import Worker
 from triton_evaluation.service.broker import EvaluationStore
 from triton_evaluation.service.metrics import RedisMetrics
+from triton_evaluation.versioning import startup_identity
 
 logger = logging.getLogger(__name__)
 
@@ -122,6 +123,8 @@ def main() -> None:
         level=logging.INFO,
         format="%(asctime)s %(levelname)s %(name)s %(message)s",
     )
+    # Formal worker startup: verify the release before claiming any attempt.
+    startup_identity(Settings.from_env())
     worker = build_worker(args.card)
     if args.card is not None:
         hold_device(worker.settings, args.card)

@@ -13,6 +13,7 @@ alone cannot convey.
 ## Operate an instance
 
 - [Deploy on one or multiple hosts](operations/deployment.md)
+- [Release identity: versions, manifest and verified startup](operations/versioning.md)
 - [Recovery, retries and upgrades](operations/recovery.md)
 - [NPU 全量验证方案：功能、恢复、压力与稳定性](operations/npu-validation.md)
 - [NPU 验证与反馈提速测试指南 草案](operations/feedback-performance.md)
@@ -39,3 +40,6 @@ alone cannot convey.
 - [Instance ownership decision](adr/0001-evaluation-instance-ownership.md)
 - [Admission and evidence decision](adr/0002-admission-before-execution.md)
 - [Historical designs and retired experiments](history.md)
+- [Version system implementation tickets](plans/version-system-tickets.json) —
+  three dependent agent tasks for release identity, API/protocol provenance,
+  and storage/cache upgrade compatibility.
