@@ -17,7 +17,8 @@
       "in_progress",
       "cpu_accepted",
       "blocked",
-      "done"
+      "done",
+      "dropped"
     ],
     "completion_rule": "每个 ticket 按自己的 completion 标准更新状态。需要设备验证时，CPU 通过只标 cpu_accepted；在 evidence 中记录设备验证的实际结果或阻塞原因。",
     "handoff": "完成后填写 evidence：实现 commit、变更摘要、实际测试命令和结果、兼容性或迁移说明、未完成项；后续 agent 以实际实现为准，不把示例版本号当作已支持能力。",
@@ -228,7 +229,7 @@
       "id": "EVV-02",
       "title": "契约与结果可追溯：接口版本、评测协议和固定 provenance",
       "owner": null,
-      "status": "todo",
+      "status": "dropped",
       "depends_on": [
         "EVV-01"
       ],
@@ -297,13 +298,14 @@
         "CPU 与设备验收证据"
       ],
       "completion": "全部 CPU 验收通过可标 cpu_accepted；目标 NPU 的接口、执行身份和失败路径验证通过后标 done。缺少设备时明确记录剩余验收，不宣称协议或测量等价已获设备验证。",
-      "evidence": null
+      "evidence": null,
+      "dropped_reason": "已放弃：接口契约协商是前置设计。当前只实现一套 HTTP 契约，唯一客户端与服务端同仓同步发布，响应结构没有待变更项；在真实的破坏性变更出现前，legacy/3.0 双契约、版本头协商与投影规则都是为未发生的变更预留的复杂度。结果可追溯所需的发布身份已由 EVV-01 覆盖。"
     },
     {
       "id": "EVV-03",
       "title": "升级与复用可验证：存储兼容、缓存身份和升级回滚演练",
       "owner": null,
-      "status": "todo",
+      "status": "dropped",
       "depends_on": [
         "EVV-01",
         "EVV-02"
@@ -369,7 +371,8 @@
         "CPU 与设备发布验收记录"
       ],
       "completion": "CPU 门禁和隔离 Redis 升级/回滚演练通过可标 cpu_accepted；设备缓存与运行兼容验收通过后标 done。缺少设备或发布 artifacts 时记录具体未验证项，不把机制测试当作设备等价证明。",
-      "evidence": null
+      "evidence": null,
+      "dropped_reason": "已放弃：同一前置设计的下半部分。持久化格式没有待迁移项，缓存身份与升级回滚演练依赖 EVV-02 的契约与协议身份，一并收敛。版本系统的范围就是 EVV-01 的 service 发布号与发布清单。"
     }
   ]
 }
