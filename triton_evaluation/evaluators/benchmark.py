@@ -8,13 +8,10 @@ Single-implementation timing uses its standalone runner and bypasses all
 reference baseline production, caching, and comparison-result stamping.
 """
 
-import json
-import logging
 import math
 import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from tempfile import TemporaryDirectory
 from uuid import uuid4
 
 from ..api.contract import EvaluationRequest, PerformanceParams
@@ -26,14 +23,12 @@ from .base import (
     input_generation_failure,
     log_engine_crash,
     materialize,
-    materialize_reference,
     read_json,
     remaining_seconds,
     run_script,
     safe_module_stem,
 )
-
-logger = logging.getLogger(__name__)
+from .baseline import prepare_baseline
 
 
 class _PerformancePhaseTimeout(TimeoutError):
@@ -115,24 +110,15 @@ class BenchmarkEvaluator:
             return engine_failure("performance", "performance case selection is empty")
         out_path = Path(work_dir) / "perf_result.json"
         cmd = self._command(request, work_dir, params)
-        timings = None
-        hits = set()
-        if not single and self.baseline_cache is not None and params.use_baseline_cache:
-            try:
-                timings, hits = self._baseline(
-                    request, cmd, params, device_id, deadline_at, lease_valid
-                )
-            except LeaseLostError:
-                raise
-            except TimeoutError:
-                return engine_timeout("performance", "baseline measurement exceeded the deadline")
-            except Exception as error:  # noqa: BLE001 — advisory producer falls back fresh
-                logger.warning(
-                    "baseline producer unavailable (%s); measuring fresh", type(error).__name__
-                )
-                timings, hits = None, set()
-            if timings is not None:
-                cmd += ["--baseline-timings-json", json.dumps(timings, allow_nan=False)]
+        try:
+            baseline = prepare_baseline(
+                request, cache=self.baseline_cache, engine_dir=self.engine_dir,
+                runner=self.runner or run_script, device_id=device_id,
+                deadline_at=deadline_at, lease_valid=lease_valid,
+            )
+        except TimeoutError:
+            return engine_timeout("performance", "baseline measurement exceeded the deadline")
+        cmd += baseline.command_options()
         cmd += [*self._correctness_options(request, work_dir), "--output", str(out_path)]
         outcome = (self.runner or run_script)(
             cmd,
@@ -155,7 +141,7 @@ class BenchmarkEvaluator:
             if single:
                 return EngineCheckResult(status="succeeded", raw=result, error=None)
             try:
-                self._stamp_result(result, timings, hits, params.case_indices)
+                baseline.bind(result)
             except (ValueError, TypeError, KeyError) as error:
                 return engine_failure(
                     "performance", f"invalid benchmark baseline evidence: {error}"
@@ -209,7 +195,6 @@ class BenchmarkEvaluator:
         if single or request.correctness_from is not None:
             materialize(request, work_dir)
         cmd = self._command(request, work_dir, params)
-        timings, hits = None, set()
 
         def timing_timeout(message):
             return (
@@ -220,22 +205,15 @@ class BenchmarkEvaluator:
                 ),
             )
 
-        if not single and self.baseline_cache is not None and params.use_baseline_cache:
-            try:
-                timings, hits = self._baseline(
-                    request, cmd, params, device_id, performance_deadline, lease_valid
-                )
-            except LeaseLostError:
-                raise
-            except TimeoutError:
-                return timing_timeout("baseline measurement exceeded the deadline")
-            except Exception as error:  # noqa: BLE001 — same advisory fallback as timing alone
-                logger.warning(
-                    "baseline producer unavailable (%s); measuring fresh", type(error).__name__
-                )
-                timings, hits = None, set()
-        if timings is not None:
-            cmd += ["--baseline-timings-json", json.dumps(timings, allow_nan=False)]
+        try:
+            baseline = prepare_baseline(
+                request, cache=self.baseline_cache, engine_dir=self.engine_dir,
+                runner=self.runner or run_script, device_id=device_id,
+                deadline_at=performance_deadline, lease_valid=lease_valid,
+            )
+        except TimeoutError:
+            return timing_timeout("baseline measurement exceeded the deadline")
+        cmd += baseline.command_options()
         # Only the candidate command becomes joint. The producer above must
         # never import a candidate or execute a requested trace.
         cmd[1] = str(Path(self.engine_dir) / "joint_measurement.py")
@@ -256,8 +234,7 @@ class BenchmarkEvaluator:
                 raw = read_json(perf_path, root=work_dir)
                 if isinstance(raw, dict):
                     try:
-                        if not single:
-                            self._stamp_result(raw, timings, hits, params.case_indices)
+                        baseline.bind(raw)
                         completed = EngineCheckResult(status="succeeded", raw=raw, error=None)
                     except (ValueError, TypeError, KeyError) as error:
                         completed = engine_failure(
@@ -358,152 +335,3 @@ class BenchmarkEvaluator:
         return input_generation_failure("profile", outcome) or engine_failure(
             "profile", "trace engine produced no usable result"
         )
-
-    @staticmethod
-    def _fence(deadline_at, lease_valid):
-        if lease_valid is not None and not lease_valid():
-            raise LeaseLostError("baseline measurement lost its lease")
-        if remaining_seconds(deadline_at) <= 0:
-            raise TimeoutError("baseline measurement deadline expired")
-
-    def _baseline(self, request, command, params, device_id, deadline_at, lease_valid):
-        cache = self.baseline_cache
-        key = cache.key_for(
-            request.reference_code,
-            method=params.method,
-            warmup=params.warmup,
-            repeats=params.repeats,
-        )
-        self._fence(deadline_at, lease_valid)
-        snapshot = cache.read(key)
-        selected = (
-            None
-            if params.case_indices is None
-            else sorted(index + 1 for index in params.case_indices)
-        )
-        if snapshot is not None and selected is not None:
-            if any(index > snapshot.total_cases for index in selected):
-                snapshot = None
-        if selected is None and snapshot is not None:
-            selected = list(range(1, snapshot.total_cases + 1))
-        existing = {} if snapshot is None else snapshot.latencies
-        hits = set() if selected is None else set(selected) & set(existing)
-        missing = None if selected is None else [index for index in selected if index not in hits]
-        measured = {}
-        if missing is None or missing:
-            with TemporaryDirectory(prefix="triton-baseline-") as directory:
-                root = Path(directory)
-                materialize_reference(request, root)
-                output = root / "reference_timings.json"
-                producer = list(command)
-                producer[producer.index("--verify_dir") + 1] = str(root)
-                if "--case-indices" in producer:
-                    offset = producer.index("--case-indices")
-                    del producer[offset : offset + 2]
-                if missing is not None:
-                    producer += ["--case-indices", ",".join(map(str, missing))]
-                producer += ["--reference-only", "--output", str(output)]
-                self._fence(deadline_at, lease_valid)
-                outcome = (self.runner or run_script)(
-                    producer,
-                    str(root),
-                    device_id,
-                    deadline_at,
-                    lease_valid,
-                    budget_seconds=max(1, math.ceil(remaining_seconds(deadline_at))),
-                )
-                if outcome.outcome == "fenced":
-                    raise LeaseLostError("baseline engine lost its lease")
-                self._fence(deadline_at, lease_valid)
-                if outcome.timed_out:
-                    raise TimeoutError("baseline measurement timed out")
-                if outcome.exit_code != 0:
-                    raise ValueError("reference-only engine failed")
-                envelope = read_json(output, root=root)
-                total, measured = self._validate_reference(envelope, missing, params)
-                if snapshot is not None and snapshot.total_cases != total:
-                    raise ValueError("baseline inventory count changed")
-                if selected is None:
-                    selected = list(range(1, total + 1))
-                self._fence(deadline_at, lease_valid)
-                cache.publish(key, total, measured)
-        self._fence(deadline_at, lease_valid)
-        return {
-            str(index): (existing[index] if index in hits else measured[index])
-            for index in selected
-        }, hits
-
-    @staticmethod
-    def _validate_reference(envelope, selected, params):
-        if not isinstance(envelope, dict):
-            raise ValueError("reference-only output missing")
-        total = envelope.get("total_cases")
-        if type(total) is not int or not 1 <= total <= 128:
-            raise ValueError("invalid reference inventory count")
-        expected = list(range(1, total + 1)) if selected is None else selected
-        if any(index > total for index in expected) or envelope.get("case_indices") != expected:
-            raise ValueError("reference-only case selection mismatch")
-        for name, value in (
-            ("measurement_method", params.method),
-            ("warmup", params.warmup),
-            ("repeats", params.repeats),
-        ):
-            if envelope.get(name) != value or type(envelope.get(name)) is not type(value):
-                raise ValueError("reference-only measurement protocol mismatch")
-        values = envelope.get("reference_latencies_ms")
-        if not isinstance(values, dict) or set(values) != {str(index) for index in expected}:
-            raise ValueError("reference-only timing coverage mismatch")
-        measured = {}
-        for index in expected:
-            value = values[str(index)]
-            if (
-                isinstance(value, bool)
-                or not isinstance(value, (int, float))
-                or not math.isfinite(value)
-                or value <= 0
-            ):
-                raise ValueError("reference-only latency is invalid")
-            measured[index] = float(value)
-        return total, measured
-
-    @staticmethod
-    def _stamp_result(result, timings, hits, selected):
-        cases = result.get("per_shape_results")
-        if not isinstance(cases, list):
-            if timings is None:
-                # Existing shaping owns completeness for fresh combined results.
-                return
-            raise ValueError("benchmark cases missing")
-        if any(not isinstance(case, dict) for case in cases):
-            raise ValueError("benchmark case record invalid")
-        indices = [case.get("case_idx") for case in cases]
-        if any(type(index) is not int for index in indices) or len(set(indices)) != len(indices):
-            raise ValueError("benchmark case identities invalid")
-        expected = (
-            {int(index) for index in timings}
-            if timings is not None
-            else None
-            if selected is None
-            else {index + 1 for index in selected}
-        )
-        if expected is not None and set(indices) != expected:
-            raise ValueError("benchmark case coverage mismatch")
-        for case in cases:
-            framework = case.get("framework")
-            if framework is None:
-                if case.get("status") == "pass":
-                    raise ValueError("benchmark framework measurement missing")
-                continue
-            if not isinstance(framework, dict):
-                raise ValueError("benchmark framework measurement invalid")
-            index = case["case_idx"]
-            if timings is not None:
-                latency = framework.get("avg_latency_ms")
-                if (
-                    isinstance(latency, bool)
-                    or not isinstance(latency, (int, float))
-                    or not math.isfinite(latency)
-                    or abs(latency - timings[str(index)]) > 0.000051
-                ):
-                    raise ValueError("benchmark denominator differs from trusted baseline")
-            framework["baseline_cache_hit"] = index in hits

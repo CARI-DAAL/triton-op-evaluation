@@ -8,13 +8,15 @@ import fakeredis
 import pytest
 
 from triton_evaluation.api.contract import EvaluationRequest
+from triton_evaluation.evaluators import baseline
 from triton_evaluation.evaluators import benchmark as runner
 from triton_evaluation.evaluators.base import LeaseLostError, ScriptOutcome
 from triton_evaluation.runtime.baseline_cache import BaselineCache
 
 
-@pytest.fixture
-def harness(monkeypatch, tmp_path):
+@pytest.fixture(params=[False, True], ids=["timing", "timing-trace"])
+def harness(monkeypatch, tmp_path, request):
+    joint = request.param
     client = fakeredis.FakeRedis()
     cache = BaselineCache(client, prefix="test")
     evaluator = runner.BenchmarkEvaluator("/engine", baseline_cache=cache)
@@ -67,6 +69,9 @@ def harness(monkeypatch, tmp_path):
                     for index in indices
                 ]
             }
+            result = control.get("candidate_result", result)
+            if "--trace-output" in cmd:
+                Path(cmd[cmd.index("--trace-output") + 1]).write_text('{"mode": "trace"}')
         Path(cmd[cmd.index("--output") + 1]).write_text(json.dumps(result))
         return ScriptOutcome(0, "", "", False)
 
@@ -79,7 +84,9 @@ def harness(monkeypatch, tmp_path):
             op_name="test",
             reference_code="reference",
             kernel_code=candidate,
-            checks=["correctness", "performance"],
+            checks=["correctness", "performance", "profile"] if joint
+            else ["correctness", "performance"],
+            profile={"mode": "trace"} if joint else None,
             performance={
                 "method": "event",
                 "warmup": 5,
@@ -88,13 +95,14 @@ def harness(monkeypatch, tmp_path):
                 "case_indices": selected,
             },
         )
-        return evaluator.run(
+        result = (evaluator.run_with_trace if joint else evaluator.run)(
             request,
             tmp_path,
             0,
-            datetime.now(timezone.utc) + timedelta(minutes=10),
+            datetime.now(timezone.utc) + timedelta(minutes=5),
             lease_valid=lambda: control["lease"],
         )
+        return result[0] if joint else result
 
     return run, cache, calls, control, client, evaluator
 
@@ -152,6 +160,7 @@ def test_absent_cache_uses_fresh_combined_path(harness):
     "envelope",
     [
         {"warmup": 9},
+        {"measurement_method": "profiler"},
         {"total_cases": 2},
         {"case_indices": [1]},
         {"reference_latencies_ms": {"1": 1, "2": 2, "3": float("nan")}},
@@ -198,7 +207,7 @@ def test_deadline_expiry_prevents_publish(harness, monkeypatch):
     run, cache, calls, control, client, evaluator = harness
     remaining = runner.remaining_seconds
     monkeypatch.setattr(
-        runner,
+        baseline,
         "remaining_seconds",
         lambda deadline: 0 if control.get("expired") else remaining(deadline),
     )
@@ -208,13 +217,18 @@ def test_deadline_expiry_prevents_publish(harness, monkeypatch):
     assert len(calls) == 1
 
 
-def test_parent_stamp_reaches_public_performance_shape():
+def test_parent_stamp_reaches_public_performance_shape(harness):
     from triton_evaluation.evaluators.shaping import shape_performance
 
     fixture = Path(__file__).parent / "fixtures" / "engine" / "benchmark-event-timing.json"
-    raw = json.loads(fixture.read_text())
-    runner.BenchmarkEvaluator._stamp_result(raw, {"1": 1.0, "2": 1.0, "3": 1.0}, {2}, None)
-    result = shape_performance(raw)
+    run, cache, calls, control, client, evaluator = harness
+    key = cache.key_for("reference", method="event", warmup=5, repeats=20)
+    cache.publish(key, 3, {2: 1.0})
+    control["envelope"] = {"reference_latencies_ms": {"1": 1.0, "3": 1.0}}
+    control["candidate_result"] = json.loads(fixture.read_text())
+    performance = run()
+    assert performance.status == "succeeded"
+    result = shape_performance(performance.raw)
     assert [case.baseline_cache_hit for case in result.per_case] == [False, True]
 
 
