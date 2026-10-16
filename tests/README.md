@@ -1,7 +1,8 @@
 # Tests
 
 Run tests from the repository root. Compile and tensor tests need CPU Torch;
-`.[test,dev]` provides NumPy for the tensor/cache bridge. Every Python version
+`.[test,dev]` provides NumPy for the tensor/cache bridge and pandas for profiler
+CSV parsing, so the benchmark-counter regressions also run on CPU. Every Python version
 in CI installs both:
 
 ```bash

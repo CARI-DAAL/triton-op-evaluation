@@ -561,6 +561,27 @@ ReferenceLatencySamplesSource = Literal[
 ]
 
 
+class BenchmarkKernelMetrics(StrictModel):
+    """One kernel's active-repeat mean from a torch_npu profiler capture.
+
+    Ratios are fractions in [0, 1]. MAC and Cube columns retain their vendor
+    names; they are not merged. Missing or invalid counters stay None.
+    """
+
+    latency_ms: Annotated[float, Field(ge=0)]
+    aic_cube_ratio: float | None = Field(default=None, ge=0, le=1)
+    aic_mac_ratio: float | None = Field(default=None, ge=0, le=1)
+    aic_scalar_ratio: float | None = Field(default=None, ge=0, le=1)
+    aic_mte1_ratio: float | None = Field(default=None, ge=0, le=1)
+    aic_mte2_ratio: float | None = Field(default=None, ge=0, le=1)
+    aic_fixpipe_ratio: float | None = Field(default=None, ge=0, le=1)
+    aiv_vec_ratio: float | None = Field(default=None, ge=0, le=1)
+    aiv_scalar_ratio: float | None = Field(default=None, ge=0, le=1)
+    aiv_mte2_ratio: float | None = Field(default=None, ge=0, le=1)
+    aiv_mte3_ratio: float | None = Field(default=None, ge=0, le=1)
+    cube_utilization: float | None = Field(default=None, ge=0, le=1)
+
+
 class PerformanceCase(StrictModel):
     baseline_cache_hit: bool | None = Field(default=None, exclude_if=lambda value: value is None)
     case_idx: Annotated[int, Field(ge=0)]
@@ -569,6 +590,11 @@ class PerformanceCase(StrictModel):
     reference_latency_ms: Annotated[float, Field(gt=0)]
     speedup_vs_reference: Annotated[float, Field(gt=0)]
     measurement_method: MeasurementMethod | None = None
+    kernel_metrics: dict[str, BenchmarkKernelMetrics] | None = Field(
+        default=None, exclude_if=lambda value: value is None,
+        description=("Fresh candidate profiler counters keyed by kernel name; "
+                     "absent for Event timing."),
+    )
     # The eight reference-timing measurements behind reference_latency_ms.
     # Absent when no sample evidence exists (for example a legacy scalar);
     # present values are always real measurements, never fabricated.
@@ -578,6 +604,12 @@ class PerformanceCase(StrictModel):
     # owner-adopted validated timing-reuse policy artifact that authorized
     # serving these historical measurements on this runtime.
     reference_timing_policy_sha256: Digest | None = None
+
+    @model_validator(mode="after")
+    def _kernel_metrics_require_profiler(self):
+        if self.kernel_metrics is not None and self.measurement_method != "profiler_kernel_sum_v1":
+            raise ValueError("kernel metrics require profiler timing")
+        return self
 
     @model_validator(mode="after")
     def _reference_samples_match_source_and_median(self):
@@ -668,6 +700,9 @@ class SinglePerformanceCase(StrictModel):
     input_shapes: list[InputShape]
     latency_ms: Annotated[float, Field(gt=0)]
     peak_memory_mb: Annotated[float, Field(ge=0)] | None = None
+    kernel_metrics: dict[str, BenchmarkKernelMetrics] | None = Field(
+        default=None, exclude_if=lambda value: value is None,
+    )
 
 
 class SinglePerformanceResult(StrictModel):
@@ -682,6 +717,10 @@ class SinglePerformanceResult(StrictModel):
 
     @model_validator(mode="after")
     def _case_arithmetic(self):
+        if self.measurement_method != "profiler_kernel_sum_v1" and any(
+            case.kernel_metrics is not None for case in self.per_case
+        ):
+            raise ValueError("kernel metrics require profiler timing")
         measured = len(self.per_case)
         if self.measured_cases != measured:
             raise ValueError("measured_cases must equal len(per_case)")

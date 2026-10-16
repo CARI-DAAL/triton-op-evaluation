@@ -8,6 +8,22 @@ from test_cli_plugin import inputs as _inputs
 inputs = _inputs
 
 
+@pytest.mark.parametrize("action", ["benchmark", "evaluate"])
+@pytest.mark.parametrize("method_flag", ["--method", "--measurement-method"])
+def test_profiler_method_alias_preserves_other_timing_controls(inputs, action, method_flag):
+    selection = "--case-indices" if action == "benchmark" else "--performance-cases"
+    with server(lambda _calls: (202, resource(), {})) as (url, calls):
+        result, _ = run_cli(
+            inputs, url, "--no-wait", method_flag, "profiler", selection, "2,0",
+            "--warmup", "3", "--repeats", "12", "--no-baseline-cache", action=action,
+        )
+    assert result.returncode == 0
+    assert json.loads(calls[0][3])["performance"] == {
+        "method": "profiler", "case_indices": [0, 2], "warmup": 3,
+        "repeats": 12, "use_baseline_cache": False,
+    }
+
+
 def test_combined_evaluation_forwards_independent_selections(inputs):
     with server(lambda _calls: (202, resource(), {})) as (url, calls):
         result, _ = run_cli(

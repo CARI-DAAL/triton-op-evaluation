@@ -119,7 +119,11 @@ def arguments(argv):
         if action in {"benchmark", "evaluate"}:
             command.add_argument("--warmup", type=int)
             command.add_argument("--repeats", type=int)
-            command.add_argument("--measurement-method", choices=("event", "profiler"))
+            command.add_argument(
+                "--measurement-method", "--method", choices=("event", "profiler"),
+                help=("timing backend (service default: event); "
+                      "profiler returns available pipe counters"),
+            )
             cache = command.add_mutually_exclusive_group()
             cache.add_argument(
                 "--use-baseline-cache", dest="use_baseline_cache", action="store_true",

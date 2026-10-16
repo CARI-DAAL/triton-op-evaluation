@@ -633,3 +633,22 @@ def test_triton_only_custom_input_missing_factory_fails_before_submission(inputs
     assert result.returncode == 2
     assert output["error"]["code"] == "INVALID_INPUT"
     assert not calls
+
+
+@pytest.mark.parametrize("cache", [True, False])
+def test_profiler_method_and_metrics_reach_the_agent(inputs, cache):
+    metrics = {"_bmm_kernel": {"latency_ms": .02, "aic_cube_ratio": .4,
+                               "aiv_vec_ratio": None}}
+    value = resource("completed", correctness=check(passed=True), performance=check(
+        measurement_method="profiler_kernel_sum_v1", coverage=1,
+        per_case=[{"case_idx": 0, "kernel_metrics": metrics}],
+    ))
+    extra = [] if cache else ["--no-baseline-cache"]
+    with server(lambda _: (200, value, {})) as (url, calls):
+        result, output = run_cli(inputs, url, "--method", "profiler", *extra, action="benchmark")
+    assert result.returncode == 0
+    params = json.loads(calls[0][3])["performance"]
+    assert params == ({"method": "profiler"} if cache else {
+        "method": "profiler", "use_baseline_cache": False,
+    })
+    assert output["result"]["performance"]["data"]["per_case"][0]["kernel_metrics"] == metrics

@@ -73,10 +73,11 @@ def measure_implementation(*, op_name, verify_dir, triton_impl_name, implementat
             ]
             inputs = benchmark._move_inputs_to_device(raw, device)
             model = model_type(*reference.get_init_inputs()).to(device)
-            operators, latency, peak = benchmark.measure_single(benchmark.MeasureContext(
+            measurement = benchmark.measure_single(benchmark.MeasureContext(
                 model=model, inputs=inputs, warmup=warmup, repeats=repeats,
                 profile_name=f"single_{implementation}_{index}", device=device, method=method,
             ))
+            operators, latency, peak = measurement
             if operators_by_case is not None:
                 operators_by_case[index] = operators
             if latency is None or not math.isfinite(latency) or latency <= 0:
@@ -84,6 +85,9 @@ def measure_implementation(*, op_name, verify_dir, triton_impl_name, implementat
                                    "reason_code": "NO_STABLE_MEASUREMENT"})
                 continue
             case = {"case_idx": index, "input_shapes": shapes, "latency_ms": latency}
+            kernel_metrics = getattr(measurement, "kernel_metrics", None)
+            if kernel_metrics is not None:
+                case["kernel_metrics"] = kernel_metrics
             if peak is not None and math.isfinite(peak) and peak >= 0:
                 case["peak_memory_mb"] = peak
             measured.append(case)

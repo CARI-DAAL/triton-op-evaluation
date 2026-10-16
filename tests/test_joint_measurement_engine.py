@@ -8,9 +8,10 @@ from types import SimpleNamespace
 import pytest
 
 from triton_evaluation import operator_input as operator_source
-from triton_evaluation.api.contract import TraceProfileResult
+from triton_evaluation.api.contract import SinglePerformanceResult, TraceProfileResult
 from triton_evaluation.engine import benchmark
 from triton_evaluation.engine import joint_measurement as joint
+from triton_evaluation.evaluators.shaping import shape_performance
 
 
 @pytest.fixture
@@ -107,6 +108,46 @@ def test_profiler_timing_reuses_exact_candidate_capture_without_recapture(runtim
         {"op_name": "kernel_b", "time_ms": 0.7, "percentage": 70.0},
         {"op_name": "kernel_a", "time_ms": 0.3, "percentage": 30.0},
     ]
+    TraceProfileResult.model_validate(trace)
+
+
+@pytest.mark.parametrize("implementation", ["comparison", "torch", "triton"])
+@pytest.mark.parametrize("method", ["event", "profiler"])
+def test_joint_timing_preserves_counters_and_trace_capture_reuse(
+    runtime, monkeypatch, implementation, method,
+):
+    config, calls, _ = runtime
+    config.measurement_method = method
+    measure = benchmark.measure_single
+
+    def measured(context, **kwargs):
+        operators, latency, peak = measure(context, **kwargs)
+        metrics = None
+        if context.method == "profiler":
+            ratio = .25 if "framework" in context.profile_name else .75
+            metrics = {
+                name: {"latency_ms": duration / 1000, "aic_cube_ratio": ratio}
+                for name, duration in operators.items()
+            }
+        return benchmark.Measurement(operators, latency, peak, metrics)
+
+    monkeypatch.setattr(benchmark, "measure_single", measured)
+    performance, trace = joint.run_measurements(
+        config, implementation=implementation, trace_indices=[1, 3], device="cpu",
+    )
+    timing_captures = 4 if implementation == "comparison" else 2
+    assert len(calls) == timing_captures + (2 if method == "event" else 0)
+    assert trace["counts"] == {"selected": 2, "complete": 2, "partial": 0, "failed": 0}
+    result = (
+        shape_performance(performance) if implementation == "comparison"
+        else SinglePerformanceResult.model_validate(performance)
+    )
+    for case in result.per_case:
+        if method == "profiler":
+            assert case.kernel_metrics["kernel_a"].latency_ms == .3
+            assert case.kernel_metrics["kernel_a"].aic_cube_ratio == .75
+        else:
+            assert "kernel_metrics" not in case.model_dump(mode="json")
     TraceProfileResult.model_validate(trace)
 
 
