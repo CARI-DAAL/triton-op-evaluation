@@ -34,6 +34,11 @@ The [skill](skills/triton-eval/SKILL.md) bundles a Python 3.10+ standard-library
 [CLI](skills/triton-eval/scripts/triton_eval.py). No service package, Torch or
 Ascend installation is required on the client machine.
 
+For pipe-utilization feedback use `benchmark --method profiler`. The service
+returns per-case `kernel_metrics` from the same timing capture; the CLI preserves
+those fields in its JSON output. Event timing remains the default. See
+[the response semantics](../../docs/usage/evaluations.md#profiler-benchmark-feedback).
+
 This example connects to a local service listening on `127.0.0.1:11907`.
 For remote or containerized clients, set the URL to the address reachable from
 the client. Compose uses the service's configured private host address; the
