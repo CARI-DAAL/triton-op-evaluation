@@ -64,6 +64,16 @@ invocation copies that snapshot and selects its own device. Precheck uses the
 configured engine directory just like the device checks. Tests replace check
 adapters through the constructor rather than overriding private factories.
 
+`evaluators/baseline.py` owns reference baseline preparation for both standalone
+timing and joint timing/trace. It measures missing cases in a reference-only
+directory, validates the measurement protocol before publishing to the advisory
+cache, and returns evidence that supplies engine options and validates the
+candidate's reported denominator and cache-hit flags. The reference command is
+built independently, so candidate correctness handoffs and trace options cannot
+enter baseline production. Cache or producer failures fall back to fresh timing;
+lease loss and deadline expiry interrupt execution. Single-implementation timing
+and explicit cache bypass never read or publish baseline entries.
+
 Workers execute supplied code after admission. CPU workers own compile-only
 checks; one NPU worker owns all requested device checks in an attempt. Evidence
 publication is fenced so an older attempt cannot replace a newer result.

@@ -201,7 +201,6 @@ def test_single_implementation_never_uses_advisory_baseline_cache(
     evaluator = evaluator_module.BenchmarkEvaluator(
         "engine", baseline_cache=ForbiddenCache(), runner=run,
     )
-    monkeypatch.setattr(evaluator, "_stamp_result", lambda *args: pytest.fail("no baseline stamp"))
     result = evaluator.run(
         request,
         tmp_path,
