@@ -21,7 +21,7 @@ from triton_evaluation.api.contract import (
 )
 from triton_evaluation.evaluators.base import EngineCheckResult, LeaseLostError
 from triton_evaluation.evaluators.evaluation import EvaluationEvaluator
-from triton_evaluation.evaluators.operator import to_evaluation_request
+from triton_evaluation.operator_input import to_evaluation_request
 from triton_evaluation.runtime.correctness_evidence import (
     CorrectnessEvidenceError,
     validate_handoff,

@@ -1,8 +1,8 @@
 """Strict durable evaluation models and typed public resource responses.
 
 ``EvaluationRequest`` is the internal engine/storage format retained for
-persisted request recovery. Public submissions use ``api.operator.OperatorRequest``
-and are translated into that format at the HTTP boundary. Resource and error
+persisted request recovery. Public submissions use ``operator_input.OperatorRequest``
+and are translated into that format by ``operator_input.to_evaluation_request``. Resource and error
 models here define the responses returned to callers.
 
 This module depends only on pydantic, so clients and tests can import response
@@ -178,7 +178,7 @@ class GradeContext(StrictModel):
     reference_digest: Digest
 
 
-# Internal storage/engine model. Public input is api.operator.OperatorRequest.
+# Internal storage/engine model. Public input is operator_input.OperatorRequest.
 # Existing fields and default serialization preserve historical record bytes.
 class EvaluationRequest(StrictModel):
     """A durable request for evaluation evidence.

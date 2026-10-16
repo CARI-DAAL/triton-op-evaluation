@@ -9,8 +9,7 @@ import pytest
 from pydantic import ValidationError
 
 from triton_evaluation.api.contract import MAX_SOURCE_BYTES
-from triton_evaluation.api.operator import OperatorRequest
-from triton_evaluation.evaluators.operator import to_evaluation_request
+from triton_evaluation.operator_input import OperatorRequest, to_evaluation_request
 from triton_evaluation.serialization import canonical_json_bytes, sha256_hex
 
 
@@ -41,12 +40,12 @@ def test_check_coupling_uses_final_endpoint_checks():
     assert durable.checks == ["profile"]
     assert durable.profile.mode == "deep"
     assert durable.performance is None
-    with pytest.raises(ValidationError, match="profile params"):
+    with pytest.raises(ValueError, match="profile params"):
         to_evaluation_request(profile)
-    with pytest.raises(ValidationError, match="requires the correctness"):
+    with pytest.raises(ValueError, match="requires the correctness"):
         to_evaluation_request(request(checks=["performance"]))
-    with pytest.raises(ValidationError, match="duplicates"):
-        request(checks=["correctness", "correctness"])
+    with pytest.raises(ValueError, match="duplicates"):
+        to_evaluation_request(request(checks=["correctness", "correctness"]))
 
 
 def test_generation_never_executes_or_compiles_caller_source(tmp_path):

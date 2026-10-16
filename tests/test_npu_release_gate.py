@@ -8,7 +8,7 @@ import pytest
 import test_npu_release_calibration as calibration
 
 from scripts import npu_release_gate as gate
-from triton_evaluation.api.operator import OperatorRequest
+from triton_evaluation.operator_input import OperatorRequest
 
 
 class JsonResponse(io.BytesIO):

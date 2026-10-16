@@ -3,9 +3,12 @@
 import time
 
 import pytest
-from pydantic import ValidationError
 
-from triton_evaluation.api.operator import OperatorRequest, normalize_workloads
+from triton_evaluation.operator_input import (
+    OperatorRequest,
+    normalize_workloads,
+    to_evaluation_request,
+)
 
 
 def body(**updates):
@@ -15,6 +18,11 @@ def body(**updates):
     }
     data.update(updates)
     return data
+
+
+def translate(data):
+    """Accept or reject a submission the way the HTTP route does."""
+    return to_evaluation_request(OperatorRequest.model_validate(data))
 
 
 def test_official_definition_and_named_order():
@@ -80,8 +88,8 @@ def test_axes_defaults_override_and_optional():
     ],
 )
 def test_unsafe_or_invalid_axes_rejected(expression):
-    with pytest.raises(ValidationError):
-        OperatorRequest.model_validate(
+    with pytest.raises(ValueError):
+        translate(
             body(
                 definition={
                     "axes": {"M": {"type": "expr", "expression": expression}},
@@ -104,8 +112,8 @@ def test_unsafe_or_invalid_axes_rejected(expression):
     ],
 )
 def test_invalid_input_descriptors_rejected(spec):
-    with pytest.raises(ValidationError):
-        OperatorRequest.model_validate(body(workloads=[{"inputs": {"x": spec}}]))
+    with pytest.raises(ValueError):
+        translate(body(workloads=[{"inputs": {"x": spec}}]))
 
 
 def test_scalar_list_and_tensor_list_and_custom_axes():
@@ -146,8 +154,8 @@ def test_scalar_list_and_tensor_list_and_custom_axes():
     ],
 )
 def test_old_schema_and_unsupported_semantics_rejected(updates):
-    with pytest.raises(ValidationError):
-        OperatorRequest.model_validate(body(**updates))
+    with pytest.raises(ValueError):
+        translate(body(**updates))
 
 
 def test_declared_tolerance_is_carried_and_defaults_are_not():
@@ -212,8 +220,8 @@ def test_axis_chain_resolves_in_one_definition_order_pass(order):
         assert cases[-1]["inputs"]["x"]["shape"] == [1 + 127 * 30]
     else:
         # Upstream resolves once in definition order, so a later axis is unknown.
-        with pytest.raises(ValidationError, match="not resolved before it"):
-            OperatorRequest.model_validate(body)
+        with pytest.raises(ValueError, match="not resolved before it"):
+            translate(body)
     # The old any-order loop re-parsed pending expressions: about a minute here.
     assert time.perf_counter() - start < 5
 
@@ -262,8 +270,8 @@ def test_workload_overrides_and_distribution_controls():
 
 
 def test_one_sided_distribution_bounds_rejected():
-    with pytest.raises(ValidationError):
-        OperatorRequest.model_validate(
+    with pytest.raises(ValueError):
+        translate(
             body(
                 workloads=[
                     {
@@ -294,9 +302,9 @@ def test_zero_argument_compile_and_non_compute():
 
 def test_int64_range_torch_high_bound():
     valid = {"type": "random", "shape": [2], "dtype": "int64", "range": [-(2**63), 2**63 - 1]}
-    OperatorRequest.model_validate(body(workloads=[{"inputs": {"x": valid}}]))
-    with pytest.raises(ValidationError):
-        OperatorRequest.model_validate(
+    translate(body(workloads=[{"inputs": {"x": valid}}]))
+    with pytest.raises(ValueError):
+        translate(
             body(workloads=[{"inputs": {"x": dict(valid, range=[0, 2**63])}}])
         )
 
@@ -313,8 +321,8 @@ def test_axis_true_division_requires_integral_result():
         )
     )
     assert normalize_workloads(request)[0]["axes"]["M"] == 3
-    with pytest.raises(ValidationError):
-        OperatorRequest.model_validate(
+    with pytest.raises(ValueError):
+        translate(
             body(
                 definition=request.definition.model_dump(),
                 workloads=[{"axes": {"N": 5}, "inputs": {}}],
@@ -343,16 +351,16 @@ def test_axis_override_precedence_and_custom_parameters():
 
 @pytest.mark.parametrize("value", [[float("nan")], [{"x": float("inf")}], [object()]])
 def test_scalar_nested_non_json_or_non_finite_rejected(value):
-    with pytest.raises(ValidationError):
-        OperatorRequest.model_validate(
+    with pytest.raises(ValueError):
+        translate(
             body(workloads=[{"inputs": {"x": {"type": "scalar", "value": value}}}])
         )
 
 
 def test_unused_custom_code_rejected_and_metadata_entrypoint_allowed():
-    with pytest.raises(ValidationError):
-        OperatorRequest.model_validate(body(custom_inputs_code="source"))
-    OperatorRequest.model_validate(
+    with pytest.raises(ValueError):
+        translate(body(custom_inputs_code="source"))
+    translate(
         body(
             definition={
                 "inputs": {"x": {}},
@@ -384,9 +392,9 @@ def test_custom_triton_only_requires_explicit_factory_source():
         triton_code="source",
         workloads=[{"inputs": {"x": {"type": "custom"}}}],
     )
-    with pytest.raises(ValidationError):
-        OperatorRequest.model_validate(data)
-    OperatorRequest.model_validate(dict(data, custom_inputs_code="source"))
+    with pytest.raises(ValueError):
+        translate(data)
+    translate(dict(data, custom_inputs_code="source"))
 
 
 def test_float64_fill_is_supported():
@@ -405,14 +413,14 @@ def test_float64_fill_is_supported():
 
 
 def test_negative_workload_axes_and_file_entrypoint_rejected():
-    with pytest.raises(ValidationError):
-        OperatorRequest.model_validate(
+    with pytest.raises(ValueError):
+        translate(
             body(
                 workloads=[{"axes": {"flag": -1}, "inputs": {"x": {"type": "scalar", "value": 1}}}]
             )
         )
-    with pytest.raises(ValidationError):
-        OperatorRequest.model_validate(
+    with pytest.raises(ValueError):
+        translate(
             body(
                 definition={
                     "inputs": {"x": {}},

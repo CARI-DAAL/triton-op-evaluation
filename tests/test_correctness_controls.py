@@ -10,16 +10,15 @@ from conftest import make_request
 from pydantic import ValidationError
 
 from triton_evaluation.api.contract import CorrectnessParams, CorrectnessResult, dump_contract
-from triton_evaluation.api.operator import OperatorRequest
 from triton_evaluation.engine import verify
 from triton_evaluation.evaluators.base import ScriptOutcome
-from triton_evaluation.evaluators.operator import to_evaluation_request
 from triton_evaluation.evaluators.shaping import (
     ShapingError,
     UnattributedFailure,
     shape_correctness,
 )
 from triton_evaluation.evaluators.verify import VerifyEvaluator
+from triton_evaluation.operator_input import OperatorRequest, to_evaluation_request
 
 
 def operator_request(**overrides):
@@ -47,10 +46,12 @@ def test_selection_is_sorted_and_bound_to_workload_inventory():
     durable = to_evaluation_request(request)
     assert durable.correctness == request.correctness
     assert to_evaluation_request(request, checks=["profile"]).correctness is None
-    with pytest.raises(ValidationError, match="out of range"):
-        operator_request(correctness={"case_indices": [5]})
-    with pytest.raises(ValidationError, match="correctness check"):
-        operator_request(checks=["profile"], correctness={"case_indices": [1]})
+    with pytest.raises(ValueError, match="out of range"):
+        to_evaluation_request(operator_request(correctness={"case_indices": [5]}))
+    with pytest.raises(ValueError, match="correctness check"):
+        to_evaluation_request(
+            operator_request(checks=["profile"], correctness={"case_indices": [1]})
+        )
 
 
 @pytest.mark.parametrize("params", [{"case_indices": [0]}, {"stop_on": "first_failure"}])

@@ -30,9 +30,9 @@ from ..api.contract import (
     ErrorInfo,
     EvaluationRequest,
 )
+from ..operator_input import INPUT_GENERATION_FAILURE_PREFIX
 from ..runtime.sandbox import isolate_command
 from ..serialization import canonical_json_bytes, sha256_hex
-from .operator import INPUT_GENERATION_FAILURE_PREFIX
 
 logger = logging.getLogger(__name__)
 

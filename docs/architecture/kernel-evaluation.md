@@ -4,10 +4,17 @@ The public `OperatorRequest` contains an official-shaped `definition` and
 `workloads`, optional `triton_code`, optional custom-generator source, and a seed.
 `definition.reference` supplies Torch code; either source may be omitted for
 single-implementation measurements. Both implementations expose `run(*args)` in
-the declared input order. HTTP validation resolves bounded input metadata and
-axes without executing supplied source or importing Torch.
+the declared input order.
 
-The operator adapter embeds the audited input generator source in a private
+`triton_evaluation/operator_input.py` owns this input. Its one translation,
+`to_evaluation_request`, validates the request against the checks that will
+actually run (after a `/verify`, `/benchmark` or `/profile` route override),
+materializes the workloads into cases once, and builds the durable
+`EvaluationRequest`. It resolves bounded input metadata and axes without
+executing supplied source or importing Torch. A rejection carries its reason
+into the `INVALID_REQUEST` message.
+
+The translation embeds the audited input generator source in a private
 namespace inside the reference module. Its code bytes, ordered input names,
 normalized workloads, seed and custom source therefore participate in durable
 reference identity and the baseline-cache key. Candidate source stays separate.
@@ -21,8 +28,8 @@ or task-registration endpoint.
 
 ```mermaid
 flowchart LR
-    HTTP[OperatorRequest] --> Adapter[Engine input adapter]
-    Adapter --> Instance[EvaluationInstance submit / get]
+    HTTP[OperatorRequest] --> Input[Operator input translation]
+    Input --> Instance[EvaluationInstance submit / get]
     Instance --> Store[Fenced durable evaluations]
     Store --> Worker[Leased worker attempt]
     Worker --> Engine[Correctness / timing / profile]
