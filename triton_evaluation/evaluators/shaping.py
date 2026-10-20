@@ -107,7 +107,7 @@ class UnattributedFailure(ShapingError):
         # paths, bounded UTF-8); the engine's error_msg is none of those.
         single_line = " ".join(detail.split())
         single_line = _PATH_TOKEN.sub("<path>", single_line)
-        self.detail = single_line[:MAX_MESSAGE_BYTES]
+        self.detail = single_line.encode("utf-8")[:MAX_MESSAGE_BYTES].decode("utf-8", "ignore")
 
 
 _SHAPING_METRICS = None  # optional RedisMetrics; wired by the deployment
@@ -615,7 +615,12 @@ def shape_performance(raw: dict[str, object]) -> PerformanceResult:
             )
         )
     if not per_case:
-        raise ShapingError("benchmark result contains no valid measurement")
+        details = [
+            f"case {case.case_idx - 1}: {case.error_type or 'unknown'}: "
+            f"{case.error_msg or 'no message'}"
+            for case in result.per_shape_results
+        ]
+        raise UnattributedFailure("; ".join(details))
     selected = len(result.per_shape_results)
     overall = math.exp(
         sum(math.log(case.speedup_vs_reference) for case in per_case) / len(per_case)

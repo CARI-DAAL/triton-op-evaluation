@@ -73,8 +73,12 @@ def engine_failure(
     code: str = "EVALUATOR_EXECUTION_FAILED",
     phase: str = "execution",
     retryable: bool = True,
+    outcome: ScriptOutcome | None = None,
 ) -> EngineCheckResult:
     """Infrastructure failure of one engine invocation (never a subject verdict)."""
+    if outcome is not None:
+        remaining = MAX_ERROR_MESSAGE_BYTES - len(message.encode("utf-8"))
+        message += engine_output_tail(outcome, limit=remaining)
     return EngineCheckResult(
         status="failed",
         raw=None,
@@ -293,6 +297,45 @@ def _collected(proc, out_file, err_file, outcome: str) -> ScriptOutcome:
         stderr=err_file.read(),
         timed_out=outcome != "exited",
         outcome=outcome,
+    )
+
+
+#: Default combined excerpt budget; engine_failure reserves its prefix from
+#: the public error's smaller byte budget. Longer tails remain in crash logs.
+ENGINE_TAIL_LIMIT = 1200
+
+
+def engine_output_tail(outcome: "ScriptOutcome", limit: int = ENGINE_TAIL_LIMIT) -> str:
+    """A single-line excerpt bounded by ``limit`` UTF-8 bytes, including markers.
+
+    A hard candidate crash (e.g. a Triton kernel aborting the NPU runtime)
+    kills the engine with no result file, and the only evidence of the cause
+    is the engine's stderr/stdout text. Attach a short tail of it to the
+    failure message so the evaluation result is diagnosable by itself;
+    stderr goes first because that is where runtimes report aborts.
+    """
+    streams = []
+    for name, stream in (("stderr", outcome.stderr), ("stdout", outcome.stdout)):
+        text = " ".join(stream.split())
+        if text:
+            streams.append((f"; [engine {name} tail] ", text.encode("utf-8")))
+    # Keep stderr first; omit lower-priority streams if even their markers
+    # would exhaust the available budget.
+    while streams and sum(len(marker.encode("utf-8")) for marker, _ in streams) >= limit:
+        streams.pop()
+    if not streams:
+        return ""
+    available = limit - sum(len(marker.encode("utf-8")) for marker, _ in streams)
+    sizes = [min(len(data), available // len(streams)) for _, data in streams]
+    remaining = available - sum(sizes)
+    for index, (_, data) in enumerate(streams):
+        extra = min(remaining, len(data) - sizes[index])
+        sizes[index] += extra
+        remaining -= extra
+    return "".join(
+        marker + data[-size:].decode("utf-8", errors="ignore")
+        for (marker, data), size in zip(streams, sizes, strict=True)
+        if size
     )
 
 

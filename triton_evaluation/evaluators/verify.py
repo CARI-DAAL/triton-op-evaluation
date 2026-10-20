@@ -304,7 +304,9 @@ class VerifyEvaluator:
             log_engine_crash("verify", outcome, result_file_exists=False)
             return engine_failure(
                 "correctness",
-                f"verify engine produced no usable result (engine exit={outcome.exit_code})",
+                "verify engine produced no usable result"
+                f" (engine exit={outcome.exit_code})",
+                outcome=outcome,
             )
         params = request.correctness
         if params is not None and (

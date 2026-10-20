@@ -30,7 +30,7 @@ their dependencies are available.
 | Generated HTTP documentation | `test_openapi.py` |
 | Admission, identity, durable state | `test_admission*`, `test_broker.py`, `test_idempotency.py`, `test_fencing.py` |
 | Workers and recovery | `test_worker*`, `test_recovery.py`, `test_card_health*`, `test_engine_failure_requeue.py` |
-| Evidence and scoring | `test_evaluation_evaluator.py`, `test_shaping.py`, `test_profile_evidence.py` |
+| Evidence, scoring and bounded crash diagnostics | `test_evaluation_evaluator.py`, `test_shaping.py`, `test_profile_evidence.py`, `test_engine_output_tail.py` |
 | Host smoke and NPU-gate orchestration (CPU) | `test_smoke_script.py`, `test_npu_release_gate.py` |
 | Operator requests and transport | `test_operator*`, `test_api*`, `test_durable_http.py` |
 | Torch baseline timing reuse | `test_baseline_cache.py`, `test_baseline_engine.py`, `test_baseline_evaluator.py` |

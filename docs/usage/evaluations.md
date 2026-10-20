@@ -295,6 +295,18 @@ Terminal states are `completed`, `failed` and `timed_out`. Inspect each check:
 completed work can establish that the candidate is wrong, while infrastructure
 failure establishes no correctness verdict.
 
+When an engine exits without usable output, its `EVALUATOR_EXECUTION_FAILED`
+message includes the exit code and available stderr/stdout tails. Stderr is
+listed first. The excerpts are collapsed to one line and share the error's
+512-byte UTF-8 budget with the leading explanation; they are not full logs.
+They provide diagnostic evidence, not an attribution of fault to the candidate.
+
+If valid benchmark output contains no usable measurements, performance fails
+with retryable `INTERNAL` and bounded per-case diagnostics. Earlier successful
+correctness evidence remains intact, and a subsequent profile check is skipped
+with `PRIOR_CHECK_FAILED`. Malformed engine output still reports non-retryable
+`INVALID_ENGINE_OUTPUT`.
+
 The old public `torch_code` and positional `cases` body is retired. Existing
 internal v2.1 records remain recoverable; they do not enable legacy submissions.
 Follow the [upgrade procedure](../operations/recovery.md#upgrading) and deploy

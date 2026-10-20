@@ -108,7 +108,9 @@ def _engine_outcome(check: Check, engine: EngineCheckResult, shape):
         # under the cap or ErrorInfo validation raises and the worker collapses
         # the whole evaluation into a protocol failure.
         prefix = "unattributed case failure: "
-        message = prefix + error.detail[: MAX_ERROR_MESSAGE_BYTES - len(prefix)]
+        remaining = MAX_ERROR_MESSAGE_BYTES - len(prefix.encode("utf-8"))
+        detail = error.detail.encode("utf-8")[:remaining]
+        message = prefix + detail.decode("utf-8", "ignore")
         return CheckFailed(
             status="failed",
             error=ErrorInfo(
