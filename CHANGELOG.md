@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 0.1.1 — 2026-10-20
+
+### Commits
+
+- c32cadd fix: preserve actionable engine failure diagnostics
+
 ## 0.1.0 — 2026-10-18
 
 ### Commits
