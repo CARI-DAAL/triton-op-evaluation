@@ -114,5 +114,8 @@ class ProfileEvaluator:
         if outcome.exit_code == 0 and isinstance(result, dict):
             return EngineCheckResult(status="succeeded", raw=result, error=None)
         return input_generation_failure("profile", outcome) or engine_failure(
-            "profile", "profile engine produced no usable result"
+            "profile",
+            "profile engine produced no usable result"
+            f" (engine exit={outcome.exit_code})",
+            outcome=outcome,
         )

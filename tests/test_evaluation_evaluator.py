@@ -294,7 +294,8 @@ def test_unattributed_case_failure_is_retryable_internal(tmp_path):
     assert harness.profile.calls == 0
 
 
-def test_unattributed_failure_with_traceback_detail_stays_in_message_budget(tmp_path):
+@pytest.mark.parametrize("text", ["x", "执行失败\n"])
+def test_unattributed_failure_with_traceback_detail_stays_in_message_budget(tmp_path, text):
     """A long traceback detail must not overflow ErrorInfo's 512-byte cap.
 
     UnattributedFailure bounds its detail to 512 bytes; the evaluator adds a
@@ -305,7 +306,7 @@ def test_unattributed_failure_with_traceback_detail_stays_in_message_budget(tmp_
     """
     from triton_evaluation.api.contract import MAX_ERROR_MESSAGE_BYTES
 
-    long_detail = "RuntimeError: " + "x" * 900
+    long_detail = "RuntimeError: " + text * 900
     harness = full_harness()
     harness.verify = StubCheck(
         EngineCheckResult(
@@ -338,6 +339,42 @@ def test_unattributed_failure_with_traceback_detail_stays_in_message_budget(tmp_
     assert len(message.encode("utf-8")) <= MAX_ERROR_MESSAGE_BYTES
 
 
+@pytest.mark.parametrize("diagnostic", ["crashed", "执行失败\n" * 900], ids=["short", "multibyte"])
+def test_all_failed_benchmark_is_retryable_measurement_error(tmp_path, diagnostic):
+    raw = load("benchmark-mixed-coverage.json")
+    for case in raw["per_shape_results"]:
+        case["status"] = "fail"
+        case["framework"] = None
+        case["implementation"] = None
+        case["speedup_vs_torch"] = None
+        case["error_type"] = "RuntimeError"
+        case["error_msg"] = diagnostic
+    raw["passed_cases"] = 0
+    raw["failed_cases"] = 3
+    harness = full_harness()
+    harness.benchmark = StubCheck(
+        EngineCheckResult(status="succeeded", raw=raw, error=None)
+    )
+    sink = RecordingSink()
+    result = run_evaluation(harness, ["correctness", "performance", "profile"], sink, tmp_path)
+
+    assert result.correctness.status == "succeeded"
+    assert result.performance.status == "failed"
+    assert result.performance.error.code == "INTERNAL"
+    assert result.performance.error.retryable is True
+    message = result.performance.error.message
+    assert "case 0: RuntimeError:" in message
+    assert "\n" not in message and len(message.encode("utf-8")) <= 512
+    if diagnostic == "crashed":
+        assert "case 0: RuntimeError: crashed" in message
+        assert "case 2: RuntimeError: crashed" in message
+    else:
+        assert "执行失败" in message
+    assert result.profile.status == "skipped"
+    assert result.profile.reason.code == "PRIOR_CHECK_FAILED"
+    assert harness.profile.calls == 0
+
+
 def test_performance_infra_failure_keeps_correctness_and_skips_profile(tmp_path):
     harness = full_harness()
     harness.benchmark = succeeded("benchmark-invalid-measurement.json")
@@ -346,7 +383,7 @@ def test_performance_infra_failure_keeps_correctness_and_skips_profile(tmp_path)
 
     assert result.correctness.status == "succeeded"
     assert result.performance.status == "failed"
-    assert result.performance.error.code == "INVALID_ENGINE_OUTPUT"
+    assert result.performance.error.code == "INTERNAL"
     assert result.profile.status == "skipped"
     assert result.profile.reason.code == "PRIOR_CHECK_FAILED"
     assert harness.profile.calls == 0

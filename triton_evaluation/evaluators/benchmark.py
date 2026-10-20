@@ -153,7 +153,9 @@ class BenchmarkEvaluator:
         log_engine_crash("benchmark", outcome, result_file_exists=isinstance(result, dict))
         return engine_failure(
             "performance",
-            f"benchmark engine produced no usable result (engine exit={outcome.exit_code})",
+            "benchmark engine produced no usable result"
+            f" (engine exit={outcome.exit_code})",
+            outcome=outcome,
         )
 
     def run_with_trace(

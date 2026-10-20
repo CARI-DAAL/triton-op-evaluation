@@ -424,7 +424,7 @@ def test_benchmark_rejects_non_finite_latency():
         shape_performance(raw)
 
 
-def test_benchmark_rejects_no_valid_measurement():
+def test_all_failed_benchmark_preserves_per_case_errors():
     raw = load("benchmark-mixed-coverage.json")
     for case in raw["per_shape_results"]:
         case["status"] = "fail"
@@ -435,8 +435,10 @@ def test_benchmark_rejects_no_valid_measurement():
         case["error_msg"] = "crashed"
     raw["passed_cases"] = 0
     raw["failed_cases"] = 3
-    with pytest.raises(ShapingError):
+    with pytest.raises(UnattributedFailure) as raised:
         shape_performance(raw)
+    assert "case 0: RuntimeError: crashed" in raised.value.detail
+    assert "case 2: RuntimeError: crashed" in raised.value.detail
 
 
 # ---------------------------------------------------------------------------
