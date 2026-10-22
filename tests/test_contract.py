@@ -38,7 +38,7 @@ def test_minimal_trial_request_uses_documented_defaults():
     request = EvaluationRequest.model_validate(valid_request())
     assert request.purpose == "trial"
     assert request.triton_impl_name == "triton_ascend_impl"
-    assert request.deadline_seconds == 900
+    assert request.deadline_seconds == 3600
     assert request.non_compute is False
     assert request.performance is None
     assert request.profile is None

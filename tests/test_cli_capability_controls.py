@@ -112,6 +112,73 @@ def test_wait_for_returns_timing_while_profile_is_still_running(inputs):
     assert len(calls) == 2
 
 
+@pytest.mark.parametrize("ending", ["full_progress", "full_terminal", "timed_out"])
+def test_wait_for_performance_retains_partial_numbers_but_waits_for_completion(inputs, ending):
+    row = {"case_idx": 0, "implementation_latency_ms": .5,
+           "reference_latency_ms": 1.0, "speedup_vs_reference": 2.0}
+    partial = check(
+        complete=False, pending_case_indices=[1], selected_cases=2, measured_cases=1,
+        coverage=.5, per_case=[row], unmeasured_cases=[],
+    )
+    full = check(
+        selected_cases=2, measured_cases=2, coverage=1.0,
+        per_case=[row, {**row, "case_idx": 1}], unmeasured_cases=[],
+    )
+    snapshot = {
+        "evaluation_id": EID, "state": "running", "resource_revision": 2,
+        "progress_revision": 1, "attempt_id": "at_1", "active_check": "performance",
+        "completed_checks": {"performance": partial},
+    }
+    complete_snapshot = {
+        **snapshot, "progress_revision": 2, "active_check": "profile",
+        "completed_checks": {"performance": full},
+    }
+    terminal = resource(
+        "timed_out" if ending == "timed_out" else "completed",
+        correctness=check(passed=True, outcome="correct"),
+        performance=(
+            {**partial, "data": {**partial["data"], "termination_reason": "timeout"}}
+            if ending == "timed_out" else full
+        ),
+    )
+
+    def respond(calls):
+        if len(calls) == 1:
+            return 202, resource("running"), {}
+        if len(calls) == 2:
+            assert calls[-1][1] == f"/evaluations/{EID}/progress"
+            return 200, snapshot, {}
+        if len(calls) == 3:
+            assert calls[-1][1] == f"/evaluations/{EID}"
+            return 200, resource("running") if ending == "full_progress" else terminal, {}
+        assert len(calls) == 4 and ending == "full_progress"
+        assert calls[-1][1] == f"/evaluations/{EID}/progress"
+        return 200, complete_snapshot, {}
+
+    with server(respond) as (url, calls):
+        result, output = run_cli(
+            inputs, url, "--checks", "correctness", "performance", "profile",
+            "--profile-mode", "trace", "--wait-for", "performance", action="evaluate",
+        )
+    assert len(calls) == (4 if ending == "full_progress" else 3)
+    assert output == (complete_snapshot if ending == "full_progress" else terminal)
+    assert result.returncode == (2 if ending == "timed_out" else 0)
+
+
+def test_progress_returns_partial_performance_numbers_without_waiting(inputs):
+    snapshot = {
+        "evaluation_id": EID, "state": "running", "resource_revision": 2,
+        "progress_revision": 1, "attempt_id": "at_1", "active_check": "performance",
+        "completed_checks": {"performance": check(
+            complete=False, pending_case_indices=[1], selected_cases=2, measured_cases=1,
+            per_case=[{"case_idx": 0, "implementation_latency_ms": .5}],
+        )},
+    }
+    with server(lambda _calls: (200, snapshot, {})) as (url, calls):
+        result, output = run_cli(inputs, url, action="progress")
+    assert result.returncode == 0 and output == snapshot and len(calls) == 1
+
+
 def test_wait_for_unrequested_check_is_rejected_before_submission(inputs):
     result, output = run_cli(inputs, "http://127.0.0.1:1", "--wait-for", "profile")
     assert result.returncode == 2

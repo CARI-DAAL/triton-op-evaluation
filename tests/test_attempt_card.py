@@ -163,7 +163,7 @@ def test_late_provenance_does_not_change_terminal_or_recreate_expired_resource(
     terminal = []
 
     def expire_before_provenance():
-        clock.advance_ms(901_000)
+        clock.advance_ms(3_601_000)
         assert store.expire_due_resources() == 1
         terminal.append(store.get_visible(command.evaluation_id, make_caller()))
         if remove_resource:

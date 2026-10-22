@@ -73,8 +73,13 @@ and behaves exactly as upstream, including its seed-dependent failures. Such a
 failure, or a Python-level error, missing callback or non-dictionary result in
 custom input code, ends the check with non-retryable `INPUT_GENERATION_FAILED`
 naming the workload; the card is not suspected and the job is not requeued.
-Torch `RuntimeError`s and memory exhaustion keep the retryable engine-failure
-path, because the device can cause those too.
+The recognized CPU-generator/NPU-allocation mismatch in custom input code is
+also non-retryable `INPUT_GENERATION_FAILED`: a CPU `torch.Generator` cannot
+drive that NPU allocation. This narrow classification does not cover arbitrary
+Torch `RuntimeError`s or memory exhaustion, which keep the retryable
+engine-failure path because the device can cause those too. An input-generation
+failure supplies no correctness verdict; it does not establish an incorrect
+kernel or authorize comparative timing.
 Device support is still required for the selected dtype;
 the request cannot manufacture unavailable NPU capabilities.
 
@@ -168,10 +173,35 @@ correctness cannot authorize comparative performance or grade eligibility.
 `GET /evaluations/{evaluation_id}/progress` uses the same read authorization as
 resource recovery. It returns `attempt_id`, `active_check`, `progress_revision`
 and validated `completed_checks`, including results obtained while later checks
-are still running. Replacement attempts invalidate earlier progress and advance
+are still running. Performance can also appear there while its own case loop
+is running; inspect `performance.data.complete`, not just the map's name.
+Replacement attempts invalidate earlier progress and advance
 the progress revision. The existing resource endpoint keeps its terminal-only
 `result` contract. Clients should retain the evaluation ID and poll either
 endpoint; observing partial evidence does not cancel accepted work.
+
+Both comparison and single-source performance retain finished case measurements
+as they arrive. Partial results set `complete: false` and list the original
+zero-based `pending_case_indices`. `per_case` contains measured cases;
+`unmeasured_cases` contains completed cases that produced no usable timing.
+Pending cases are in neither list. `selected_cases` remains the full selection,
+and `coverage` is measured cases divided by that selection. Aggregate speedup
+describes only the measured cases, so partial speedup cannot stand
+in for a full-task score. Complete results omit the default `complete: true`
+and empty pending list.
+
+When execution stops early, retained performance includes
+`termination_reason: "timeout"` or `"interrupted"`. A resource can be
+`timed_out` while its performance check still carries these valid numbers and
+earlier correctness remains intact. That lifecycle state does not mean the
+kernel is incorrect. If no correctness verdict was established, it remains unknown;
+missing cases never become zero latency, failed correctness or a zero score.
+Partial timing cannot authorize grade eligibility.
+
+The CLI's `progress EVALUATION_ID` returns the current measurements immediately.
+`--wait-for performance` waits for performance completion or a terminal
+resource; it does not return early for `complete: false`. Terminal recovery
+preserves partial numbers and the timeout reason.
 
 For timing plus a kernel-duration trace, request:
 
@@ -184,8 +214,9 @@ For timing plus a kernel-duration trace, request:
 ```
 
 Add the ordinary definition, workloads and source fields. One candidate engine
-process handles timing and trace. Event timing finishes before profiling starts,
-and its checkpoint becomes visible through progress. Profiler timing reuses its
+process handles timing and trace. Per-case timing checkpoints become visible
+through progress, and event timing finishes before profiling starts.
+Profiler timing reuses its
 existing captures for overlapping trace cases. Other trace cases are collected
 explicitly; neither selection silently widens the other. Later trace failure
 does not discard already valid timing. Reference-only baseline production keeps
@@ -280,6 +311,18 @@ Cache/producer failures fall back to ordinary measurement, while deadlines and
 lease loss still stop execution. See [deployment scope](../operations/deployment.md#torch-baseline-cache).
 
 ## Recover results
+
+An evaluation's `deadline_seconds` defaults to `3600` (one hour), including
+queue time and all requested checks. It accepts `10..3600`; choosing a shorter
+deadline remains supported. Correctness and benchmark stages each have a
+deployment cap of `3600` seconds by default, and use only the resource time
+remaining when they run. They do not each receive an additional hour.
+
+The bundled CLI's `--timeout` defaults to `3660` seconds to allow recovery just
+after the resource deadline. This controls client waiting, not the evaluation's
+execution budget. Set `--deadline-seconds` to change the admitted resource
+deadline; increasing only `--timeout` cannot extend it. Existing deployments
+must update any explicit [engine budget overrides](../operations/deployment.md#evaluation-time-budgets).
 
 `wait_seconds=0..60` bounds the HTTP wait. HTTP 202 returns an admitted resource
 and `Location`; HTTP 200 returns a terminal resource when available. Disconnects

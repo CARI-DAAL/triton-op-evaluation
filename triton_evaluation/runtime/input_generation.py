@@ -12,10 +12,11 @@ OFFICIAL_GENERATOR_COMMIT = "0607a29d231cde384c9dfdb8a39f54f91837c327"
 
 
 class InputGenerationError(ValueError):
-    """This workload cannot be materialized on any device: a request error.
+    """This workload's input-generation contract is invalid: a request error.
 
     Raised only where the cause is certain, so the service never blames or
-    retries the card for it. Torch and device RuntimeErrors are not wrapped.
+    retries the card for it. Unclassified Torch/device RuntimeErrors are not
+    wrapped.
     """
 
 
@@ -28,12 +29,22 @@ def _check_bounds(low, high, draw):
 def _run_request_code(action, *args):
     """Python-level errors in request-supplied code are the request's fault.
 
-    RuntimeError covers torch argument errors and device faults alike, and
-    MemoryError is resource exhaustion, so both keep the engine-failure path.
+    RuntimeError covers torch argument errors and device faults alike. Only
+    the observed CPU-generator/NPU-allocation mismatch is certainly an input
+    contract error; other RuntimeErrors and resource exhaustion stay engine
+    failures.
     """
     try:
         return action(*args)
-    except (RuntimeError, MemoryError):
+    except RuntimeError as error:
+        if str(error).splitlines()[:1] == [
+            "Expected a 'npu' device type for generator but found 'cpu'"
+        ]:
+            raise InputGenerationError(
+                f"custom input code has a generator/device mismatch: {error}"
+            ) from error
+        raise
+    except MemoryError:
         raise
     except Exception as error:
         raise InputGenerationError(

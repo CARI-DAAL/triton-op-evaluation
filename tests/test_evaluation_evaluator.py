@@ -58,7 +58,7 @@ class StubCheck:
         self.result = result
         self.calls = 0
 
-    def run(self, request, work_dir, device_id, deadline_at, lease_valid=None):
+    def run(self, request, work_dir, device_id, deadline_at, lease_valid=None, **kwargs):
         self.calls += 1
         return self.result
 

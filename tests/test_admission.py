@@ -71,7 +71,7 @@ def test_canonicalization_collapses_explicit_defaults(release_catalog_files):
         purpose="trial",
         triton_impl_name="triton_ascend_impl",
         non_compute=False,
-        deadline_seconds=900,
+        deadline_seconds=3600,
         performance=None,
         profile=None,
         grade_context=None,

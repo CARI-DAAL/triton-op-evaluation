@@ -10,6 +10,7 @@ reference baseline production, caching, and comparison-result stamping.
 
 import math
 import sys
+from copy import deepcopy
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from uuid import uuid4
@@ -29,6 +30,41 @@ from .base import (
     safe_module_stem,
 )
 from .baseline import prepare_baseline
+from .shaping import ShapingError, shape_performance, shape_single_performance
+
+
+class _PerformanceSnapshots:
+    """Publish validated atomic case snapshots while the worker still owns its lease."""
+
+    def __init__(self, path, root, baseline, single, publish=None):
+        self.path, self.root = path, root
+        self.baseline, self.single, self.publish = baseline, single, publish
+        self.seen = None
+        self.latest = None
+
+    def poll(self):
+        raw = read_json(self.path, root=self.root)
+        if not isinstance(raw, dict) or raw == self.seen:
+            return
+        self.seen = deepcopy(raw)
+        try:
+            self.baseline.bind(raw)
+            (shape_single_performance if self.single else shape_performance)(raw)
+        except (ShapingError, ValueError, TypeError, KeyError):
+            # An initial zero-case snapshot or malformed/half-written file
+            # cannot replace the last valid measurement. Final output is
+            # independently validated by the normal completion path.
+            return
+        result = EngineCheckResult(status="succeeded", raw=raw, error=None)
+        if self.publish is not None and self.publish(result) is False:
+            return
+        self.latest = result
+
+    def stopped(self, reason):
+        if self.latest is None:
+            return None
+        raw = {**self.latest.raw, "termination_reason": reason}
+        return EngineCheckResult(status="succeeded", raw=raw, error=None)
 
 
 class _PerformancePhaseTimeout(TimeoutError):
@@ -41,7 +77,7 @@ class _TraceStopped(RuntimeError):
 
 class BenchmarkEvaluator:
     def __init__(
-        self, engine_dir: str, timeout_seconds: int = 600, baseline_cache=None, *, runner=None
+        self, engine_dir: str, timeout_seconds: int = 3600, baseline_cache=None, *, runner=None
     ):
         self.runner = runner
         self.engine_dir = engine_dir
@@ -93,6 +129,8 @@ class BenchmarkEvaluator:
         device_id: int,
         deadline_at,
         lease_valid=None,
+        *,
+        on_checkpoint=None,
     ) -> EngineCheckResult:
         deadline_at = min(
             deadline_at, datetime.now(timezone.utc) + timedelta(seconds=self.timeout_seconds)
@@ -108,7 +146,7 @@ class BenchmarkEvaluator:
         params = request.performance or PerformanceParams()
         if params.case_indices is not None and not params.case_indices:
             return engine_failure("performance", "performance case selection is empty")
-        out_path = Path(work_dir) / "perf_result.json"
+        out_path = Path(work_dir) / f"perf_result_{uuid4().hex}.json"
         cmd = self._command(request, work_dir, params)
         try:
             baseline = prepare_baseline(
@@ -120,20 +158,30 @@ class BenchmarkEvaluator:
             return engine_timeout("performance", "baseline measurement exceeded the deadline")
         cmd += baseline.command_options()
         cmd += [*self._correctness_options(request, work_dir), "--output", str(out_path)]
+        snapshots = _PerformanceSnapshots(out_path, work_dir, baseline, single, on_checkpoint)
+
+        def checkpoint():
+            if lease_valid is not None and not lease_valid():
+                return False
+            snapshots.poll()
+            return True
+
         outcome = (self.runner or run_script)(
             cmd,
             str(work_dir),
             device_id,
             deadline_at,
-            lease_valid,
+            checkpoint,
             budget_seconds=max(
                 1, min(self.timeout_seconds, math.ceil(remaining_seconds(deadline_at)))
             ),
         )
-        if outcome.outcome == "fenced" or (lease_valid is not None and not lease_valid()):
+        if outcome.outcome == "fenced" or not checkpoint():
             raise LeaseLostError("benchmark engine lost its lease")
         if outcome.timed_out or remaining_seconds(deadline_at) <= 0:
-            return engine_timeout("performance", "performance exceeded the resource deadline")
+            return snapshots.stopped("timeout") or engine_timeout(
+                "performance", "performance exceeded the resource deadline"
+            )
         if outcome.exit_code == 2 and not single:
             return self._gate_failure(request)
         result = read_json(out_path, root=work_dir)
@@ -167,6 +215,7 @@ class BenchmarkEvaluator:
         lease_valid=None,
         *,
         on_performance=None,
+        on_checkpoint=None,
     ) -> tuple[EngineCheckResult, EngineCheckResult]:
         """One candidate process; preserve and publish timing before trace exits.
 
@@ -198,9 +247,12 @@ class BenchmarkEvaluator:
             materialize(request, work_dir)
         cmd = self._command(request, work_dir, params)
 
+        snapshots = None
+
         def timing_timeout(message):
             return (
-                engine_timeout("performance", message),
+                (snapshots.stopped("timeout") if snapshots is not None else None)
+                or engine_timeout("performance", message),
                 engine_failure(
                     "profile", "trace did not run because the shared timing phase timed out",
                     code="SHARED_TIMING_TIMEOUT", retryable=False,
@@ -227,14 +279,19 @@ class BenchmarkEvaluator:
             "--output", str(perf_path), *self._trace_options(request, trace_path),
         ]
         completed = None
+        snapshots = _PerformanceSnapshots(perf_path, work_dir, baseline, single, on_checkpoint)
 
         def checkpoint():
             nonlocal completed
             if lease_valid is not None and not lease_valid():
                 return False
             if completed is None:
+                snapshots.poll()
                 raw = read_json(perf_path, root=work_dir)
-                if isinstance(raw, dict):
+                is_complete = (
+                    isinstance(raw, dict) and raw.get("progress", {}).get("complete", True)
+                )
+                if is_complete:
                     try:
                         baseline.bind(raw)
                         completed = EngineCheckResult(status="succeeded", raw=raw, error=None)
@@ -245,7 +302,7 @@ class BenchmarkEvaluator:
                     if on_performance is not None:
                         if on_performance(completed) is False:
                             raise _TraceStopped("performance checkpoint stopped trace continuation")
-                elif remaining_seconds(performance_deadline) <= 0:
+                if completed is None and remaining_seconds(performance_deadline) <= 0:
                     raise _PerformancePhaseTimeout("performance exceeded its phase budget")
             return True
 
@@ -266,7 +323,9 @@ class BenchmarkEvaluator:
         expired = outcome.timed_out or remaining_seconds(deadline_at) <= 0
         if completed is None:
             if expired:
-                completed = engine_timeout("performance", "performance exceeded the deadline")
+                completed = snapshots.stopped("timeout") or engine_timeout(
+                    "performance", "performance exceeded the deadline"
+                )
             elif outcome.exit_code == 2 and not single:
                 completed = self._gate_failure(request)
             else:

@@ -47,6 +47,67 @@ def test_runtime_and_memory_errors_keep_the_engine_failure_path(error):
     assert not isinstance(raised.value, InputGenerationError)
 
 
+@pytest.mark.parametrize("diagnostic_tail", ["", "\n[ERROR] additional runtime diagnostics"])
+def test_cpu_generator_npu_mismatch_reaches_nonretryable_input_result(
+    diagnostic_tail, capsys, tmp_path, monkeypatch
+):
+    # This exact Torch error was retained by the failed RSI07 NPU evaluation.
+    message = "Expected a 'npu' device type for generator but found 'cpu'" + diagnostic_tail
+    request = OperatorRequest.model_validate({
+        "definition": {
+            "inputs": {"x": {}}, "reference": "def run(x): return x",
+            "custom_inputs_entrypoint": "build",
+        },
+        "workloads": [{"uuid": "cpu-generator", "inputs": {"x": {"type": "custom"}}}],
+        "custom_inputs_code": f"def build(axes, device):\n    raise RuntimeError({message!r})",
+    })
+    namespace = {}
+    exec(to_evaluation_request(request).reference_code, namespace)
+    generate = namespace["_operator_generate_inputs"]
+    # Exercise generated-code classification without requiring an NPU device.
+    namespace["_operator_generate_inputs"] = (
+        lambda case, **kw: generate(case, **kw | {"device": "cpu"})
+    )
+    with pytest.raises(namespace["_operator_input_error"], match="generator/device mismatch"):
+        namespace["get_input_groups"]()[0]
+    stderr = capsys.readouterr().err
+    failure = json.loads(stderr.removeprefix(INPUT_GENERATION_FAILURE_PREFIX))
+    assert failure["uuid"] == "cpu-generator" and failure["case_idx"] == 1
+    assert message in failure["message"]
+
+    monkeypatch.chdir(tmp_path)
+    result = VerifyEvaluator("engine", runner=failed_run(stderr)).run(
+        make_request(checks=["correctness"]), tmp_path / "verify", 0,
+        datetime.now(timezone.utc) + timedelta(minutes=5),
+    )
+    assert result.status == "failed" and result.raw is None
+    assert result.error.code == "INPUT_GENERATION_FAILED"
+    assert result.error.check == "correctness" and result.error.retryable is False
+
+
+def test_cpu_generator_callback_preserves_cpu_stream_under_meta_default():
+    import torch
+
+    code = """
+def build(axes, device):
+    rng = torch.Generator(device="cpu").manual_seed(3407)
+    value = torch.randn((4, 3), generator=rng, dtype=torch.float32, device="cpu")
+    order = torch.randperm(4, generator=rng, device="cpu")
+    offset = torch.tensor([1.0, 2.0, 3.0], device="cpu")
+    padding = torch.full((4, 3), -1.0, device="cpu")
+    return {"x": value[order] + offset + padding}
+"""
+    with torch.device("cpu"):
+        expected = generate_inputs(custom_case(), 200, "cpu", code, "build")[0]
+    with torch.device("meta"):
+        actual = generate_inputs(custom_case(), 200, "cpu", code, "build")[0]
+        moved = generate_inputs(custom_case(), 200, "meta", code, "build")[0]
+    assert actual.device.type == "cpu"
+    torch.testing.assert_close(actual, expected, rtol=0, atol=0)
+    assert moved.device.type == "meta" and moved.shape == actual.shape
+    assert moved.dtype == actual.dtype
+
+
 def test_negative_sigma_draw_is_a_request_error():
     spec = {
         "type": "random", "dtype": "float32", "shape": [4],

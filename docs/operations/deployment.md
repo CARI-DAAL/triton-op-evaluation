@@ -131,6 +131,29 @@ build and experiment; numerical rounding can differ even though the comparison
 formula and tolerances are unchanged. See [reference policy and observations](../architecture/reference-device-policy.md)
 for provenance, retention and admission checks.
 
+## Evaluation time budgets
+
+New requests default to a `3600`-second resource deadline, shared by queue time
+and all requested checks. The default whole-run caps are also one hour:
+
+```bash
+TRITON_EVAL_VERIFY_BUDGET_CAP_SECONDS=3600
+TRITON_EVAL_BENCHMARK_TIMEOUT_SECONDS=3600
+```
+
+Each stage is still bounded by the resource's remaining time. Explicit shorter
+request deadlines and deployment caps remain supported. Client waiting is
+separate: the bundled CLI and smoke client wait up to `3660` seconds by default;
+a longer client wait does not extend admitted work.
+
+**Existing deployments must update explicit environment overrides.** Rebuilding
+the service does not replace values already set in `.env`, `docker/.env`, or
+the worker environment. Apply the new values to API/worker deployments using
+the deployment procedure above; Compose requires `up --force-recreate`, while
+host workers need to restart with the updated environment. Existing admitted
+resources retain their recorded deadlines. Profiler sub-step limits, health
+checks, leases and transport timeouts keep their separate settings.
+
 ## Runtime dependencies and observability
 
 API and worker entrypoints explicitly assemble their metrics adapters. Observers

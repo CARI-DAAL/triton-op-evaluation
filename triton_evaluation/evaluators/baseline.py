@@ -70,7 +70,21 @@ class BaselineEvidence:
             if selected is None
             else {index + 1 for index in selected}
         )
-        if expected is not None and set(indices) != expected:
+        progress = result.get("progress")
+        if progress is not None:
+            if not isinstance(progress, dict):
+                raise ValueError("benchmark progress invalid")
+            selected_progress = progress.get("selected_case_indices")
+            if not isinstance(selected_progress, list) or any(
+                type(index) is not int for index in selected_progress
+            ):
+                raise ValueError("benchmark progress selection invalid")
+            declared = {index + 1 for index in selected_progress}
+            if not set(indices).issubset(declared) or (
+                expected is not None and declared != expected
+            ):
+                raise ValueError("benchmark case coverage mismatch")
+        elif expected is not None and set(indices) != expected:
             raise ValueError("benchmark case coverage mismatch")
         for case in cases:
             framework = case.get("framework")

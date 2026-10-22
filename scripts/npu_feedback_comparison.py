@@ -160,7 +160,7 @@ class Service:
         evaluation_id = resource["evaluation_id"]
         record["evaluation_id"] = evaluation_id
         save_report(self.output, self.report)
-        deadline = started + body.get("deadline_seconds", 900) + 60
+        deadline = started + body.get("deadline_seconds", 3600) + 60
         while resource["state"] not in TERMINAL:
             if time.monotonic() >= deadline:
                 raise TimeoutError("client wait expired; recover the recorded evaluation handle")
@@ -267,7 +267,7 @@ def main(argv=None):
     parser.add_argument("--pairs", type=int, default=3)
     parser.add_argument("--warmup-pairs", type=int, default=1)
     parser.add_argument("--poll-seconds", type=float, default=0.2)
-    parser.add_argument("--deadline-seconds", type=int, default=900)
+    parser.add_argument("--deadline-seconds", type=int, default=3600)
     parser.add_argument(
         "--max-relative-drift", type=float,
         help="Optional acceptance bound for timing/trace drift; otherwise report only",

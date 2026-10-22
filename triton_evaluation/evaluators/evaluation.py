@@ -61,6 +61,7 @@ from .shaping import (
     shape_correctness,
     shape_performance,
     shape_profile_runs,
+    shape_single_performance,
 )
 from .verify import VerifyEvaluator
 
@@ -231,6 +232,7 @@ class EvaluationEvaluator:
                 if selection is None and correctness is not None:
                     selection = list(range(correctness.data.total_cases))
                 observed = {case.case_idx for case in result.per_case + result.unmeasured_cases}
+                observed.update(result.pending_case_indices)
                 if selection is not None and observed != set(selection):
                     raise ShapingError("comparison timing has a different case selection")
                 if correctness is not None and any(
@@ -238,10 +240,7 @@ class EvaluationEvaluator:
                 ):
                     raise ShapingError("comparison timing exceeds the reference inventory")
                 return result
-            try:
-                result = SinglePerformanceResult.model_validate(raw)
-            except ValueError as error:
-                raise ShapingError("invalid standalone performance evidence") from error
+            result = shape_single_performance(raw)
             method = request.performance.method
             expected_method = (
                 "npu_event_v1" if method == "event" else "profiler_kernel_sum_v1"
@@ -253,9 +252,18 @@ class EvaluationEvaluator:
                 )
             selection = request.performance.case_indices
             observed = {case.case_idx for case in result.per_case + result.unmeasured_cases}
+            observed.update(result.pending_case_indices)
             if selection is not None and observed != set(selection):
                 raise ShapingError("standalone performance evidence has a different case selection")
             return result
+
+        def publish_checkpoint(engine):
+            outcome = _engine_outcome("performance", engine, performance_evidence)
+            if outcome.status != "succeeded":
+                return False
+            if not lease_valid() or not progress.save("performance", outcome):
+                raise LeaseLostError("performance case checkpoint was fenced out")
+            return True
 
         def profile_evidence(raw):
             result = shape_profile_runs(raw, request.profile or ProfileParams())
@@ -321,15 +329,16 @@ class EvaluationEvaluator:
                         if not lease_valid() or not progress.save("performance", outcome):
                             raise LeaseLostError("joint timing checkpoint was fenced out")
                         outcomes["performance"] = outcome
-                        if outcome.status == "succeeded":
+                        if outcome.status == "succeeded" and outcome.data.complete:
                             if not progress.begin("profile"):
                                 raise LeaseLostError("joint trace begin was fenced out")
                             trace_started = True
-                        return outcome.status == "succeeded"
+                        return outcome.status == "succeeded" and outcome.data.complete
 
                     performance_engine, trace_engine = self.benchmark.run_with_trace(
                         request, work_dir, device_id, deadline_at, lease_valid,
                         on_performance=publish_performance,
+                        on_checkpoint=publish_checkpoint,
                     )
                     publish_performance(performance_engine)
                     performance = outcomes["performance"]
@@ -340,13 +349,16 @@ class EvaluationEvaluator:
                             "performance",
                             self.benchmark.run(
                                 request, work_dir, device_id, deadline_at, lease_valid,
+                                on_checkpoint=publish_checkpoint,
                             ),
                             performance_evidence,
                         ),
                         lease_valid,
                         progress,
                     )
-                infra_broken = performance.status in ("failed", "timeout")
+                infra_broken = performance.status in ("failed", "timeout") or (
+                    performance.status == "succeeded" and not performance.data.complete
+                )
             else:
                 performance = self._slot(
                     "performance",

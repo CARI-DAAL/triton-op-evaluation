@@ -63,6 +63,7 @@ from ..api.contract import (
     ProfileParams,
     ProfileResult,
     SampleElement,
+    SinglePerformanceResult,
     StrictModel,
     TraceProfileResult,
     UnmeasuredPerformanceCase,
@@ -515,6 +516,28 @@ class _PerShapeResult(StrictModel):
         return self
 
 
+class _BenchmarkProgress(StrictModel):
+    selected_case_indices: list[Annotated[int, Field(ge=0)]] = Field(min_length=1)
+    completed_case_indices: list[Annotated[int, Field(ge=0)]]
+    complete: bool
+
+    @model_validator(mode="after")
+    def _identities(self):
+        selected = self.selected_case_indices
+        completed = self.completed_case_indices
+        if len(set(selected)) != len(selected):
+            raise ValueError("selected cases must be unique")
+        if completed != selected[:len(completed)]:
+            raise ValueError("completed cases must be a prefix of selected cases")
+        if self.complete != (completed == selected):
+            raise ValueError("complete must account for the full selection")
+        return self
+
+    @property
+    def pending(self):
+        return sorted(set(self.selected_case_indices) - set(self.completed_case_indices))
+
+
 class _BenchmarkResult(StrictModel):
     op_name: str
     warmup: int
@@ -536,14 +559,25 @@ class _BenchmarkResult(StrictModel):
     # One-based original identities of the cases this run measured; None means
     # the full contiguous task (legacy engine output).
     case_indices: list[Annotated[int, Field(ge=1)]] | None = None
+    progress: _BenchmarkProgress | None = None
+    termination_reason: Literal["timeout", "interrupted"] | None = None
 
     @model_validator(mode="after")
     def _counts_and_identity(self):
-        if self.passed_cases + self.failed_cases != self.total_cases:
+        completed = self.total_cases if self.progress is None else len(
+            self.progress.completed_case_indices
+        )
+        if self.passed_cases + self.failed_cases != completed:
             raise ValueError("passed/failed counts contradict total_cases")
-        if len(self.per_shape_results) != self.total_cases:
-            raise ValueError("per_shape_results must cover every case")
+        if len(self.per_shape_results) != completed:
+            raise ValueError("per_shape_results must cover every completed case")
         indices = [case.case_idx for case in self.per_shape_results]
+        if self.progress is not None:
+            selected = self.case_indices or list(range(1, self.total_cases + 1))
+            if self.progress.selected_case_indices != [index - 1 for index in selected]:
+                raise ValueError("progress selection differs from benchmark selection")
+            if self.progress.completed_case_indices != [index - 1 for index in indices]:
+                raise ValueError("progress completion differs from measured outcomes")
         if len(set(indices)) != len(indices):
             raise ValueError("duplicate case_idx")
         abnormal = (
@@ -572,6 +606,8 @@ class _BenchmarkResult(StrictModel):
                 raise ValueError("abnormal-speedup index out of range")
         by_index = {case.case_idx: case for case in self.per_shape_results}
         for index in abnormal:
+            if index not in by_index:
+                raise ValueError("abnormal speedup requires a completed case")
             case = by_index[index]
             if case.status != "pass" or case.speedup_vs_torch is not None:
                 raise ValueError("abnormal-speedup cases must pass with null speedup")
@@ -621,7 +657,7 @@ def shape_performance(raw: dict[str, object]) -> PerformanceResult:
             for case in result.per_shape_results
         ]
         raise UnattributedFailure("; ".join(details))
-    selected = len(result.per_shape_results)
+    selected = result.total_cases
     overall = math.exp(
         sum(math.log(case.speedup_vs_reference) for case in per_case) / len(per_case)
     )
@@ -635,9 +671,25 @@ def shape_performance(raw: dict[str, object]) -> PerformanceResult:
             measurement_method=(result.measurement_method if per_case else None),
             per_case=per_case,
             unmeasured_cases=unmeasured,
+            complete=result.progress.complete if result.progress is not None else True,
+            pending_case_indices=result.progress.pending if result.progress is not None else [],
+            termination_reason=result.termination_reason,
         ),
         "benchmark",
     )
+
+
+def shape_single_performance(raw: dict[str, object]) -> SinglePerformanceResult:
+    payload = dict(raw)
+    progress = payload.pop("progress", None)
+    if progress is not None:
+        progress = _parse(_BenchmarkProgress, progress, "benchmark progress")
+        observed = [case["case_idx"] for case in payload.get("per_case", [])]
+        observed += [case["case_idx"] for case in payload.get("unmeasured_cases", [])]
+        if set(observed) != set(progress.completed_case_indices):
+            raise ShapingError("single timing progress differs from measured outcomes")
+        payload.update(complete=progress.complete, pending_case_indices=progress.pending)
+    return _checked(lambda: SinglePerformanceResult.model_validate(payload), "benchmark")
 
 
 # ---------------------------------------------------------------------------

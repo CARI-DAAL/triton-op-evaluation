@@ -5,7 +5,6 @@ from __future__ import annotations
 
 import argparse
 import importlib.util
-import json
 import math
 import sys
 from pathlib import Path
@@ -32,7 +31,7 @@ def load_module(name, path):
 
 def measure_implementation(*, op_name, verify_dir, triton_impl_name, implementation,
                            warmup, repeats, method, case_indices=None, device="npu:0",
-                           prepared=None, operators_by_case=None):
+                           prepared=None, operators_by_case=None, checkpoint=None):
     import torch
 
     if implementation not in {"torch", "triton"}:
@@ -60,11 +59,27 @@ def measure_implementation(*, op_name, verify_dir, triton_impl_name, implementat
         type(index) is not int or index < 0 or index >= len(groups) for index in selected
     ):
         raise ValueError("invalid performance case selection")
-    measured, unmeasured = [], []
+    measured, unmeasured, completed = [], [], []
+
+    def result_snapshot():
+        result = {
+            "implementation": implementation, "correctness_verified": False,
+            "measurement_method": "npu_event_v1" if method == "event" else "profiler_kernel_sum_v1",
+            "selected_cases": len(selected), "measured_cases": len(measured),
+            "coverage": len(measured) / len(selected), "per_case": list(measured),
+            "unmeasured_cases": list(unmeasured),
+        }
+        if checkpoint is not None:
+            result["progress"] = benchmark.case_progress(selected, completed)
+        return result
+
+    if checkpoint is not None:
+        checkpoint(result_snapshot())
     selected_iterator = iter(benchmark._SelectedInputGroups(groups, [index + 1 for index in selected]))
     for index in selected:
         shapes = []
         model = inputs = raw = None
+        case_completed = False
         try:
             raw = next(selected_iterator)
             shapes = [
@@ -83,6 +98,7 @@ def measure_implementation(*, op_name, verify_dir, triton_impl_name, implementat
             if latency is None or not math.isfinite(latency) or latency <= 0:
                 unmeasured.append({"case_idx": index, "input_shapes": shapes,
                                    "reason_code": "NO_STABLE_MEASUREMENT"})
+                case_completed = True
                 continue
             case = {"case_idx": index, "input_shapes": shapes, "latency_ms": latency}
             kernel_metrics = getattr(measurement, "kernel_metrics", None)
@@ -91,21 +107,23 @@ def measure_implementation(*, op_name, verify_dir, triton_impl_name, implementat
             if peak is not None and math.isfinite(peak) and peak >= 0:
                 case["peak_memory_mb"] = peak
             measured.append(case)
+            case_completed = True
         except Exception:
             unmeasured.append({"case_idx": index, "input_shapes": shapes,
                                "reason_code": "UNSUPPORTED_CASE"})
+            case_completed = True
         finally:
-            model = inputs = raw = None
-            benchmark.cleanup_npu_memory()
+            try:
+                if case_completed:
+                    completed.append(index)
+                    if checkpoint is not None:
+                        checkpoint(result_snapshot())
+            finally:
+                model = inputs = raw = None
+                benchmark.cleanup_npu_memory()
     if not measured:
         raise RuntimeError("single-implementation benchmark produced no measurements")
-    return {
-        "implementation": implementation, "correctness_verified": False,
-        "measurement_method": "npu_event_v1" if method == "event" else "profiler_kernel_sum_v1",
-        "selected_cases": len(selected), "measured_cases": len(measured),
-        "coverage": len(measured) / len(selected), "per_case": measured,
-        "unmeasured_cases": unmeasured,
-    }
+    return result_snapshot()
 
 
 def main():
@@ -132,8 +150,9 @@ def main():
         op_name=args.op_name, verify_dir=args.verify_dir, triton_impl_name=args.triton_impl_name,
         implementation=args.implementation, warmup=args.warmup, repeats=args.repeats,
         method=args.measurement_method, case_indices=indices,
+        checkpoint=lambda result: benchmark.write_checkpoint(args.output, result),
     )
-    Path(args.output).write_text(json.dumps(result, allow_nan=False), encoding="utf-8")
+    benchmark.write_checkpoint(args.output, result)
 
 
 if __name__ == "__main__":
