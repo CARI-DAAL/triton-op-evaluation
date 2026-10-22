@@ -14,12 +14,10 @@ from .versioning import BUILD_PATTERN, ZERO_BUILD
 # different engine build.
 _DEFAULT_ENGINE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "engine")
 
-# Whole-run engine budgets. The verify cap bounds the ENTIRE verify run (all
-# cases), not one subject — 900s was too tight for multi-case/large-kernel
-# workloads (see the K3 intermittent-failure report). The benchmark constant
-# doubles as the Settings default; both are deployment-tunable via env.
-VERIFY_BUDGET_CAP_SECONDS = 1500
-BENCHMARK_TIMEOUT_SECONDS = 600
+# Whole-run engine budgets cover all selected cases, not one case. Both remain
+# bounded by the admitted resource deadline and deployment-tunable via env.
+VERIFY_BUDGET_CAP_SECONDS = 3600
+BENCHMARK_TIMEOUT_SECONDS = 3600
 
 _ALGORITHM_VERSION_PATTERN = r"^[A-Za-z0-9._:-]{1,128}$"
 

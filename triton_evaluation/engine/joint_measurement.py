@@ -8,7 +8,6 @@ capture. This is deliberately not an msprof op/deep metrics implementation.
 
 from __future__ import annotations
 
-import json
 import math
 import os
 import sys
@@ -236,12 +235,15 @@ def _capture_case(config, reference, model_type, raw, device, index, implementat
 
 
 def run_measurements(config, *, implementation="comparison", trace_indices=None,
-                     timing=True, max_kernels=200, performance_ready=None, device=None):
+                     timing=True, max_kernels=200, performance_ready=None, device=None,
+                     performance_progress=None):
     """Run explicit phases; selections use original one-based engine indices.
 
     The callback receives complete timing before later capture starts. A trace
     failure never discards that result. Profiler-selected cases are never
     captured a second time, including cases where the first capture failed.
+    The optional progress callback also receives bounded per-case snapshots
+    during timing, before a later case or trace can be interrupted.
     """
     if implementation not in {"comparison", "torch", "triton"}:
         raise ValueError("invalid measurement implementation")
@@ -262,6 +264,7 @@ def run_measurements(config, *, implementation="comparison", trace_indices=None,
                     model_spec=benchmark.BenchmarkModelSpec(
                         reference.Model, model_type, reference.get_init_inputs,
                     ),
+                    checkpoint=performance_progress,
                 )
                 operators_by_case = {
                     case.case_idx - 1: case.implementation.operators
@@ -276,11 +279,12 @@ def run_measurements(config, *, implementation="comparison", trace_indices=None,
                     method=config.measurement_method, device=device,
                     case_indices=sorted(timing_indices), prepared=(reference, model_type, groups),
                     operators_by_case=operators_by_case,
+                    checkpoint=performance_progress,
                 )
         except Exception as error:
             # Preserve the orchestrator's stop-on-infrastructure-failure rule.
-            # There is no timing checkpoint to publish or shared capture to
-            # reuse when the phase could not produce an aggregate.
+            # Earlier per-case snapshots remain valid even when the phase
+            # cannot finish; no trace capture starts after this failure.
             print(f"Timing phase failed: {type(error).__name__}", file=sys.stderr)
             raise
         if performance is not None and performance_ready is not None:
@@ -327,10 +331,7 @@ def run_measurements(config, *, implementation="comparison", trace_indices=None,
 
 
 def _write_checkpoint(path, result):
-    path = Path(path)
-    temporary = path.with_name(path.name + ".tmp")
-    temporary.write_text(json.dumps(result, allow_nan=False), encoding="utf-8")
-    os.replace(temporary, path)
+    benchmark.write_checkpoint(path, result)
 
 
 def main():
@@ -359,6 +360,7 @@ def main():
         trace_indices=benchmark._parse_case_indices(args.trace_case_indices),
         max_kernels=args.max_trace_kernels,
         performance_ready=lambda result: _write_checkpoint(args.output, result),
+        performance_progress=lambda result: _write_checkpoint(args.output, result),
     )
     _write_checkpoint(args.trace_output, trace)
     return 0

@@ -97,8 +97,19 @@ See the [skill](skills/triton-eval/SKILL.md) for recovery and result interpretat
 `evaluate --checks correctness performance profile --profile-mode trace` submits
 a combined request. Timing and kernel-duration trace share candidate preparation;
 profiler timing can reuse its capture. Add `--wait-for performance` to return
-the first timing snapshot while trace continues, or use `progress EVALUATION_ID`
-to retrieve completed check evidence. Existing `get` returns the final resource.
+completed timing while trace continues, or use `progress EVALUATION_ID` to read
+the current case measurements immediately. Performance snapshots may have
+`complete: false` and `pending_case_indices` even though they appear under
+`completed_checks`; `--wait-for performance` keeps waiting in that case.
+Existing `get` returns the final resource.
+
+After a timeout, retained `per_case` numbers remain available with
+`termination_reason: "timeout"`; other interrupted runs use `"interrupted"`.
+The resource's `timed_out` state is not a failed correctness verdict. Earlier
+correctness evidence survives, and unavailable correctness stays unknown.
+Interpret partial speedups only over their measured cases, not as a full-task
+score. Terminal JSON and the CLI's infrastructure/timeout exit status are
+preserved. See [partial-result semantics](../../docs/usage/evaluations.md#select-checks-and-retrieve-evidence-early).
 
 Use explicit `--correctness-cases`, `--performance-cases`, and `--profile-cases`
 for combined requests. Shortcut commands accept `--case-indices`. Correctness

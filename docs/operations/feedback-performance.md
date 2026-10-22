@@ -190,7 +190,10 @@ python3 scripts/npu_feedback_comparison.py \
 两个版本分别记录 build，保持 reference policy 和测量方法一致。
 
 脚本为每个资源使用相同的 deadline；separate 有两个资源，combined 有一个资源。
-大任务需事先固定合适预算，并报告超时。客户端 timeout 不会扩大 worker 的阶段预算。
+`--deadline-seconds` 默认 `3600`，客户端最多等待该 deadline 加 `60` 秒。
+大任务需事先固定合适预算，并报告超时。客户端 timeout 不会扩大 worker 的阶段预算；
+已有部署中显式设置的 verify/benchmark 环境预算也需按
+[部署说明](deployment.md#evaluation-time-budgets)更新。
 
 ### 读取报告
 

@@ -90,6 +90,16 @@ def complete_evaluation(
         raise ValueError("completion requires known, nonempty requested checks")
     requested = [check for check in _CHECK_ORDER if check in requested_set]
     valid = _valid_outcomes(outcomes)
+    performance = valid.get("performance")
+    if (
+        failure is not None and performance is not None
+        and performance.status == "succeeded" and not performance.data.complete
+    ):
+        valid["performance"] = performance.model_copy(update={
+            "data": performance.data.model_copy(update={
+                "termination_reason": "timeout" if failure.status == "timeout" else "interrupted",
+            }),
+        })
     missing = [check for check in requested if check not in valid]
     complete = failure is None and not missing
     if missing and failure is None:
@@ -165,6 +175,11 @@ def _grade_evidence(outcomes: Mapping[str, object]) -> bool:
     for check, outcome in outcomes.items():
         if outcome.status == "succeeded":
             if check == "performance":
+                if (
+                    not outcome.data.complete
+                    or outcome.data.termination_reason is not None
+                ):
+                    return False
                 correctness = outcomes.get("correctness")
                 if (
                     correctness is None or correctness.status != "succeeded"

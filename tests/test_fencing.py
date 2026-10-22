@@ -80,7 +80,7 @@ def test_renewal_rejects_writes_past_the_resource_deadline(
     store, make_command, make_worker, clock, settings
 ):
     _, lease = _create_and_claim(store, make_command, make_worker, clock)
-    clock.advance_ms(901_000)  # default deadline_seconds=900
+    clock.advance_ms(lease.deadline_at_ms - clock.now_ms + 1000)
 
     assert store.renew_lease(lease) is False
     assert store.set_active_check(lease, "correctness") is False
@@ -166,7 +166,7 @@ def test_deadline_watchdog_racing_worker_commit_has_one_winner(
 ):
     command, lease = _create_and_claim(store, make_command, make_worker, clock)
     result = make_completed_result(settings)
-    clock.advance_ms(901_000)  # past the default 900s deadline
+    clock.advance_ms(lease.deadline_at_ms - clock.now_ms + 1000)
     barrier = threading.Barrier(2)
 
     def worker_commit():

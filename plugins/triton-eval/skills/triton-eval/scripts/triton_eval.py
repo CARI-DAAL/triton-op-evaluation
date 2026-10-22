@@ -77,7 +77,7 @@ def arguments(argv):
         command.add_argument(
             "--capability-file", type=Path, default=os.environ.get("EVALUATION_CAPABILITY_FILE")
         )
-        command.add_argument("--timeout", type=positive, default=960.0)
+        command.add_argument("--timeout", type=positive, default=3660.0)
         command.add_argument("--poll-interval", type=positive, default=1.0)
         command.add_argument("--no-wait", action="store_true")
         command.add_argument(
@@ -544,7 +544,14 @@ class Client:
                 if snapshot["evaluation_id"] != self.evaluation_id:
                     raise ClientError("INVALID_RESPONSE", "service changed the evaluation ID")
                 evidence = snapshot["completed_checks"].get(self.args.wait_for)
-                if evidence is not None:
+                partial_performance = (
+                    self.args.wait_for == "performance"
+                    and isinstance(evidence, dict)
+                    and evidence.get("status") == "succeeded"
+                    and isinstance(evidence.get("data"), dict)
+                    and evidence["data"].get("complete", True) is False
+                )
+                if evidence is not None and not partial_performance:
                     status = exit_status({
                         "state": "completed", "result": {self.args.wait_for: evidence},
                     })

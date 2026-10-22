@@ -113,8 +113,8 @@ def test_settings_expose_the_new_budget_fields():
     from triton_evaluation.config import Settings
 
     settings = Settings(engine_dir="unused")
-    assert settings.verify_budget_cap_seconds == 1500
-    assert settings.benchmark_timeout_seconds == 600
+    assert settings.verify_budget_cap_seconds == 3600
+    assert settings.benchmark_timeout_seconds == 3600
 
 
 def test_engine_watchdog_branch_exits_three():

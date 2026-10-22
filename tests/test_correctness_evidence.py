@@ -402,7 +402,7 @@ class EvidenceBenchmark:
     def __init__(self):
         self.calls = 0
 
-    def run(self, request, work_dir, *args):
+    def run(self, request, work_dir, *args, **kwargs):
         self.calls += 1
         proof = json.loads((Path(work_dir) / "correctness_evidence.json").read_text())
         assert proof["evaluation_id"] == request.correctness_from

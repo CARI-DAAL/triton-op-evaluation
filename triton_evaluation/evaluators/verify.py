@@ -93,7 +93,7 @@ class VerifyEvaluator:
     def __init__(
         self,
         engine_dir: str,
-        budget_cap_seconds: int = 1500,
+        budget_cap_seconds: int = 3600,
         reference_device_policy: str = "cpu-first",
         *, runner=None,
     ):

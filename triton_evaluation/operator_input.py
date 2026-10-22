@@ -395,7 +395,7 @@ class OperatorRequest(StrictModel):
         min_length=1,
         max_length=4,
     )
-    deadline_seconds: int = Field(default=900, ge=10, le=3600)
+    deadline_seconds: int = Field(default=3600, ge=10, le=3600)
     correctness: CorrectnessParams | None = Field(
         default=None, exclude_if=lambda value: value is None,
     )

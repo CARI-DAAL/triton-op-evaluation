@@ -61,7 +61,7 @@ def test_running_deadline_times_out_and_raises_the_fence(
     store.create_or_replay(command)
     lease = store.claim_next(make_worker())
     store.save_check_outcome(lease, "correctness", make_correctness_success())
-    clock.advance_ms(901_000)
+    clock.advance_ms(lease.deadline_at_ms - clock.now_ms + 1000)
 
     assert store.expire_due_resources() == 1
 

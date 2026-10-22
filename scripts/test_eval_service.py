@@ -68,7 +68,7 @@ def build_request(*, measure_speed: bool = True) -> dict:
         ],
         "seed": 200,
         "checks": ["correctness", "performance"] if measure_speed else ["correctness"],
-        "deadline_seconds": 600,
+        "deadline_seconds": 3600,
     }
     if measure_speed:
         body["performance"] = {"warmup": 5, "repeats": 20}
@@ -170,7 +170,7 @@ def main() -> int:
     ap.add_argument("--measure-speed", dest="measure_speed", action="store_true",
                     default=True, help="also benchmark a passing kernel (default on)")
     ap.add_argument("--no-speed", dest="measure_speed", action="store_false")
-    ap.add_argument("--job-timeout", type=int, default=600,
+    ap.add_argument("--job-timeout", type=int, default=3660,
                     help="client recovery window in seconds (the resource deadline "
                          "is set by the request body)")
     ap.add_argument("--session-id", default="triton-eval-smoke",

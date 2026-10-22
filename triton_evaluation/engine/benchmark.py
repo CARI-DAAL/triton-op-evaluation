@@ -42,6 +42,7 @@ from _common_utils import enforce_conv_fp32 as _enforce_conv_fp32  # noqa: E402
 from _common_utils import prepare_candidate_inputs as _prepare_candidate_inputs_shared  # noqa: E402
 from _common_utils import invoke_model as _invoke_model_shared  # noqa: E402
 from _common_utils import set_process_title as _set_process_title  # noqa: E402
+from _performance_checkpoint import case_progress, write_checkpoint  # noqa: E402
 
 logger = logging.getLogger("triton_op_verifier.benchmark")
 
@@ -254,6 +255,9 @@ class BenchmarkResult:
     negative_indices: List[int] = field(default_factory=list)
     none_indices: List[int] = field(default_factory=list)
     per_shape_results: List[SingleShapeResult] = field(default_factory=list)
+    # Optional raw checkpoint metadata. Identities here are zero-based, unlike
+    # the legacy one-based per_shape_results and case_indices above.
+    progress: Optional[Dict[str, Any]] = None
 
 
 @dataclass
@@ -1315,6 +1319,7 @@ class _SelectedInputGroups(Sequence):
 
 def benchmark_implementations(
     config: BenchmarkConfig, *, input_groups=None, model_spec=None, device=None,
+    checkpoint=None,
 ) -> BenchmarkResult:
     """执行完整的性能测试，支持多组输入。每个 shape 独立 try/except。"""
     import torch
@@ -1363,6 +1368,10 @@ def benchmark_implementations(
     _write_reference_cache_trace(config)
 
     per_shape_results: List[SingleShapeResult] = []
+    if checkpoint is not None:
+        checkpoint(result_to_dict(_build_benchmark_result(
+            config, selected_indices, per_shape_results, progress=True,
+        )))
     selected_iterator = iter(selected_groups)
     for case_idx in selected_indices:
         inputs = next(selected_iterator)
@@ -1374,9 +1383,20 @@ def benchmark_implementations(
         finally:
             # Drop this workload before the iterator allocates the next one.
             del inputs
+        if checkpoint is not None:
+            checkpoint(result_to_dict(_build_benchmark_result(
+                config, selected_indices, per_shape_results, progress=True,
+            )))
 
+    return _build_benchmark_result(
+        config, selected_indices, per_shape_results, progress=checkpoint is not None,
+    )
+
+
+def _build_benchmark_result(config, selected_indices, per_shape_results, *, progress=False):
     passed_cases = sum(1 for r in per_shape_results if r.status == "pass")
-    failed_cases = selected_cases - passed_cases
+    # A pending case is not a failed measurement.
+    failed_cases = len(per_shape_results) - passed_cases
 
     overall = compute_overall(per_shape_results)
 
@@ -1389,7 +1409,7 @@ def benchmark_implementations(
         framework=overall.framework,
         implementation=overall.implementation,
         speedup_vs_torch=overall.speedup_vs_torch,
-        total_cases=selected_cases,
+        total_cases=len(selected_indices),
         passed_cases=passed_cases,
         failed_cases=failed_cases,
         case_indices=(None if config.case_indices is None else selected_indices),
@@ -1398,7 +1418,11 @@ def benchmark_implementations(
         zero_indices=overall.zero_indices,
         negative_indices=overall.negative_indices,
         none_indices=overall.none_indices,
-        per_shape_results=per_shape_results,
+        per_shape_results=list(per_shape_results),
+        progress=(case_progress(
+            [index - 1 for index in selected_indices],
+            [result.case_idx - 1 for result in per_shape_results],
+        ) if progress else None),
     )
 
 
@@ -1482,6 +1506,8 @@ def result_to_dict(result: BenchmarkResult) -> Dict[str, Any]:
         }
         for r in result.per_shape_results
     ]
+    if getattr(result, "progress", None) is not None:
+        base_dict["progress"] = result.progress
 
     return base_dict
 
@@ -1691,8 +1717,7 @@ def _emit_summary(result_dict):
 
 def _save_or_print_result(result_dict, output_path):
     if output_path:
-        with open(output_path, "w", encoding="utf-8") as f:
-            json.dump(result_dict, f, indent=2, ensure_ascii=False)
+        write_checkpoint(output_path, result_dict)
         logger.info("\n结果已保存到: %s", output_path)
     else:
         logger.info("\n结果:")
@@ -1757,7 +1782,11 @@ def main():
             result_dict = benchmark_reference_only(config)
             _save_or_print_result(result_dict, args.output)
             sys.exit(0)
-        result = benchmark_implementations(config)
+        result = benchmark_implementations(
+            config, checkpoint=(
+                (lambda result: write_checkpoint(args.output, result)) if args.output else None
+            ),
+        )
         result_dict = result_to_dict(result)
         _emit_summary(result_dict)
         _save_or_print_result(result_dict, args.output)

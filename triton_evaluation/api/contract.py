@@ -204,7 +204,7 @@ class EvaluationRequest(StrictModel):
     )
     checks: list[Check] = Field(min_length=1, max_length=4)
     non_compute: bool = False
-    deadline_seconds: int = Field(default=900, ge=10, le=3600)
+    deadline_seconds: int = Field(default=3600, ge=10, le=3600)
     correctness: CorrectnessParams | None = Field(
         default=None, exclude_if=lambda value: value is None,
     )
@@ -644,7 +644,28 @@ class UnmeasuredPerformanceCase(StrictModel):
     reason_code: Literal["UNSUPPORTED_CASE", "NO_STABLE_MEASUREMENT"]
 
 
-class PerformanceResult(StrictModel):
+class PerformanceCompletion(StrictModel):
+    """Completion of the selected workload, independent of measured case validity."""
+
+    complete: bool = Field(default=True, exclude_if=lambda value: value is True)
+    pending_case_indices: list[Annotated[int, Field(ge=0)]] = Field(
+        default_factory=list, exclude_if=lambda value: not value,
+    )
+    termination_reason: Literal["timeout", "interrupted"] | None = Field(
+        default=None, exclude_if=lambda value: value is None,
+    )
+
+    @model_validator(mode="after")
+    def _completion_rules(self):
+        pending = self.pending_case_indices
+        if pending != sorted(set(pending)):
+            raise ValueError("pending case indices must be unique and sorted")
+        if self.complete != (not pending):
+            raise ValueError("complete requires no pending cases")
+        return self
+
+
+class PerformanceResult(PerformanceCompletion):
     aggregation: Literal["geometric_mean_v1"]
     overall_speedup_vs_reference: Annotated[float, Field(gt=0)]
     selected_cases: Annotated[int, Field(ge=1)]
@@ -669,10 +690,13 @@ class PerformanceResult(StrictModel):
         measured = len(self.per_case)
         if self.measured_cases != measured:
             raise ValueError("measured_cases must equal len(per_case)")
-        if self.selected_cases != measured + len(self.unmeasured_cases):
-            raise ValueError("selected_cases must equal measured plus unmeasured")
+        if self.selected_cases != measured + len(self.unmeasured_cases) + len(
+            self.pending_case_indices
+        ):
+            raise ValueError("selected_cases must equal measured plus unmeasured plus pending")
         indices = [case.case_idx for case in self.per_case]
         indices += [case.case_idx for case in self.unmeasured_cases]
+        indices += self.pending_case_indices
         if len(set(indices)) != len(indices):
             raise ValueError("case_idx must be unique across both case lists")
         expected_coverage = measured / self.selected_cases
@@ -705,7 +729,7 @@ class SinglePerformanceCase(StrictModel):
     )
 
 
-class SinglePerformanceResult(StrictModel):
+class SinglePerformanceResult(PerformanceCompletion):
     implementation: Literal["torch", "triton"]
     correctness_verified: _Unverified
     measurement_method: MeasurementMethod
@@ -724,10 +748,13 @@ class SinglePerformanceResult(StrictModel):
         measured = len(self.per_case)
         if self.measured_cases != measured:
             raise ValueError("measured_cases must equal len(per_case)")
-        if self.selected_cases != measured + len(self.unmeasured_cases):
-            raise ValueError("selected_cases must equal measured plus unmeasured")
+        if self.selected_cases != measured + len(self.unmeasured_cases) + len(
+            self.pending_case_indices
+        ):
+            raise ValueError("selected_cases must equal measured plus unmeasured plus pending")
         indices = [case.case_idx for case in self.per_case]
         indices += [case.case_idx for case in self.unmeasured_cases]
+        indices += self.pending_case_indices
         if len(set(indices)) != len(indices):
             raise ValueError("case_idx must be unique across both case lists")
         if not math.isclose(self.coverage, measured / self.selected_cases, rel_tol=1e-9):

@@ -505,7 +505,12 @@ class EvaluationStore:
             valid = persisted_check_outcomes(stored.get(b"check_outcomes", b"{}"))
             requested = json.loads(stored[b"requested_checks"])
             outcomes = {check: value for check, value in valid.items() if check in requested}
-            if active in outcomes:
+            unfinished_performance = (
+                active == "performance"
+                and outcomes.get(active, {}).get("status") == "succeeded"
+                and not outcomes[active].get("data", {}).get("complete", True)
+            )
+            if active in outcomes and not unfinished_performance:
                 active = None
         return EvaluationProgress(
             schema_version=resource.schema_version,

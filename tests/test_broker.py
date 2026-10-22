@@ -160,7 +160,7 @@ def test_default_clock_comes_from_redis_time(redis_client, settings, make_comman
     assert result.decision == "created"
     # The store clock truncates to epoch milliseconds; allow that rounding.
     assert before - timedelta(milliseconds=1) <= result.resource.created_at <= after
-    assert result.resource.deadline_at - result.resource.created_at == timedelta(seconds=900)
+    assert result.resource.deadline_at - result.resource.created_at == timedelta(seconds=3600)
 
 
 def test_terminal_commit_releases_rollout_inflight(
