@@ -401,28 +401,39 @@ def test_control_actions_skip_startup_validation(tmp_path, action):
 # ---------------------------------------------------------------------------
 
 
+def _container_bwrap_args(tmp_path):
+    bwrap = shutil.which("bwrap")
+    if bwrap is None:
+        pytest.skip("Bubblewrap is required to execute the fixed-root container entrypoint")
+
+    opt_root = tmp_path / "opt"
+    (opt_root / "triton-eval").mkdir(parents=True)
+    args = [bwrap, "--ro-bind", "/", "/", "--dev", "/dev", "--bind", str(opt_root), "/opt"]
+    # Keep host runtimes visible: venv Python links can point into /opt/hostedtoolcache.
+    for path in Path("/opt").iterdir():
+        if path.name != "triton-eval":
+            args.extend(["--ro-bind", str(path), str(path)])
+    return [
+        *args, "--ro-bind", str(PROJECT_ROOT), "/opt/triton-eval",
+        "--chdir", "/opt/triton-eval",
+    ]
+
+
 @pytest.mark.parametrize("build, expected_exit", [
     (EVALUATOR_BUILD, 0), ("sha256:" + "b" * 64, 1),
 ])
 def test_container_readiness_checks_the_image_digest_build(
     tmp_path, build, expected_exit,
 ):
-    bwrap = shutil.which("bwrap")
-    if bwrap is None:
-        pytest.skip("Bubblewrap is required to run the container readiness gate")
     env = _complete_deployment_env(tmp_path)
     env["TRITON_EVAL_EVALUATOR_BUILD"] = build
     env["PYTHON_BIN"] = sys.executable
     env["PYTHONPATH"] = os.environ.get("PYTHONPATH", "")
     env["PATH"] = os.environ["PATH"]
     env["CANN_SET_ENV_PATH"] = str(_create_fake_cann(tmp_path))
-    opt_root = tmp_path / "opt"
-    (opt_root / "triton-eval").mkdir(parents=True)
     result = subprocess.run(
         [
-            bwrap, "--ro-bind", "/", "/", "--dev", "/dev", "--bind",
-            str(opt_root), "/opt", "--ro-bind", str(PROJECT_ROOT),
-            "/opt/triton-eval", "--chdir", "/opt/triton-eval", "/usr/bin/env",
+            *_container_bwrap_args(tmp_path), "/usr/bin/env",
             "-i", *(f"{name}={value}" for name, value in env.items()),
             "/bin/bash", "/opt/triton-eval/docker/entrypoint.sh", "/bin/echo", "runtime-ready",
         ],
@@ -451,10 +462,6 @@ def test_container_readiness_checks_the_image_digest_build(
 def test_container_launcher_initializes_host_runtime_before_selected_python(
     tmp_path, mode, expected_args
 ):
-    bwrap = shutil.which("bwrap")
-    if bwrap is None:
-        pytest.skip("Bubblewrap is required to execute the fixed-root container entrypoint")
-
     set_env = _create_fake_cann(tmp_path)
     fake_bin = tmp_path / "bin"
     fake_bin.mkdir()
@@ -478,13 +485,9 @@ printf 'args=%s\n' "$*"
 """,
     )
 
-    opt_root = tmp_path / "opt"
-    (opt_root / "triton-eval").mkdir(parents=True)
     result = subprocess.run(
         [
-            bwrap, "--ro-bind", "/", "/", "--dev", "/dev", "--bind",
-            str(opt_root), "/opt", "--ro-bind", str(PROJECT_ROOT),
-            "/opt/triton-eval", "--chdir", "/opt/triton-eval", "/usr/bin/env",
+            *_container_bwrap_args(tmp_path), "/usr/bin/env",
             "-i", f"PATH={fake_bin}:/usr/bin:/bin",
             f"PYTHON_BIN={custom_python}", f"CANN_SET_ENV_PATH={set_env}",
             "ASCEND_TOOLKIT_HOME=baked-toolkit", "ASCEND_HOME_PATH=baked-home",
