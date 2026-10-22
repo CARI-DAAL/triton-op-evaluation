@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## 0.1.2 — 2026-10-22
+
+### Commits
+
+- 2095825 fix: retain completed benchmark measurements on timeout
+- f4e1351 fix: preserve host Python runtimes in deployment test sandboxes
+
 ## 0.1.1 — 2026-10-20
 
 ### Commits
