@@ -83,7 +83,33 @@ _EXPERIMENTAL_KINDS = {
     "scattered",
 }
 
-_PATH_TOKEN = re.compile(r"(?<!\S)/\S+")
+_PATH_TOKEN = re.compile(r"(?<![\w\-.])/\S+")
+
+_TRUNCATION_MARKER = " ...[truncated]... "
+
+
+def bounded_detail(text: str, budget: int) -> str:
+    """Bound a single-line diagnostic to ``budget`` UTF-8 bytes, head AND tail.
+
+    The engine's ``error_msg`` is itself head+tail preserving
+    (``truncate_error`` keeps the last chunk precisely because the exception
+    type and message live at the tail). A head-only byte cut here discards
+    exactly that actionable part, so when the budget cannot fit the whole
+    text keep a head slice, an explicit marker, and a tail slice instead.
+    """
+    encoded = text.encode("utf-8")
+    if len(encoded) <= budget:
+        return text
+    marker_bytes = len(_TRUNCATION_MARKER.encode("utf-8"))
+    keep = budget - marker_bytes
+    if keep <= 0:
+        return encoded[:budget].decode("utf-8", "ignore")
+    head = keep * 2 // 3
+    return (
+        encoded[:head].decode("utf-8", "ignore")
+        + _TRUNCATION_MARKER
+        + encoded[len(encoded) - (keep - head):].decode("utf-8", "ignore")
+    )
 
 
 class ShapingError(ValueError):
@@ -108,7 +134,7 @@ class UnattributedFailure(ShapingError):
         # paths, bounded UTF-8); the engine's error_msg is none of those.
         single_line = " ".join(detail.split())
         single_line = _PATH_TOKEN.sub("<path>", single_line)
-        self.detail = single_line.encode("utf-8")[:MAX_MESSAGE_BYTES].decode("utf-8", "ignore")
+        self.detail = bounded_detail(single_line, MAX_MESSAGE_BYTES)
 
 
 _SHAPING_METRICS = None  # optional RedisMetrics; wired by the deployment

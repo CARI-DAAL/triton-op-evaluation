@@ -58,6 +58,7 @@ from .profile import ProfileEvaluator
 from .shaping import (
     ShapingError,
     UnattributedFailure,
+    bounded_detail,
     shape_correctness,
     shape_performance,
     shape_profile_runs,
@@ -107,11 +108,12 @@ def _engine_outcome(check: Check, engine: EngineCheckResult, shape):
         # The prefix counts against ErrorInfo's 512-byte message cap: the
         # detail alone is bounded to 512 by UnattributedFailure, so compose
         # under the cap or ErrorInfo validation raises and the worker collapses
-        # the whole evaluation into a protocol failure.
+        # the whole evaluation into a protocol failure. bounded_detail keeps a
+        # head slice AND the tail (where the exception message lives) instead
+        # of a head-only cut that hid the actionable part.
         prefix = "unattributed case failure: "
         remaining = MAX_ERROR_MESSAGE_BYTES - len(prefix.encode("utf-8"))
-        detail = error.detail.encode("utf-8")[:remaining]
-        message = prefix + detail.decode("utf-8", "ignore")
+        message = prefix + bounded_detail(error.detail, remaining)
         return CheckFailed(
             status="failed",
             error=ErrorInfo(
