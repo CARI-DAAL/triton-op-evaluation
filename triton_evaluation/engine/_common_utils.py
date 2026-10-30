@@ -286,6 +286,23 @@ def ensure_npu_ambient_device(torch, *, wait_seconds: float | None = None) -> bo
         time.sleep(min(AMBIENT_POLL_SECONDS, remaining))
 
 
+def ensure_cpu_ambient_device(torch) -> bool:
+    """cpu-first 的环境设备语义：golden 及其内部新建张量同落 CPU。
+
+    与 ensure_npu_ambient_device 对偶：cpu-first 的参考在 CPU 上执行，
+    若环境默认设备仍是 NPU，参考内部不带 device 的构造器
+    （torch.zeros/empty/arange 等）会落到 NPU，与 CPU golden 输入混设备。
+    候选不受影响：其输入由引擎显式 .to(npu, copy=True)，triton kernel
+    按张量设备发射。旧 torch / 测试替身没有 set_default_device 时安全
+    空操作（引擎子进程默认本就是 CPU）。
+    """
+    setter = getattr(torch, "set_default_device", None)
+    if setter is None:
+        return False
+    setter("cpu")
+    return True
+
+
 def prepare_candidate_inputs(reference_model, inputs, *, trace=None):
     """Bind omitted official parameters to the defaults of the pinned run().
 

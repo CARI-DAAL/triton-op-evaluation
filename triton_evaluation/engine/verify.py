@@ -1530,7 +1530,14 @@ def verify_implementations(
             ambient_wait = _AMBIENT_WAIT_CAP_SECONDS
             if subject_budget_seconds:
                 ambient_wait = min(ambient_wait, float(subject_budget_seconds))
-        if (
+        if reference_device_policy == "cpu-first":
+            # cpu-first 的环境设备语义与 golden 一致落 CPU：参考内部不带
+            # device 的构造器（torch.zeros 等）必须与 CPU golden 同设备，
+            # 否则同一个参考在两种策略下表现不同（nms 实例：混设备崩溃）。
+            # 候选不受影响（引擎显式 .to(npu, copy=True)，kernel 按张量设备发射）。
+            from _common_utils import ensure_cpu_ambient_device as _ensure_cpu_ambient
+            _ensure_cpu_ambient(torch)
+        elif (
             not _ensure_npu_ambient_shared(torch, wait_seconds=ambient_wait)
             and reference_device_policy == "npu-strict"
         ):
