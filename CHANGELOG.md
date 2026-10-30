@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+## 0.2.0 — 2026-10-30
+
+### Commits
+
+- 30b71f8 fix(engine): cpu-first runs with a CPU ambient device
+- f510178 feat(api): per-request reference_device_policy for trial correctness
+- 8bb4aca fix(engine): isolate correctness inputs via .to(device, copy=True)
+- afe97ff fix(shaping): keep head+tail in bounded error details; redact quoted paths
+- 2095825 fix: retain completed benchmark measurements on timeout
+- f4e1351 fix: preserve host Python runtimes in deployment test sandboxes
+
 ## 0.1.1 — 2026-10-20
 
 ### Commits
