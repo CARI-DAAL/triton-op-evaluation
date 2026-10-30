@@ -31,7 +31,8 @@ def error_responses(*statuses: int, model: type[BaseModel] = ErrorEnvelope) -> d
     return responses
 
 
-@dataclass(frozen=True)
+# Not frozen: Starlette resets ``__traceback__`` on handled exceptions.
+@dataclass
 class ApiError(Exception):
     http_status: int
     info: ErrorInfo
