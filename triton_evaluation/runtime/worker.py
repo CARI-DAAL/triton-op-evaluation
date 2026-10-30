@@ -296,7 +296,7 @@ class Worker:
             )
             if self._clock() >= lease.deadline_at_ms:
                 # Late delivery: expire rather than start past the deadline.
-                self._commit_deadline(lease, request.checks, {})
+                self._commit_deadline(lease, request.checks, {}, request=request)
                 return
 
             digest = sha256_hex(
@@ -356,6 +356,7 @@ class Worker:
                         requested_checks=request.checks,
                         outcomes={check: getattr(validated, check) for check in request.checks},
                         pinned=pinned, execution_environment=environment,
+                        **self._policy_provenance(request),
                     )
                 except LeaseLostError:
                     # Fenced work is discarded; the reaper owns recovery.
@@ -389,7 +390,7 @@ class Worker:
             if retryable_failure and self._health is not None:
                 self._health.mark_suspicious()
             if self._clock() >= lease.deadline_at_ms:
-                self._commit_deadline(lease, request.checks, progress.saved)
+                self._commit_deadline(lease, request.checks, progress.saved, request=request)
                 return
             if (
                 self.settings.engine_failure_requeue
@@ -439,8 +440,26 @@ class Worker:
             raise _CorruptedRequestError
         return request
 
+    def _policy_provenance(self, request: EvaluationRequest) -> dict:
+        """Per-request reference-policy provenance overrides (trial only).
+
+        A request may pin cpu-first correctness under an npu-strict deployment
+        (or vice versa). The pinned worker algorithm would then misstate the
+        protocol actually executed, so recompute the honest identity and
+        always record the effective placement for downstream consumers.
+        """
+        override = request.reference_device_policy
+        effective = override or self.settings.reference_device_policy
+        kwargs = {"reference_device_policy": effective}
+        if override is not None and override != self.settings.reference_device_policy:
+            kwargs["correctness_algorithm_override"] = (
+                self.settings.correctness_algorithm_for(override)
+            )
+        return kwargs
+
     def _commit_deadline(
-        self, lease: AttemptLease, requested_checks, persisted: dict
+        self, lease: AttemptLease, requested_checks, persisted: dict,
+        request: EvaluationRequest | None = None,
     ) -> None:
         result = complete_evaluation(
             requested_checks=requested_checks, outcomes=persisted,
@@ -450,6 +469,7 @@ class Worker:
                 retryable=False,
                 message="resource deadline expired before a subject outcome",
             )),
+            **(self._policy_provenance(request) if request is not None else {}),
         )
         # False means the watchdog or a faster worker terminalized it first.
         self.store.commit_terminal(lease, "timed_out", result)

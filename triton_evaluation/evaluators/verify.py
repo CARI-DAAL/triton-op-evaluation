@@ -264,7 +264,7 @@ class VerifyEvaluator:
             "--output",
             str(out_path),
             "--reference-device-policy",
-            self.reference_device_policy,
+            request.reference_device_policy or self.reference_device_policy,
         ]
         if request.non_compute:
             cmd.append("--non-compute")

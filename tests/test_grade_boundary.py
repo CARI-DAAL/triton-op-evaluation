@@ -173,6 +173,7 @@ def test_grade_eligible_is_not_a_score():
         "manifest_id",
         "problem_id",
         "execution_environment",
+        "reference_device_policy",
     }
 
 

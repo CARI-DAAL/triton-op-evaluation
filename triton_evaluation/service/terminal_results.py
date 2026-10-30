@@ -77,6 +77,8 @@ def complete_evaluation(
     pinned: PinnedProvenance,
     execution_environment: ExecutionEnvironment | None = None,
     failure: CheckFailed | CheckTimedOut | None = None,
+    correctness_algorithm_override: str | None = None,
+    reference_device_policy: str | None = None,
 ) -> EvaluationResult:
     """Produce one complete result, retaining only valid requested evidence.
 
@@ -84,6 +86,9 @@ def complete_evaluation(
     the first missing check. An omitted failure means normal completion, but any
     missing evidence still fails closed. Even when all outcomes were saved before
     an orchestration failure, that ending cannot establish grade eligibility.
+    ``correctness_algorithm_override`` / ``reference_device_policy`` pin a
+    per-request reference placement honestly into the provenance (trial-only;
+    cross-policy correctness reuse is refused by the evidence validator).
     """
     requested_set = set(requested_checks)
     if not requested_set or requested_set.difference(_CHECK_ORDER):
@@ -136,13 +141,16 @@ def complete_evaluation(
     provenance = Provenance(
         schema_version="2.1",
         evaluator_build=pinned.evaluator_build,
-        correctness_algorithm=pinned.algorithms.correctness,
+        correctness_algorithm=(
+            correctness_algorithm_override or pinned.algorithms.correctness
+        ),
         decoy_algorithm=pinned.algorithms.decoy,
         benchmark_algorithm=pinned.algorithms.benchmark,
         profiler_algorithm=pinned.algorithms.profiler,
         manifest_id=pinned.manifest_id,
         problem_id=pinned.problem_id,
         execution_environment=execution_environment,
+        reference_device_policy=reference_device_policy,
         grade_eligible=(
             complete
             and pinned.purpose == "grade"
