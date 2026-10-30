@@ -10,6 +10,7 @@ correctness reuse keeps failing the evidence validator.
 from pathlib import Path
 
 import pytest
+from pydantic import ValidationError
 
 from triton_evaluation.api.contract import EvaluationRequest, Provenance
 from triton_evaluation.config import Settings
@@ -70,7 +71,7 @@ def test_evaluation_request_refuses_policy_for_grade():
         kernel_code="def run(x):\n    return x\n",
         checks=["correctness"], reference_device_policy="cpu-first",
     )
-    with pytest.raises(Exception):
+    with pytest.raises(ValidationError):
         EvaluationRequest(**kwargs)
 
 
@@ -106,7 +107,9 @@ def test_complete_evaluation_pins_policy_provenance(tmp_path: Path):
 
     correctness = CheckSucceeded(
         status="succeeded",
-        data=CorrectnessResult(outcome="correct", passed=True, passed_cases=1, total_cases=1, failures=[]),
+        data=CorrectnessResult(
+            outcome="correct", passed=True, passed_cases=1, total_cases=1, failures=[]
+        ),
     )
     result = complete_evaluation(
         requested_checks=["correctness"],
@@ -124,7 +127,9 @@ def test_complete_evaluation_defaults_keep_pinned_provenance(tmp_path: Path):
 
     correctness = CheckSucceeded(
         status="succeeded",
-        data=CorrectnessResult(outcome="correct", passed=True, passed_cases=1, total_cases=1, failures=[]),
+        data=CorrectnessResult(
+            outcome="correct", passed=True, passed_cases=1, total_cases=1, failures=[]
+        ),
     )
     result = complete_evaluation(
         requested_checks=["correctness"],
