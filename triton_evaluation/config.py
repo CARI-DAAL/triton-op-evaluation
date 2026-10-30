@@ -158,15 +158,27 @@ class Settings(BaseSettings):
     release_mode: Literal["dev", "release"] = "dev"
     release_manifest: Path | None = None
 
-    @property
-    def effective_correctness_algorithm_version(self) -> str:
-        """Reference placement is part of the correctness protocol identity."""
+    def correctness_algorithm_for(self, policy: str) -> str:
+        """Correctness protocol identity under an explicit reference policy.
+
+        Same composition as the effective deployment version, parameterized
+        by the reference placement so per-request overrides (trial purpose
+        only) can be pinned honestly instead of inheriting the deployment
+        suffix.
+        """
+        if policy not in {"cpu-first", "npu-strict"}:
+            raise ValueError("unsupported reference_device_policy")
         version = self.correctness_algorithm_version
-        if self.reference_device_policy == "npu-strict":
+        if policy == "npu-strict":
             version += ":npu-strict-v1"
         if self.reference_cache_sha256 is not None:
             version += ":cache-v1:" + self.reference_cache_sha256
         return version
+
+    @property
+    def effective_correctness_algorithm_version(self) -> str:
+        """Reference placement is part of the correctness protocol identity."""
+        return self.correctness_algorithm_for(self.reference_device_policy)
 
     @model_validator(mode="after")
     def _durable_core_windows(self):

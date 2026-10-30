@@ -205,6 +205,9 @@ class EvaluationRequest(StrictModel):
     checks: list[Check] = Field(min_length=1, max_length=4)
     non_compute: bool = False
     deadline_seconds: int = Field(default=3600, ge=10, le=3600)
+    reference_device_policy: Literal["cpu-first", "npu-strict"] | None = Field(
+        default=None, exclude_if=lambda value: value is None,
+    )
     correctness: CorrectnessParams | None = Field(
         default=None, exclude_if=lambda value: value is None,
     )
@@ -238,6 +241,10 @@ class EvaluationRequest(StrictModel):
                 raise ValueError("the correctness check requires both implementations")
             if self.purpose == "grade":
                 raise ValueError("grade records require comparison implementations")
+        if self.reference_device_policy is not None and self.purpose == "grade":
+            raise ValueError(
+                "grade requests must use the deployment reference device policy"
+            )
         if (
             self.implementation == "comparison"
             and "performance" in self.checks and "correctness" not in self.checks
@@ -1043,6 +1050,7 @@ class Provenance(StrictModel):
     manifest_id: str | None
     problem_id: str | None
     execution_environment: ExecutionEnvironment | None
+    reference_device_policy: str | None = None
 
     @model_validator(mode="after")
     def _grade_eligibility(self):

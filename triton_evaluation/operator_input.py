@@ -396,6 +396,9 @@ class OperatorRequest(StrictModel):
         max_length=4,
     )
     deadline_seconds: int = Field(default=3600, ge=10, le=3600)
+    reference_device_policy: Literal["cpu-first", "npu-strict"] | None = Field(
+        default=None, exclude_if=lambda value: value is None,
+    )
     correctness: CorrectnessParams | None = Field(
         default=None, exclude_if=lambda value: value is None,
     )
@@ -573,6 +576,7 @@ def to_evaluation_request(
             implementation=implementation,
             reference_code=reference_code, kernel_code=kernel_code,
             triton_impl_name="triton_ascend_impl", checks=selected,
+            reference_device_policy=request.reference_device_policy,
             deadline_seconds=request.deadline_seconds, non_compute=request.non_compute,
             correctness_from=request.correctness_from,
             correctness=correctness,

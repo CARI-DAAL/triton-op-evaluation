@@ -730,3 +730,39 @@ def test_benchmark_measurement_method_round_trips_through_evaluation_result():
     serialized = wire["performance"]["data"]
     assert serialized["measurement_method"] == "npu_event_v1"
     assert serialized["per_case"][0]["measurement_method"] == "npu_event_v1"
+
+
+def _engine_style_traceback(tail: str) -> str:
+    """A head+tail error_msg like engine truncate_error() emits (2000B budget)."""
+    head = "AssertionError: Traceback (most recent call last): " + (
+        "File <path>, line 1390, in _try_run_case _attempt_case(...) " * 40
+    )
+    return head + " ... [truncated 987 chars] ... " + tail
+
+
+def test_unattributed_failure_keeps_tail_under_budget():
+    """The tail carries the exception message; a head-only 512B cut hides it."""
+    from triton_evaluation.evaluators.shaping import MAX_MESSAGE_BYTES
+
+    detail = _engine_style_traceback(
+        "输出数量不一致 (shape mismatch): framework=3, impl=1"
+    )
+    failure = UnattributedFailure(detail)
+    assert len(failure.detail.encode("utf-8")) <= MAX_MESSAGE_BYTES
+    assert "\n" not in failure.detail
+    assert "输出数量不一致" in failure.detail
+    assert "truncated" in failure.detail
+
+
+def test_unattributed_failure_short_detail_untouched():
+    failure = UnattributedFailure("RuntimeError: reference failed")
+    assert failure.detail == "RuntimeError: reference failed"
+
+
+def test_unattributed_failure_redacts_quoted_paths():
+    """Quoted paths (File "/x/y.py") bypassed the old (?<!\\S)/\\S+ lookbehind."""
+    detail = 'TypeError: File "/home/n84449292/bruce/rsi/triton-op-evaluation/x.py", line 9: bad call'
+    failure = UnattributedFailure(detail)
+    assert "/home/n84449292" not in failure.detail
+    assert "<path>" in failure.detail
+    assert "line 9: bad call" in failure.detail
