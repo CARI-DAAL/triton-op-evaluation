@@ -1176,13 +1176,13 @@ def run_single_case(models: ModelPair, inputs, device, case_ctx: CaseContext, no
         models.reference_input_model or models.framework, inputs, trace=trace,
     )
     inputs_for_impl = [
-        x.to(device) if isinstance(x, torch.Tensor) else x
+        x.to(device, copy=True) if isinstance(x, torch.Tensor) else x
         for x in candidate_inputs
     ]
     inputs_for_framework = None
     if case_ctx.cached_reference is None:
         inputs_for_framework = [
-            x.to(golden_device) if isinstance(x, torch.Tensor) else x
+            x.to(golden_device, copy=True) if isinstance(x, torch.Tensor) else x
             for x in inputs
         ]
 
