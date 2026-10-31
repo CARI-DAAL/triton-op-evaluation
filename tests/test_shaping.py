@@ -761,7 +761,8 @@ def test_unattributed_failure_short_detail_untouched():
 
 def test_unattributed_failure_redacts_quoted_paths():
     """Quoted paths (File "/x/y.py") bypassed the old (?<!\\S)/\\S+ lookbehind."""
-    detail = 'TypeError: File "/home/n84449292/bruce/rsi/triton-op-evaluation/x.py", line 9: bad call'
+    detail = ('TypeError: File "/home/n84449292/bruce/rsi/triton-op-evaluation/x.py", '
+              'line 9: bad call')
     failure = UnattributedFailure(detail)
     assert "/home/n84449292" not in failure.detail
     assert "<path>" in failure.detail
